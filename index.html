@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#667eea">
+    <meta name="description" content="シンプルで使いやすいロール管理アプリケーション">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="ロール管理">
+    <link rel="manifest" href="manifest.json">
+    <link rel="icon" type="image/png" sizes="192x192" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect fill='%23667eea' width='192' height='192'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' font-size='96' fill='white' font-family='Arial'>📋</text></svg>">
+    <title>ロール管理アプリ</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px 0;
+            text-align: center;
+            border-bottom: 4px solid #5568d3;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+            overflow: hidden;
+        }
+
+        .content {
+            padding: 30px;
+        }
+
+        .role-form {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+        }
+
+        .role-form input {
+            flex: 1;
+            min-width: 200px;
+            padding: 12px 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 6px;
+            font-size: 1rem;
+            transition: border-color 0.3s;
+        }
+
+        .role-form input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .role-form button {
+            padding: 12px 30px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 600;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .role-form button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .role-form button:active {
+            transform: translateY(0);
+        }
+
+        .table-container {
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th {
+            background: #f8f9fa;
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+            color: #333;
+            border-bottom: 2px solid #e0e0e0;
+            font-size: 0.95rem;
+        }
+
+        td {
+            padding: 15px;
+            border-bottom: 1px solid #e0e0e0;
+            color: #555;
+        }
+
+        tbody tr {
+            transition: background-color 0.2s;
+        }
+
+        tbody tr:hover {
+            background-color: #f8f9fa;
+        }
+
+        .role-id {
+            font-weight: 600;
+            color: #667eea;
+        }
+
+        .action-buttons {
+            display: flex;
+            gap: 8px;
+        }
+
+        .action-btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            font-weight: 600;
+            transition: transform 0.2s, box-shadow 0.2s;
+            white-space: nowrap;
+        }
+
+        .edit-btn {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+        }
+
+        .edit-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(245, 87, 108, 0.3);
+        }
+
+        .delete-btn {
+            background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+            color: white;
+        }
+
+        .delete-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(250, 112, 154, 0.3);
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: #999;
+        }
+
+        .empty-state-icon {
+            font-size: 3rem;
+            margin-bottom: 15px;
+        }
+
+        @media (max-width: 768px) {
+            body {
+                padding: 10px;
+            }
+
+            .header {
+                padding: 20px 0;
+                margin-bottom: 20px;
+            }
+
+            .header h1 {
+                font-size: 1.8rem;
+            }
+
+            .content {
+                padding: 20px;
+            }
+
+            .role-form {
+                flex-direction: column;
+                gap: 10px;
+                margin-bottom: 20px;
+            }
+
+            .role-form input,
+            .role-form button {
+                width: 100%;
+            }
+
+            th, td {
+                padding: 10px;
+                font-size: 0.9rem;
+            }
+
+            .action-buttons {
+                flex-direction: column;
+            }
+
+            .action-btn {
+                width: 100%;
+                padding: 10px;
+            }
+
+            .role-id {
+                display: block;
+                margin-bottom: 5px;
+                font-size: 0.85rem;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .header h1 {
+                font-size: 1.5rem;
+            }
+
+            .content {
+                padding: 15px;
+            }
+
+            th {
+                padding: 10px 5px;
+                font-size: 0.8rem;
+            }
+
+            td {
+                padding: 10px 5px;
+                font-size: 0.85rem;
+            }
+
+            .action-btn {
+                padding: 8px 10px;
+                font-size: 0.75rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>📋 ロール管理</h1>
+    </div>
+
+    <div class="container">
+        <div class="content">
+            <div class="role-form">
+                <input type="text" id="role-name" placeholder="ロール名を入力..." style="flex: 0.7;">
+                <input type="text" id="role-description" placeholder="説明を入力..." style="flex: 1;">
+                <select id="role-level" style="padding: 12px 15px; border: 2px solid #e0e0e0; border-radius: 6px; font-size: 1rem; min-width: 120px; cursor: pointer;">
+                    <option value="">権限レベルを選択</option>
+                    <option value="管理者">👑 管理者</option>
+                    <option value="編集者">✏️ 編集者</option>
+                    <option value="閲覧者">👁️ 閲覧者</option>
+                </select>
+                <button onclick="addRole()">➕ 追加</button>
+            </div>
+            <div class="table-container">
+                <table id="role-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>ロール名</th>
+                            <th>説明</th>
+                            <th>権限レベル</th>
+                            <th style="width: 180px;">アクション</th>
+                        </tr>
+                    </thead>
+                    <tbody id="role-list">
+                        <!-- ロールがここに表示されます -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let roles = JSON.parse(localStorage.getItem('roles')) || [];
+        let nextId = roles.length > 0 ? Math.max(...roles.map(r => r.id)) + 1 : 1;
+
+        function getLevelBadge(level) {
+            const badges = {
+                '管理者': '<span style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 4px 12px; border-radius: 20px; font-size: 0.85rem; font-weight: 600;">👑 管理者</span>',
+                '編集者': '<span style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; padding: 4px 12px; border-radius: 20px; font-size: 0.85rem; font-weight: 600;">✏️ 編集者</span>',
+                '閲覧者': '<span style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; padding: 4px 12px; border-radius: 20px; font-size: 0.85rem; font-weight: 600;">👁️ 閲覧者</span>'
+            };
+            return badges[level] || '-';
+        }
+
+        function renderRoles() {
+            const roleList = document.getElementById('role-list');
+            roleList.innerHTML = '';
+            
+            if (roles.length === 0) {
+                roleList.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 40px; color: #999;">ロールがまだ登録されていません</td></tr>';
+                return;
+            }
+
+            roles.forEach(role => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td><span class="role-id">#${role.id}</span></td>
+                    <td>${role.name}</td>
+                    <td>${role.description || '-'}</td>
+                    <td>${getLevelBadge(role.level)}</td>
+                    <td>
+                        <div class="action-buttons">
+                            <button class="action-btn edit-btn" onclick="editRole(${role.id})">✏️ 編集</button>
+                            <button class="action-btn delete-btn" onclick="deleteRole(${role.id})">🗑️ 削除</button>
+                        </div>
+                    </td>
+                `;
+                roleList.appendChild(row);
+            });
+        }
+
+        function addRole() {
+            const roleName = document.getElementById('role-name').value.trim();
+            const roleDescription = document.getElementById('role-description').value.trim();
+            const roleLevel = document.getElementById('role-level').value;
+            
+            if (!roleName) {
+                alert('ロール名を入力してください');
+                return;
+            }
+            if (!roleLevel) {
+                alert('権限レベルを選択してください');
+                return;
+            }
+            if (roles.some(r => r.name === roleName)) {
+                alert('このロール名は既に登録されています');
+                return;
+            }
+            const newRole = { id: nextId++, name: roleName, description: roleDescription, level: roleLevel };
+            roles.push(newRole);
+            localStorage.setItem('roles', JSON.stringify(roles));
+            document.getElementById('role-name').value = '';
+            document.getElementById('role-description').value = '';
+            document.getElementById('role-level').value = '';
+            renderRoles();
+        }
+
+        function editRole(id) {
+            const role = roles.find(r => r.id === id);
+            if (role) {
+                const newName = prompt('ロール名を入力:', role.name);
+                if (!newName || !newName.trim()) return;
+                
+                const newDescription = prompt('説明を入力:', role.description || '');
+                if (newDescription === null) return;
+                
+                const levelOptions = '選択してください:\n1. 管理者\n2. 編集者\n3. 閲覧者';
+                const newLevel = prompt('権限レベルを選択:\n1. 管理者\n2. 編集者\n3. 閲覧者\n(1-3で選択)', role.level);
+                if (!newLevel) return;
+                
+                const levelMap = { '1': '管理者', '2': '編集者', '3': '閲覧者' };
+                const selectedLevel = levelMap[newLevel] || newLevel;
+                if (!['管理者', '編集者', '閲覧者'].includes(selectedLevel)) {
+                    alert('無効な権限レベルです');
+                    return;
+                }
+                
+                role.name = newName.trim();
+                role.description = newDescription.trim();
+                role.level = selectedLevel;
+                localStorage.setItem('roles', JSON.stringify(roles));
+                renderRoles();
+            }
+        }
+
+        function deleteRole(id) {
+            if (confirm('このロールを削除しますか？')) {
+                roles = roles.filter(r => r.id !== id);
+                localStorage.setItem('roles', JSON.stringify(roles));
+                renderRoles();
+            }
+        }
+
+        // 初期表示
+        renderRoles();
+
+        // Service Worker登録
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('service-worker.js')
+                .then(registration => {
+                    console.log('Service Worker registered:', registration);
+                    
+                    // 新しいService Workerの更新をチェック
+                    registration.addEventListener('updatefound', () => {
+                        const newWorker = registration.installing;
+                        newWorker.addEventListener('statechange', () => {
+                            if (newWorker.state === 'activated') {
+                                console.log('New Service Worker activated');
+                                // オプション: ユーザーに更新を通知
+                                // alert('新しいバージョンが利用可能です。ページをリロードしてください。');
+                            }
+                        });
+                    });
+                })
+                .catch(error => console.log('Service Worker registration failed:', error));
+        }
+
+        // PWAインストール促進
+        let deferredPrompt;
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            // インストール可能な場合の処理
+            console.log('PWA install prompt is ready');
+        });
+    </script>
+</body>
+</html>
