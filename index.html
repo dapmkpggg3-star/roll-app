@@ -481,10 +481,12 @@
                         <option value="新品予備（組替可能）">新品予備（組替可能）</option>
                         <option value="新品予備（組込完了）">新品予備（組込完了）</option>
                     </select>
-                    <textarea id="role-memo" placeholder="メモを入力...(改行可)" style="flex: 1; min-height: 60px; padding: 12px 15px; border: 2px solid #e0e0e0; border-radius: 6px; font-size: 1rem; resize: vertical;"></textarea>
+                    <textarea id="role-memo" placeholder="メモを入力...(改行可)" style="flex: 1; min-height: 40px; padding: 12px 15px; border: 2px solid #e0e0e0; border-radius: 6px; font-size: 1rem; resize: vertical;"></textarea>
                     <input id="csv-import-input" type="file" accept=".csv,text/csv" style="display:none" onchange="importCsv(event)">
                     <div class="form-actions">
                         <button type="button" id="addRoleBtn" onclick="addRole()">➕ 追加</button>
+                        <button type="button" id="updateRoleBtn" onclick="updateRole()" style="display: none;">🔄 更新</button>
+                        <button type="button" id="cancelEditBtn" onclick="cancelEdit()" style="display: none;">❌ キャンセル</button>
                         <button type="button" id="exportCsvBtn" class="csv-btn" onclick="exportCsv()">CSVエクスポート</button>
                         <button type="button" class="import-btn" onclick="document.getElementById('csv-import-input').click()">CSVインポート</button>
                     </div>
@@ -568,6 +570,7 @@
         let nextId = roles.length > 0 ? Math.max(...roles.map(r => r.id)) + 1 : 1;
         let searchQuery = '';
         let sortOption = 'updatedAt';
+        let editingId = null; // 編集中のID
 
         roles = roles.map(role => ({
             ...role,
@@ -575,6 +578,32 @@
             memo: role.memo || '',
             status: role.status || 'オンライン'
         }));
+
+        // 既存データのオンライン重複修正
+        fixOnlineDuplicates();
+
+        function fixOnlineDuplicates() {
+            const groups = {};
+            roles.forEach(role => {
+                const group = getGroup(role.name);
+                if (!groups[group]) groups[group] = [];
+                groups[group].push(role);
+            });
+            Object.values(groups).forEach(groupRoles => {
+                const onlineRoles = groupRoles.filter(r => r.status === 'オンライン').sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+                if (onlineRoles.length > 1) {
+                    // 最新の1件以外を中古予備に
+                    for (let i = 1; i < onlineRoles.length; i++) {
+                        onlineRoles[i].status = '中古予備（バラシ前）';
+                    }
+                }
+            });
+            localStorage.setItem('roles', JSON.stringify(roles));
+        }
+
+        function getGroup(name) {
+            return name.split('-')[0];
+        }
 
         function changeSort(event) {
             sortOption = event.target.value;
@@ -592,14 +621,14 @@
 
         function getStatusBadge(status) {
             const badges = {
-                'オンライン': '<span style="background: #38b2ac; color: white; padding: 4px 12px; border-radius: 20px; font-size: 0.85rem; font-weight: 600;">オンライン</span>',
-                '中古予備（バラシ前）': '<span style="background: #d69e2e; color: white; padding: 4px 12px; border-radius: 20px; font-size: 0.85rem; font-weight: 600;">中古予備（バラシ前）</span>',
-                '改削行き（搬出可能）': '<span style="background: #dd6b20; color: white; padding: 4px 12px; border-radius: 20px; font-size: 0.85rem; font-weight: 600;">改削行き（搬出可能）</span>',
-                '改削中': '<span style="background: #e53e3e; color: white; padding: 4px 12px; border-radius: 20px; font-size: 0.85rem; font-weight: 600;">改削中</span>',
-                '新品予備（組替可能）': '<span style="background: #2f855a; color: white; padding: 4px 12px; border-radius: 20px; font-size: 0.85rem; font-weight: 600;">新品予備（組替可能）</span>',
-                '新品予備（組込完了）': '<span style="background: #2b6cb0; color: white; padding: 4px 12px; border-radius: 20px; font-size: 0.85rem; font-weight: 600;">新品予備（組込完了）</span>'
+                'オンライン': '<span style="background: #16a085; color: white; padding: 4px 12px; border-radius: 20px; font-size: 0.85rem; font-weight: 600;">オンライン</span>',
+                '中古予備（バラシ前）': '<span style="background: #f39c12; color: white; padding: 4px 12px; border-radius: 20px; font-size: 0.85rem; font-weight: 600;">中古予備（バラシ前）</span>',
+                '改削行き（搬出可能）': '<span style="background: #e74c3c; color: white; padding: 4px 12px; border-radius: 20px; font-size: 0.85rem; font-weight: 600;">改削行き（搬出可能）</span>',
+                '改削中': '<span style="background: #c0392b; color: white; padding: 4px 12px; border-radius: 20px; font-size: 0.85rem; font-weight: 600;">改削中</span>',
+                '新品予備（組替可能）': '<span style="background: #27ae60; color: white; padding: 4px 12px; border-radius: 20px; font-size: 0.85rem; font-weight: 600;">新品予備（組替可能）</span>',
+                '新品予備（組込完了）': '<span style="background: #2980b9; color: white; padding: 4px 12px; border-radius: 20px; font-size: 0.85rem; font-weight: 600;">新品予備（組込完了）</span>'
             };
-            return badges[status] || `<span style="background: #a0aec0; color: white; padding: 4px 12px; border-radius: 20px; font-size: 0.85rem; font-weight: 600;">${escapeHtml(status)}</span>`;
+            return badges[status] || `<span style="background: #95a5a6; color: white; padding: 4px 12px; border-radius: 20px; font-size: 0.85rem; font-weight: 600;">${escapeHtml(status)}</span>`;
         }
 
         function getMemoPreview(memo) {
@@ -734,6 +763,18 @@
                 return;
             }
             const newRole = { id: nextId++, name: roleName, status: roleStatus, memo: roleMemo, updatedAt: new Date().toISOString() };
+            
+            // オンライン重複制御
+            if (roleStatus === 'オンライン') {
+                const group = getGroup(roleName);
+                roles.forEach(r => {
+                    if (getGroup(r.name) === group && r.status === 'オンライン') {
+                        r.status = '中古予備（バラシ前）';
+                        r.updatedAt = new Date().toISOString();
+                    }
+                });
+            }
+            
             roles.push(newRole);
             localStorage.setItem('roles', JSON.stringify(roles));
             document.getElementById('role-name').value = '';
@@ -842,6 +883,7 @@
                     });
                     roles = importedRoles;
                     nextId = maxId + 1;
+                    fixOnlineDuplicates();
                     localStorage.setItem('roles', JSON.stringify(roles));
                     renderRoles();
                     alert('CSVからロールを読み込みました');
@@ -882,39 +924,61 @@
             URL.revokeObjectURL(url);
         }
 
-        function editRole(id) {
-            const role = roles.find(r => r.id === id);
-            if (role) {
-                const newName = prompt('スタンド番号を入力:', role.name);
-                if (!newName || !newName.trim()) return;
-                
-                const newMemo = prompt('メモを入力:', role.memo || '');
-                if (newMemo === null) return;
-                
-                const newStatus = prompt('ステータスを選択:\n1. オンライン\n2. 中古予備（バラシ前）\n3. 改削行き（搬出可能）\n4. 改削中\n5. 新品予備（組替可能）\n6. 新品予備（組込完了）', role.status);
-                if (!newStatus) return;
-                const statusMap = {
-                    '1': 'オンライン',
-                    '2': '中古予備（バラシ前）',
-                    '3': '改削行き（搬出可能）',
-                    '4': '改削中',
-                    '5': '新品予備（組替可能）',
-                    '6': '新品予備（組込完了）'
-                };
-                const selectedStatus = statusMap[newStatus] || newStatus;
-                const validStatuses = ['オンライン', '中古予備（バラシ前）', '改削行き（搬出可能）', '改削中', '新品予備（組替可能）', '新品予備（組込完了）'];
-                if (!validStatuses.includes(selectedStatus)) {
-                    alert('無効なステータスです');
-                    return;
-                }
-                
-                role.name = newName.trim();
-                role.memo = newMemo;
-                role.status = selectedStatus;
-                role.updatedAt = new Date().toISOString();
-                localStorage.setItem('roles', JSON.stringify(roles));
-                renderRoles();
+        function updateRole() {
+            if (editingId === null) return;
+            
+            const roleName = document.getElementById('role-name').value.trim();
+            const roleStatus = document.getElementById('role-status').value;
+            const roleMemo = document.getElementById('role-memo').value.trim();
+            
+            if (!roleName) {
+                alert('スタンド番号を入力してください');
+                return;
             }
+            if (!roleStatus) {
+                alert('ステータスを選択してください');
+                return;
+            }
+            
+            const role = roles.find(r => r.id === editingId);
+            if (!role) return;
+            
+            // 名前変更チェック
+            if (roleName !== role.name && roles.some(r => r.id !== editingId && r.name === roleName)) {
+                alert('このスタンド番号は既に登録されています');
+                return;
+            }
+            
+            // オンライン重複制御
+            if (roleStatus === 'オンライン' && role.status !== 'オンライン') {
+                const group = getGroup(roleName);
+                roles.forEach(r => {
+                    if (r.id !== editingId && getGroup(r.name) === group && r.status === 'オンライン') {
+                        r.status = '中古予備（バラシ前）';
+                        r.updatedAt = new Date().toISOString();
+                    }
+                });
+            }
+            
+            role.name = roleName;
+            role.status = roleStatus;
+            role.memo = roleMemo;
+            role.updatedAt = new Date().toISOString();
+            
+            localStorage.setItem('roles', JSON.stringify(roles));
+            cancelEdit();
+            renderRoles();
+        }
+
+        function cancelEdit() {
+            editingId = null;
+            document.getElementById('role-name').value = '';
+            document.getElementById('role-status').value = '';
+            document.getElementById('role-memo').value = '';
+            
+            document.getElementById('addRoleBtn').style.display = 'inline-block';
+            document.getElementById('updateRoleBtn').style.display = 'none';
+            document.getElementById('cancelEditBtn').style.display = 'none';
         }
 
         function deleteRole(id) {
