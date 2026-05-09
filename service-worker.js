@@ -1,4 +1,4 @@
-const CACHE_NAME = 'roll-app-v1';
+const CACHE_NAME = 'roll-app-v3';
 const urlsToCache = [
   '/roll-app/',
   '/roll-app/index.html',
@@ -35,20 +35,27 @@ self.addEventListener('activate', event => {
     })
   );
   self.clients.claim();
+  // 自動更新: すべてのクライアントに更新を通知
+  self.clients.matchAll().then(clients => {
+    clients.forEach(client => {
+      client.postMessage({ type: 'SW_UPDATED' });
+    });
+  });
 });
 
-// ネットワークリクエストのハンドリング
+// ネットワークリクエストのハンドリング - 常にネットワーク優先
 self.addEventListener('fetch', event => {
-  // HTMLリクエストはネットワーク優先、GETのみ
-  if (event.request.method === 'GET' && event.request.headers.get('accept').includes('text/html')) {
+  if (event.request.method === 'GET') {
     event.respondWith(
       fetch(event.request)
         .then(response => {
-          // キャッシュに保存
-          const responseClone = response.clone();
-          caches.open(CACHE_NAME).then(cache => {
-            cache.put(event.request, responseClone);
-          });
+          // 成功したらキャッシュに保存（オプション）
+          if (response.status === 200) {
+            const responseClone = response.clone();
+            caches.open(CACHE_NAME).then(cache => {
+              cache.put(event.request, responseClone);
+            });
+          }
           return response;
         })
         .catch(() => {
@@ -57,19 +64,10 @@ self.addEventListener('fetch', event => {
             .then(response => response || caches.match('/roll-app/404.html'));
         })
     );
-  } else {
-    // その他のリクエストはキャッシュ優先
-    event.respondWith(
-      caches.match(event.request)
-        .then(response => response || fetch(event.request))
-        .catch(() => {
-          return new Response('Network error', { status: 408 });
-        })
-    );
   }
 });
 
-// メッセージハンドリング（更新チェック用）
+// メッセージハンドリング
 self.addEventListener('message', event => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
