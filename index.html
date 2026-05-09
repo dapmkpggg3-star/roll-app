@@ -116,6 +116,14 @@
             font-weight: 600;
         }
 
+        .sync-message {
+            margin-top: 10px;
+            color: #047857;
+            font-size: 0.95rem;
+            min-height: 1.2rem;
+            font-weight: 600;
+        }
+
         .role-form {
             display: flex;
             gap: 10px;
@@ -470,6 +478,7 @@
                     <button type="button" onclick="clearSearch()">クリア</button>
                 </div>
                 <div id="role-count" class="role-count"></div>
+                <div id="sync-message" class="sync-message"></div>
                 <div class="role-form">
                     <input type="text" id="role-name" placeholder="スタンド番号を入力 (例: #2-11)" style="flex: 1;">
                     <select id="role-status" style="padding: 12px 15px; border: 2px solid #e0e0e0; border-radius: 6px; font-size: 1rem; min-width: 200px; cursor: pointer;">
@@ -523,7 +532,11 @@
             if (isLoggedIn) {
                 loginScreen.style.display = 'none';
                 mainScreen.style.display = 'block';
-                renderRoles(); // メイン画面を表示したらロールをレンダリング
+                loadLocalRoles();
+                renderRoles();
+                if (isRemoteConfigured()) {
+                    loadRemoteRoles();
+                }
             } else {
                 loginScreen.style.display = 'flex';
                 mainScreen.style.display = 'none';
@@ -561,26 +574,120 @@
             });
         });
 
-        let roles = JSON.parse(localStorage.getItem('roles')) || [];
-        // 既存のロールに updatedAt がなければ追加
-        roles = roles.map(role => ({
-            ...role,
-            updatedAt: role.updatedAt || new Date().toISOString()
-        }));
-        let nextId = roles.length > 0 ? Math.max(...roles.map(r => r.id)) + 1 : 1;
+        const SHEETS_ENDPOINT = ''; // Ghttps://script.google.com/macros/s/AKfycbx8fX108NgUJwJnJEz-MaV09bOu5iABNCHeNMUI5Zo-bNKpKJwVqlpzdELG6XWP-FI_/execoogle 
+        const ALLOWED_STATUSES = [
+            'オンライン',
+            '中古予備（バラシ前）',
+            '改削行き（搬出可能）',
+            '改削中',
+            '新品予備（組替可能）',
+            '新品予備（組込完了）'
+        ];
+
+        let roles = [];
+        let nextId = 1;
         let searchQuery = '';
         let sortOption = 'updatedAt';
         let editingId = null; // 編集中のID
 
-        roles = roles.map(role => ({
-            ...role,
-            updatedAt: role.updatedAt || new Date().toISOString(),
-            memo: role.memo || '',
-            status: role.status || 'オンライン'
-        }));
+        function isRemoteConfigured() {
+            return SHEETS_ENDPOINT.trim().length > 0;
+        }
 
-        // 既存データのオンライン重複修正
-        fixOnlineDuplicates();
+        function setSyncMessage(message, isError = false) {
+            const syncEl = document.getElementById('sync-message');
+            if (syncEl) {
+                syncEl.textContent = message;
+                syncEl.style.color = isError ? '#b91c1c' : '#047857';
+            }
+        }
+
+        function saveLocalRoles() {
+            localStorage.setItem('roles', JSON.stringify(roles));
+        }
+
+        function loadLocalRoles() {
+            roles = JSON.parse(localStorage.getItem('roles')) || [];
+            roles = roles.map(role => ({
+                ...role,
+                updatedAt: role.updatedAt || new Date().toISOString(),
+                memo: role.memo || '',
+                status: ALLOWED_STATUSES.includes(role.status) ? role.status : '中古予備（バラシ前）'
+            }));
+            fixOnlineDuplicates();
+            const ids = roles.map(r => Number(r.id) || 0);
+            nextId = ids.length > 0 ? Math.max(...ids) + 1 : 1;
+        }
+
+        async function loadRemoteRoles() {
+            if (!isRemoteConfigured()) {
+                setSyncMessage('同期先が設定されていません');
+                return;
+            }
+            try {
+                const response = await fetch(`${SHEETS_ENDPOINT}?action=fetch`);
+                if (!response.ok) {
+                    throw new Error('HTTP ' + response.status);
+                }
+                const data = await response.json();
+                if (!Array.isArray(data.roles)) {
+                    throw new Error('不正なデータ形式です');
+                }
+                roles = data.roles.map(role => ({
+                    ...role,
+                    updatedAt: role.updatedAt || new Date().toISOString(),
+                    memo: role.memo || '',
+                    status: ALLOWED_STATUSES.includes(role.status) ? role.status : '中古予備（バラシ前）'
+                }));
+                fixOnlineDuplicates();
+                saveLocalRoles();
+                const ids = roles.map(r => Number(r.id) || 0);
+                nextId = ids.length > 0 ? Math.max(...ids) + 1 : 1;
+                renderRoles();
+                setSyncMessage('同期完了');
+            } catch (error) {
+                console.error(error);
+                setSyncMessage('同期失敗。ローカルに保存しました', true);
+                renderRoles();
+            }
+        }
+
+        async function saveRemoteRoles() {
+            if (!isRemoteConfigured()) {
+                return false;
+            }
+            try {
+                const response = await fetch(SHEETS_ENDPOINT, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ roles })
+                });
+                if (!response.ok) {
+                    throw new Error('HTTP ' + response.status);
+                }
+                const data = await response.json();
+                return data && data.success === true;
+            } catch (error) {
+                console.error(error);
+                return false;
+            }
+        }
+
+        async function syncRoles() {
+            saveLocalRoles();
+            if (!isRemoteConfigured()) {
+                setSyncMessage('同期先が設定されていません');
+                return;
+            }
+            const ok = await saveRemoteRoles();
+            if (ok) {
+                setSyncMessage('同期完了');
+            } else {
+                setSyncMessage('同期失敗。ローカルに保存しました', true);
+            }
+        }
 
         function fixOnlineDuplicates() {
             const groups = {};
@@ -592,18 +699,19 @@
             Object.values(groups).forEach(groupRoles => {
                 const onlineRoles = groupRoles.filter(r => r.status === 'オンライン').sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
                 if (onlineRoles.length > 1) {
-                    // 最新の1件以外を中古予備に
                     for (let i = 1; i < onlineRoles.length; i++) {
                         onlineRoles[i].status = '中古予備（バラシ前）';
                     }
                 }
             });
-            localStorage.setItem('roles', JSON.stringify(roles));
+            saveLocalRoles();
         }
 
         function getGroup(name) {
-            return name.split('-')[0];
+            return String(name || '').split('-')[0];
         }
+
+        loadLocalRoles();
 
         function changeSort(event) {
             sortOption = event.target.value;
@@ -776,11 +884,12 @@
             }
             
             roles.push(newRole);
-            localStorage.setItem('roles', JSON.stringify(roles));
+            saveLocalRoles();
             document.getElementById('role-name').value = '';
             document.getElementById('role-status').value = '';
             document.getElementById('role-memo').value = '';
             renderRoles();
+            syncRoles();
         }
 
         function parseCsv(csvText) {
@@ -884,8 +993,9 @@
                     roles = importedRoles;
                     nextId = maxId + 1;
                     fixOnlineDuplicates();
-                    localStorage.setItem('roles', JSON.stringify(roles));
+                    saveLocalRoles();
                     renderRoles();
+                    syncRoles();
                     alert('CSVからロールを読み込みました');
                 } catch (error) {
                     alert('CSVの読み込みに失敗しました: ' + error.message);
@@ -977,9 +1087,10 @@
             role.memo = roleMemo;
             role.updatedAt = new Date().toISOString();
             
-            localStorage.setItem('roles', JSON.stringify(roles));
+            saveLocalRoles();
             cancelEdit();
             renderRoles();
+            syncRoles();
         }
 
         function cancelEdit() {
@@ -996,8 +1107,9 @@
         function deleteRole(id) {
             if (confirm('このロールを削除しますか？')) {
                 roles = roles.filter(r => r.id !== id);
-                localStorage.setItem('roles', JSON.stringify(roles));
+                saveLocalRoles();
                 renderRoles();
+                syncRoles();
             }
         }
 
