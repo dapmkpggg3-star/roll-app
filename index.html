@@ -924,6 +924,20 @@
             URL.revokeObjectURL(url);
         }
 
+        function editRole(id) {
+            const role = roles.find(r => r.id === id);
+            if (!role) return;
+            
+            editingId = id;
+            document.getElementById('role-name').value = role.name;
+            document.getElementById('role-status').value = role.status;
+            document.getElementById('role-memo').value = role.memo || '';
+            
+            document.getElementById('addRoleBtn').style.display = 'none';
+            document.getElementById('updateRoleBtn').style.display = 'inline-block';
+            document.getElementById('cancelEditBtn').style.display = 'inline-block';
+        }
+
         function updateRole() {
             if (editingId === null) return;
             
@@ -943,14 +957,12 @@
             const role = roles.find(r => r.id === editingId);
             if (!role) return;
             
-            // 名前変更チェック
             if (roleName !== role.name && roles.some(r => r.id !== editingId && r.name === roleName)) {
                 alert('このスタンド番号は既に登録されています');
                 return;
             }
             
-            // オンライン重複制御
-            if (roleStatus === 'オンライン' && role.status !== 'オンライン') {
+            if (roleStatus === 'オンライン') {
                 const group = getGroup(roleName);
                 roles.forEach(r => {
                     if (r.id !== editingId && getGroup(r.name) === group && r.status === 'オンライン') {
