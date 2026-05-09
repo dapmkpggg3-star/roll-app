@@ -627,7 +627,7 @@
             try {
                 const response = await fetch(`${SHEETS_ENDPOINT}?action=fetch`);
                 if (!response.ok) {
-                    throw new Error('HTTP ' + response.status);
+                    throw new Error('HTTP ' + response.status + ': ' + response.statusText);
                 }
                 const data = await response.json();
                 if (!Array.isArray(data.roles)) {
@@ -647,7 +647,7 @@
                 setSyncMessage('同期完了');
             } catch (error) {
                 console.error(error);
-                setSyncMessage('同期失敗。ローカルに保存しました', true);
+                setSyncMessage('同期失敗: ' + (error.message || '不明なエラー') + '。ローカルに保存しました', true);
                 renderRoles();
             }
         }
@@ -665,13 +665,13 @@
                     body: JSON.stringify({ roles })
                 });
                 if (!response.ok) {
-                    throw new Error('HTTP ' + response.status);
+                    throw new Error('HTTP ' + response.status + ': ' + response.statusText);
                 }
                 const data = await response.json();
                 return data && data.success === true;
             } catch (error) {
                 console.error(error);
-                return false;
+                throw error; // エラーを投げてsyncRolesでキャッチ
             }
         }
 
@@ -681,11 +681,15 @@
                 setSyncMessage('同期先が設定されていません');
                 return;
             }
-            const ok = await saveRemoteRoles();
-            if (ok) {
-                setSyncMessage('同期完了');
-            } else {
-                setSyncMessage('同期失敗。ローカルに保存しました', true);
+            try {
+                const ok = await saveRemoteRoles();
+                if (ok) {
+                    setSyncMessage('同期完了');
+                } else {
+                    setSyncMessage('同期失敗: 不明なエラー。ローカルに保存しました', true);
+                }
+            } catch (error) {
+                setSyncMessage('同期失敗: ' + (error.message || '不明なエラー') + '。ローカルに保存しました', true);
             }
         }
 
