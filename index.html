@@ -668,7 +668,9 @@
                 console.log('saveRemoteRoles: Sending data to', SHEETS_ENDPOINT);
                 const rolesParam = encodeURIComponent(JSON.stringify(roles));
                 const url = `${SHEETS_ENDPOINT}?action=save&roles=${rolesParam}`;
+                console.log('saveRemoteRoles: URL', url.substring(0, 200) + '...');
                 const response = await fetch(url);
+                console.log('saveRemoteRoles: Response status', response.status);
                 if (!response.ok) {
                     let errorDetails = `HTTP ${response.status}: ${response.statusText}`;
                     try {
@@ -678,7 +680,8 @@
                     throw new Error(errorDetails);
                 }
                 const data = await response.json();
-                console.log('saveRemoteRoles: Response data', data);
+                console.log('saveRemoteRoles: Response data (stringified):', JSON.stringify(data));
+                console.log('saveRemoteRoles: success=', data.success, 'error=', data.error);
                 if (!data || data.success !== true) {
                     throw new Error(data && data.error ? data.error : 'Remote save returned failure');
                 }
