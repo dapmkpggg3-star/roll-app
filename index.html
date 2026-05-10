@@ -567,6 +567,7 @@
 
         // Enterキーでログイン
         document.addEventListener('DOMContentLoaded', function() {
+            loadRemoteRoles();
             document.getElementById('password-input').addEventListener('keypress', function(e) {
                 if (e.key === 'Enter') {
                     login();
