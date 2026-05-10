@@ -5,34 +5,28 @@ function doGet(e) {
   if (action === 'fetch') {
     try {
       const roles = fetchRoles();
-      return HtmlService.createHtmlOutput(JSON.stringify({
-        success: true,
-        roles: roles
-      }))
-      .setMimeType(ContentService.MimeType.JSON)
-      .addMetaTag('Access-Control-Allow-Origin', '*')
-      .addMetaTag('Access-Control-Allow-Methods', 'GET, POST')
-      .addMetaTag('Access-Control-Allow-Headers', 'Content-Type');
+      return ContentService
+        .createTextOutput(JSON.stringify({
+          success: true,
+          roles: roles
+        }))
+        .setMimeType(ContentService.MimeType.JSON);
     } catch (error) {
-      return HtmlService.createHtmlOutput(JSON.stringify({
-        success: false,
-        error: error.message
-      }))
-      .setMimeType(ContentService.MimeType.JSON)
-      .addMetaTag('Access-Control-Allow-Origin', '*')
-      .addMetaTag('Access-Control-Allow-Methods', 'GET, POST')
-      .addMetaTag('Access-Control-Allow-Headers', 'Content-Type');
+      return ContentService
+        .createTextOutput(JSON.stringify({
+          success: false,
+          error: error.message
+        }))
+        .setMimeType(ContentService.MimeType.JSON);
     }
   }
 
-  return HtmlService.createHtmlOutput(JSON.stringify({
-    success: false,
-    error: 'Unsupported action'
-  }))
-  .setMimeType(ContentService.MimeType.JSON)
-  .addMetaTag('Access-Control-Allow-Origin', '*')
-  .addMetaTag('Access-Control-Allow-Methods', 'GET, POST')
-  .addMetaTag('Access-Control-Allow-Headers', 'Content-Type');
+  return ContentService
+    .createTextOutput(JSON.stringify({
+      success: false,
+      error: 'Unsupported action'
+    }))
+    .setMimeType(ContentService.MimeType.JSON);
 }
 
 function doPost(e) {
@@ -42,24 +36,21 @@ function doPost(e) {
       throw new Error('roles must be an array');
     }
     writeRoles(payload.roles);
-    return HtmlService.createHtmlOutput(JSON.stringify({
-      success: true
-    }))
-    .setMimeType(ContentService.MimeType.JSON)
-    .addMetaTag('Access-Control-Allow-Origin', '*')
-    .addMetaTag('Access-Control-Allow-Methods', 'GET, POST')
-    .addMetaTag('Access-Control-Allow-Headers', 'Content-Type');
+    return ContentService
+      .createTextOutput(JSON.stringify({
+        success: true
+      }))
+      .setMimeType(ContentService.MimeType.JSON);
   } catch (error) {
-    return HtmlService.createHtmlOutput(JSON.stringify({
-      success: false,
-      error: error.message
-    }))
-    .setMimeType(ContentService.MimeType.JSON)
-    .addMetaTag('Access-Control-Allow-Origin', '*')
-    .addMetaTag('Access-Control-Allow-Methods', 'GET, POST')
-    .addMetaTag('Access-Control-Allow-Headers', 'Content-Type');
+    return ContentService
+      .createTextOutput(JSON.stringify({
+        success: false,
+        error: error.message
+      }))
+      .setMimeType(ContentService.MimeType.JSON);
   }
 }
+
 
 function fetchRoles() {
   const sheet = getSheet();
