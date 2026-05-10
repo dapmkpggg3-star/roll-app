@@ -1,53 +1,47 @@
 const SHEET_NAME = 'Roles';
+const SPREADSHEET_ID = '1X07qQa7u9YPLvErT0D48goT5wYmvcpgNjqzK3FhRFeA';
 
 function doGet(e) {
-  const action = (e.parameter.action || '').toLowerCase();
+  const params = e && e.parameter ? e.parameter : {};
+  Logger.log('doGet params: ' + JSON.stringify(params));
+  const action = String(params.action || '').trim().toLowerCase();
+  Logger.log('doGet action: [' + action + ']');
   if (action === 'fetch') {
     try {
       const roles = fetchRoles();
       Logger.log('doGet fetch: returning ' + roles.length + ' roles');
       return ContentService
-        .createTextOutput(JSON.stringify({
-          success: true,
-          roles: roles
-        }))
+        .createTextOutput(JSON.stringify({ success: true, roles: roles }))
         .setMimeType(ContentService.MimeType.JSON);
     } catch (error) {
       Logger.log('doGet fetch error: ' + error.toString());
       return ContentService
-        .createTextOutput(JSON.stringify({
-          success: false,
-          error: error.toString()
-        }))
+        .createTextOutput(JSON.stringify({ success: false, error: error.toString() }))
         .setMimeType(ContentService.MimeType.JSON);
     }
   } else if (action === 'save') {
     try {
-      const dataParam = e.parameter.data;
-      if (!dataParam) {
-        throw new Error('No data parameter');
+      const rolesParam = params.roles;
+      if (!rolesParam) {
+        throw new Error('No roles parameter');
       }
-      const payload = JSON.parse(decodeURIComponent(dataParam));
-      if (!Array.isArray(payload.roles)) {
-        throw new Error('roles must be an array, got: ' + typeof payload.roles);
+      Logger.log('doGet save: received roles param (length=' + rolesParam.length + ')');
+      const roles = JSON.parse(decodeURIComponent(rolesParam));
+      if (!Array.isArray(roles)) {
+        throw new Error('roles must be an array, got: ' + typeof roles);
       }
       
-      Logger.log('doGet save: writing ' + payload.roles.length + ' roles');
-      writeRoles(payload.roles);
+      Logger.log('doGet save: writing ' + roles.length + ' roles');
+      writeRoles(roles);
       Logger.log('doGet save: write complete');
       
       return ContentService
-        .createTextOutput(JSON.stringify({
-          success: true
-        }))
+        .createTextOutput(JSON.stringify({ success: true }))
         .setMimeType(ContentService.MimeType.JSON);
     } catch (error) {
       Logger.log('doGet save error: ' + error.toString());
       return ContentService
-        .createTextOutput(JSON.stringify({
-          success: false,
-          error: error.toString()
-        }))
+        .createTextOutput(JSON.stringify({ success: false, error: error.toString() }))
         .setMimeType(ContentService.MimeType.JSON);
     }
   } else if (action === '') {
@@ -117,16 +111,21 @@ function writeRoles(roles) {
 }
 
 function getSheet() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  Logger.log('getSheet: active spreadsheet: ' + ss.getName());
-  
-  let sheet = ss.getSheetByName(SHEET_NAME);
-  if (!sheet) {
-    Logger.log('getSheet: creating new sheet named: ' + SHEET_NAME);
-    sheet = ss.insertSheet(SHEET_NAME);
-  } else {
-    Logger.log('getSheet: found existing sheet: ' + SHEET_NAME);
+  try {
+    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    Logger.log('getSheet: opened spreadsheet: ' + ss.getName());
+    
+    let sheet = ss.getSheetByName(SHEET_NAME);
+    if (!sheet) {
+      Logger.log('getSheet: creating new sheet named: ' + SHEET_NAME);
+      sheet = ss.insertSheet(SHEET_NAME);
+    } else {
+      Logger.log('getSheet: found existing sheet: ' + SHEET_NAME);
+    }
+    
+    return sheet;
+  } catch (error) {
+    Logger.log('getSheet error: ' + error.toString());
+    throw new Error('Failed to open spreadsheet or get sheet: ' + error.toString());
   }
-  
-  return sheet;
 }

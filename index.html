@@ -574,7 +574,7 @@
             });
         });
 
-        const SHEETS_ENDPOINT = 'https://script.google.com/macros/s/AKfycbzJC85v7STX4vi6wkyr7FbCQkzPPaKXi37cii0dgcxbYDi6fi0VD9m0I6NxG4d2r5Hg/exec';
+        const SHEETS_ENDPOINT = 'https://script.google.com/macros/s/AKfycbyN0_AoU1dcaXzCO3ICRma2pFJyz2HvCSnwe_RAJMpaOlE53Gj5SugtDFoV78KHf9x9/exec';
         const ALLOWED_STATUSES = [
             'オンライン',
             '中古予備（バラシ前）',
@@ -621,23 +621,24 @@
 
         async function loadRemoteRoles() {
             if (!isRemoteConfigured()) {
-                setSyncMessage('同期先が設定されていません');
+                setSyncMessage('同期先が設定されていません', true);
                 return;
             }
             try {
-                const response = await fetch(`${SHEETS_ENDPOINT}?action=fetch`);
+                console.log('loadRemoteRoles: Starting fetch...');
+                const url = `${SHEETS_ENDPOINT}?action=fetch`;
+                const response = await fetch(url);
                 if (!response.ok) {
                     let errorDetails = `HTTP ${response.status}: ${response.statusText}`;
                     try {
                         const responseText = await response.text();
-                        errorDetails += ` - Response: ${responseText}`;
-                    } catch (textError) {
-                        errorDetails += ' - Could not read response body';
-                    }
+                        errorDetails += ` - ${responseText}`;
+                    } catch (e) {}
                     throw new Error(errorDetails);
                 }
                 const data = await response.json();
-                if (!Array.isArray(data.roles)) {
+                console.log('loadRemoteRoles: Response data', data);
+                if (!data.success || !Array.isArray(data.roles)) {
                     throw new Error('不正なデータ形式です');
                 }
                 roles = data.roles.map(role => ({
@@ -665,25 +666,23 @@
             }
             try {
                 console.log('saveRemoteRoles: Sending data to', SHEETS_ENDPOINT);
-                const dataParam = encodeURIComponent(JSON.stringify({ roles }));
-                const url = `${SHEETS_ENDPOINT}?action=save&data=${dataParam}`;
-                const response = await fetch(url, {
-                    method: 'GET'
-                });
-                console.log('saveRemoteRoles: Response status', response.status);
+                const rolesParam = encodeURIComponent(JSON.stringify(roles));
+                const url = `${SHEETS_ENDPOINT}?action=save&roles=${rolesParam}`;
+                const response = await fetch(url);
                 if (!response.ok) {
                     let errorDetails = `HTTP ${response.status}: ${response.statusText}`;
                     try {
                         const responseText = await response.text();
-                        errorDetails += ` - Response: ${responseText}`;
-                    } catch (textError) {
-                        errorDetails += ' - Could not read response body';
-                    }
+                        errorDetails += ` - ${responseText}`;
+                    } catch (e) {}
                     throw new Error(errorDetails);
                 }
                 const data = await response.json();
                 console.log('saveRemoteRoles: Response data', data);
-                return data && data.success === true;
+                if (!data || data.success !== true) {
+                    throw new Error(data && data.error ? data.error : 'Remote save returned failure');
+                }
+                return true;
             } catch (error) {
                 console.error('saveRemoteRoles error:', error);
                 throw error; // エラーを投げてsyncRolesでキャッチ
