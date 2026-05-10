@@ -627,7 +627,14 @@
             try {
                 const response = await fetch(`${SHEETS_ENDPOINT}?action=fetch`);
                 if (!response.ok) {
-                    throw new Error('HTTP ' + response.status + ': ' + response.statusText);
+                    let errorDetails = `HTTP ${response.status}: ${response.statusText}`;
+                    try {
+                        const responseText = await response.text();
+                        errorDetails += ` - Response: ${responseText}`;
+                    } catch (textError) {
+                        errorDetails += ' - Could not read response body';
+                    }
+                    throw new Error(errorDetails);
                 }
                 const data = await response.json();
                 if (!Array.isArray(data.roles)) {
@@ -646,7 +653,7 @@
                 renderRoles();
                 setSyncMessage('同期完了');
             } catch (error) {
-                console.error(error);
+                console.error('loadRemoteRoles error:', error);
                 setSyncMessage('同期失敗: ' + (error.message || '不明なエラー') + '。ローカルに保存しました', true);
                 renderRoles();
             }
@@ -657,20 +664,28 @@
                 return false;
             }
             try {
-                const response = await fetch(SHEETS_ENDPOINT, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ roles })
+                console.log('saveRemoteRoles: Sending data to', SHEETS_ENDPOINT);
+                const dataParam = encodeURIComponent(JSON.stringify({ roles }));
+                const url = `${SHEETS_ENDPOINT}?action=save&data=${dataParam}`;
+                const response = await fetch(url, {
+                    method: 'GET'
                 });
+                console.log('saveRemoteRoles: Response status', response.status);
                 if (!response.ok) {
-                    throw new Error('HTTP ' + response.status + ': ' + response.statusText);
+                    let errorDetails = `HTTP ${response.status}: ${response.statusText}`;
+                    try {
+                        const responseText = await response.text();
+                        errorDetails += ` - Response: ${responseText}`;
+                    } catch (textError) {
+                        errorDetails += ' - Could not read response body';
+                    }
+                    throw new Error(errorDetails);
                 }
                 const data = await response.json();
+                console.log('saveRemoteRoles: Response data', data);
                 return data && data.success === true;
             } catch (error) {
-                console.error(error);
+                console.error('saveRemoteRoles error:', error);
                 throw error; // エラーを投げてsyncRolesでキャッチ
             }
         }
@@ -678,17 +693,20 @@
         async function syncRoles() {
             saveLocalRoles();
             if (!isRemoteConfigured()) {
-                setSyncMessage('同期先が設定されていません');
+                setSyncMessage('同期先が設定されていません', true);
                 return;
             }
             try {
+                console.log('syncRoles: Starting sync...');
                 const ok = await saveRemoteRoles();
+                console.log('syncRoles: Result -', ok);
                 if (ok) {
                     setSyncMessage('同期完了');
                 } else {
                     setSyncMessage('同期失敗: 不明なエラー。ローカルに保存しました', true);
                 }
             } catch (error) {
+                console.error('syncRoles error:', error);
                 setSyncMessage('同期失敗: ' + (error.message || '不明なエラー') + '。ローカルに保存しました', true);
             }
         }
