@@ -782,7 +782,7 @@
         }
 
         function showMemo(id) {
-            const role = roles.find(r => r.id === id);
+            const role = roles.find(r => String(r.id) === String(id));
             if (!role) {
                 alert('ロールが見つかりません');
                 return;
@@ -1060,7 +1060,7 @@
         }
 
         function editRole(id) {
-            const role = roles.find(r => r.id === id);
+            const role = roles.find(r => String(r.id) === String(id));
             if (!role) return;
             
             editingId = id;
@@ -1089,7 +1089,7 @@
                 return;
             }
             
-            const role = roles.find(r => r.id === editingId);
+            const role = roles.find(r => String(r.id) === String(editingId));
             if (!role) return;
             
             if (roleName !== role.name && roles.some(r => r.id !== editingId && r.name === roleName)) {
