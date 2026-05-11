@@ -80,6 +80,14 @@
                 <div id="role-count" class="role-count"></div>
                 <div id="sync-message" class="sync-message"></div>
                 <div class="role-form">
+                    <div id="editing-banner" class="editing-banner" style="display: none;" aria-live="polite">
+                        <div class="editing-info">
+                            <span class="editing-label">現在編集中：</span>
+                            <strong id="editing-stand-name">-</strong>
+                            <span id="editing-status-badge" class="editing-status-badge"></span>
+                        </div>
+                        <span class="editing-help">内容を変更したら「入力内容を更新」を押してください。</span>
+                    </div>
                     <input type="text" id="role-name" placeholder="スタンド番号を入力 (例: #2-11)" style="flex: 1;">
                     <div class="status-field">
                         <select id="role-status" class="status-select status-empty" style="padding: 12px 15px; border: 2px solid #e0e0e0; border-radius: 6px; font-size: 1rem; min-width: 200px; cursor: pointer;">
