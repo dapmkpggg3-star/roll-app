@@ -211,29 +211,6 @@ function updateStatusPreview(selectEl) {
     previewEl.classList.remove(...statusClasses);
     previewEl.classList.add(selectedStatus ? getStatusClass(selectedStatus) : 'status-empty');
     previewEl.textContent = `現在のステータス：${selectedStatus || '未選択'}`;
-
-    if (editingId !== null) {
-        const editingStatusBadge = document.getElementById('editing-status-badge');
-        if (editingStatusBadge) {
-            editingStatusBadge.innerHTML = selectedStatus ? getStatusBadge(selectedStatus) : '';
-        }
-    }
-}
-
-function updateEditingBanner(role) {
-    const banner = document.getElementById('editing-banner');
-    if (!banner) {
-        return;
-    }
-    if (!role) {
-        banner.style.display = 'none';
-        document.getElementById('editing-stand-name').textContent = '-';
-        document.getElementById('editing-status-badge').innerHTML = '';
-        return;
-    }
-    document.getElementById('editing-stand-name').textContent = role.name || '-';
-    document.getElementById('editing-status-badge').innerHTML = getStatusBadge(role.status);
-    banner.style.display = 'flex';
 }
 
 function getMemoPreview(memo) {
@@ -496,7 +473,6 @@ function editRole(id) {
     document.getElementById('role-name').value = role.name;
     document.getElementById('role-status').value = role.status;
     updateStatusPreview(document.getElementById('role-status'));
-    updateEditingBanner(role);
     document.getElementById('role-memo').value = role.memo || '';
     
     document.getElementById('addRoleBtn').style.display = 'none';
@@ -555,7 +531,6 @@ function cancelEdit() {
     document.getElementById('role-status').value = '';
     updateStatusPreview(document.getElementById('role-status'));
     document.getElementById('role-memo').value = '';
-    updateEditingBanner(null);
     
     document.getElementById('addRoleBtn').style.display = 'inline-block';
     document.getElementById('updateRoleBtn').style.display = 'none';
