@@ -1,5 +1,10 @@
 const SHEET_NAME = 'Roles';
 const SPREADSHEET_ID = '1X07qQa7u9YPLvErT0D48goT5wYmvcpgNjqzK3FhRFeA';
+const HEADER_VALUES = ['ID', 'スタンド番号', 'ステータス', 'メモ', '最終更新日'];
+const STATUS_COLUMN_INDEX = 3;
+const HEADER_BACKGROUND = '#1f4e78';
+const HEADER_FONT_COLOR = '#ffffff';
+
 
 function doGet(e) {
   const params = e && e.parameter ? e.parameter : {};
@@ -87,27 +92,91 @@ function fetchRoles() {
 function writeRoles(roles) {
   const sheet = getSheet();
   Logger.log('writeRoles: clearing sheet');
-  sheet.clearContents();
-  
-  Logger.log('writeRoles: appending header');
-  sheet.appendRow(['ID', 'スタンド番号', 'ステータス', 'メモ', '最終更新日']);
-  
-  Logger.log('writeRoles: appending ' + roles.length + ' rows');
-  roles.forEach((role, index) => {
+  sheet.clear();
+
+  const rows = roles.map((role, index) => {
     try {
-      sheet.appendRow([
+      return [
         role.id || '',
         role.name || '',
         role.status || '',
         role.memo || '',
         role.updatedAt || ''
-      ]);
+      ];
     } catch (err) {
       Logger.log('writeRoles error at row ' + index + ': ' + err.toString());
+      return null;
     }
-  });
-  
+  }).filter(row => row);
+
+  Logger.log('writeRoles: writing header and ' + rows.length + ' data rows');
+  const values = [HEADER_VALUES].concat(rows);
+  sheet.getRange(1, 1, values.length, HEADER_VALUES.length).setValues(values);
+  applySheetFormatting(sheet, rows.length);
+
   Logger.log('writeRoles: complete');
+}
+
+
+function applySheetFormatting(sheet, dataRowCount) {
+  const columnCount = HEADER_VALUES.length;
+  const totalRows = Math.max(dataRowCount + 1, 1);
+  const maxRows = Math.max(sheet.getMaxRows(), 2);
+
+  Logger.log('applySheetFormatting: formatting ' + totalRows + ' rows');
+
+  sheet.setFrozenRows(1);
+
+  sheet.getRange(1, 1, 1, columnCount)
+    .setFontWeight('bold')
+    .setFontColor(HEADER_FONT_COLOR)
+    .setBackground(HEADER_BACKGROUND)
+    .setHorizontalAlignment('center');
+
+  sheet.getRange(1, 1, totalRows, columnCount)
+    .setBorder(true, true, true, true, true, true, '#d9e2f3', SpreadsheetApp.BorderStyle.SOLID);
+
+  const existingFilter = sheet.getFilter();
+  if (existingFilter) {
+    existingFilter.remove();
+  }
+  sheet.getRange(1, 1, totalRows, columnCount).createFilter();
+
+  const statusRange = sheet.getRange(2, STATUS_COLUMN_INDEX, maxRows - 1, 1);
+  const firstStatusCell = sheet.getRange(2, STATUS_COLUMN_INDEX).getA1Notation();
+  const rules = [
+    SpreadsheetApp.newConditionalFormatRule()
+      .whenTextEqualTo('オンライン')
+      .setBackground('#d9ead3')
+      .setFontColor('#274e13')
+      .setRanges([statusRange])
+      .build(),
+    SpreadsheetApp.newConditionalFormatRule()
+      .whenTextEqualTo('改削中')
+      .setBackground('#f4cccc')
+      .setFontColor('#990000')
+      .setRanges([statusRange])
+      .build(),
+    SpreadsheetApp.newConditionalFormatRule()
+      .whenTextContains('中古予備')
+      .setBackground('#e7e6e6')
+      .setFontColor('#444444')
+      .setRanges([statusRange])
+      .build(),
+    SpreadsheetApp.newConditionalFormatRule()
+      .whenFormulaSatisfied('=AND(' + firstStatusCell + '<>"",' + firstStatusCell + '<>"オンライン",' + firstStatusCell + '<>"改削中",ISERROR(SEARCH("中古予備",' + firstStatusCell + ')))')
+      .setBackground('#fff2cc')
+      .setFontColor('#7f6000')
+      .setRanges([statusRange])
+      .build()
+  ];
+  sheet.setConditionalFormatRules(rules);
+
+  sheet.autoResizeColumns(1, columnCount);
+  sheet.getRange(1, 1, totalRows, columnCount).setVerticalAlignment('middle');
+  if (dataRowCount > 0) {
+    sheet.getRange(2, 1, dataRowCount, columnCount).setWrap(true);
+  }
 }
 
 function getSheet() {
