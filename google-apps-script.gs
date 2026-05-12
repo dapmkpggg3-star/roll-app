@@ -49,6 +49,19 @@ function doGet(e) {
         .createTextOutput(JSON.stringify({ success: false, error: error.toString() }))
         .setMimeType(ContentService.MimeType.JSON);
     }
+  } else if (action === 'debug-formatting') {
+    try {
+      const debugState = getSheetFormattingDebugState();
+      logSheetDebug('doGet debug-formatting: ' + JSON.stringify(debugState));
+      return ContentService
+        .createTextOutput(JSON.stringify({ success: true, debug: debugState }))
+        .setMimeType(ContentService.MimeType.JSON);
+    } catch (error) {
+      Logger.log('doGet debug-formatting error: ' + error.toString());
+      return ContentService
+        .createTextOutput(JSON.stringify({ success: false, error: error.toString() }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
   } else if (action === '') {
     // テスト用レスポンス
     return ContentService
