@@ -4,13 +4,6 @@ const HEADER_VALUES = ['ID', 'スタンド番号', 'ステータス', 'メモ', 
 const STATUS_COLUMN_INDEX = 3;
 const HEADER_BACKGROUND = '#1f4e78';
 const HEADER_FONT_COLOR = '#ffffff';
-const DEFAULT_COLUMN_WIDTH = 100;
-const INITIAL_COLUMN_WIDTHS = [60, 120, 190, 260, 180];
-
-function logSheetDebug(message) {
-  console.log(message);
-  Logger.log(message);
-}
 
 
 function doGet(e) {
@@ -111,12 +104,8 @@ function fetchRoles() {
 
 function writeRoles(roles) {
   const sheet = getSheet();
-  logSheetDebug('writeRoles: clearContents() start - keeping manual column widths');
-  // 初心者向けメモ:
-  // シート全体の設定を消す方法だと、手動で調整した列幅が戻る原因になります。
-  // 同期では古いデータだけ消せればよいので、列幅を壊さない clearContents() を使います。
-  sheet.clearContents();
-  logSheetDebug('writeRoles: clearContents() complete');
+  Logger.log('writeRoles: clearing sheet');
+  sheet.clear();
 
   const rows = roles.map((role, index) => {
     try {
@@ -147,7 +136,7 @@ function applySheetFormatting(sheet, dataRowCount) {
   const totalRows = Math.max(dataRowCount + 1, 1);
   const maxRows = Math.max(sheet.getMaxRows(), 2);
 
-  logSheetDebug('applySheetFormatting: start - formatting ' + totalRows + ' rows');
+  Logger.log('applySheetFormatting: formatting ' + totalRows + ' rows');
 
   sheet.setFrozenRows(1);
 
@@ -196,72 +185,11 @@ function applySheetFormatting(sheet, dataRowCount) {
   ];
   sheet.setConditionalFormatRules(rules);
 
-  applyInitialColumnWidthsIfNeeded(sheet);
+  sheet.autoResizeColumns(1, columnCount);
   sheet.getRange(1, 1, totalRows, columnCount).setVerticalAlignment('middle');
   if (dataRowCount > 0) {
     sheet.getRange(2, 1, dataRowCount, columnCount).setWrap(true);
   }
-
-  logSheetDebug('applySheetFormatting: complete - column widths=' + JSON.stringify(getCurrentColumnWidths(sheet)));
-}
-
-function getInitialColumnWidthPropertyKey(sheet) {
-  return 'columnWidthsInitialized_' + sheet.getSheetId();
-}
-
-function getCurrentColumnWidths(sheet) {
-  return INITIAL_COLUMN_WIDTHS.map((_, index) => sheet.getColumnWidth(index + 1));
-}
-
-function getSheetFormattingDebugState() {
-  const sheet = getSheet();
-  const propertyKey = getInitialColumnWidthPropertyKey(sheet);
-  return {
-    sheetName: sheet.getName(),
-    sheetId: sheet.getSheetId(),
-    propertyKey: propertyKey,
-    initialWidthFlag: PropertiesService.getScriptProperties().getProperty(propertyKey),
-    currentWidths: getCurrentColumnWidths(sheet),
-    recommendedWidths: INITIAL_COLUMN_WIDTHS,
-    frozenRows: sheet.getFrozenRows(),
-    hasFilter: Boolean(sheet.getFilter()),
-    note: 'If currentWidths change after sync, check whether this deployed Apps Script version is running.'
-  };
-}
-
-
-function applyInitialColumnWidthsIfNeeded(sheet) {
-  const propertyKey = getInitialColumnWidthPropertyKey(sheet);
-  const scriptProperties = PropertiesService.getScriptProperties();
-  logSheetDebug('applyInitialColumnWidthsIfNeeded: start - propertyKey=' + propertyKey);
-
-  // 初心者向けメモ:
-  // 列幅を毎回設定すると、利用者がスプレッドシート上で手動調整した幅まで同期時に戻ってしまいます。
-  // そのため、列幅は「まだ一度も初期設定していないシート」だけに設定し、以降の同期では触りません。
-  if (scriptProperties.getProperty(propertyKey) === 'true') {
-    logSheetDebug('applyInitialColumnWidthsIfNeeded: skipped setColumnWidth() because initial widths were already applied');
-    return;
-  }
-
-  const currentWidths = getCurrentColumnWidths(sheet);
-  logSheetDebug('applyInitialColumnWidthsIfNeeded: current column widths=' + JSON.stringify(currentWidths));
-
-  const hasCustomColumnWidth = currentWidths.some(width => width !== DEFAULT_COLUMN_WIDTH);
-
-  if (hasCustomColumnWidth) {
-    logSheetDebug('applyInitialColumnWidthsIfNeeded: skipped setColumnWidth() because custom column widths were found');
-    scriptProperties.setProperty(propertyKey, 'true');
-    return;
-  }
-
-  logSheetDebug('applyInitialColumnWidthsIfNeeded: applying initial column widths');
-  INITIAL_COLUMN_WIDTHS.forEach((width, index) => {
-    const columnNumber = index + 1;
-    logSheetDebug('applyInitialColumnWidthsIfNeeded: setColumnWidth() column=' + columnNumber + ', width=' + width);
-    sheet.setColumnWidth(columnNumber, width);
-  });
-  scriptProperties.setProperty(propertyKey, 'true');
-  logSheetDebug('applyInitialColumnWidthsIfNeeded: complete - saved initial-width flag');
 }
 
 function getSheet() {
