@@ -1,28 +1,4 @@
 const CORRECT_PASSWORD = '1234';
-const TABLET_MODE_STORAGE_KEY = 'isTabletMode';
-
-
-// 初心者向けメモ:
-// タブレットモードは body に tablet-mode クラスを付け外しして、CSSだけで画面を大きく見せます。
-// localStorage に保存するので、次に開いたときも前回のON/OFF状態を引き継げます。
-function applyTabletMode(enabled) {
-    document.body.classList.toggle('tablet-mode', enabled);
-    const tabletModeBtn = document.getElementById('tabletModeBtn');
-    if (tabletModeBtn) {
-        tabletModeBtn.textContent = enabled ? 'タブレットモード ON' : 'タブレットモード OFF';
-        tabletModeBtn.setAttribute('aria-pressed', String(enabled));
-    }
-}
-
-function loadTabletModePreference() {
-    applyTabletMode(localStorage.getItem(TABLET_MODE_STORAGE_KEY) === 'true');
-}
-
-function toggleTabletMode() {
-    const enabled = !document.body.classList.contains('tablet-mode');
-    localStorage.setItem(TABLET_MODE_STORAGE_KEY, String(enabled));
-    applyTabletMode(enabled);
-}
 
 // ログイン状態チェック
 function checkLoginStatus() {
@@ -68,7 +44,6 @@ function logout() {
 
 // Enterキーでログイン
 document.addEventListener('DOMContentLoaded', function() {
-    loadTabletModePreference();
     loadRemoteRoles();
     document.getElementById('password-input').addEventListener('keypress', function(e) {
         if (e.key === 'Enter') {
@@ -236,29 +211,6 @@ function updateStatusPreview(selectEl) {
     previewEl.classList.remove(...statusClasses);
     previewEl.classList.add(selectedStatus ? getStatusClass(selectedStatus) : 'status-empty');
     previewEl.textContent = `現在のステータス：${selectedStatus || '未選択'}`;
-
-    if (editingId !== null) {
-        const editingStatusBadge = document.getElementById('editing-status-badge');
-        if (editingStatusBadge) {
-            editingStatusBadge.innerHTML = selectedStatus ? getStatusBadge(selectedStatus) : '';
-        }
-    }
-}
-
-function updateEditingBanner(role) {
-    const banner = document.getElementById('editing-banner');
-    if (!banner) {
-        return;
-    }
-    if (!role) {
-        banner.style.display = 'none';
-        document.getElementById('editing-stand-name').textContent = '-';
-        document.getElementById('editing-status-badge').innerHTML = '';
-        return;
-    }
-    document.getElementById('editing-stand-name').textContent = role.name || '-';
-    document.getElementById('editing-status-badge').innerHTML = getStatusBadge(role.status);
-    banner.style.display = 'flex';
 }
 
 function getMemoPreview(memo) {
@@ -521,7 +473,6 @@ function editRole(id) {
     document.getElementById('role-name').value = role.name;
     document.getElementById('role-status').value = role.status;
     updateStatusPreview(document.getElementById('role-status'));
-    updateEditingBanner(role);
     document.getElementById('role-memo').value = role.memo || '';
     
     document.getElementById('addRoleBtn').style.display = 'none';
@@ -580,7 +531,6 @@ function cancelEdit() {
     document.getElementById('role-status').value = '';
     updateStatusPreview(document.getElementById('role-status'));
     document.getElementById('role-memo').value = '';
-    updateEditingBanner(null);
     
     document.getElementById('addRoleBtn').style.display = 'inline-block';
     document.getElementById('updateRoleBtn').style.display = 'none';
