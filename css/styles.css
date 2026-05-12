@@ -238,54 +238,6 @@ body {
     align-items: center;
 }
 
-.editing-banner {
-    flex: 1 0 100%;
-    width: 100%;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    padding: 14px 16px;
-    border-radius: 14px;
-    background: #fff7ed;
-    border: 2px solid #fdba74;
-    color: #9a3412;
-    box-shadow: 0 6px 18px rgba(154, 52, 18, 0.12);
-}
-
-.editing-info {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-wrap: wrap;
-}
-
-.editing-label {
-    font-weight: 800;
-    font-size: 0.9rem;
-}
-
-#editing-stand-name {
-    color: #7c2d12;
-    font-size: 1.3rem;
-}
-
-.editing-status-badge {
-    display: inline-flex;
-}
-
-.editing-help {
-    font-size: 0.9rem;
-    font-weight: 700;
-}
-
-#updateRoleBtn {
-    background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
-}
-
-#cancelEditBtn {
-    background: linear-gradient(135deg, #64748b 0%, #334155 100%);
-}
-
 .role-form input {
     flex: 1;
     min-width: 200px;
@@ -650,15 +602,6 @@ body.modal-open {
         flex-direction: column;
         gap: 10px;
         margin-bottom: 20px;
-    }
-
-    .editing-banner {
-        flex-direction: column;
-        align-items: stretch;
-    }
-
-    .editing-help {
-        font-size: 0.85rem;
     }
 
     .status-field,
