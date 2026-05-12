@@ -4,9 +4,6 @@ const HEADER_VALUES = ['ID', 'スタンド番号', 'ステータス', 'メモ', 
 const STATUS_COLUMN_INDEX = 3;
 const HEADER_BACKGROUND = '#1f4e78';
 const HEADER_FONT_COLOR = '#ffffff';
-const DEFAULT_COLUMN_WIDTH = 100;
-const INITIAL_COLUMN_WIDTHS = [60, 120, 190, 260, 180];
-
 
 
 function doGet(e) {
@@ -94,11 +91,8 @@ function fetchRoles() {
 
 function writeRoles(roles) {
   const sheet = getSheet();
-  Logger.log('writeRoles: clearing sheet contents while keeping manual column widths');
-  // 初心者向けメモ:
-  // sheet.clear() は見た目の設定まで消してしまい、手動で調整した列幅が戻る原因になります。
-  // 同期では古いデータだけ消せればよいので、列幅を壊さない clearContents() を使います。
-  sheet.clearContents();
+  Logger.log('writeRoles: clearing sheet');
+  sheet.clear();
 
   const rows = roles.map((role, index) => {
     try {
@@ -178,41 +172,11 @@ function applySheetFormatting(sheet, dataRowCount) {
   ];
   sheet.setConditionalFormatRules(rules);
 
-  applyInitialColumnWidthsIfNeeded(sheet);
+  sheet.autoResizeColumns(1, columnCount);
   sheet.getRange(1, 1, totalRows, columnCount).setVerticalAlignment('middle');
   if (dataRowCount > 0) {
     sheet.getRange(2, 1, dataRowCount, columnCount).setWrap(true);
   }
-}
-
-
-function applyInitialColumnWidthsIfNeeded(sheet) {
-  const propertyKey = 'columnWidthsInitialized_' + sheet.getSheetId();
-  const scriptProperties = PropertiesService.getScriptProperties();
-
-  // 初心者向けメモ:
-  // 列幅を毎回設定すると、利用者がスプレッドシート上で手動調整した幅まで同期時に戻ってしまいます。
-  // そのため、列幅は「まだ一度も初期設定していないシート」だけに設定し、以降の同期では触りません。
-  if (scriptProperties.getProperty(propertyKey) === 'true') {
-    Logger.log('applyInitialColumnWidthsIfNeeded: column widths already initialized');
-    return;
-  }
-
-  const hasCustomColumnWidth = INITIAL_COLUMN_WIDTHS.some((_, index) => {
-    return sheet.getColumnWidth(index + 1) !== DEFAULT_COLUMN_WIDTH;
-  });
-
-  if (hasCustomColumnWidth) {
-    Logger.log('applyInitialColumnWidthsIfNeeded: custom column widths found; keeping existing widths');
-    scriptProperties.setProperty(propertyKey, 'true');
-    return;
-  }
-
-  Logger.log('applyInitialColumnWidthsIfNeeded: applying initial column widths');
-  INITIAL_COLUMN_WIDTHS.forEach((width, index) => {
-    sheet.setColumnWidth(index + 1, width);
-  });
-  scriptProperties.setProperty(propertyKey, 'true');
 }
 
 function getSheet() {

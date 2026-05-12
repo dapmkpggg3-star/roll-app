@@ -1,50 +1,4 @@
 const CORRECT_PASSWORD = '1234';
-const TABLET_MODE_STORAGE_KEY = 'isTabletMode';
-const TABLET_MODE_ON_LABEL = 'タブレットモード：ON';
-const TABLET_MODE_OFF_LABEL = 'タブレットモード：OFF';
-
-
-// 初心者向けメモ:
-// タブレットモードは body に tablet-mode クラスを付け外しして、CSSだけで画面を大きく見せます。
-// 以前はボタン表示の更新が分かりづらかったため、表示文字・aria-pressed・ボタン用クラスを
-// body.tablet-mode の有無から毎回作り直して、画面表示と実際の状態がずれないようにしています。
-function syncTabletModeButton() {
-    const enabled = document.body.classList.contains('tablet-mode');
-    const tabletModeBtn = document.getElementById('tabletModeBtn');
-    if (!tabletModeBtn) {
-        return;
-    }
-
-    tabletModeBtn.textContent = enabled ? TABLET_MODE_ON_LABEL : TABLET_MODE_OFF_LABEL;
-    tabletModeBtn.setAttribute('aria-pressed', String(enabled));
-    tabletModeBtn.setAttribute('aria-label', enabled ? 'タブレットモードはONです' : 'タブレットモードはOFFです');
-    tabletModeBtn.classList.toggle('is-tablet-mode-on', enabled);
-}
-
-function applyTabletMode(enabled) {
-    document.body.classList.toggle('tablet-mode', enabled);
-    localStorage.setItem(TABLET_MODE_STORAGE_KEY, String(document.body.classList.contains('tablet-mode')));
-    syncTabletModeButton();
-}
-
-function loadTabletModePreference() {
-    applyTabletMode(localStorage.getItem(TABLET_MODE_STORAGE_KEY) === 'true');
-}
-
-function toggleTabletMode() {
-    applyTabletMode(!document.body.classList.contains('tablet-mode'));
-}
-
-function initializeTabletModeToggle() {
-    loadTabletModePreference();
-    const tabletModeBtn = document.getElementById('tabletModeBtn');
-    if (tabletModeBtn) {
-        tabletModeBtn.onclick = toggleTabletMode;
-    }
-    syncTabletModeButton();
-}
-
-window.toggleTabletMode = toggleTabletMode;
 
 // ログイン状態チェック
 function checkLoginStatus() {
@@ -90,7 +44,6 @@ function logout() {
 
 // Enterキーでログイン
 document.addEventListener('DOMContentLoaded', function() {
-    initializeTabletModeToggle();
     loadRemoteRoles();
     document.getElementById('password-input').addEventListener('keypress', function(e) {
         if (e.key === 'Enter') {
@@ -258,29 +211,6 @@ function updateStatusPreview(selectEl) {
     previewEl.classList.remove(...statusClasses);
     previewEl.classList.add(selectedStatus ? getStatusClass(selectedStatus) : 'status-empty');
     previewEl.textContent = `現在のステータス：${selectedStatus || '未選択'}`;
-
-    if (editingId !== null) {
-        const editingStatusBadge = document.getElementById('editing-status-badge');
-        if (editingStatusBadge) {
-            editingStatusBadge.innerHTML = selectedStatus ? getStatusBadge(selectedStatus) : '';
-        }
-    }
-}
-
-function updateEditingBanner(role) {
-    const banner = document.getElementById('editing-banner');
-    if (!banner) {
-        return;
-    }
-    if (!role) {
-        banner.style.display = 'none';
-        document.getElementById('editing-stand-name').textContent = '-';
-        document.getElementById('editing-status-badge').innerHTML = '';
-        return;
-    }
-    document.getElementById('editing-stand-name').textContent = role.name || '-';
-    document.getElementById('editing-status-badge').innerHTML = getStatusBadge(role.status);
-    banner.style.display = 'flex';
 }
 
 function getMemoPreview(memo) {
@@ -543,7 +473,6 @@ function editRole(id) {
     document.getElementById('role-name').value = role.name;
     document.getElementById('role-status').value = role.status;
     updateStatusPreview(document.getElementById('role-status'));
-    updateEditingBanner(role);
     document.getElementById('role-memo').value = role.memo || '';
     
     document.getElementById('addRoleBtn').style.display = 'none';
@@ -602,7 +531,6 @@ function cancelEdit() {
     document.getElementById('role-status').value = '';
     updateStatusPreview(document.getElementById('role-status'));
     document.getElementById('role-memo').value = '';
-    updateEditingBanner(null);
     
     document.getElementById('addRoleBtn').style.display = 'inline-block';
     document.getElementById('updateRoleBtn').style.display = 'none';
@@ -619,7 +547,6 @@ function deleteRole(id) {
 }
 
 // 初期表示
-initializeTabletModeToggle();
 checkLoginStatus();
 
 const searchInput = document.getElementById('role-search');
