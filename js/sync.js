@@ -98,25 +98,38 @@ async function saveData() {
     if (!isRemoteConfigured()) {
         return false;
     }
+
     try {
         console.log('saveRemoteRoles: Sending data to', SHEETS_ENDPOINT);
-        const rolesParam = encodeURIComponent(JSON.stringify(roles));
-        const url = `${SHEETS_ENDPOINT}?action=save&roles=${rolesParam}`;
-        console.log('saveRemoteRoles: URL length', url.length);
-        if (url.length > 1800) {
-            console.warn('saveRemoteRoles: URL is long. If sync fails, reduce memo size or switch Apps Script save to POST.');
-        }
-        const response = await fetch(url);
+
+        const payload = JSON.stringify({
+            action: 'save',
+            roles: roles
+        });
+
+        const response = await fetch(SHEETS_ENDPOINT, {
+            method: 'POST',
+            headers: {
+             'Content-Type': 'application/json'
+            },
+            body: payload
+        });
+
         console.log('saveRemoteRoles: Response status', response.status);
+
         const data = await readJsonResponse(response, 'データ保存');
+
         console.log('saveRemoteRoles: Response data (stringified):', JSON.stringify(data));
         console.log('saveRemoteRoles: success=', data.success, 'error=', data.error);
+
         validateSaveResponse(data);
+
         return true;
     } catch (error) {
         console.error('saveRemoteRoles error:', error);
-        throw error; // エラーを投げてsyncRolesでキャッチ
+        throw error;
     }
+}
 }
 
 function loadRemoteRoles() {
