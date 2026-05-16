@@ -1,5 +1,4 @@
-const SHEETS_ENDPOINT = 'https://script.google.com/macros/s/AKfycbyN0_AoU1dcaXzCO3ICRma2pFJyz2HvCSnwe_RAJMpaOlE53Gj5SugtDFoV78KHf9x9/exec';
-
+const SHEETS_ENDPOINT = https://script.google.com/macros/s/AKfycbyN0_AoU1dcaXzCO3ICRma2pFJyz2HvCSnwe_RAJMpaOlE53Gj5SugtDFoV78KHf9x9/exec
 function isRemoteConfigured() {
     return SHEETS_ENDPOINT.trim().length > 0;
 }
@@ -110,7 +109,7 @@ async function saveData() {
         const response = await fetch(SHEETS_ENDPOINT, {
             method: 'POST',
             headers: {
-             'Content-Type': 'application/json'
+            'Content-Type': 'text/plain;charset=utf-8'
             },
             body: payload
         });
@@ -138,18 +137,31 @@ function loadRemoteRoles() {
 function saveRemoteRoles() {
     return saveData();
 }
-
+let isSyncing = false;
 async function syncRoles() {
-    saveLocalRoles();
-    if (!isRemoteConfigured()) {
-        setSyncMessage('スプレッドシート同期先が設定されていません。設定を確認してください。', true);
+    if (isSyncing) {
+        setSyncMessage('同期中です。少し待ってください。');
         return;
     }
+
+    isSyncing = true;
+
     try {
+        saveLocalRoles();
+
+        if (!isRemoteConfigured()) {
+            setSyncMessage('スプレッドシート同期先が設定されていません。設定を確認してください。', true);
+            return;
+        }
+
         setSyncMessage('スプレッドシートと同期中です...');
+
         console.log('syncRoles: Starting sync...');
+
         const ok = await saveData();
+
         console.log('syncRoles: Result -', ok);
+
         if (ok) {
             setSyncMessage('スプレッドシートと同期しました。');
         } else {
@@ -158,6 +170,8 @@ async function syncRoles() {
     } catch (error) {
         console.error('syncRoles error:', error);
         setSyncMessage((error.message || 'スプレッドシート同期に失敗しました。') + ' ブラウザ内のデータは残っています。', true);
+    } finally {
+        isSyncing = false;
     }
 }
 async function loadRemoteRoles() {
