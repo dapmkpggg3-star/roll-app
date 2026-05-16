@@ -161,3 +161,6 @@ async function syncRoles() {
         setSyncMessage((error.message || 'スプレッドシート同期に失敗しました。') + ' ブラウザ内のデータは残っています。', true);
     }
 }
+async function loadRemoteRoles() {
+    return fetchData();
+}
