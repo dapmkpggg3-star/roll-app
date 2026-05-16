@@ -108,9 +108,7 @@ async function saveData() {
 
         const response = await fetch(SHEETS_ENDPOINT, {
             method: 'POST',
-            headers: {
-            'Content-Type': 'text/plain;charset=utf-8'
-            },
+
             body: payload
         });
 
