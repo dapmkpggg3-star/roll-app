@@ -106,11 +106,11 @@ async function saveData() {
             roles: roles
         });
 
-        const response = await fetch(SHEETS_ENDPOINT, {
-            method: 'POST',
-
-            body: payload
-        });
+const response = await fetch(SHEETS_ENDPOINT, {
+    method: 'POST',
+    mode: 'no-cors',
+    body: payload
+});
 
         console.log('saveRemoteRoles: Response status', response.status);
 
