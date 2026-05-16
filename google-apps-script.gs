@@ -80,6 +80,54 @@ function doGet(e) {
     .setMimeType(ContentService.MimeType.JSON);
 }
 
+function doPost(e) {
+  try {
+    const body = e && e.postData && e.postData.contents
+      ? e.postData.contents
+      : '';
+
+    Logger.log('doPost body length: ' + body.length);
+
+    const payload = body ? JSON.parse(body) : {};
+    const action = String(payload.action || '').trim().toLowerCase();
+
+    Logger.log('doPost action: [' + action + ']');
+
+    if (action === 'save') {
+      const roles = payload.roles;
+
+      if (!Array.isArray(roles)) {
+        throw new Error('roles must be an array');
+      }
+
+      Logger.log('doPost save: writing ' + roles.length + ' roles');
+
+      writeRoles(roles);
+
+      Logger.log('doPost save: write complete');
+
+      return ContentService
+        .createTextOutput(JSON.stringify({ success: true }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    return ContentService
+      .createTextOutput(JSON.stringify({
+        success: false,
+        error: 'Unsupported action'
+      }))
+      .setMimeType(ContentService.MimeType.JSON);
+  } catch (error) {
+    Logger.log('doPost error: ' + error.toString());
+
+    return ContentService
+      .createTextOutput(JSON.stringify({
+        success: false,
+        error: error.toString()
+      }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+}
 function fetchRoles() {
   const sheet = getSheet();
   const values = sheet.getDataRange().getValues();
