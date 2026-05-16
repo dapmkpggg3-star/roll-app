@@ -130,7 +130,6 @@ async function saveData() {
         throw error;
     }
 }
-}
 
 function loadRemoteRoles() {
     return fetchData();
