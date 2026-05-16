@@ -69,8 +69,12 @@ async function fetchData() {
     }
     try {
         console.log('loadRemoteRoles: Starting fetch...');
-        const url = `${SHEETS_ENDPOINT}?action=fetch`;
-        const response = await fetch(url);
+        const url = `${SHEETS_ENDPOINT}?action=fetch&t=${Date.now()}`;
+const response = await fetch(url, {
+    method: 'GET',
+    cache: 'no-store'
+});
+        
         const data = await readJsonResponse(response, 'データ取得');
         console.log('loadRemoteRoles: Response data', data);
         validateFetchResponse(data);
