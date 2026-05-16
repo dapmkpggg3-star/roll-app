@@ -163,4 +163,6 @@ async function syncRoles() {
 }
 async function loadRemoteRoles() {
     return fetchData();
+}function isRemoteConfigured() {
+    return Boolean(SHEETS_ENDPOINT);
 }
