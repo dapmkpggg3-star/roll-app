@@ -81,6 +81,15 @@ let sortOption = 'name';
 let editingId = null; // 編集中のID
 
 function saveLocalRoles() {
+
+    const currentRoles = localStorage.getItem('roles');
+
+    if (currentRoles) {
+        localStorage.setItem('roles_backup_latest', currentRoles);
+
+        localStorage.setItem('roles_backup_saved_at', new Date().toISOString());
+    }
+
     localStorage.setItem('roles', JSON.stringify(roles));
 }
 
