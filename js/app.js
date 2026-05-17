@@ -625,3 +625,27 @@ window.addEventListener('beforeinstallprompt', (e) => {
     // インストール可能な場合の処理
     console.log('PWA install prompt is ready');
 });
+function restoreLatestBackup() {
+
+    const backup = localStorage.getItem('roles_backup_latest');
+
+    if (!backup) {
+        alert('バックアップがありません。');
+        return;
+    }
+
+    const ok = confirm('最新バックアップを復元しますか？');
+
+    if (!ok) {
+        return;
+    }
+
+    roles = JSON.parse(backup);
+const ids = roles.map(r => Number(r.id) || 0);
+nextId = ids.length > 0 ? Math.max(...ids) + 1 : 1;
+    saveLocalRoles();
+
+    renderRoles();
+
+    alert('バックアップを復元しました。');
+}
