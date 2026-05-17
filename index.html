@@ -119,6 +119,9 @@
                         <button type="button" id="exportCsvBtn" class="csv-btn" onclick="exportCsv()">CSVエクスポート</button>
                         <button type="button" class="import-btn" onclick="document.getElementById('csv-import-input').click()">CSVインポート</button>
                         <button type="button" id="syncSheetsBtn" class="sync-btn" onclick="syncRoles()">スプレッドシートと同期</button>
+                        <div id="last-sync-time" class="last-sync-time">
+  最終同期: 未同期
+</div>
                     </div>
                 </div>
                 <div class="table-container">
@@ -161,7 +164,7 @@
         </div>
     </div>
 
-    <script src="js/sync.js"></script>
+    <script src="js/sync.js?v=2"></script>
     <script src="js/csv.js"></script>
     <script src="js/app.js"></script>
 
