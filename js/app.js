@@ -77,7 +77,7 @@ let roles = [];
 let nextId = 1;
 let searchQuery = '';
 let statusFilter = 'all';
-let sortOption = 'updatedAtDesc';
+let sortOption = 'name';
 let editingId = null; // 編集中のID
 
 function saveLocalRoles() {
