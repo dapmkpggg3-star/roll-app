@@ -379,7 +379,24 @@ function renderRoles() {
         .slice()
         .sort((a, b) => {
             if (sortOption === 'name') {
-                return String(a.name || '').localeCompare(String(b.name || ''), 'ja');
+            const aMatch = String(a.name || '').match(/#?(\d+)-(\d+)/);
+const bMatch = String(b.name || '').match(/#?(\d+)-(\d+)/);
+
+if (aMatch && bMatch) {
+    const aStand = Number(aMatch[1]);
+    const bStand = Number(bMatch[1]);
+
+    if (aStand !== bStand) {
+        return aStand - bStand;
+    }
+
+    const aNumber = Number(aMatch[2]);
+    const bNumber = Number(bMatch[2]);
+
+    return aNumber - bNumber;
+}
+
+return String(a.name || '').localeCompare(String(b.name || ''), 'ja');    
             }
             if (sortOption === 'updatedAtAsc') {
                 return compareUpdatedAt(a, b, 'asc');
