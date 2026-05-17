@@ -145,7 +145,11 @@ async function syncRoles() {
     }
 
     isSyncing = true;
-
+if (!navigator.onLine) {
+    isSyncing = false;
+    setSyncMessage('オフラインです。通信を確認してから再度同期してください。', true);
+    return;
+}
     try {
         saveLocalRoles();
 
