@@ -84,11 +84,11 @@ function saveLocalRoles() {
 
     const currentRoles = localStorage.getItem('roles');
 
-    if (currentRoles) {
-        localStorage.setItem('roles_backup_latest', currentRoles);
+if (currentRoles && !localStorage.getItem('roles_backup_latest')) {
+    localStorage.setItem('roles_backup_latest', currentRoles);
 
-        localStorage.setItem('roles_backup_saved_at', new Date().toISOString());
-    }
+    localStorage.setItem('roles_backup_saved_at', new Date().toISOString());
+}
 
     localStorage.setItem('roles', JSON.stringify(roles));
 }
@@ -643,7 +643,7 @@ function restoreLatestBackup() {
     roles = JSON.parse(backup);
 const ids = roles.map(r => Number(r.id) || 0);
 nextId = ids.length > 0 ? Math.max(...ids) + 1 : 1;
-    saveLocalRoles();
+    // saveLocalRoles();
 
     renderRoles();
 
