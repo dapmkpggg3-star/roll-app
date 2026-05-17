@@ -110,13 +110,19 @@ async function saveData() {
             roles: roles
         });
 
+const controller = new AbortController();
+const timeoutId = setTimeout(() => controller.abort(), 15000);
+
 const response = await fetch(SHEETS_ENDPOINT, {
     method: 'POST',
     mode: 'no-cors',
-    body: payload
+    body: payload,
+    signal: controller.signal
 });
 
+
 await new Promise(resolve => setTimeout(resolve, 1200));
+clearTimeout(timeoutId);
 return true;
     } catch (error) {
         console.error('saveRemoteRoles error:', error);
