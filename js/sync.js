@@ -157,6 +157,7 @@ async function syncRoles() {
         console.log('syncRoles: Result -', ok);
 
         if (ok) {
+            saveLastSyncAt();
             setSyncMessage('スプレッドシートと同期しました。');
         } else {
             setSyncMessage('スプレッドシートと同期できませんでした。ブラウザ内には保存されています。', true);
@@ -168,8 +169,39 @@ async function syncRoles() {
         isSyncing = false;
     }
 }
-async function loadRemoteRoles() {
-    return fetchData();
-}function isRemoteConfigured() {
-    return Boolean(SHEETS_ENDPOINT);
+const LAST_SYNC_KEY = 'lastSyncAt';
+
+function formatLastSyncAt(value) {
+    if (!value) {
+        return '未同期';
+    }
+
+    const date = new Date(value);
+
+    if (Number.isNaN(date.getTime())) {
+        return '未同期';
+    }
+
+    const pad = number => String(number).padStart(2, '0');
+
+    return `${date.getFullYear()}/${pad(date.getMonth() + 1)}/${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
+
+function updateLastSyncTimeDisplay() {
+    const el = document.getElementById('last-sync-time');
+
+    if (!el) {
+        return;
+    }
+
+    const value = localStorage.getItem(LAST_SYNC_KEY);
+
+    el.textContent = `最終同期: ${formatLastSyncAt(value)}`;
+}
+
+function saveLastSyncAt() {
+    localStorage.setItem(LAST_SYNC_KEY, new Date().toISOString());
+    updateLastSyncTimeDisplay();
+}
+
+document.addEventListener('DOMContentLoaded', updateLastSyncTimeDisplay);
