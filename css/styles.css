@@ -824,9 +824,11 @@ body.modal-open {
         font-size: 1.8rem;
     }
 }
-body.tablet-mode .btn,
-body.tablet-mode button {
-    min-height: 48px;
+body.tablet-mode button,
+body.tablet-mode input,
+body.tablet-mode select,
+body.tablet-mode textarea {
+    min-height: 52px;
     padding: 12px 18px;
-    font-size: 16px;
+    font-size: 18px;
 }
