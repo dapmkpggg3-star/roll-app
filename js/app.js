@@ -280,7 +280,7 @@ function clearSearch() {
     }
     renderRoles();
 }
-
+statusFilter.value = status === 'all' ? 'all' : status;
 function changeStatusFilter(event) {
     statusFilter = event.target.value || 'all';
     changeStatusFilter({
