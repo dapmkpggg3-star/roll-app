@@ -363,7 +363,7 @@ function getFilteredRoles() {
     const normalizedQuery = String(searchQuery).trim().toLowerCase();
     return roles.filter(role => {
         const matchesStatus = isStatusMatched(role);
-        if (!matchesStatus) {
+        if (!isStatusMatched(role)) {
             return false;
         }
         if (!normalizedQuery) {
