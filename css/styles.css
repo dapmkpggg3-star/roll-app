@@ -837,3 +837,10 @@ body.tablet-mode table th {
     padding: 14px 10px;
     font-size: 16px;
 }
+body.tablet-mode .container,
+body.tablet-mode .main-container,
+body.tablet-mode .content {
+    max-width: 100%;
+    width: 100%;
+    padding: 12px;
+}
