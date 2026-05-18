@@ -669,5 +669,9 @@ function setSummaryFilter(status) {
 
     statusFilter.value = status;
 
-    renderRoles();
+    changeStatusFilter({
+        target: {
+            value: statusFilter.value
+        }
+    });
 }
