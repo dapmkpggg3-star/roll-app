@@ -844,3 +844,8 @@ body.tablet-mode .content {
     width: 100%;
     padding: 12px;
 }
+body.tablet-mode #tabletModeBtn {
+    min-height: 36px;
+    padding: 6px 12px;
+    font-size: 14px;
+}
