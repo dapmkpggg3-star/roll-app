@@ -649,3 +649,13 @@ nextId = ids.length > 0 ? Math.max(...ids) + 1 : 1;
 
     alert('バックアップを復元しました。');
 }
+function toggleTabletMode() {
+    const isTabletMode = document.body.classList.toggle('tablet-mode');
+    localStorage.setItem('tablet_mode_enabled', isTabletMode ? 'true' : 'false');
+
+    const button = document.getElementById('tabletModeBtn');
+    if (button) {
+        button.textContent = isTabletMode ? 'タブレットモード ON' : 'タブレットモード OFF';
+        button.setAttribute('aria-pressed', isTabletMode ? 'true' : 'false');
+    }
+}
