@@ -63,15 +63,15 @@
                 </div>
                 <div id="count-summary" class="count-summary" aria-label="スタンド件数サマリー">
                     <div class="summary-heading">件数サマリー</div>
-                    <div class="summary-card summary-total">
+                    <div class="summary-card summary-total" onclick="setSummaryFilter('all')">
                         <span class="summary-label">全体</span>
                         <span id="summary-total" class="summary-count">0件</span>
                     </div>
-                    <div class="summary-card status-online">
+                    <div class="summary-card status-online" onclick="setSummaryFilter('オンライン')">
                         <span class="summary-label">オンライン</span>
                         <span id="summary-online" class="summary-count">0件</span>
                     </div>
-                    <div class="summary-card status-reworking">
+                    <div class="summary-card status-working" onclick="setSummaryFilter('改削中')">
                         <span class="summary-label">改削中</span>
                         <span id="summary-reworking" class="summary-count">0件</span>
                     </div>

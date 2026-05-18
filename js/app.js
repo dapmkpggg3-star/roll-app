@@ -659,3 +659,19 @@ function toggleTabletMode() {
         button.setAttribute('aria-pressed', isTabletMode ? 'true' : 'false');
     }
 }
+function setSummaryFilter(status) {
+
+    const statusFilter = document.getElementById('status-filter');
+
+    if (!statusFilter) {
+        return;
+    }
+
+    if (status === 'all') {
+        statusFilter.value = 'all';
+    } else {
+        statusFilter.value = status;
+    }
+
+    renderRoles();
+}
