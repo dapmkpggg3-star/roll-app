@@ -660,12 +660,14 @@ function toggleTabletMode() {
     }
 }
 function setSummaryFilter(status) {
-    const statusFilterSelect = document.getElementById('status-filter');
 
-    if (statusFilterSelect) {
-        statusFilterSelect.value = status;
+    const statusFilter = document.getElementById('status-filter');
+
+    if (!statusFilter) {
+        return;
     }
 
-    statusFilter = status;
+    statusFilter.value = status;
+
     renderRoles();
 }
