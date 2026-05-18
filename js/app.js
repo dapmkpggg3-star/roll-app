@@ -283,7 +283,11 @@ function clearSearch() {
 
 function changeStatusFilter(event) {
     statusFilter = event.target.value || 'all';
-    renderRoles();
+    changeStatusFilter({
+    target: {
+        value: status === 'all' ? 'all' : status
+    }
+});
 }
 
 function resetStatusFilter() {
