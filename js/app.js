@@ -280,14 +280,10 @@ function clearSearch() {
     }
     renderRoles();
 }
-statusFilter.value = status === 'all' ? 'all' : status;
+
 function changeStatusFilter(event) {
     statusFilter = event.target.value || 'all';
-    changeStatusFilter({
-    target: {
-        value: status === 'all' ? 'all' : status
-    }
-});
+    renderRoles();
 }
 
 function resetStatusFilter() {
@@ -671,11 +667,11 @@ function setSummaryFilter(status) {
         return;
     }
 
-    if (status === 'all') {
-        statusFilter.value = 'all';
-    } else {
-        statusFilter.value = status;
-    }
+    statusFilter.value = status === 'all' ? 'all' : status;
 
-    renderRoles();
+changeStatusFilter({
+    target: {
+        value: statusFilter.value
+    }
+});
 }
