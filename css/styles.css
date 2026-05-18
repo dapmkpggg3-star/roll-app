@@ -832,3 +832,8 @@ body.tablet-mode textarea {
     padding: 12px 18px;
     font-size: 18px;
 }
+body.tablet-mode table td,
+body.tablet-mode table th {
+    padding: 14px 10px;
+    font-size: 16px;
+}
