@@ -432,6 +432,19 @@ return String(a.name || '').localeCompare(String(b.name || ''), 'ja');
 
     visibleRoles.forEach(role => {
         const row = document.createElement('tr');
+
+        const standMatch = String(role.name || '').match(/#?(\d+)/);
+const standNumber = standMatch ? Number(standMatch[1]) : 0;
+
+if (standNumber >= 2 && standNumber <= 5) {
+    row.style.borderLeft = '6px solid #4caf50';
+} else if (standNumber >= 6 && standNumber <= 9) {
+    row.style.borderLeft = '6px solid #2196f3';
+} else if (standNumber >= 10 && standNumber <= 13) {
+    row.style.borderLeft = '6px solid #ff9800';
+} else if (standNumber >= 14 && standNumber <= 17) {
+    row.style.borderLeft = '6px solid #e91e63';
+}
         const formattedDate = formatUpdatedAt(role.updatedAt);
         row.innerHTML = `
             <td><span class="role-id">${escapeHtml(role.name)}</span></td>
