@@ -1,3 +1,4 @@
+console.log("STATUS FILTER VERSION 6");
 const CORRECT_PASSWORD = '1234';
 
 // ログイン状態チェック
