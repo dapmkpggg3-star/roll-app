@@ -306,21 +306,39 @@ function showAllRoles() {
 
 function isStatusMatched(role) {
     const status = String(role.status || '');
+
     if (statusFilter === 'all') {
         return true;
     }
+
     if (statusFilter === 'online') {
         return status === 'オンライン';
     }
+
     if (statusFilter === 'reworking') {
         return status === '改削中';
     }
+
     if (statusFilter === 'used') {
-        return status.includes('中古予備');
+        return status === '中古予備（バラシ前）';
     }
+
+    if (statusFilter === 'remove') {
+        return status === '改削行き（搬出可能）';
+    }
+
+    if (statusFilter === 'newReady') {
+        return status === '新品予備（組替可能）';
+    }
+
+    if (statusFilter === 'newInstalled') {
+        return status === '新品予備（組込完了）';
+    }
+
     if (statusFilter === 'other') {
-        return status !== 'オンライン' && status !== '改削中' && !status.includes('中古予備');
+        return false;
     }
+
     return true;
 }
 
