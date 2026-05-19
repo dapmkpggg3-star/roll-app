@@ -630,7 +630,7 @@ body.modal-open {
     }
 
     .action-btn {
-        width: 100%;
+        width: auto;
             padding: 4px 8px;
     font-size: 12px;
 }
