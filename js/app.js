@@ -438,12 +438,16 @@ const standNumber = standMatch ? Number(standMatch[1]) : 0;
 
 if (standNumber >= 2 && standNumber <= 5) {
     row.style.borderLeft = '6px solid #4caf50';
+    row.style.backgroundColor = 'rgba(76, 175, 80, 0.08)';
 } else if (standNumber >= 6 && standNumber <= 9) {
     row.style.borderLeft = '6px solid #2196f3';
+    row.style.backgroundColor = 'rgba(33, 150, 243, 0.08)';
 } else if (standNumber >= 10 && standNumber <= 13) {
     row.style.borderLeft = '6px solid #ff9800';
+    row.style.backgroundColor = 'rgba(255, 152, 0, 0.08)';
 } else if (standNumber >= 14 && standNumber <= 17) {
     row.style.borderLeft = '6px solid #e91e63';
+    row.style.backgroundColor = 'rgba(233, 30, 99, 0.08)';
 }
         const formattedDate = formatUpdatedAt(role.updatedAt);
         row.innerHTML = `
