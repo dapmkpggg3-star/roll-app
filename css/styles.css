@@ -930,3 +930,10 @@ body.tablet-mode tbody td:nth-child(5)::before {
     content: "操作：";
     font-weight: 700;
 }
+body.tablet-mode tbody tr {
+    display: block;
+    margin: 12px 0;
+    padding: 12px;
+    border-radius: 12px;
+    background: white;
+}
