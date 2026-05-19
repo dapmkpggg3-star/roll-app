@@ -877,3 +877,56 @@ table th:last-child,
 table td:last-child {
     min-width: 260px;
 }
+body.tablet-mode table,
+body.tablet-mode thead,
+body.tablet-mode tbody,
+body.tablet-mode tr,
+body.tablet-mode th,
+body.tablet-mode td {
+    display: block;
+}
+
+body.tablet-mode thead {
+    display: none;
+}
+
+body.tablet-mode tbody tr {
+    margin: 12px 0;
+    padding: 12px;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+body.tablet-mode tbody td {
+    padding: 8px 4px;
+    border-bottom: 1px solid #eee;
+}
+
+body.tablet-mode tbody td:last-child {
+    border-bottom: none;
+}
+
+body.tablet-mode tbody td:nth-child(1)::before {
+    content: "スタンド番号：";
+    font-weight: 700;
+}
+
+body.tablet-mode tbody td:nth-child(2)::before {
+    content: "ステータス：";
+    font-weight: 700;
+}
+
+body.tablet-mode tbody td:nth-child(3)::before {
+    content: "メモ：";
+    font-weight: 700;
+}
+
+body.tablet-mode tbody td:nth-child(4)::before {
+    content: "最終更新日：";
+    font-weight: 700;
+}
+
+body.tablet-mode tbody td:nth-child(5)::before {
+    content: "操作：";
+    font-weight: 700;
+}
