@@ -326,37 +326,66 @@ function isStatusMatched(role) {
 
 function getStatusSummaryCategory(role) {
     const status = String(role.status || '');
+
     if (status === 'オンライン') {
         return 'online';
     }
+
     if (status === '改削中') {
         return 'reworking';
     }
-    if (status.includes('中古予備')) {
+
+    if (status === '中古予備（バラシ前）') {
         return 'used';
     }
+
+    if (status === '改削行き（搬出可能）') {
+        return 'remove';
+    }
+
+    if (status === '新品予備（組替可能）') {
+        return 'newReady';
+    }
+
+    if (status === '新品予備（組込完了）') {
+        return 'newInstalled';
+    }
+
     return 'other';
 }
 
 function updateCountSummary(visibleRoles) {
     const summary = {
-        total: visibleRoles.length,
-        online: 0,
-        reworking: 0,
-        used: 0,
-        other: 0
-    };
+    total: visibleRoles.length,
+    online: 0,
+    reworking: 0,
+    used: 0,
+    remove: 0,
+    newReady: 0,
+    newInstalled: 0,
+    other: 0
+};
 
     visibleRoles.forEach(role => {
         summary[getStatusSummaryCategory(role)] += 1;
     });
 
     Object.entries(summary).forEach(([key, value]) => {
-        const summaryEl = document.getElementById(`summary-${key}`);
-        if (summaryEl) {
-            summaryEl.textContent = `${value}件`;
-        }
-    });
+
+    const summaryMap = {
+        remove: 'summary-remove',
+        newReady: 'summary-new-ready',
+        newInstalled: 'summary-new-installed'
+    };
+
+    const targetId = summaryMap[key] || `summary-${key}`;
+
+    const summaryEl = document.getElementById(targetId);
+
+    if (summaryEl) {
+        summaryEl.textContent = `${value}件`;
+    }
+});
 }
 
 function getFilteredRoles() {
