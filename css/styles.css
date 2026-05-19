@@ -849,3 +849,8 @@ body.tablet-mode #tabletModeBtn {
     padding: 6px 12px;
     font-size: 14px;
 }
+.stand-name-cell {
+    font-size: 20px;
+    font-weight: 700;
+    color: #3949ab;
+}

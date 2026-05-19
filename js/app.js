@@ -447,7 +447,7 @@ if (standNumber >= 2 && standNumber <= 5) {
 }
         const formattedDate = formatUpdatedAt(role.updatedAt);
         row.innerHTML = `
-            <td><span class="role-id">${escapeHtml(role.name)}</span></td>
+            <td><span class="role-id stand-name-cell">${escapeHtml(role.name)}</span></td>
             <td>${getStatusBadge(role.status)}</td>
             <td>${escapeHtml(getMemoPreview(role.memo))}</td>
             <td>${formattedDate}</td>
