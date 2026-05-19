@@ -854,3 +854,21 @@ body.tablet-mode #tabletModeBtn {
     font-weight: 700;
     color: #3949ab;
 }
+.role-id.stand-name-cell {
+    font-size: 22px;
+    font-weight: 800;
+    color: #1a237e;
+}
+tbody tr[style*="background-color"] td {
+    background-color: inherit;
+}
+.action-buttons {
+    display: flex;
+    gap: 6px;
+    flex-wrap: nowrap;
+}
+
+.action-btn {
+    white-space: nowrap;
+    min-width: 72px;
+}
