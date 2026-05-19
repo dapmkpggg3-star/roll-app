@@ -398,11 +398,11 @@ tbody tr:hover {
 }
 
 .action-btn {
-    padding: 8px 16px;
+    padding: 4px 8px;
     border: none;
     border-radius: 6px;
     cursor: pointer;
-    font-size: 0.85rem;
+    font-size: 12px;
     font-weight: 600;
     transition: transform 0.2s, box-shadow 0.2s;
     white-space: nowrap;
@@ -631,8 +631,9 @@ body.modal-open {
 
     .action-btn {
         width: 100%;
-        padding: 10px;
-    }
+            padding: 4px 8px;
+    font-size: 12px;
+}
 
     .role-id {
         display: block;
@@ -723,8 +724,8 @@ body.modal-open {
     }
 
     .action-btn {
-        padding: 8px 10px;
-        font-size: 0.75rem;
+        padding: 4px 8px;
+        font-size: 12px;
     }
 }
 
