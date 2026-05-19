@@ -394,7 +394,7 @@ tbody tr:hover {
 
 .action-buttons {
     display: flex;
-    gap: 8px;
+    gap: 2px;
 }
 
 .action-btn {
@@ -865,7 +865,7 @@ tbody tr[style*="background-color"] td {
 }
 .action-buttons {
     display: flex;
-    gap: 6px;
+    gap: 2px;
     flex-wrap: nowrap;
 }
 
