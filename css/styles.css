@@ -937,3 +937,27 @@ body.tablet-mode tbody tr {
     border-radius: 12px;
     background: white;
 }
+body.tablet-mode tbody tr {
+    display: block;
+    margin: 14px 0;
+    padding: 14px;
+    border-radius: 16px;
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.10);
+}
+
+body.tablet-mode tbody td {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 4px;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+body.tablet-mode tbody td:last-child {
+    border-bottom: none;
+}
+
+body.tablet-mode .action-buttons {
+    justify-content: flex-end;
+    gap: 6px;
+}
