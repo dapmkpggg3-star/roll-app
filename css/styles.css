@@ -979,9 +979,18 @@ body.tablet-mode tbody td:last-child {
 }
 
 body.tablet-mode .action-buttons {
-    justify-content: flex-end;
-    gap: 6px;
+    display: flex;
+    gap: 4px;
+    width: 100%;
 }
+
+body.tablet-mode .action-buttons button {
+    flex: 1;
+    min-width: 0;
+    font-size: 13px;
+    padding: 8px 4px;
+}
+
 body.tablet-mode td:first-child {
     font-size: 15px;
     font-weight: 700;
