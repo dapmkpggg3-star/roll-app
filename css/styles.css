@@ -1004,7 +1004,7 @@ body.tablet-mode td:first-child .role-id {
 }
 body.tablet-mode tbody {
     display: grid;
-    grid-template-columns: repeat(2, minmax(260px, 1fr));
+    grid-template-columns: repeat(2, minmax(320px, 1fr));
     gap: 14px;
 }
 
