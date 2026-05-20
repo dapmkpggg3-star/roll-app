@@ -980,3 +980,14 @@ body.tablet-mode .action-buttons {
     justify-content: flex-end;
     gap: 6px;
 }
+body.tablet-mode td:first-child {
+    font-size: 15px;
+    font-weight: 700;
+    color: #333;
+}
+
+body.tablet-mode td:first-child .role-id {
+    font-size: 28px;
+    font-weight: 900;
+    color: #1a237e;
+}
