@@ -942,7 +942,7 @@ body.tablet-mode tbody tr {
     margin: 14px 0;
     width: calc(100% - 12px);
     max-width: none;
-    padding: 14px;
+    padding: 14px 10px;
     border-radius: 16px;
     box-shadow: 0 3px 10px rgba(0, 0, 0, 0.10);
 }
