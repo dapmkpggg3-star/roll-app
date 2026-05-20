@@ -944,13 +944,32 @@ body.tablet-mode tbody tr {
     border-radius: 16px;
     box-shadow: 0 3px 10px rgba(0, 0, 0, 0.10);
 }
+body.tablet-mode td:first-child {
+    font-size: 28px;
+    font-weight: 800;
+    color: #2c2caa;
+    padding-bottom: 14px;
+}
 
+body.tablet-mode td:first-child strong {
+    font-size: 34px;
+}
 body.tablet-mode tbody td {
     display: flex;
     justify-content: space-between;
     align-items: center;
     padding: 8px 4px;
     border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+body.tablet-mode td:first-child {
+    font-size: 28px;
+    font-weight: 800;
+    color: #2c2caa;
+    padding-bottom: 14px;
+}
+
+body.tablet-mode td:first-child strong {
+    font-size: 34px;
 }
 
 body.tablet-mode tbody td:last-child {
