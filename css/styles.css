@@ -1011,3 +1011,20 @@ body.tablet-mode tbody tr {
     margin: 0;
     width: auto;
 }
+body.tablet-mode tbody td:last-child {
+    display: block;
+}
+
+body.tablet-mode tbody td:last-child::before {
+    display: block;
+    margin-bottom: 6px;
+}
+
+body.tablet-mode tbody td:last-child .action-buttons {
+    width: 100%;
+}
+
+body.tablet-mode tbody td:last-child .action-buttons button {
+    font-size: 13px;
+    padding: 8px 4px;
+}
