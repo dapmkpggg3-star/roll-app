@@ -981,7 +981,6 @@ body.tablet-mode tbody td:last-child {
 body.tablet-mode .action-buttons {
     display: flex;
     gap: 2px;
-    width: 100%;
 }
 
 body.tablet-mode .action-buttons button {
