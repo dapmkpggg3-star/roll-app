@@ -986,9 +986,10 @@ body.tablet-mode .action-buttons {
 body.tablet-mode .action-buttons button {
     flex: 1;
     min-width: 0;
-    font-size: 12px;
-    padding: 6px 2px;
+    font-size: 16px;
+    padding: 10px 6px;
 }
+
 
 body.tablet-mode td:first-child {
     font-size: 15px;
