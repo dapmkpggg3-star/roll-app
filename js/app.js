@@ -712,6 +712,10 @@ console.log('バックアップ一覧', backupKeys);
     }
 
     roles = JSON.parse(backup);
+    if (!roles || roles.length === 0) {
+    alert('バックアップが0件のため復元を中止しました');
+    return;
+}
 const ids = roles.map(r => Number(r.id) || 0);
 nextId = ids.length > 0 ? Math.max(...ids) + 1 : 1;
     // saveLocalRoles();
