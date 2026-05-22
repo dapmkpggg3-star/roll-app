@@ -699,7 +699,12 @@ function restoreLatestBackup() {
         alert('バックアップがありません。');
         return;
     }
+const backupKeys = Object.keys(localStorage)
+  .filter(key => key.startsWith('roles_backup_2026'))
+  .sort()
+  .reverse();
 
+console.log('バックアップ一覧', backupKeys);
     const ok = confirm('最新バックアップを復元しますか？');
 
     if (!ok) {
