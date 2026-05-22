@@ -107,7 +107,7 @@ function loadLocalRoles() {
     const ids = roles.map(r => Number(r.id) || 0);
     nextId = ids.length > 0 ? Math.max(...ids) + 1 : 1;
 }
-
+window.loadRoles = loadLocalRoles;
 function fixOnlineDuplicates() {
     const groups = {};
     roles.forEach(role => {
