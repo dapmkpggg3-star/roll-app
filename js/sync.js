@@ -144,10 +144,10 @@ async function syncRoles() {
         const roles = JSON.parse(localStorage.getItem('roles') || '[]');
 localStorage.setItem('roles_backup_before_sync', JSON.stringify(roles));
 localStorage.setItem('roles_backup_before_sync_saved_at', new Date().toISOString());
-    if (!roles || roles.length === 0) {
-        alert('データ0件のため同期を停止しました');
-        return;
-    }
+    // if (!roles || roles.length === 0) {
+//     alert('データ0件のため同期を停止しました');
+//     return;
+// }
     if (isSyncing) {
         setSyncMessage('同期中です。少し待ってください。');
         return;
