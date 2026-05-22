@@ -897,6 +897,17 @@ body.tablet-mode tbody tr {
     border-radius: 12px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 }
+body.editing-mode .roles-table-container {
+  opacity: 0.15;
+  pointer-events: none;
+}
+
+body.editing-mode .form-section {
+  position: sticky;
+  top: 0;
+  z-index: 999;
+  box-shadow: 0 0 20px rgba(255,255,0,0.35);
+}
 
 body.tablet-mode tbody td {
     padding: 8px 4px;

@@ -581,6 +581,12 @@ function editRole(id) {
     document.getElementById('addRoleBtn').style.display = 'none';
     document.getElementById('updateRoleBtn').style.display = 'inline-block';
     document.getElementById('cancelEditBtn').style.display = 'inline-block';
+    window.scrollTo({
+  top: 0,
+  behavior: 'smooth'
+});
+document.body.classList.add('editing-mode');
+
 }
 
 function updateRole() {
