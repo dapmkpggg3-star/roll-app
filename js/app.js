@@ -746,3 +746,4 @@ function setSummaryFilter(status) {
         }
     });
 }
+window.loadRoles = loadLocalRoles;
