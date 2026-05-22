@@ -141,7 +141,7 @@ function saveRemoteRoles() {
 }
 let isSyncing = false;
 async function syncRoles() {
-        const roles = loadRoles();
+        const roles = window.loadRoles();
 
     if (!roles || roles.length === 0) {
         alert('データ0件のため同期を停止しました');
