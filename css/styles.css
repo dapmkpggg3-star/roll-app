@@ -897,7 +897,7 @@ body.tablet-mode tbody tr {
     border-radius: 12px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 }
-body.editing-mode .roles-table-container {
+body.editing-mode table {
   opacity: 0.15;
   pointer-events: none;
 }
