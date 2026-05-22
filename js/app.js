@@ -92,6 +92,17 @@ if (currentRoles && !localStorage.getItem('roles_backup_latest')) {
 }
 const historyKey = `roles_backup_${new Date().toISOString()}`;
 localStorage.setItem(historyKey, JSON.stringify(currentRoles || []));
+const backupKeys = Object.keys(localStorage)
+    .filter(key => key.startsWith('roles_backup_2026'))
+    .sort();
+
+if (backupKeys.length > 20) {
+    const oldKeys = backupKeys.slice(0, backupKeys.length - 20);
+
+    oldKeys.forEach(key => {
+        localStorage.removeItem(key);
+    });
+}
     localStorage.setItem('roles', JSON.stringify(roles));
 }
 
