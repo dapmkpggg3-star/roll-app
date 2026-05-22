@@ -586,7 +586,7 @@ function editRole(id) {
   behavior: 'smooth'
 });
 document.body.classList.add('editing-mode');
-
+console.log('editing mode ON');
 }
 
 function updateRole() {
