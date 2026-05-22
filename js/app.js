@@ -90,7 +90,8 @@ if (currentRoles && !localStorage.getItem('roles_backup_latest')) {
 
     localStorage.setItem('roles_backup_saved_at', new Date().toISOString());
 }
-
+const historyKey = `roles_backup_${new Date().toISOString()}`;
+localStorage.setItem(historyKey, JSON.stringify(currentRoles || []));
     localStorage.setItem('roles', JSON.stringify(roles));
 }
 
