@@ -1121,10 +1121,15 @@ body.tablet-mode tbody td:last-child .action-buttons button {
   gap: 8px;
   flex-wrap: wrap;
 }
-body.tablet-mode .roles-table-container,
 body.tablet-mode .table-container {
-  max-width: 1000px;
-  margin: 0 auto;
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+}
+
+body.tablet-mode tbody {
+  width: 100% !important;
+  grid-template-columns: repeat(2, 1fr) !important;
 }
 
 body.tablet-mode tbody tr {
