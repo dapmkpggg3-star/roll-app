@@ -437,7 +437,39 @@ function getFilteredRoles() {
         ].some(field => field.toLowerCase().includes(normalizedQuery));
     });
 }
+function showToast(message) {
+  const toast = document.createElement("div");
+  toast.textContent = message;
 
+  toast.style.position = "fixed";
+  toast.style.bottom = "24px";
+  toast.style.left = "50%";
+  toast.style.transform = "translateX(-50%)";
+  toast.style.background = "rgba(40,40,40,0.92)";
+  toast.style.color = "#fff";
+  toast.style.padding = "14px 22px";
+  toast.style.borderRadius = "14px";
+  toast.style.fontSize = "16px";
+  toast.style.fontWeight = "700";
+  toast.style.zIndex = "99999";
+  toast.style.boxShadow = "0 8px 24px rgba(0,0,0,0.25)";
+  toast.style.opacity = "0";
+  toast.style.transition = "opacity 0.25s ease";
+
+  document.body.appendChild(toast);
+
+  requestAnimationFrame(() => {
+    toast.style.opacity = "1";
+  });
+
+  setTimeout(() => {
+    toast.style.opacity = "0";
+
+    setTimeout(() => {
+      toast.remove();
+    }, 250);
+  }, 1800);
+}
 function renderRoles() {
     const roleList = document.getElementById('role-list');
     roleList.innerHTML = '';
@@ -638,6 +670,7 @@ function updateRole() {
 
     renderRoles();
     syncRoles();
+    showToast("更新しました");
 
 setTimeout(() => {
   window.scrollTo({
