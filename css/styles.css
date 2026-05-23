@@ -1111,3 +1111,13 @@ body.tablet-mode tbody td:last-child .action-buttons button {
   padding: 20px !important;
   background: #ff9800 !important;
 }
+.request-btn {
+  background: #0ea5e9 !important;
+  color: white !important;
+  font-weight: 800 !important;
+}
+
+.action-buttons {
+  gap: 8px;
+  flex-wrap: wrap;
+}
