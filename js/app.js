@@ -526,6 +526,7 @@ return String(a.name || '').localeCompare(String(b.name || ''), 'ja');
 
     visibleRoles.forEach(role => {
         const row = document.createElement('tr');
+        row.id = `role-${role.id}`;
 
         const standMatch = String(role.name || '').match(/#?(\d+)/);
 const standNumber = standMatch ? Number(standMatch[1]) : 0;
@@ -679,7 +680,7 @@ function updateRole() {
     renderRoles();
     syncRoles();
     showToast("更新しました");
-    
+
     setTimeout(() => {
   updatedRoleId = null;
   renderRoles();
