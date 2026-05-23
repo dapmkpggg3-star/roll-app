@@ -730,12 +730,26 @@ function requestWork(roleId) {
 
     if (!role) return;
 
-    alert(
-`作業依頼
-スタンド番号：${role.name}
+const subject = `【作業依頼】${role.name}`;
+
+const body =
+`スタンド番号：${role.name}
+
 ステータス：${role.status}
-メモ：${role.memo || "なし"}`
-    );
+
+メモ：
+${role.memo || "なし"}
+
+作業内容：
+・引き取り依頼
+・改削依頼注文書の作成送付
+
+依頼日時：
+${new Date().toLocaleString("ja-JP")}
+`;
+
+window.location.href =
+`mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }
 
 function deleteRole(id) {
