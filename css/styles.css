@@ -1161,3 +1161,26 @@ body.tablet-mode tbody tr {
 body.tablet-mode .stand-name-cell {
   font-size: 28px !important;
 }
+/* タブレットモード：カードを2列で画面いっぱいに広げる */
+body.tablet-mode table,
+body.tablet-mode tbody {
+  width: 100% !important;
+}
+
+body.tablet-mode tbody {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 16px !important;
+}
+
+body.tablet-mode tbody tr {
+  width: 100% !important;
+  max-width: none !important;
+  min-width: 0 !important;
+  box-sizing: border-box !important;
+}
+
+body.tablet-mode .card,
+body.tablet-mode tr {
+  width: 100% !important;
+}
