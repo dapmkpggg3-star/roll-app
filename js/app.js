@@ -748,8 +748,10 @@ ${role.memo || "なし"}
 ${new Date().toLocaleString("ja-JP")}
 `;
 
-window.location.href =
+const mailtoUrl =
 `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+
+window.open(mailtoUrl, "_blank");
 }
 
 function deleteRole(id) {
