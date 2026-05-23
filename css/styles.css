@@ -1056,24 +1056,13 @@ body.tablet-mode tbody td:last-child .action-buttons button {
 }
 
 
+
+@keyframes fadeOut {
   0% {
     opacity: 1;
   }
 
   80% {
-    opacity: 1;
-  }
-
-  100% {
-    opacity: 0;
-  }
-}@keyframes fadeOut {
-
-  0% {
-    opacity: 1;
-  }
-
-  70% {
     opacity: 1;
   }
 
