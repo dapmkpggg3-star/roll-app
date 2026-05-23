@@ -687,12 +687,21 @@ function updateRole() {
 }, 3000);
 
 setTimeout(() => {
-  window.scrollTo({
-    top: lastScrollY,
-    behavior: "smooth"
-  });
+  const updatedRow = document.getElementById(`role-${updatedRoleId}`);
+
+  if (updatedRow) {
+    updatedRow.scrollIntoView({
+      behavior: "smooth",
+      block: "center"
+    });
+  } else {
+    window.scrollTo({
+      top: lastScrollY,
+      behavior: "smooth"
+    });
+  }
 }, 300);
-}
+
 
 function cancelEdit() {
     editingId = null;
