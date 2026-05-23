@@ -1184,3 +1184,22 @@ body.tablet-mode .card,
 body.tablet-mode tr {
   width: 100% !important;
 }
+/* タブレットモード：一覧エリアの幅制限を解除 */
+body.tablet-mode .list-section,
+body.tablet-mode .table-wrap,
+body.tablet-mode .roles-table,
+body.tablet-mode #roleList,
+body.tablet-mode table,
+body.tablet-mode tbody {
+  width: 100% !important;
+  max-width: none !important;
+}
+
+body.tablet-mode tbody {
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+body.tablet-mode tbody tr {
+  margin: 0 !important;
+}
