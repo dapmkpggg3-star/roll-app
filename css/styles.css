@@ -1225,3 +1225,24 @@ body.tablet-mode tbody tr td {
   width: 100% !important;
   display: block !important;
 }
+/* PCでは通常の表表示に戻す */
+body:not(.tablet-mode) table {
+  display: table !important;
+}
+
+body:not(.tablet-mode) thead {
+  display: table-header-group !important;
+}
+
+body:not(.tablet-mode) tbody {
+  display: table-row-group !important;
+}
+
+body:not(.tablet-mode) tr {
+  display: table-row !important;
+}
+
+body:not(.tablet-mode) th,
+body:not(.tablet-mode) td {
+  display: table-cell !important;
+}
