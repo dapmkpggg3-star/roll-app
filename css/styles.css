@@ -1082,3 +1082,16 @@ body.tablet-mode tbody td:last-child .action-buttons button {
     opacity: 0;
   }
 }
+.updated-row {
+  animation: updatedFlash 2s ease;
+}
+
+@keyframes updatedFlash {
+  0% {
+    background-color: rgba(76, 175, 80, 0.45);
+  }
+
+  100% {
+    background-color: transparent;
+  }
+}
