@@ -81,6 +81,7 @@ let statusFilter = 'all';
 let sortOption = 'name';
 let editingId = null; // 編集中のID
 let lastScrollY = 0;
+let updatedRoleId = null;
 
 function saveLocalRoles() {
 
@@ -544,11 +545,16 @@ if (standNumber >= 2 && standNumber <= 5) {
 }
         const formattedDate = formatUpdatedAt(role.updatedAt);
         row.innerHTML = `
-            <td><span class="role-id stand-name-cell">${escapeHtml(role.name)}</span></td>
+            <td>
+  <span class="role-id stand-name-cell">${escapeHtml(role.name)}</span>
+  ${updatedRoleId === role.id ? '<span class="updated-badge">更新しました</span>' : ''}
+</td>
             <td>${getStatusBadge(role.status)}</td>
             <td>${escapeHtml(getMemoPreview(role.memo))}</td>
             <td>${formattedDate}</td>
+            
             <td>
+            
                 <div class="action-buttons">
                     <button class="action-btn edit-btn" onclick="editRole(${role.id})">✏️ 編集</button>
                     <button class="action-btn edit-btn" onclick="showMemo(${role.id})">📝 詳細</button>
@@ -661,6 +667,8 @@ function updateRole() {
     role.status = roleStatus;
     role.memo = roleMemo;
     role.updatedAt = new Date().toISOString();
+
+    updatedRoleId = role.id;
     
     saveLocalRoles();
     cancelEdit();
