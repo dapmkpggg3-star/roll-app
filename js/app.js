@@ -705,6 +705,7 @@ setTimeout(() => {
     });
   }
 }, 300);
+}
 
 
 function cancelEdit() {
