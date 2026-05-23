@@ -632,6 +632,8 @@ function updateRole() {
     
     saveLocalRoles();
     cancelEdit();
+    document.body.classList.remove("editing-mode");
+    
     renderRoles();
     syncRoles();
 
