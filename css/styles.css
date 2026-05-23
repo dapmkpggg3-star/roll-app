@@ -1148,3 +1148,16 @@ body.tablet-mode .action-buttons button {
   font-size: 18px !important;
   font-weight: 800;
 }
+body.tablet-mode tbody {
+  grid-template-columns: repeat(2, minmax(320px, 1fr)) !important;
+  gap: 20px !important;
+}
+
+body.tablet-mode tbody tr {
+  min-height: 280px !important;
+  padding: 24px !important;
+}
+
+body.tablet-mode .stand-name-cell {
+  font-size: 28px !important;
+}
