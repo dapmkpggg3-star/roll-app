@@ -1102,3 +1102,12 @@ body.tablet-mode tbody td:last-child .action-buttons button {
   border-radius: 18px;
   padding: 20px !important;
 }
+#updateRoleBtn {
+  width: 100%;
+  min-height: 90px !important;
+  font-size: 32px !important;
+  font-weight: 900;
+  border-radius: 18px;
+  padding: 20px !important;
+  background: #ff9800;
+}
