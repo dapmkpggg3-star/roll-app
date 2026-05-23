@@ -563,7 +563,12 @@ if (standNumber >= 2 && standNumber <= 5) {
                 <div class="action-buttons">
                     <button class="action-btn edit-btn" onclick="editRole(${role.id})">✏️ 編集</button>
                     <button class="action-btn edit-btn" onclick="showMemo(${role.id})">📝 詳細</button>
-                    <button class="action-btn request-btn" onclick="requestWork(${role.id})">📩 作業依頼</button>
+                    ${role.status === "改削行き（搬出可能）" ? `
+<button class="action-btn request-btn"
+onclick="requestWork('${role.id}')">
+📦 作業依頼
+</button>
+` : ""}
                     <button class="action-btn delete-btn" onclick="deleteRole(${role.id})">🗑️ 削除</button>
                 </div>
             </td>
