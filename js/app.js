@@ -563,6 +563,7 @@ if (standNumber >= 2 && standNumber <= 5) {
                 <div class="action-buttons">
                     <button class="action-btn edit-btn" onclick="editRole(${role.id})">✏️ 編集</button>
                     <button class="action-btn edit-btn" onclick="showMemo(${role.id})">📝 詳細</button>
+                    <button class="action-btn request-btn" onclick="requestWork(${role.id})">📩 作業依頼</button>
                     <button class="action-btn delete-btn" onclick="deleteRole(${role.id})">🗑️ 削除</button>
                 </div>
             </td>
@@ -718,6 +719,19 @@ function cancelEdit() {
     document.getElementById('addRoleBtn').style.display = 'inline-block';
     document.getElementById('updateRoleBtn').style.display = 'none';
     document.getElementById('cancelEditBtn').style.display = 'none';
+}
+
+function requestWork(roleId) {
+    const role = roles.find(r => r.id === roleId);
+
+    if (!role) return;
+
+    alert(
+`作業依頼
+スタンド番号：${role.name}
+ステータス：${role.status}
+メモ：${role.memo || "なし"}`
+    );
 }
 
 function deleteRole(id) {
