@@ -1042,15 +1042,15 @@ body.tablet-mode tbody td:last-child .action-buttons button {
     padding: 8px 4px;
 }
 .updated-badge {
-  margin-top: 8px;
-  display: inline-block;
+  display: block;
+  width: fit-content;
+  margin: 0 0 8px auto;
   background: #22c55e;
   color: white;
   padding: 4px 10px;
   border-radius: 999px;
   font-size: 12px;
   font-weight: 700;
-  animation: fadeOut 2s forwards;
 }
 
 @keyframes fadeOut {
