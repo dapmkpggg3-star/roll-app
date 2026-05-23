@@ -80,6 +80,7 @@ let searchQuery = '';
 let statusFilter = 'all';
 let sortOption = 'name';
 let editingId = null; // 編集中のID
+let lastScrollY = 0;
 
 function saveLocalRoles() {
 
@@ -569,6 +570,7 @@ function addRole() {
 
 
 function editRole(id) {
+    lastScrollY = window.scrollY;
     const role = roles.find(r => String(r.id) === String(id));
     if (!role) return;
     
@@ -632,6 +634,11 @@ function updateRole() {
     cancelEdit();
     renderRoles();
     syncRoles();
+    
+    window.scrollTo({
+  top: lastScrollY,
+  behavior: "smooth"
+});
 }
 
 function cancelEdit() {
