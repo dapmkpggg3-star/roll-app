@@ -1111,3 +1111,14 @@ body.tablet-mode tbody td:last-child .action-buttons button {
   padding: 20px !important;
   background: #ff9800;
 }
+#updateRoleBtn[style*="inline-block"],
+#updateRoleBtn {
+  display: block !important;
+  width: 100% !important;
+  min-height: 90px !important;
+  font-size: 32px !important;
+  font-weight: 900 !important;
+  border-radius: 18px !important;
+  padding: 20px !important;
+  background: #ff9800 !important;
+}
