@@ -679,6 +679,11 @@ function updateRole() {
     renderRoles();
     syncRoles();
     showToast("更新しました");
+    
+    setTimeout(() => {
+  updatedRoleId = null;
+  renderRoles();
+}, 3000);
 
 setTimeout(() => {
   window.scrollTo({
