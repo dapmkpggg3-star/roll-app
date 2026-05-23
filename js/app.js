@@ -564,10 +564,9 @@ if (standNumber >= 2 && standNumber <= 5) {
                     <button class="action-btn edit-btn" onclick="editRole(${role.id})">✏️ 編集</button>
                     <button class="action-btn edit-btn" onclick="showMemo(${role.id})">📝 詳細</button>
                     ${role.status === "改削行き（搬出可能）" ? `
-<button class="action-btn request-btn"
-onclick="requestWork('${role.id}')">
-📦 作業依頼
-</button>
+  <button class="action-btn request-btn" onclick="requestWork('${role.id}')">
+    📦 作業依頼
+  </button>
 ` : ""}
                     <button class="action-btn delete-btn" onclick="deleteRole(${role.id})">🗑️ 削除</button>
                 </div>
@@ -727,7 +726,7 @@ function cancelEdit() {
 }
 
 function requestWork(roleId) {
-    const role = roles.find(r => r.id === roleId);
+    const role = roles.find(r => String(r.id) === String(roleId));
 
     if (!role) return;
 
