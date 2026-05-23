@@ -1051,6 +1051,22 @@ body.tablet-mode tbody td:last-child .action-buttons button {
   border-radius: 999px;
   font-size: 12px;
   font-weight: 700;
+
+  animation: fadeOut 3s forwards;
+}
+
+@keyframes fadeOut {
+  0% {
+    opacity: 1;
+  }
+
+  80% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+  }
 }
 
 @keyframes fadeOut {
