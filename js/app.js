@@ -634,11 +634,13 @@ function updateRole() {
     cancelEdit();
     renderRoles();
     syncRoles();
-    
-    window.scrollTo({
-  top: lastScrollY,
-  behavior: "smooth"
-});
+
+setTimeout(() => {
+  window.scrollTo({
+    top: lastScrollY,
+    behavior: "smooth"
+  });
+}, 300);
 }
 
 function cancelEdit() {
