@@ -1094,3 +1094,10 @@ body.tablet-mode tbody td:last-child .action-buttons button {
     background-color: transparent;
   }
 }
+#addRoleBtn {
+  min-width: 180px;
+  min-height: 64px;
+  font-size: 22px;
+  font-weight: 800;
+  border-radius: 14px;
+}
