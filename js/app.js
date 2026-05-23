@@ -528,6 +528,10 @@ return String(a.name || '').localeCompare(String(b.name || ''), 'ja');
         const row = document.createElement('tr');
         row.id = `role-${role.id}`;
 
+        if (updatedRoleId === role.id) {
+  row.classList.add("updated-row");
+}
+
         const standMatch = String(role.name || '').match(/#?(\d+)/);
 const standNumber = standMatch ? Number(standMatch[1]) : 0;
 
@@ -837,3 +841,4 @@ function setSummaryFilter(status) {
     });
 }
 window.loadRoles = loadLocalRoles;
+window.login = login;

@@ -1055,7 +1055,7 @@ body.tablet-mode tbody td:last-child .action-buttons button {
   animation: fadeOut 3s forwards;
 }
 
-@keyframes fadeOut {
+
   0% {
     opacity: 1;
   }
@@ -1067,9 +1067,8 @@ body.tablet-mode tbody td:last-child .action-buttons button {
   100% {
     opacity: 0;
   }
-}
+}@keyframes fadeOut {
 
-@keyframes fadeOut {
   0% {
     opacity: 1;
   }
