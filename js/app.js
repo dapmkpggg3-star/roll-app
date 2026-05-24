@@ -558,7 +558,7 @@ if (standNumber >= 2 && standNumber <= 5) {
             <td>${escapeHtml(getMemoPreview(role.memo))}</td>
             <td>${formattedDate}</td>
             <td>
-${role.requestSent
+${role.status === "改削行き（搬出可能）" && role.requestSent === true
 ? '<span style="color:green;font-weight:700;">✅ 作業依頼済み</span>'
 : role.status === "改削行き（搬出可能）"
 ? '<span style="color:red;font-weight:700;">⚠ 作業依頼未送信</span>'
