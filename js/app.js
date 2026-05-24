@@ -765,9 +765,12 @@ setTimeout(() => {
 
     if (!confirmed) return;
 
-   role.requestSent = true;
+role.requestSent = true;
+role.updatedAt = new Date().toISOString();
+
 saveLocalRoles();
 renderRoles();
+syncRoles();
 }, 1000);
 }
 
