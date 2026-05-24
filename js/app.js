@@ -557,7 +557,14 @@ if (standNumber >= 2 && standNumber <= 5) {
             <td>${getStatusBadge(role.status)}</td>
             <td>${escapeHtml(getMemoPreview(role.memo))}</td>
             <td>${formattedDate}</td>
-            
+            <td>
+${role.requestSent
+? '<span style="color:green;font-weight:700;">✅ 作業依頼済み</span>'
+: role.status === "改削行き（搬出可能）"
+? '<span style="color:red;font-weight:700;">⚠ 作業依頼未送信</span>'
+: ''}
+</td>
+
             <td>
             
                 <div class="action-buttons">
@@ -752,6 +759,12 @@ const mailtoUrl =
 `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 
 window.open(mailtoUrl, "_blank");
+
+role.requestSent = true;
+
+saveRoles();
+
+renderRoles();
 }
 
 function deleteRole(id) {
