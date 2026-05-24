@@ -771,7 +771,8 @@ role.updatedAt = new Date().toISOString();
 saveLocalRoles();
 renderRoles();
 syncRoles();
-}, 1000);
+alert(`保存テスト：${role.name} / requestSent=${role.requestSent}`);
+}, 500);
 }
 
 function deleteRole(id) {
@@ -780,6 +781,7 @@ function deleteRole(id) {
         saveLocalRoles();
         renderRoles();
         syncRoles();
+    
     }
 }
 
