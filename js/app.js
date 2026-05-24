@@ -737,9 +737,9 @@ function requestWork(roleId) {
 
     if (!role) return;
 
-const subject = `【作業依頼】${role.name}`;
+    const subject = `【作業依頼】${role.name}`;
 
-const body =
+    const body =
 `スタンド番号：${role.name}
 
 ステータス：${role.status}
@@ -755,24 +755,20 @@ ${role.memo || "なし"}
 ${new Date().toLocaleString("ja-JP")}
 `;
 
-const mailtoUrl =
+    const mailtoUrl =
 `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 
-window.open(mailtoUrl, "_blank");
-
-setTimeout(() => {
-    const confirmed = confirm("メールを送信しましたか？\nOKを押すと作業依頼済みにします。");
+    const confirmed = confirm("作業依頼メールを作成し、依頼済みにしますか？");
 
     if (!confirmed) return;
 
-role.requestSent = true;
-role.updatedAt = new Date().toISOString();
+    role.requestSent = true;
+    role.updatedAt = new Date().toISOString();
 
-saveLocalRoles();
-renderRoles();
-syncRoles();
-alert(`保存テスト：${role.name} / requestSent=${role.requestSent}`);
-}, 500);
+    saveLocalRoles();
+    renderRoles();
+
+    window.open(mailtoUrl, "_blank");
 }
 
 function deleteRole(id) {
