@@ -760,11 +760,15 @@ const mailtoUrl =
 
 window.open(mailtoUrl, "_blank");
 
-role.requestSent = true;
+setTimeout(() => {
+    const confirmed = confirm("メールを送信しましたか？\nOKを押すと作業依頼済みにします。");
 
-saveRoles();
+    if (!confirmed) return;
 
-renderRoles();
+    role.requestSent = true;
+    saveRoles();
+    renderRoles();
+}, 1000);
 }
 
 function deleteRole(id) {
