@@ -765,9 +765,9 @@ setTimeout(() => {
 
     if (!confirmed) return;
 
-    role.requestSent = true;
-    saveRoles();
-    renderRoles();
+   role.requestSent = true;
+saveLocalRoles();
+renderRoles();
 }, 1000);
 }
 
