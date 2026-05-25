@@ -154,6 +154,11 @@ localStorage.setItem(
 localStorage.setItem('roles_backup_before_sync', JSON.stringify(roles));
 localStorage.setItem('roles_backup_before_sync_saved_at', new Date().toISOString());
 if (!roles || roles.length === 0) {
+    if (!roles || roles.length < 50) {
+    alert('データ件数が少なすぎるため同期を停止しました');
+    isSyncing = false;
+    return;
+}
     alert('データ0件のため同期を停止しました');
     isSyncing = false;
     return;
