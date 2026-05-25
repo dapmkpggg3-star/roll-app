@@ -153,7 +153,21 @@ localStorage.setItem(
 );
 localStorage.setItem('roles_backup_before_sync', JSON.stringify(roles));
 localStorage.setItem('roles_backup_before_sync_saved_at', new Date().toISOString());
-if (!roles || roles.length < 50) {
+const previousRoles = JSON.parse(
+    localStorage.getItem('roles_backup_before_sync') || '[]'
+);
+
+if (
+    previousRoles.length > 0 &&
+    roles.length < previousRoles.length * 0.5
+) {
+    alert(
+        `データ件数が急減しています。\n同期を停止しました。\n現在:${roles.length}件\n前回:${previousRoles.length}件`
+    );
+
+    isSyncing = false;
+    return;
+}
     alert('データ件数が少なすぎるため同期を停止しました');
     isSyncing = false;
     return;
