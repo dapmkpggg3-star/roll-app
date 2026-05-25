@@ -140,6 +140,7 @@ function saveRemoteRoles() {
     return saveData();
 }
 let isSyncing = false;
+
 async function syncRoles() {
     if (isSyncing) {
         setSyncMessage('同期中です。少し待ってください。');
@@ -149,35 +150,20 @@ async function syncRoles() {
     isSyncing = true;
 
     const roles = JSON.parse(localStorage.getItem('roles') || '[]');
+    const previousRoles = JSON.parse(localStorage.getItem('roles_backup_before_sync') || '[]');
 
-    const previousRoles = JSON.parse(
-        localStorage.getItem('roles_backup_before_sync') || '[]'
-    );
-
-    if (
-        previousRoles.length > 0 &&
-        roles.length < previousRoles.length * 0.5
-    ) {
-        alert(
-            `データ件数が急減しています。\n同期を停止しました。\n現在:${roles.length}件\n前回:${previousRoles.length}件`
-        );
-
+    if (previousRoles.length > 0 && roles.length < previousRoles.length * 0.5) {
+        alert(`データ件数が急減しています。\n同期を停止しました。\n現在:${roles.length}件\n前回:${previousRoles.length}件`);
         isSyncing = false;
         return;
     }
 
-    localStorage.setItem('roles_backup_before_sync', JSON.stringify(roles));
-    localStorage.setItem('roles_backup_before_sync_saved_at', new Date().toISOString());
-        setSyncMessage('同期中です。少し待ってください。');
+    if (!navigator.onLine) {
+        isSyncing = false;
+        setSyncMessage('オフラインです。通信を確認してから再度同期してください。', true);
         return;
     }
 
-    isSyncing = true;
-if (!navigator.onLine) {
-    isSyncing = false;
-    setSyncMessage('オフラインです。通信を確認してから再度同期してください。', true);
-    return;
-}
     try {
         saveLocalRoles();
 
@@ -186,13 +172,12 @@ if (!navigator.onLine) {
             return;
         }
 
+        localStorage.setItem('roles_backup_before_sync', JSON.stringify(roles));
+        localStorage.setItem('roles_backup_before_sync_saved_at', new Date().toISOString());
+
         setSyncMessage('スプレッドシートと同期中です...');
 
-        console.log('syncRoles: Starting sync...');
-
         const ok = await saveData();
-
-        console.log('syncRoles: Result -', ok);
 
         if (ok) {
             saveLastSyncAt();
