@@ -168,10 +168,7 @@ if (
     isSyncing = false;
     return;
 }
-    alert('データ件数が少なすぎるため同期を停止しました');
-    isSyncing = false;
-    return;
-}
+
 
     if (isSyncing) {
         setSyncMessage('同期中です。少し待ってください。');
