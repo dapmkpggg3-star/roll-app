@@ -158,10 +158,7 @@ if (!roles || roles.length < 50) {
     isSyncing = false;
     return;
 }
-    alert('データ0件のため同期を停止しました');
-    isSyncing = false;
-    return;
-}
+
     if (isSyncing) {
         setSyncMessage('同期中です。少し待ってください。');
         return;
