@@ -142,6 +142,15 @@ function saveRemoteRoles() {
 let isSyncing = false;
 async function syncRoles() {
         const roles = JSON.parse(localStorage.getItem('roles') || '[]');
+        localStorage.setItem(
+    'roles_backup_before_sync',
+    JSON.stringify(roles)
+);
+
+localStorage.setItem(
+    'roles_backup_before_sync_saved_at',
+    new Date().toISOString()
+);
 localStorage.setItem('roles_backup_before_sync', JSON.stringify(roles));
 localStorage.setItem('roles_backup_before_sync_saved_at', new Date().toISOString());
 if (!roles || roles.length === 0) {
