@@ -70,10 +70,10 @@ async function fetchData() {
     try {
         console.log('loadRemoteRoles: Starting fetch...');
         const url = `${SHEETS_ENDPOINT}?action=fetch&t=${Date.now()}`;
-const response = await fetch(url, {
-    method: 'GET',
-    cache: 'no-store'
-});
+        const response = await fetch(url, {
+            method: 'GET',
+            cache: 'no-store'
+        });
         
         const data = await readJsonResponse(response, 'データ取得');
         console.log('loadRemoteRoles: Response data', data);
@@ -110,26 +110,38 @@ async function saveData() {
             roles: roles
         });
 
-const controller = new AbortController();
-const timeoutId = setTimeout(() => controller.abort(), 15000);
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000);
 
-try {
-    await fetch(SHEETS_ENDPOINT, {
-        method: 'POST',
-        mode: 'no-cors',
-        body: payload,
-        signal: controller.signal
-    });
-} finally {
-    clearTimeout(timeoutId);
-}
+        try {
+            await fetch(SHEETS_ENDPOINT, {
+                method: 'POST',
+                mode: 'no-cors',
+                body: payload,
+                signal: controller.signal
+            });
+        } finally {
+            clearTimeout(timeoutId);
+        }
 
-await new Promise(resolve => setTimeout(resolve, 1200));
-return true;
+        await new Promise(resolve => setTimeout(resolve, 1200));
+        return true;
     } catch (error) {
         console.error('saveRemoteRoles error:', error);
         throw error;
     }
+}
+
+async function fetchRemoteRolesForGuard() {
+    const url = `${SHEETS_ENDPOINT}?action=fetch&t=${Date.now()}`;
+    const response = await fetch(url, {
+        method: 'GET',
+        cache: 'no-store'
+    });
+
+    const data = await readJsonResponse(response, '同期前データ確認');
+    validateFetchResponse(data);
+    return data.roles;
 }
 
 function loadRemoteRoles() {
@@ -149,30 +161,47 @@ async function syncRoles() {
 
     isSyncing = true;
 
-    const roles = JSON.parse(localStorage.getItem('roles') || '[]');
-    const previousRoles = JSON.parse(localStorage.getItem('roles_backup_before_sync') || '[]');
-
-    if (previousRoles.length > 0 && roles.length < previousRoles.length * 0.5) {
-        alert(`データ件数が急減しています。\n同期を停止しました。\n現在:${roles.length}件\n前回:${previousRoles.length}件`);
-        isSyncing = false;
-        return;
-    }
-
-    if (!navigator.onLine) {
-        isSyncing = false;
-        setSyncMessage('オフラインです。通信を確認してから再度同期してください。', true);
-        return;
-    }
-
     try {
-        saveLocalRoles();
+        if (!navigator.onLine) {
+            setSyncMessage('オフラインです。通信を確認してから再度同期してください。', true);
+            return;
+        }
 
         if (!isRemoteConfigured()) {
             setSyncMessage('スプレッドシート同期先が設定されていません。設定を確認してください。', true);
             return;
         }
 
-        localStorage.setItem('roles_backup_before_sync', JSON.stringify(roles));
+        const localRoles = JSON.parse(localStorage.getItem('roles') || '[]');
+        const previousRoles = JSON.parse(localStorage.getItem('roles_backup_before_sync') || '[]');
+        const remoteRoles = await fetchRemoteRolesForGuard();
+
+        if (!Array.isArray(localRoles) || localRoles.length === 0) {
+            alert('アプリ側データが0件のため同期を停止しました。');
+            setSyncMessage('アプリ側データが0件のため同期を停止しました。', true);
+            return;
+        }
+
+        if (remoteRoles.length > 0 && localRoles.length < remoteRoles.length * 0.5) {
+            alert(
+                `スプレッドシート側よりアプリ側データが大きく少ないため同期を停止しました。\nアプリ:${localRoles.length}件\nスプレッドシート:${remoteRoles.length}件`
+            );
+            setSyncMessage('件数差が大きいため同期を停止しました。', true);
+            return;
+        }
+
+        if (previousRoles.length > 0 && localRoles.length < previousRoles.length * 0.5) {
+            alert(
+                `前回同期前よりデータ件数が急減しています。\n同期を停止しました。\n現在:${localRoles.length}件\n前回:${previousRoles.length}件`
+            );
+            setSyncMessage('前回より件数が急減したため同期を停止しました。', true);
+            return;
+        }
+
+        roles = localRoles;
+        saveLocalRoles();
+
+        localStorage.setItem('roles_backup_before_sync', JSON.stringify(localRoles));
         localStorage.setItem('roles_backup_before_sync_saved_at', new Date().toISOString());
 
         setSyncMessage('スプレッドシートと同期中です...');
