@@ -48,10 +48,12 @@
                     <input type="search" id="role-search" placeholder="スタンド番号、ステータス、メモで検索..." aria-label="ロール検索" oninput="searchRoles(event)">
                     <select id="status-filter" class="status-filter-select" aria-label="ステータス絞り込み" onchange="changeStatusFilter(event)">
                         <option value="all">すべて</option>
-                        <option value="online">オンライン</option>
-                        <option value="reworking">改削中</option>
-                        <option value="used">中古予備</option>
-                        <option value="other">その他</option>
+<option value="オンライン">オンライン</option>
+<option value="改削中">改削中</option>
+<option value="中古予備（バラシ前）">中古予備（バラシ前）</option>
+<option value="改削行き（搬出可能）">改削行き（搬出可能）</option>
+<option value="新品予備（組替可能）">新品予備（組替可能）</option>
+<option value="新品予備（組込完了）">新品予備（組込完了）</option>
                     </select>
                     <select id="sort-select" class="sort-select" onchange="changeSort(event)">
                         <option value="updatedAtDesc">更新更新日時が新しい順</option>
@@ -75,14 +77,24 @@
                         <span class="summary-label">改削中</span>
                         <span id="summary-reworking" class="summary-count">0件</span>
                     </div>
-                    <div class="summary-card status-used-standby" onclick="setSummaryFilter('used')">
+                    <div class="summary-card status-used" onclick="setSummaryFilter('中古予備（バラシ前）')">
                         <span class="summary-label">中古予備</span>
                         <span id="summary-used" class="summary-count">0件</span>
                     </div>
-                    <div class="summary-card status-other" onclick="setSummaryFilter('other')">
-                        <span class="summary-label">その他</span>
-                        <span id="summary-other" class="summary-count">0件</span>
-                    </div>
+                    <div class="summary-card status-other" onclick="setSummaryFilter('改削行き（搬出可能）')">
+    <span class="summary-label">改削行き</span>
+    <span id="summary-remove" class="summary-count">0件</span>
+</div>
+
+<div class="summary-card status-other" onclick="setSummaryFilter('新品予備（組替可能）')">
+    <span class="summary-label">新品予備（組替可能）</span>
+    <span id="summary-new-ready" class="summary-count">0件</span>
+</div>
+
+<div class="summary-card status-other" onclick="setSummaryFilter('新品予備（組込完了）')">
+    <span class="summary-label">新品予備（組込完了）</span>
+    <span id="summary-new-installed" class="summary-count">0件</span>
+</div>
                 </div>
                 <div id="role-count" class="role-count"></div>
                 <div id="sync-message" class="sync-message"></div>
@@ -165,9 +177,9 @@
         </div>
     </div>
 
-    <script src="js/sync.js?v=3"></script>
-    <script src="js/csv.js"></script>
-    <script src="js/app.js?v=2"></script>
+    <script src="js/sync.js?v=20260526-2"></script>
+<script src="js/csv.js?v=20260526-1"></script>
+<script src="js/app.js?v=20260526-1"></script>
 
         // ログイン状態チェック
 </body>
