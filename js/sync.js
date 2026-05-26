@@ -98,7 +98,50 @@ async function fetchData() {
 }
 
 async function saveData() {
-    throw new Error('安全確認中のためスプレッドシート保存は一時停止中です。');
+    if (!isRemoteConfigured()) {
+        return false;
+    }
+
+    try {
+        console.log('saveRemoteRoles: Sending data to', SHEETS_ENDPOINT);
+
+        const payload = JSON.stringify({
+            action: 'save',
+            roles: roles
+        });
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+        try {
+            await fetch(SHEETS_ENDPOINT, {
+                method: 'POST',
+                mode: 'no-cors',
+                body: payload,
+                signal: controller.signal
+            });
+        } finally {
+            clearTimeout(timeoutId);
+        }
+
+        await new Promise(resolve => setTimeout(resolve, 1200));
+        return true;
+    } catch (error) {
+        console.error('saveRemoteRoles error:', error);
+        throw error;
+    }
+}
+
+async function fetchRemoteRolesForGuard() {
+    const url = `${SHEETS_ENDPOINT}?action=fetch&t=${Date.now()}`;
+    const response = await fetch(url, {
+        method: 'GET',
+        cache: 'no-store'
+    });
+
+    const data = await readJsonResponse(response, '同期前データ確認');
+    validateFetchResponse(data);
+    return data.roles;
 }
 
 function loadRemoteRoles() {
@@ -111,10 +154,79 @@ function saveRemoteRoles() {
 let isSyncing = false;
 
 async function syncRoles() {
-    setSyncMessage('安全確認中のため、スプレッドシートへの書き込み同期は一時停止中です。', true);
-    alert('安全確認中のため、同期ボタンは一時停止しています。スプレッドシートは上書きしません。');
-}
+    if (isSyncing) {
+        setSyncMessage('同期中です。少し待ってください。');
+        return;
+    }
 
+    isSyncing = true;
+
+    try {
+        if (!navigator.onLine) {
+            setSyncMessage('オフラインです。通信を確認してから再度同期してください。', true);
+            return;
+        }
+
+        if (!isRemoteConfigured()) {
+            setSyncMessage('スプレッドシート同期先が設定されていません。設定を確認してください。', true);
+            return;
+        }
+
+        const localRoles = JSON.parse(localStorage.getItem('roles') || '[]');
+        const previousRoles = JSON.parse(localStorage.getItem('roles_backup_before_sync') || '[]');
+        const remoteRoles = await fetchRemoteRolesForGuard();
+
+        console.log('SYNC GUARD CHECK', {
+            local: localRoles.length,
+            remote: remoteRoles.length,
+            previous: previousRoles.length
+        });
+
+        if (!Array.isArray(localRoles) || localRoles.length === 0) {
+            alert('アプリ側データが0件のため同期を停止しました。');
+            setSyncMessage('アプリ側データが0件のため同期を停止しました。', true);
+            return;
+        }
+
+        if (remoteRoles.length >= 10 && localRoles.length < remoteRoles.length * 0.8) {
+            alert(
+                `スプレッドシート側よりアプリ側データが少なすぎるため同期を停止しました。\nアプリ:${localRoles.length}件\nスプレッドシート:${remoteRoles.length}件`
+            );
+            setSyncMessage('件数差が大きいため同期を停止しました。', true);
+            return;
+        }
+
+        if (previousRoles.length >= 10 && localRoles.length < previousRoles.length * 0.8) {
+            alert(
+                `前回同期前よりデータ件数が急減しています。\n同期を停止しました。\n現在:${localRoles.length}件\n前回:${previousRoles.length}件`
+            );
+            setSyncMessage('前回より件数が急減したため同期を停止しました。', true);
+            return;
+        }
+
+        roles = localRoles;
+        saveLocalRoles();
+
+        localStorage.setItem('roles_backup_before_sync', JSON.stringify(localRoles));
+        localStorage.setItem('roles_backup_before_sync_saved_at', new Date().toISOString());
+
+        setSyncMessage('スプレッドシートと同期中です...');
+
+        const ok = await saveData();
+
+        if (ok) {
+            saveLastSyncAt();
+            setSyncMessage('スプレッドシートと同期しました。');
+        } else {
+            setSyncMessage('スプレッドシートと同期できませんでした。ブラウザ内には保存されています。', true);
+        }
+    } catch (error) {
+        console.error('syncRoles error:', error);
+        setSyncMessage((error.message || 'スプレッドシート同期に失敗しました。') + ' ブラウザ内のデータは残っています。', true);
+    } finally {
+        isSyncing = false;
+    }
+}
 const LAST_SYNC_KEY = 'lastSyncAt';
 
 function formatLastSyncAt(value) {
@@ -130,7 +242,7 @@ function formatLastSyncAt(value) {
 
     const pad = number => String(number).padStart(2, '0');
 
-    return `${date.getFullYear()}/${pad(date.getMonth() + 1)}/${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes() )}:${pad(date.getSeconds())}`;
+    return `${date.getFullYear()}/${pad(date.getMonth() + 1)}/${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
 
 function updateLastSyncTimeDisplay() {
