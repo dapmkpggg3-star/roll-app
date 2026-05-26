@@ -55,6 +55,38 @@ function validateFetchResponse(data) {
     }
 }
 
+function normalizeRole(role) {
+    return {
+        ...role,
+        updatedAt: role.updatedAt || new Date().toISOString(),
+        memo: role.memo || '',
+        status: ALLOWED_STATUSES.includes(role.status) ? role.status : '中古予備（バラシ前）'
+    };
+}
+
+function getRoleMergeKey(role) {
+    if (role && role.id !== undefined && role.id !== null && String(role.id).trim() !== '') {
+        return `id:${String(role.id)}`;
+    }
+
+    return `name:${String(role && role.name ? role.name : '').trim()}`;
+}
+
+function mergeRemoteAndLocalRoles(remoteRoles, localRoles) {
+    const mergedMap = new Map();
+
+    remoteRoles.forEach(role => {
+        mergedMap.set(getRoleMergeKey(role), normalizeRole(role));
+    });
+
+    localRoles.forEach(role => {
+        if (!role || !role.name || String(role.name).trim() === '') return;
+        mergedMap.set(getRoleMergeKey(role), normalizeRole(role));
+    });
+
+    return Array.from(mergedMap.values());
+}
+
 async function fetchData() {
     if (!isRemoteConfigured()) {
         setSyncMessage('スプレッドシート同期先が設定されていません。設定を確認してください。', true);
@@ -69,12 +101,7 @@ async function fetchData() {
 
         const data = await readJsonResponse(response, 'データ取得');
         validateFetchResponse(data);
-        roles = data.roles.map(role => ({
-            ...role,
-            updatedAt: role.updatedAt || new Date().toISOString(),
-            memo: role.memo || '',
-            status: ALLOWED_STATUSES.includes(role.status) ? role.status : '中古予備（バラシ前）'
-        }));
+        roles = data.roles.map(normalizeRole);
         fixOnlineDuplicates();
         saveLocalRoles();
         const ids = roles.map(r => Number(r.id) || 0);
@@ -89,7 +116,50 @@ async function fetchData() {
 }
 
 async function saveData() {
-    throw new Error('安全確認中のためスプレッドシート保存は一時停止中です。');
+    if (!isRemoteConfigured()) {
+        return false;
+    }
+
+    try {
+        console.log('saveRemoteRoles: Sending data to', SHEETS_ENDPOINT);
+
+        const payload = JSON.stringify({
+            action: 'save',
+            roles: roles
+        });
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+        try {
+            await fetch(SHEETS_ENDPOINT, {
+                method: 'POST',
+                mode: 'no-cors',
+                body: payload,
+                signal: controller.signal
+            });
+        } finally {
+            clearTimeout(timeoutId);
+        }
+
+        await new Promise(resolve => setTimeout(resolve, 1200));
+        return true;
+    } catch (error) {
+        console.error('saveRemoteRoles error:', error);
+        throw error;
+    }
+}
+
+async function fetchRemoteRolesForGuard() {
+    const url = `${SHEETS_ENDPOINT}?action=fetch&t=${Date.now()}`;
+    const response = await fetch(url, {
+        method: 'GET',
+        cache: 'no-store'
+    });
+
+    const data = await readJsonResponse(response, '同期前データ確認');
+    validateFetchResponse(data);
+    return data.roles.map(normalizeRole);
 }
 
 function loadRemoteRoles() {
@@ -100,9 +170,90 @@ function saveRemoteRoles() {
     return saveData();
 }
 
+let isSyncing = false;
+
 async function syncRoles() {
-    setSyncMessage('安全確認中のため、スプレッドシートへの書き込み同期は一時停止中です。', true);
-    alert('安全確認中のため、同期ボタンは一時停止しています。スプレッドシートは上書きしません。');
+    if (isSyncing) {
+        setSyncMessage('同期中です。少し待ってください。');
+        return;
+    }
+
+    isSyncing = true;
+
+    try {
+        if (!navigator.onLine) {
+            setSyncMessage('オフラインです。通信を確認してから再度同期してください。', true);
+            return;
+        }
+
+        if (!isRemoteConfigured()) {
+            setSyncMessage('スプレッドシート同期先が設定されていません。設定を確認してください。', true);
+            return;
+        }
+
+        const localRoles = JSON.parse(localStorage.getItem('roles') || '[]').map(normalizeRole);
+        const previousRoles = JSON.parse(localStorage.getItem('roles_backup_before_sync') || '[]').map(normalizeRole);
+        const remoteRoles = await fetchRemoteRolesForGuard();
+
+        console.log('SYNC GUARD CHECK', {
+            local: localRoles.length,
+            remote: remoteRoles.length,
+            previous: previousRoles.length
+        });
+
+        if (!Array.isArray(localRoles) || localRoles.length === 0) {
+            alert('アプリ側データが0件のため同期を停止しました。');
+            setSyncMessage('アプリ側データが0件のため同期を停止しました。', true);
+            return;
+        }
+
+        if (remoteRoles.length >= 10 && localRoles.length < remoteRoles.length * 0.2) {
+            alert(
+                `アプリ側データが少なすぎるため同期を停止しました。\nアプリ:${localRoles.length}件\nスプレッドシート:${remoteRoles.length}件`
+            );
+            setSyncMessage('件数差が大きいため同期を停止しました。', true);
+            return;
+        }
+
+        if (previousRoles.length >= 10 && localRoles.length < previousRoles.length * 0.2) {
+            alert(
+                `前回同期前よりデータ件数が急減しています。\n同期を停止しました。\n現在:${localRoles.length}件\n前回:${previousRoles.length}件`
+            );
+            setSyncMessage('前回より件数が急減したため同期を停止しました。', true);
+            return;
+        }
+
+        const mergedRoles = mergeRemoteAndLocalRoles(remoteRoles, localRoles);
+
+        if (remoteRoles.length >= 10 && mergedRoles.length < remoteRoles.length) {
+            alert('合体後データがスプレッドシート側より少ないため同期を停止しました。');
+            setSyncMessage('合体後データが少ないため同期を停止しました。', true);
+            return;
+        }
+
+        roles = mergedRoles;
+        saveLocalRoles();
+
+        localStorage.setItem('roles_backup_before_sync', JSON.stringify(mergedRoles));
+        localStorage.setItem('roles_backup_before_sync_saved_at', new Date().toISOString());
+
+        setSyncMessage('スプレッドシートと同期中です...');
+
+        const ok = await saveData();
+
+        if (ok) {
+            saveLastSyncAt();
+            renderRoles();
+            setSyncMessage('スプレッドシートと同期しました。');
+        } else {
+            setSyncMessage('スプレッドシートと同期できませんでした。ブラウザ内には保存されています。', true);
+        }
+    } catch (error) {
+        console.error('syncRoles error:', error);
+        setSyncMessage((error.message || 'スプレッドシート同期に失敗しました。') + ' ブラウザ内のデータは残っています。', true);
+    } finally {
+        isSyncing = false;
+    }
 }
 
 const LAST_SYNC_KEY = 'lastSyncAt';
