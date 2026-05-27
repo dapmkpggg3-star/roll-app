@@ -759,12 +759,19 @@ ${new Date().toLocaleString("ja-JP")}
 }
 
 function deleteRole(id) {
-    if (confirm('このロールを削除しますか？')) {
+    const target = roles.find(r => String(r.id) === String(id));
+
+    if (!target) {
+        alert('削除対象が見つかりません');
+        return;
+    }
+
+    if (confirm(`${target.name} を削除しますか？`)) {
         roles = roles.filter(r => String(r.id) !== String(id));
         saveLocalRoles();
         renderRoles();
         syncRoles();
-    
+        showToast('削除しました');
     }
 }
 
