@@ -341,35 +341,7 @@ function isStatusMatched(role) {
         return true;
     }
 
-    if (statusFilter === 'online' || statusFilter === 'オンライン') {
-    return status === 'オンライン';
-}
-
-   if (statusFilter === 'reworking' || statusFilter === '改削中') {
-    return status === '改削中';
-}
-
-if (statusFilter === 'used' || statusFilter === '中古予備（バラシ前）') {
-    return status === '中古予備（バラシ前）';
-}
-
-if (statusFilter === 'remove' || statusFilter === '改削行き（搬出可能）') {
-    return status === '改削行き（搬出可能）';
-}
-
-if (statusFilter === 'newReady' || statusFilter === '新品予備（組替可能）') {
-    return status === '新品予備（組替可能）';
-}
-
-if (statusFilter === 'newInstalled' || statusFilter === '新品予備（組込完了）') {
-    return status === '新品予備（組込完了）';
-}
-
-    if (statusFilter === 'other') {
-        return false;
-    }
-
-    return true;
+    return status === statusFilter;
 }
 
 function getStatusSummaryCategory(role) {
