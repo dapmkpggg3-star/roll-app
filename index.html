@@ -69,50 +69,31 @@
                         <span class="summary-label">全体</span>
                         <span id="summary-total" class="summary-count">0件</span>
                     </div>
-                    onclick="setSummaryFilter('オンライン')"
+                    <div class="summary-card status-online" onclick="setSummaryFilter('オンライン')"
                         <span class="summary-label">オンライン</span>
                         <span id="summary-online" class="summary-count">0件</span>
                     </div>
-                   setSummaryFilter('改削中')
+                    <div class="summary-card status-working" onclick="setSummaryFilter('改削中')"
                         <span class="summary-label">改削中</span>
                         <span id="summary-reworking" class="summary-count">0件</span>
-                  <div id="count-summary" class="count-summary" aria-label="スタンド件数サマリー">
-    <div class="summary-heading">件数サマリー</div>
+                    </div>
+                    <div class="summary-card status-used" onclick="setSummaryFilter('中古予備（バラシ前）')">
+                        <span class="summary-label">中古予備</span>
+                        <span id="summary-used" class="summary-count">0件</span>
+                    </div>
+                    <div class="summary-card status-other" onclick="setSummaryFilter('改削行き（搬出可能）')">
+    <span class="summary-label">改削行き</span>
+    <span id="summary-remove" class="summary-count">0件</span>
+</div>
 
-    <div class="summary-card summary-total" onclick="setSummaryFilter('all')">
-        <span class="summary-label">全体</span>
-        <span id="summary-total" class="summary-count">0件</span>
-    </div>
+<div class="summary-card status-other" onclick="setSummaryFilter('新品予備（組替可能）')">
+    <span class="summary-label">新品予備（組替可能）</span>
+    <span id="summary-new-ready" class="summary-count">0件</span>
+</div>
 
-    <div class="summary-card status-online" onclick="setSummaryFilter('オンライン')">
-        <span class="summary-label">オンライン</span>
-        <span id="summary-online" class="summary-count">0件</span>
-    </div>
-
-    <div class="summary-card status-working" onclick="setSummaryFilter('改削中')">
-        <span class="summary-label">改削中</span>
-        <span id="summary-reworking" class="summary-count">0件</span>
-    </div>
-
-    <div class="summary-card status-used" onclick="setSummaryFilter('中古予備（バラシ前）')">
-        <span class="summary-label">中古予備</span>
-        <span id="summary-used" class="summary-count">0件</span>
-    </div>
-
-    <div class="summary-card status-other" onclick="setSummaryFilter('改削行き（搬出可能）')">
-        <span class="summary-label">改削行き</span>
-        <span id="summary-remove" class="summary-count">0件</span>
-    </div>
-
-    <div class="summary-card status-other" onclick="setSummaryFilter('新品予備（組替可能）')">
-        <span class="summary-label">新品予備（組替可能）</span>
-        <span id="summary-new-ready" class="summary-count">0件</span>
-    </div>
-
-    <div class="summary-card status-other" onclick="setSummaryFilter('新品予備（組込完了）')">
-        <span class="summary-label">新品予備（組込完了）</span>
-        <span id="summary-new-installed" class="summary-count">0件</span>
-    </div>
+<div class="summary-card status-other" onclick="setSummaryFilter('新品予備（組込完了）')">
+    <span class="summary-label">新品予備（組込完了）</span>
+    <span id="summary-new-installed" class="summary-count">0件</span>
 </div>
                 </div>
                 <div id="role-count" class="role-count"></div>
