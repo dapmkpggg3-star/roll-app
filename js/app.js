@@ -284,6 +284,11 @@ function closeDetailModal() {
 
 function searchRoles(event) {
     searchQuery = event.target.value || '';
+
+    if (searchQuery.trim().length > 0) {
+        resetStatusFilter();
+    }
+
     renderRoles();
 }
 
