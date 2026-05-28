@@ -1,7 +1,7 @@
-﻿console.log("STATUS FILTER VERSION 6");
+console.log("STATUS FILTER VERSION 6");
 const CORRECT_PASSWORD = '1234';
 
-// 繝ｭ繧ｰ繧､繝ｳ迥ｶ諷九メ繧ｧ繝・け
+// ログイン状態チェック
 function checkLoginStatus() {
     const isLoggedIn = localStorage.getItem('isLoggedIn') === 'true';
     const loginScreen = document.getElementById('login-screen');
@@ -21,29 +21,29 @@ function checkLoginStatus() {
     }
 }
 
-// 繝ｭ繧ｰ繧､繝ｳ髢｢謨ｰ
+// ログイン関数
 function login() {
     const password = document.getElementById('password-input').value;
     if (password === CORRECT_PASSWORD) {
         localStorage.setItem('isLoggedIn', 'true');
         checkLoginStatus();
-        document.getElementById('password-input').value = ''; // 繝代せ繝ｯ繝ｼ繝牙・蜉帙け繝ｪ繧｢
+        document.getElementById('password-input').value = ''; // パスワード入力クリア
     } else {
-        alert('繝代せ繝ｯ繝ｼ繝峨′髢馴＆縺｣縺ｦ縺・∪縺・);
+        alert('パスワードが間違っています');
         document.getElementById('password-input').value = '';
         document.getElementById('password-input').focus();
     }
 }
 
-// 繝ｭ繧ｰ繧｢繧ｦ繝磯未謨ｰ
+// ログアウト関数
 function logout() {
-    if (confirm('繝ｭ繧ｰ繧｢繧ｦ繝医＠縺ｾ縺吶°・・)) {
+    if (confirm('ログアウトしますか？')) {
         localStorage.removeItem('isLoggedIn');
         checkLoginStatus();
     }
 }
 
-// Enter繧ｭ繝ｼ縺ｧ繝ｭ繧ｰ繧､繝ｳ
+// Enterキーでログイン
 document.addEventListener('DOMContentLoaded', function() {
     loadRemoteRoles();
     document.getElementById('password-input').addEventListener('keypress', function(e) {
@@ -66,12 +66,12 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 const ALLOWED_STATUSES = [
-    '繧ｪ繝ｳ繝ｩ繧､繝ｳ',
-    '荳ｭ蜿､莠亥ｙ・医ヰ繝ｩ繧ｷ蜑搾ｼ・,
-    '謾ｹ蜑願｡後″・域成蜃ｺ蜿ｯ閭ｽ・・,
-    '謾ｹ蜑贋ｸｭ',
-    '譁ｰ蜩∽ｺ亥ｙ・育ｵ・崛蜿ｯ閭ｽ・・,
-    '譁ｰ蜩∽ｺ亥ｙ・育ｵ・ｾｼ螳御ｺ・ｼ・
+    'オンライン',
+    '中古予備（バラシ前）',
+    '改削行き（搬出可能）',
+    '改削中',
+    '新品予備（組替可能）',
+    '新品予備（組込完了）'
 ];
 
 let roles = [];
@@ -79,7 +79,7 @@ let nextId = 1;
 let searchQuery = '';
 let statusFilter = 'all';
 let sortOption = 'name';
-let editingId = null; // 邱ｨ髮・ｸｭ縺ｮID
+let editingId = null; // 編集中のID
 let lastScrollY = 0;
 let updatedRoleId = null;
 
@@ -114,7 +114,7 @@ function loadLocalRoles() {
         ...role,
         updatedAt: role.updatedAt || new Date().toISOString(),
         memo: role.memo || '',
-        status: ALLOWED_STATUSES.includes(role.status) ? role.status : '荳ｭ蜿､莠亥ｙ・医ヰ繝ｩ繧ｷ蜑搾ｼ・
+        status: ALLOWED_STATUSES.includes(role.status) ? role.status : '中古予備（バラシ前）'
     }));
     fixOnlineDuplicates();
     const ids = roles.map(r => Number(r.id) || 0);
@@ -129,10 +129,10 @@ function fixOnlineDuplicates() {
         groups[group].push(role);
     });
     Object.values(groups).forEach(groupRoles => {
-        const onlineRoles = groupRoles.filter(r => r.status === '繧ｪ繝ｳ繝ｩ繧､繝ｳ').sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+        const onlineRoles = groupRoles.filter(r => r.status === 'オンライン').sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
         if (onlineRoles.length > 1) {
             for (let i = 1; i < onlineRoles.length; i++) {
-                onlineRoles[i].status = '荳ｭ蜿､莠亥ｙ・医ヰ繝ｩ繧ｷ蜑搾ｼ・;
+                onlineRoles[i].status = '中古予備（バラシ前）';
             }
         }
     });
@@ -186,21 +186,21 @@ function formatUpdatedAt(updatedAt) {
 
 function getLevelBadge(level) {
     const badges = {
-        '邂｡逅・・: '<span style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 4px 12px; border-radius: 20px; font-size: 0.85rem; font-weight: 600;">荘 邂｡逅・・/span>',
-        '邱ｨ髮・・: '<span style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; padding: 4px 12px; border-radius: 20px; font-size: 0.85rem; font-weight: 600;">笨擾ｸ・邱ｨ髮・・/span>',
-        '髢ｲ隕ｧ閠・: '<span style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; padding: 4px 12px; border-radius: 20px; font-size: 0.85rem; font-weight: 600;">早・・髢ｲ隕ｧ閠・/span>'
+        '管理者': '<span style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 4px 12px; border-radius: 20px; font-size: 0.85rem; font-weight: 600;">👑 管理者</span>',
+        '編集者': '<span style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; padding: 4px 12px; border-radius: 20px; font-size: 0.85rem; font-weight: 600;">✏️ 編集者</span>',
+        '閲覧者': '<span style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; padding: 4px 12px; border-radius: 20px; font-size: 0.85rem; font-weight: 600;">👁️ 閲覧者</span>'
     };
     return badges[level] || '-';
 }
 
 function getStatusClass(status) {
     const statusClasses = {
-        '繧ｪ繝ｳ繝ｩ繧､繝ｳ': 'status-online',
-        '荳ｭ蜿､莠亥ｙ・医ヰ繝ｩ繧ｷ蜑搾ｼ・: 'status-used-standby',
-        '謾ｹ蜑願｡後″・域成蜃ｺ蜿ｯ閭ｽ・・: 'status-rework-ready',
-        '謾ｹ蜑贋ｸｭ': 'status-reworking',
-        '譁ｰ蜩∽ｺ亥ｙ・育ｵ・崛蜿ｯ閭ｽ・・: 'status-new-ready',
-        '譁ｰ蜩∽ｺ亥ｙ・育ｵ・ｾｼ螳御ｺ・ｼ・: 'status-new-done'
+        'オンライン': 'status-online',
+        '中古予備（バラシ前）': 'status-used-standby',
+        '改削行き（搬出可能）': 'status-rework-ready',
+        '改削中': 'status-reworking',
+        '新品予備（組替可能）': 'status-new-ready',
+        '新品予備（組込完了）': 'status-new-done'
     };
     return statusClasses[status] || 'status-other';
 }
@@ -234,7 +234,7 @@ function updateStatusPreview(selectEl) {
 
     previewEl.classList.remove(...statusClasses);
     previewEl.classList.add(selectedStatus ? getStatusClass(selectedStatus) : 'status-empty');
-    previewEl.textContent = `迴ｾ蝨ｨ縺ｮ繧ｹ繝・・繧ｿ繧ｹ・・{selectedStatus || '譛ｪ驕ｸ謚・}`;
+    previewEl.textContent = `現在のステータス：${selectedStatus || '未選択'}`;
 }
 
 function getMemoPreview(memo) {
@@ -242,7 +242,7 @@ function getMemoPreview(memo) {
     if (!normalized) {
         return '-';
     }
-    return normalized.length > 50 ? normalized.slice(0, 50) + '窶ｦ' : normalized;
+    return normalized.length > 50 ? normalized.slice(0, 50) + '…' : normalized;
 }
 
 function escapeHtml(str) {
@@ -257,14 +257,14 @@ function escapeHtml(str) {
 function showMemo(id) {
     const role = roles.find(r => String(r.id) === String(id));
     if (!role) {
-        alert('繝ｭ繝ｼ繝ｫ縺瑚ｦ九▽縺九ｊ縺ｾ縺帙ｓ');
+        alert('ロールが見つかりません');
         return;
     }
 
     document.getElementById('detail-stand-name').textContent = role.name || '-';
     document.getElementById('detail-status').innerHTML = getStatusBadge(role.status);
     document.getElementById('detail-updated-at').textContent = formatUpdatedAt(role.updatedAt);
-    document.getElementById('detail-memo').textContent = role.memo || '繝｡繝｢縺ｯ縺ゅｊ縺ｾ縺帙ｓ';
+    document.getElementById('detail-memo').textContent = role.memo || 'メモはありません';
 
     const modal = document.getElementById('detail-modal');
     modal.classList.add('is-open');
@@ -347,27 +347,27 @@ function isStatusMatched(role) {
 function getStatusSummaryCategory(role) {
     const status = String(role.status || '');
 
-    if (status === '繧ｪ繝ｳ繝ｩ繧､繝ｳ') {
+    if (status === 'オンライン') {
         return 'online';
     }
 
-    if (status === '謾ｹ蜑贋ｸｭ') {
+    if (status === '改削中') {
         return 'reworking';
     }
 
-    if (status === '荳ｭ蜿､莠亥ｙ・医ヰ繝ｩ繧ｷ蜑搾ｼ・) {
+    if (status === '中古予備（バラシ前）') {
         return 'used';
     }
 
-    if (status === '謾ｹ蜑願｡後″・域成蜃ｺ蜿ｯ閭ｽ・・) {
+    if (status === '改削行き（搬出可能）') {
         return 'remove';
     }
 
-    if (status === '譁ｰ蜩∽ｺ亥ｙ・育ｵ・崛蜿ｯ閭ｽ・・) {
+    if (status === '新品予備（組替可能）') {
         return 'newReady';
     }
 
-    if (status === '譁ｰ蜩∽ｺ亥ｙ・育ｵ・ｾｼ螳御ｺ・ｼ・) {
+    if (status === '新品予備（組込完了）') {
         return 'newInstalled';
     }
 
@@ -403,7 +403,7 @@ function updateCountSummary(visibleRoles) {
     const summaryEl = document.getElementById(targetId);
 
     if (summaryEl) {
-        summaryEl.textContent = `${value}莉ｶ`;
+        summaryEl.textContent = `${value}件`;
     }
 });
 }
@@ -498,15 +498,15 @@ return String(a.name || '').localeCompare(String(b.name || ''), 'ja');
         const hasSearch = searchQuery.trim().length > 0;
         const hasStatusFilter = statusFilter !== 'all';
         if (hasSearch || hasStatusFilter) {
-            countInfo.textContent = `迴ｾ蝨ｨ${visibleRoles.length}莉ｶ陦ｨ遉ｺ荳ｭ / 蜈ｨ${roles.length}莉ｶ`;
+            countInfo.textContent = `現在${visibleRoles.length}件表示中 / 全${roles.length}件`;
         } else {
             countInfo.textContent = '';
         }
     }
     if (visibleRoles.length === 0) {
         const message = roles.length === 0
-            ? '繝ｭ繝ｼ繝ｫ縺後∪縺逋ｻ骭ｲ縺輔ｌ縺ｦ縺・∪縺帙ｓ'
-            : '讀懃ｴ｢譚｡莉ｶ縺ｫ荳閾ｴ縺吶ｋ繝ｭ繝ｼ繝ｫ縺瑚ｦ九▽縺九ｊ縺ｾ縺帙ｓ';
+            ? 'ロールがまだ登録されていません'
+            : '検索条件に一致するロールが見つかりません';
         roleList.innerHTML = `<tr><td colspan="5" style="text-align: center; padding: 40px; color: #999;">${message}</td></tr>`;
         return;
     }
@@ -539,30 +539,30 @@ if (standNumber >= 2 && standNumber <= 5) {
         row.innerHTML = `
             <td>
   <span class="role-id stand-name-cell">${escapeHtml(role.name)}</span>
-  ${updatedRoleId === role.id ? '<span class="updated-badge">譖ｴ譁ｰ縺励∪縺励◆</span>' : ''}
+  ${updatedRoleId === role.id ? '<span class="updated-badge">更新しました</span>' : ''}
 </td>
             <td>${getStatusBadge(role.status)}</td>
             <td>${escapeHtml(getMemoPreview(role.memo))}</td>
             <td>${formattedDate}</td>
             <td>
-${role.status === "謾ｹ蜑願｡後″・域成蜃ｺ蜿ｯ閭ｽ・・ && role.requestSent === true
-? '<span style="color:green;font-weight:700;">笨・菴懈･ｭ萓晞ｼ貂医∩</span>'
-: role.status === "謾ｹ蜑願｡後″・域成蜃ｺ蜿ｯ閭ｽ・・
-? '<span style="color:red;font-weight:700;">笞 菴懈･ｭ萓晞ｼ譛ｪ騾∽ｿ｡</span>'
+${role.status === "改削行き（搬出可能）" && role.requestSent === true
+? '<span style="color:green;font-weight:700;">✅ 作業依頼済み</span>'
+: role.status === "改削行き（搬出可能）"
+? '<span style="color:red;font-weight:700;">⚠ 作業依頼未送信</span>'
 : ''}
 </td>
 
             <td>
             
                 <div class="action-buttons">
-                    <button class="action-btn edit-btn" onclick="editRole(${role.id})">笨擾ｸ・邱ｨ髮・/button>
-                    <button class="action-btn edit-btn" onclick="showMemo(${role.id})">統 隧ｳ邏ｰ</button>
-                    ${role.status === "謾ｹ蜑願｡後″・域成蜃ｺ蜿ｯ閭ｽ・・ ? `
+                    <button class="action-btn edit-btn" onclick="editRole(${role.id})">✏️ 編集</button>
+                    <button class="action-btn edit-btn" onclick="showMemo(${role.id})">📝 詳細</button>
+                    ${role.status === "改削行き（搬出可能）" ? `
   <button class="action-btn request-btn" onclick="requestWork('${role.id}')">
-    逃 菴懈･ｭ萓晞ｼ
+    📦 作業依頼
   </button>
 ` : ""}
-                    <button class="action-btn delete-btn" onclick="deleteRole(${role.id})">卵・・蜑企勁</button>
+                    <button class="action-btn delete-btn" onclick="deleteRole(${role.id})">🗑️ 削除</button>
                 </div>
             </td>
         `;
@@ -576,25 +576,25 @@ function addRole() {
     const roleMemo = document.getElementById('role-memo').value.trim();
     
     if (!roleName) {
-        alert('繧ｹ繧ｿ繝ｳ繝臥分蜿ｷ繧貞・蜉帙＠縺ｦ縺上□縺輔＞');
+        alert('スタンド番号を入力してください');
         return;
     }
     if (!roleStatus) {
-        alert('繧ｹ繝・・繧ｿ繧ｹ繧帝∈謚槭＠縺ｦ縺上□縺輔＞');
+        alert('ステータスを選択してください');
         return;
     }
     if (roles.some(r => r.name === roleName)) {
-        alert('縺薙・繧ｹ繧ｿ繝ｳ繝臥分蜿ｷ縺ｯ譌｢縺ｫ逋ｻ骭ｲ縺輔ｌ縺ｦ縺・∪縺・);
+        alert('このスタンド番号は既に登録されています');
         return;
     }
     const newRole = { id: nextId++, name: roleName, status: roleStatus, memo: roleMemo, updatedAt: new Date().toISOString() };
     
-    // 繧ｪ繝ｳ繝ｩ繧､繝ｳ驥崎､・宛蠕｡
-    if (roleStatus === '繧ｪ繝ｳ繝ｩ繧､繝ｳ') {
+    // オンライン重複制御
+    if (roleStatus === 'オンライン') {
         const group = getGroup(roleName);
         roles.forEach(r => {
-            if (getGroup(r.name) === group && r.status === '繧ｪ繝ｳ繝ｩ繧､繝ｳ') {
-                r.status = '荳ｭ蜿､莠亥ｙ・医ヰ繝ｩ繧ｷ蜑搾ｼ・;
+            if (getGroup(r.name) === group && r.status === 'オンライン') {
+                r.status = '中古予備（バラシ前）';
                 r.updatedAt = new Date().toISOString();
             }
         });
@@ -641,11 +641,11 @@ function updateRole() {
     const roleMemo = document.getElementById('role-memo').value.trim();
     
     if (!roleName) {
-        alert('繧ｹ繧ｿ繝ｳ繝臥分蜿ｷ繧貞・蜉帙＠縺ｦ縺上□縺輔＞');
+        alert('スタンド番号を入力してください');
         return;
     }
     if (!roleStatus) {
-        alert('繧ｹ繝・・繧ｿ繧ｹ繧帝∈謚槭＠縺ｦ縺上□縺輔＞');
+        alert('ステータスを選択してください');
         return;
     }
     
@@ -653,15 +653,15 @@ function updateRole() {
     if (!role) return;
     
     if (roleName !== role.name && roles.some(r => r.id !== editingId && r.name === roleName)) {
-        alert('縺薙・繧ｹ繧ｿ繝ｳ繝臥分蜿ｷ縺ｯ譌｢縺ｫ逋ｻ骭ｲ縺輔ｌ縺ｦ縺・∪縺・);
+        alert('このスタンド番号は既に登録されています');
         return;
     }
     
-    if (roleStatus === '繧ｪ繝ｳ繝ｩ繧､繝ｳ') {
+    if (roleStatus === 'オンライン') {
         const group = getGroup(roleName);
         roles.forEach(r => {
-            if (r.id !== editingId && getGroup(r.name) === group && r.status === '繧ｪ繝ｳ繝ｩ繧､繝ｳ') {
-                r.status = '荳ｭ蜿､莠亥ｙ・医ヰ繝ｩ繧ｷ蜑搾ｼ・;
+            if (r.id !== editingId && getGroup(r.name) === group && r.status === 'オンライン') {
+                r.status = '中古予備（バラシ前）';
                 r.updatedAt = new Date().toISOString();
             }
         });
@@ -682,7 +682,7 @@ function updateRole() {
 
     renderRoles();
     syncRoles();
-    showToast("譖ｴ譁ｰ縺励∪縺励◆");
+    showToast("更新しました");
 
     setTimeout(() => {
   updatedRoleId = null;
@@ -724,28 +724,28 @@ function requestWork(roleId) {
 
     if (!role) return;
 
-    const subject = `縲蝉ｽ懈･ｭ萓晞ｼ縲・{role.name}`;
+    const subject = `【作業依頼】${role.name}`;
 
     const body =
-`繧ｹ繧ｿ繝ｳ繝臥分蜿ｷ・・{role.name}
+`スタンド番号：${role.name}
 
-繧ｹ繝・・繧ｿ繧ｹ・・{role.status}
+ステータス：${role.status}
 
-繝｡繝｢・・
-${role.memo || "縺ｪ縺・}
+メモ：
+${role.memo || "なし"}
 
-菴懈･ｭ蜀・ｮｹ・・
-繝ｻ蠑輔″蜿悶ｊ萓晞ｼ
-繝ｻ謾ｹ蜑贋ｾ晞ｼ豕ｨ譁・嶌縺ｮ菴懈・騾∽ｻ・
+作業内容：
+・引き取り依頼
+・改削依頼注文書の作成送付
 
-萓晞ｼ譌･譎ゑｼ・
+依頼日時：
 ${new Date().toLocaleString("ja-JP")}
 `;
 
     const mailtoUrl =
 `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 
-    const confirmed = confirm("菴懈･ｭ萓晞ｼ繝｡繝ｼ繝ｫ繧剃ｽ懈・縺励∽ｾ晞ｼ貂医∩縺ｫ縺励∪縺吶°・・);
+    const confirmed = confirm("作業依頼メールを作成し、依頼済みにしますか？");
 
     if (!confirmed) return;
 
@@ -762,20 +762,20 @@ function deleteRole(id) {
     const target = roles.find(r => String(r.id) === String(id));
 
     if (!target) {
-        alert('蜑企勁蟇ｾ雎｡縺瑚ｦ九▽縺九ｊ縺ｾ縺帙ｓ');
+        alert('削除対象が見つかりません');
         return;
     }
 
-    if (confirm(`${target.name} 繧貞炎髯､縺励∪縺吶°・歔)) {
+    if (confirm(`${target.name} を削除しますか？`)) {
         roles = roles.filter(r => String(r.id) !== String(id));
         saveLocalRoles();
         renderRoles();
         syncRoles();
-        showToast('蜑企勁縺励∪縺励◆');
+        showToast('削除しました');
     }
 }
 
-// 蛻晄悄陦ｨ遉ｺ
+// 初期表示
 checkLoginStatus();
 
 const searchInput = document.getElementById('role-search');
@@ -786,25 +786,25 @@ if (searchInput) {
     });
 }
 
-// Service Worker逋ｻ骭ｲ
+// Service Worker登録
 if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('service-worker.js')
         .then(registration => {
             console.log('Service Worker registered:', registration);
             
-            // 譁ｰ縺励＞Service Worker縺ｮ譖ｴ譁ｰ繧偵メ繧ｧ繝・け
+            // 新しいService Workerの更新をチェック
             registration.addEventListener('updatefound', () => {
                 const newWorker = registration.installing;
                 newWorker.addEventListener('statechange', () => {
                     if (newWorker.state === 'activated') {
                         console.log('New Service Worker activated');
-                        // 閾ｪ蜍輔Μ繝ｭ繝ｼ繝・
+                        // 自動リロード
                         window.location.reload();
                     }
                 });
             });
 
-            // Service Worker縺九ｉ縺ｮ繝｡繝・そ繝ｼ繧ｸ繧貞・逅・
+            // Service Workerからのメッセージを処理
             navigator.serviceWorker.addEventListener('message', event => {
                 if (event.data && event.data.type === 'SW_UPDATED') {
                     console.log('Service Worker updated, reloading...');
@@ -812,20 +812,20 @@ if ('serviceWorker' in navigator) {
                 }
             });
 
-            // 螳壽悄逧・↓譖ｴ譁ｰ繝√ぉ繝・け・医せ繝槭・蛛ｴ閾ｪ蜍墓峩譁ｰ逕ｨ・・
+            // 定期的に更新チェック（スマホ側自動更新用）
             setInterval(() => {
                 registration.update();
-            }, 60000); // 1蛻・＃縺ｨ縺ｫ繝√ぉ繝・け
+            }, 60000); // 1分ごとにチェック
         })
         .catch(error => console.log('Service Worker registration failed:', error));
 }
 
-// PWA繧､繝ｳ繧ｹ繝医・繝ｫ菫・ｲ
+// PWAインストール促進
 let deferredPrompt;
 window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
     deferredPrompt = e;
-    // 繧､繝ｳ繧ｹ繝医・繝ｫ蜿ｯ閭ｽ縺ｪ蝣ｴ蜷医・蜃ｦ逅・
+    // インストール可能な場合の処理
     console.log('PWA install prompt is ready');
 });
 function restoreLatestBackup() {
@@ -833,7 +833,7 @@ function restoreLatestBackup() {
     const backup = localStorage.getItem('roles_backup_latest');
 
     if (!backup) {
-        alert('繝舌ャ繧ｯ繧｢繝・・縺後≠繧翫∪縺帙ｓ縲・);
+        alert('バックアップがありません。');
         return;
     }
 const backupKeys = Object.keys(localStorage)
@@ -841,8 +841,8 @@ const backupKeys = Object.keys(localStorage)
   .sort()
   .reverse();
 
-console.log('繝舌ャ繧ｯ繧｢繝・・荳隕ｧ', backupKeys);
-    const ok = confirm('譛譁ｰ繝舌ャ繧ｯ繧｢繝・・繧貞ｾｩ蜈・＠縺ｾ縺吶°・・);
+console.log('バックアップ一覧', backupKeys);
+    const ok = confirm('最新バックアップを復元しますか？');
 
     if (!ok) {
         return;
@@ -850,7 +850,7 @@ console.log('繝舌ャ繧ｯ繧｢繝・・荳隕ｧ', backupKeys);
 
     roles = JSON.parse(backup);
     if (!roles || roles.length === 0) {
-    alert('繝舌ャ繧ｯ繧｢繝・・縺・莉ｶ縺ｮ縺溘ａ蠕ｩ蜈・ｒ荳ｭ豁｢縺励∪縺励◆');
+    alert('バックアップが0件のため復元を中止しました');
     return;
 }
 const ids = roles.map(r => Number(r.id) || 0);
@@ -859,7 +859,7 @@ nextId = ids.length > 0 ? Math.max(...ids) + 1 : 1;
 
     renderRoles();
 
-    alert('繝舌ャ繧ｯ繧｢繝・・繧貞ｾｩ蜈・＠縺ｾ縺励◆縲・);
+    alert('バックアップを復元しました。');
 }
 function toggleTabletMode() {
     const isTabletMode = document.body.classList.toggle('tablet-mode');
@@ -867,7 +867,7 @@ function toggleTabletMode() {
 
     const button = document.getElementById('tabletModeBtn');
     if (button) {
-        button.textContent = isTabletMode ? '繧ｿ繝悶Ξ繝・ヨ繝｢繝ｼ繝・ON' : '繧ｿ繝悶Ξ繝・ヨ繝｢繝ｼ繝・OFF';
+        button.textContent = isTabletMode ? 'タブレットモード ON' : 'タブレットモード OFF';
         button.setAttribute('aria-pressed', isTabletMode ? 'true' : 'false');
     }
 }
