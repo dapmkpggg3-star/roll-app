@@ -223,18 +223,10 @@ async function syncRoles() {
             return;
         }
 
-        const mergedRoles = mergeRemoteAndLocalRoles(remoteRoles, localRoles);
+        roles = localRoles;
+saveLocalRoles();
 
-        if (remoteRoles.length >= 10 && mergedRoles.length < remoteRoles.length) {
-            alert('合体後データがスプレッドシート側より少ないため同期を停止しました。');
-            setSyncMessage('合体後データが少ないため同期を停止しました。', true);
-            return;
-        }
-
-        roles = mergedRoles;
-        saveLocalRoles();
-
-        localStorage.setItem('roles_backup_before_sync', JSON.stringify(mergedRoles));
+localStorage.setItem('roles_backup_before_sync', JSON.stringify(localRoles));
         localStorage.setItem('roles_backup_before_sync_saved_at', new Date().toISOString());
 
         setSyncMessage('スプレッドシートと同期中です...');
