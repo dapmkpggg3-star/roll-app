@@ -223,10 +223,12 @@ async function syncRoles() {
             return;
         }
 
-        roles = localRoles;
+const mergedRoles = mergeRemoteAndLocalRoles(remoteRoles, localRoles);
+
+roles = mergedRoles;
 saveLocalRoles();
 
-localStorage.setItem('roles_backup_before_sync', JSON.stringify(localRoles));
+localStorage.setItem('roles_backup_before_sync', JSON.stringify(mergedRoles));
         localStorage.setItem('roles_backup_before_sync_saved_at', new Date().toISOString());
 
         setSyncMessage('スプレッドシートと同期中です...');
