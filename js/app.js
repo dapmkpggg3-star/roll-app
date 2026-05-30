@@ -87,15 +87,15 @@ function saveLocalRoles() {
 
     const currentRoles = localStorage.getItem('roles');
 
-if (currentRoles && !localStorage.getItem('roles_backup_latest')) {
+if (currentRoles) {
     localStorage.setItem('roles_backup_latest', currentRoles);
 
     localStorage.setItem('roles_backup_saved_at', new Date().toISOString());
 }
 const historyKey = `roles_backup_${new Date().toISOString()}`;
-localStorage.setItem(historyKey, JSON.stringify(currentRoles || []));
+localStorage.setItem(historyKey, currentRoles || '[]');
 const backupKeys = Object.keys(localStorage)
-    .filter(key => key.startsWith('roles_backup_2026'))
+    .filter(key => key.startsWith('roles_backup_') && !key.startsWith('roles_backup_before_restore_'))
     .sort();
 
 if (backupKeys.length > 20) {
@@ -837,7 +837,7 @@ function restoreLatestBackup() {
         return;
     }
 const backupKeys = Object.keys(localStorage)
-  .filter(key => key.startsWith('roles_backup_2026'))
+  .filter(key => key.startsWith('roles_backup_') && !key.startsWith('roles_backup_before_restore_'))
   .sort()
   .reverse();
 
@@ -848,14 +848,29 @@ console.log('バックアップ一覧', backupKeys);
         return;
     }
 
-    roles = JSON.parse(backup);
-    if (!roles || roles.length === 0) {
+    let restoredRoles;
+    try {
+        restoredRoles = JSON.parse(backup);
+    } catch (error) {
+        alert('バックアップデータが壊れているため復元できません。');
+        return;
+    }
+
+    if (!Array.isArray(restoredRoles)) {
+        alert('バックアップデータの形式が正しくないため復元できません。');
+        return;
+    }
+
+    if (restoredRoles.length === 0) {
     alert('バックアップが0件のため復元を中止しました');
     return;
 }
+const beforeRestoreKey = `roles_backup_before_restore_${new Date().toISOString()}`;
+localStorage.setItem(beforeRestoreKey, localStorage.getItem('roles') || '[]');
+roles = restoredRoles;
 const ids = roles.map(r => Number(r.id) || 0);
 nextId = ids.length > 0 ? Math.max(...ids) + 1 : 1;
-    // saveLocalRoles();
+localStorage.setItem('roles', JSON.stringify(roles));
 
     renderRoles();
 
