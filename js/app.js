@@ -507,7 +507,7 @@ return String(a.name || '').localeCompare(String(b.name || ''), 'ja');
         const message = roles.length === 0
             ? 'ロールがまだ登録されていません'
             : '検索条件に一致するロールが見つかりません';
-        roleList.innerHTML = `<tr><td colspan="5" style="text-align: center; padding: 40px; color: #999;">${message}</td></tr>`;
+        roleList.innerHTML = `<tr><td colspan="6" style="text-align: center; padding: 40px; color: #999;">${message}</td></tr>`;
         return;
     }
 

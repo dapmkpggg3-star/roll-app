@@ -36,10 +36,6 @@
                 <button type="button" id="tabletModeBtn" onclick="toggleTabletMode()" class="tablet-mode-btn" aria-pressed="false">タブレットモード OFF</button>
                 <button type="button" id="logout-btn" onclick="logout()" class="logout-btn">ログアウト</button>
             </div>
-<button id="tabletModeBtn" onclick="toggleTabletMode()">
-  タブレットモード
-</button>
-            <button type="button" id="logout-btn" onclick="logout()" class="logout-btn">ログアウト</button>
         </div>
 
         <div class="container">
@@ -131,7 +127,6 @@
                         <button type="button" id="exportCsvBtn" class="csv-btn" onclick="exportCsv()">CSVエクスポート</button>
                         <button type="button" class="import-btn" onclick="document.getElementById('csv-import-input').click()">CSVインポート</button>
                         <button type="button" class="btn" onclick="restoreLatestBackup()">バックアップ復元</button>
-  ...
 <button type="button" id="syncSheetsBtn" class="sync-btn" onclick="syncRoles()">スプレッドシートと同期</button>
 </div>
 <div id="last-sync-time" class="last-sync-time">
@@ -145,6 +140,7 @@
                                 <th>ステータス</th>
                                 <th>メモ</th>
                                 <th>最終更新日</th>
+                                <th>作業依頼</th>
                                 <th style="width: 200px;">アクション</th>
                             </tr>
                         </thead>
