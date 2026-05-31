@@ -45,6 +45,7 @@ function logout() {
 
 // Enterキーでログイン
 document.addEventListener('DOMContentLoaded', function() {
+    applyTabletModePreference();
     loadRemoteRoles();
     document.getElementById('password-input').addEventListener('keypress', function(e) {
         if (e.key === 'Enter') {
@@ -1120,6 +1121,19 @@ localStorage.setItem('roles', JSON.stringify(roles));
 function toggleTabletMode() {
     const isTabletMode = document.body.classList.toggle('tablet-mode');
     localStorage.setItem('tablet_mode_enabled', isTabletMode ? 'true' : 'false');
+
+    const button = document.getElementById('tabletModeBtn');
+    if (button) {
+        button.textContent = isTabletMode ? 'タブレットモード ON' : 'タブレットモード OFF';
+        button.setAttribute('aria-pressed', isTabletMode ? 'true' : 'false');
+    }
+}
+
+function applyTabletModePreference() {
+    const savedValue = localStorage.getItem('tablet_mode_enabled');
+    const isTabletMode = savedValue === null ? true : savedValue === 'true';
+
+    document.body.classList.toggle('tablet-mode', isTabletMode);
 
     const button = document.getElementById('tabletModeBtn');
     if (button) {
