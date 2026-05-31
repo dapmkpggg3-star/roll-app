@@ -133,6 +133,35 @@ function normalizeWorkProgress(role) {
     return progress;
 }
 
+function normalizeRoleHistory(role) {
+    return Array.isArray(role && role.history)
+        ? role.history.filter(entry => entry && typeof entry === 'object')
+        : [];
+}
+
+function addRoleHistoryEntry(role, type, label, beforeValue, afterValue, at = new Date().toISOString()) {
+    if (!role) {
+        return;
+    }
+
+    const beforeText = String(beforeValue || '');
+    const afterText = String(afterValue || '');
+
+    if (beforeText === afterText) {
+        return;
+    }
+
+    role.history = normalizeRoleHistory(role);
+    role.history.push({
+        at,
+        roleName: role.name || '',
+        type,
+        label,
+        before: beforeText || '-',
+        after: afterText || '-'
+    });
+}
+
 function loadLocalRoles() {
     roles = JSON.parse(localStorage.getItem('roles')) || [];
     roles = roles.map(role => ({
@@ -141,6 +170,7 @@ function loadLocalRoles() {
         memo: role.memo || '',
         status: ALLOWED_STATUSES.includes(role.status) ? role.status : '中古予備（バラシ前）',
         workProgress: normalizeWorkProgress(role),
+        history: normalizeRoleHistory(role),
         requestSent: role.requestSent === true || Boolean(normalizeWorkProgress(role).vendorSentAt)
     }));
     fixOnlineDuplicates();
@@ -159,6 +189,7 @@ function fixOnlineDuplicates() {
         const onlineRoles = groupRoles.filter(r => r.status === 'オンライン').sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
         if (onlineRoles.length > 1) {
             for (let i = 1; i < onlineRoles.length; i++) {
+                addRoleHistoryEntry(onlineRoles[i], 'status', 'ステータス変更', onlineRoles[i].status, '中古予備（バラシ前）');
                 onlineRoles[i].status = '中古予備（バラシ前）';
             }
         }
@@ -360,6 +391,59 @@ function showMemo(id) {
     document.body.classList.add('modal-open');
 }
 
+function showHistory(id) {
+    const role = roles.find(r => String(r.id) === String(id));
+    if (!role) {
+        alert('ロールが見つかりません');
+        return;
+    }
+
+    const modal = document.getElementById('history-modal');
+    const title = document.getElementById('history-stand-name');
+    const list = document.getElementById('history-list');
+    const history = normalizeRoleHistory(role).slice().sort((a, b) => {
+        return new Date(b.at).getTime() - new Date(a.at).getTime();
+    });
+
+    if (!modal || !title || !list) {
+        return;
+    }
+
+    title.textContent = role.name || '-';
+
+    if (history.length === 0) {
+        list.innerHTML = '<div class="history-empty">履歴はありません</div>';
+    } else {
+        list.innerHTML = history.map(entry => `
+            <div class="history-entry">
+                <div class="history-entry-header">
+                    <strong>${escapeHtml(entry.label || '変更')}</strong>
+                    <span>${escapeHtml(formatUpdatedAt(entry.at))}</span>
+                </div>
+                <div class="history-entry-body">
+                    <div><span>対象</span>${escapeHtml(entry.roleName || role.name || '-')}</div>
+                    <div><span>変更前</span>${escapeHtml(entry.before || '-')}</div>
+                    <div><span>変更後</span>${escapeHtml(entry.after || '-')}</div>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    modal.classList.add('is-open');
+    modal.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('modal-open');
+}
+
+function closeHistoryModal() {
+    const modal = document.getElementById('history-modal');
+    if (!modal) {
+        return;
+    }
+    modal.classList.remove('is-open');
+    modal.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('modal-open');
+}
+
 function closeDetailModal() {
     const modal = document.getElementById('detail-modal');
     if (!modal) {
@@ -368,6 +452,7 @@ function closeDetailModal() {
     modal.classList.remove('is-open');
     modal.setAttribute('aria-hidden', 'true');
     document.body.classList.remove('modal-open');
+    closeHistoryModal();
 }
 
 function searchRoles(event) {
@@ -639,6 +724,7 @@ if (standNumber >= 2 && standNumber <= 5) {
                 <div class="action-buttons">
                     <button class="action-btn edit-btn" onclick="editRole('${role.id}')">✏️ 編集</button>
                     <button class="action-btn edit-btn" onclick="showMemo('${role.id}')">📝 詳細</button>
+                    <button class="action-btn history-btn" onclick="showHistory('${role.id}')">履歴</button>
                     ${role.status === REWORK_READY_STATUS ? `
   <button class="action-btn request-btn" onclick="requestWork('${role.id}')">
     📦 作業依頼
@@ -669,13 +755,14 @@ function addRole() {
         alert('このスタンド番号は既に登録されています');
         return;
     }
-    const newRole = { id: nextId++, name: roleName, status: roleStatus, memo: roleMemo, updatedAt: new Date().toISOString(), workProgress: normalizeWorkProgress({}) };
+    const newRole = { id: nextId++, name: roleName, status: roleStatus, memo: roleMemo, updatedAt: new Date().toISOString(), workProgress: normalizeWorkProgress({}), history: [] };
     
     // オンライン重複制御
     if (roleStatus === 'オンライン') {
         const group = getGroup(roleName);
         roles.forEach(r => {
             if (getGroup(r.name) === group && r.status === 'オンライン') {
+                addRoleHistoryEntry(r, 'status', 'ステータス変更', r.status, '中古予備（バラシ前）');
                 r.status = '中古予備（バラシ前）';
                 r.updatedAt = new Date().toISOString();
             }
@@ -733,6 +820,9 @@ function updateRole() {
     
     const role = roles.find(r => String(r.id) === String(editingId));
     if (!role) return;
+    const beforeName = role.name;
+    const beforeStatus = role.status || '';
+    const beforeMemo = role.memo || '';
     
     if (roleName !== role.name && roles.some(r => r.id !== editingId && r.name === roleName)) {
         alert('このスタンド番号は既に登録されています');
@@ -743,6 +833,7 @@ function updateRole() {
         const group = getGroup(roleName);
         roles.forEach(r => {
             if (r.id !== editingId && getGroup(r.name) === group && r.status === 'オンライン') {
+                addRoleHistoryEntry(r, 'status', 'ステータス変更', r.status, '中古予備（バラシ前）');
                 r.status = '中古予備（バラシ前）';
                 r.updatedAt = new Date().toISOString();
             }
@@ -754,6 +845,14 @@ function updateRole() {
     role.memo = roleMemo;
     role.updatedAt = new Date().toISOString();
     role.workProgress = normalizeWorkProgress(role);
+    if (beforeName !== roleName) {
+        role.history = normalizeRoleHistory(role).map(entry => ({
+            ...entry,
+            roleName: entry.roleName === beforeName ? roleName : entry.roleName
+        }));
+    }
+    addRoleHistoryEntry(role, 'status', 'ステータス変更', beforeStatus, roleStatus, role.updatedAt);
+    addRoleHistoryEntry(role, 'memo', 'メモ変更', beforeMemo, roleMemo, role.updatedAt);
 
     updatedRoleId = role.id;
     
@@ -881,9 +980,11 @@ function completeWorkProgressStep(roleId, stepKey, options = {}) {
     }
 
     const completedAt = new Date().toISOString();
+    const beforeValue = role.workProgress[stepKey] || '';
     role.workProgress[stepKey] = completedAt;
     role.requestSent = Boolean(role.workProgress.vendorSentAt);
     role.updatedAt = completedAt;
+    addRoleHistoryEntry(role, 'workProgress', '作業依頼進捗変更', beforeValue, `${step.label}: ${formatUpdatedAt(completedAt)}`, completedAt);
 
     saveLocalRoles();
 

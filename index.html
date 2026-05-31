@@ -11,7 +11,7 @@
     <link rel="manifest" href="manifest.json">
     <link rel="icon" type="image/png" sizes="192x192" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect fill='%23667eea' width='192' height='192'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' font-size='96' fill='white' font-family='Arial'>📋</text></svg>">
     <title>ロール管理アプリ</title>
-    <link rel="stylesheet" href="css/styles.css?v=20260531-1">
+    <link rel="stylesheet" href="css/styles.css?v=20260531-2">
 </head>
 <body>
     <!-- ログイン画面 -->
@@ -174,9 +174,21 @@
         </div>
     </div>
 
-    <script src="js/sync.js?v=20260531-1"></script>
-<script src="js/csv.js?v=20260526-1"></script>
-<script src="js/app.js?v=20260531-1"></script>
+    <div id="history-modal" class="detail-modal" aria-hidden="true">
+        <div class="detail-modal-backdrop" onclick="closeHistoryModal()"></div>
+        <div class="detail-card history-card" role="dialog" aria-modal="true" aria-labelledby="history-stand-name">
+            <button type="button" class="detail-close-btn" onclick="closeHistoryModal()" aria-label="履歴を閉じる">×</button>
+            <div class="detail-header">
+                <p class="detail-label">履歴</p>
+                <h2 id="history-stand-name">-</h2>
+            </div>
+            <div id="history-list" class="history-list"></div>
+        </div>
+    </div>
+
+    <script src="js/sync.js?v=20260531-2"></script>
+<script src="js/csv.js?v=20260531-2"></script>
+<script src="js/app.js?v=20260531-2"></script>
 
         // ログイン状態チェック
 </body>

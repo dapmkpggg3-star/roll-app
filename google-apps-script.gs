@@ -1,7 +1,7 @@
 const SHEET_NAME = 'Roles';
 const INPUT_SHEET_NAMES = ['入力シート', 'Input', '入力'];
 const SPREADSHEET_ID = '1X07qQa7u9YPLvErT0D48goT5wYmvcpgNjqzK3FhRFeA';
-const HEADER_VALUES = ['ID', 'スタンド番号', 'ステータス', 'メモ', '最終更新日', '作業依頼済み', '作業依頼進捗'];
+const HEADER_VALUES = ['ID', 'スタンド番号', 'ステータス', 'メモ', '最終更新日', '作業依頼済み', '作業依頼進捗', '履歴'];
 const STATUS_COLUMN_INDEX = 3;
 const HEADER_BACKGROUND = '#1f4e78';
 const HEADER_FONT_COLOR = '#ffffff';
@@ -151,7 +151,8 @@ function fetchRoles() {
       memo: row[3],
       updatedAt: row[4],
       requestSent: requestSent,
-      workProgress: workProgress
+      workProgress: workProgress,
+      history: parseHistory(row[7])
     };
   }).filter(row => row.name && String(row.name).trim() !== '');
   
@@ -173,7 +174,8 @@ function writeRoles(roles) {
         role.memo || '',
         role.updatedAt || '',
         role.requestSent === true,
-        JSON.stringify(normalizeWorkProgressForSheet(role))
+        JSON.stringify(normalizeWorkProgressForSheet(role)),
+        JSON.stringify(normalizeHistoryForSheet(role))
       ];
     } catch (err) {
       Logger.log('writeRoles error at row ' + index + ': ' + err.toString());
@@ -224,7 +226,8 @@ function addRoleFromInputArea() {
     memo,
     now,
     false,
-    JSON.stringify(normalizeWorkProgressForSheet({}))
+    JSON.stringify(normalizeWorkProgressForSheet({})),
+    JSON.stringify([])
   ];
 
   sheet.getRange(sheet.getLastRow() + 1, 1, 1, HEADER_VALUES.length).setValues([row]);
@@ -363,6 +366,30 @@ function normalizeWorkProgressForSheet(role) {
   };
 }
 
+function parseHistory(value) {
+  if (!value) {
+    return [];
+  }
+
+  if (Array.isArray(value)) {
+    return value;
+  }
+
+  try {
+    const parsed = JSON.parse(String(value));
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (error) {
+    Logger.log('parseHistory error: ' + error.toString());
+    return [];
+  }
+}
+
+function normalizeHistoryForSheet(role) {
+  return parseHistory(role && role.history).filter(function(entry) {
+    return entry && typeof entry === 'object';
+  });
+}
+
 
 function applySheetFormatting(sheet, dataRowCount) {
   const columnCount = HEADER_VALUES.length;
@@ -426,13 +453,16 @@ function applySheetFormatting(sheet, dataRowCount) {
   sheet.setColumnWidth(5, 170);
   sheet.setColumnWidth(6, 95);
   sheet.setColumnWidth(7, 80);
+  sheet.setColumnWidth(8, 80);
   sheet.hideColumns(1);
   sheet.hideColumns(7);
+  sheet.hideColumns(8);
 
   sheet.getRange(1, 1, totalRows, columnCount).setVerticalAlignment('middle');
   if (dataRowCount > 0) {
     sheet.getRange(2, 1, dataRowCount, columnCount).setWrap(true);
     sheet.getRange(2, 7, dataRowCount, 1).setWrap(false);
+    sheet.getRange(2, 8, dataRowCount, 1).setWrap(false);
   }
 }
 

@@ -288,6 +288,10 @@ body {
     background: linear-gradient(135deg, #3498db 0%, #2563eb 100%);
 }
 
+.history-btn {
+    background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%);
+}
+
 .admin-mode-btn {
     background: linear-gradient(135deg, #64748b 0%, #334155 100%);
 }
@@ -298,6 +302,63 @@ body {
 
 body.admin-mode .admin-only {
     display: inline-block !important;
+}
+
+.history-card {
+    max-width: 720px;
+}
+
+.history-list {
+    display: grid;
+    gap: 12px;
+    max-height: 60vh;
+    overflow-y: auto;
+}
+
+.history-entry {
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 12px;
+    background: #f8fafc;
+}
+
+.history-entry-header {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 10px;
+    color: #1f2937;
+}
+
+.history-entry-header span {
+    color: #64748b;
+    font-size: 0.9rem;
+    white-space: nowrap;
+}
+
+.history-entry-body {
+    display: grid;
+    gap: 6px;
+}
+
+.history-entry-body div {
+    display: grid;
+    grid-template-columns: 72px 1fr;
+    gap: 10px;
+    line-height: 1.5;
+}
+
+.history-entry-body span {
+    color: #64748b;
+    font-weight: 700;
+}
+
+.history-empty {
+    padding: 24px;
+    text-align: center;
+    color: #64748b;
+    background: #f8fafc;
+    border-radius: 8px;
 }
 
 .role-form button:hover {

@@ -82,7 +82,7 @@ function importCsv(event) {
                 if (!validStatuses.includes(status)) {
                     continue;
                 }
-                importedRoles.push({ id: isNaN(rawId) ? null : rawId, name, status, memo, updatedAt });
+                importedRoles.push({ id: isNaN(rawId) ? null : rawId, name, status, memo, updatedAt, history: [] });
             }
             if (importedRoles.length === 0) {
                 alert('有効なロールデータがありません');

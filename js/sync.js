@@ -59,6 +59,9 @@ function normalizeRole(role) {
     const progress = role && role.workProgress && typeof role.workProgress === 'object'
         ? { ...role.workProgress }
         : {};
+    const history = Array.isArray(role && role.history)
+        ? role.history.filter(entry => entry && typeof entry === 'object')
+        : [];
 
     if (role && role.requestSent === true && !progress.vendorSentAt) {
         progress.vendorSentAt = role.updatedAt || new Date().toISOString();
@@ -76,8 +79,28 @@ function normalizeRole(role) {
         memo: role.memo || '',
         status: ALLOWED_STATUSES.includes(role.status) ? role.status : '中古予備（バラシ前）',
         workProgress: progress,
+        history: history,
         requestSent: role.requestSent === true || Boolean(progress.vendorSentAt)
     };
+}
+
+function mergeRoleHistory(aHistory, bHistory) {
+    const merged = new Map();
+    [...(aHistory || []), ...(bHistory || [])].forEach(entry => {
+        if (!entry || typeof entry !== 'object') return;
+        const key = [
+            entry.at || '',
+            entry.roleName || '',
+            entry.type || '',
+            entry.before || '',
+            entry.after || ''
+        ].join('|');
+        merged.set(key, entry);
+    });
+
+    return Array.from(merged.values()).sort((a, b) => {
+        return new Date(a.at).getTime() - new Date(b.at).getTime();
+    });
 }
 
 function getRoleMergeKey(role) {
@@ -92,12 +115,19 @@ function mergeRemoteAndLocalRoles(remoteRoles, localRoles) {
     const mergedMap = new Map();
 
     remoteRoles.forEach(role => {
-        mergedMap.set(getRoleMergeKey(role), normalizeRole(role));
+        const normalized = normalizeRole(role);
+        mergedMap.set(getRoleMergeKey(normalized), normalized);
     });
 
     localRoles.forEach(role => {
         if (!role || !role.name || String(role.name).trim() === '') return;
-        mergedMap.set(getRoleMergeKey(role), normalizeRole(role));
+        const key = getRoleMergeKey(role);
+        const localRole = normalizeRole(role);
+        const remoteRole = mergedMap.get(key);
+        if (remoteRole) {
+            localRole.history = mergeRoleHistory(remoteRole.history, localRole.history);
+        }
+        mergedMap.set(key, localRole);
     });
 
     return Array.from(mergedMap.values());
