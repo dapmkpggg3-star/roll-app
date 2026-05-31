@@ -895,10 +895,12 @@ function cancelEdit() {
     document.getElementById('role-status').value = '';
     updateStatusPreview(document.getElementById('role-status'));
     document.getElementById('role-memo').value = '';
+    document.body.classList.remove('editing-mode');
     
     document.getElementById('addRoleBtn').style.display = 'inline-block';
     document.getElementById('updateRoleBtn').style.display = 'none';
     document.getElementById('cancelEditBtn').style.display = 'none';
+    renderRoles();
 }
 
 function requestWork(roleId) {
