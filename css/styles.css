@@ -288,6 +288,18 @@ body {
     background: linear-gradient(135deg, #3498db 0%, #2563eb 100%);
 }
 
+.admin-mode-btn {
+    background: linear-gradient(135deg, #64748b 0%, #334155 100%);
+}
+
+.admin-only {
+    display: none !important;
+}
+
+body.admin-mode .admin-only {
+    display: inline-block !important;
+}
+
 .role-form button:hover {
     transform: translateY(-2px);
     box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);

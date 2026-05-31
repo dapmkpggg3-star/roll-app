@@ -63,6 +63,7 @@ document.addEventListener('DOMContentLoaded', function() {
             closeDetailModal();
         }
     });
+    applyAdminMode(false);
 });
 
 const ALLOWED_STATUSES = [
@@ -1023,6 +1024,30 @@ function toggleTabletMode() {
         button.setAttribute('aria-pressed', isTabletMode ? 'true' : 'false');
     }
 }
+
+function applyAdminMode(isAdminMode) {
+    document.body.classList.toggle('admin-mode', isAdminMode);
+
+    const button = document.getElementById('adminModeBtn');
+    if (button) {
+        button.textContent = isAdminMode ? '管理者モード ON' : '管理者モード OFF';
+        button.setAttribute('aria-pressed', isAdminMode ? 'true' : 'false');
+    }
+}
+
+function toggleAdminMode() {
+    const isAdminMode = document.body.classList.contains('admin-mode');
+
+    if (isAdminMode) {
+        applyAdminMode(false);
+        return;
+    }
+
+    if (confirm('管理者モードをONにしますか？')) {
+        applyAdminMode(true);
+    }
+}
+
 function setSummaryFilter(status) {
 
     const statusFilter = document.getElementById('status-filter');
