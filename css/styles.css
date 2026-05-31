@@ -939,6 +939,11 @@ body.tablet-mode tbody td:nth-child(4)::before {
 }
 
 body.tablet-mode tbody td:nth-child(5)::before {
+    content: "作業依頼進捗：";
+    font-weight: 700;
+}
+
+body.tablet-mode tbody td:nth-child(6)::before {
     content: "操作：";
     font-weight: 700;
 }
@@ -1115,6 +1120,82 @@ body.tablet-mode tbody td:last-child .action-buttons button {
   background: #0ea5e9 !important;
   color: white !important;
   font-weight: 800 !important;
+}
+
+.work-progress {
+  min-width: 260px;
+}
+
+.work-progress-summary {
+  margin-bottom: 8px;
+  color: #1f2937;
+  font-size: 0.95rem;
+  font-weight: 800;
+}
+
+.work-progress-steps {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.progress-step-btn {
+  display: grid;
+  grid-template-columns: 22px 1fr;
+  gap: 4px 6px;
+  align-items: center;
+  min-height: 46px;
+  padding: 7px 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #334155;
+  cursor: pointer;
+  text-align: left;
+}
+
+.progress-step-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.progress-step-btn.is-done {
+  border-color: #86efac;
+  background: #dcfce7;
+  color: #166534;
+  opacity: 1;
+}
+
+.progress-step-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: #e2e8f0;
+  color: #334155;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.progress-step-btn.is-done .progress-step-index {
+  background: #22c55e;
+  color: #ffffff;
+}
+
+.progress-step-label {
+  min-width: 0;
+  font-size: 0.78rem;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.progress-step-date {
+  grid-column: 2;
+  color: #475569;
+  font-size: 0.68rem;
+  line-height: 1.2;
 }
 
 .action-buttons {

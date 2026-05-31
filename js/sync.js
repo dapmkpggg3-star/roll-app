@@ -56,11 +56,27 @@ function validateFetchResponse(data) {
 }
 
 function normalizeRole(role) {
+    const progress = role && role.workProgress && typeof role.workProgress === 'object'
+        ? { ...role.workProgress }
+        : {};
+
+    if (role && role.requestSent === true && !progress.vendorSentAt) {
+        progress.vendorSentAt = role.updatedAt || new Date().toISOString();
+    }
+
+    if (typeof WORK_PROGRESS_STEPS !== 'undefined') {
+        WORK_PROGRESS_STEPS.forEach(step => {
+            progress[step.key] = progress[step.key] || '';
+        });
+    }
+
     return {
         ...role,
         updatedAt: role.updatedAt || new Date().toISOString(),
         memo: role.memo || '',
-        status: ALLOWED_STATUSES.includes(role.status) ? role.status : '中古予備（バラシ前）'
+        status: ALLOWED_STATUSES.includes(role.status) ? role.status : '中古予備（バラシ前）',
+        workProgress: progress,
+        requestSent: role.requestSent === true || Boolean(progress.vendorSentAt)
     };
 }
 

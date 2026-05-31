@@ -74,6 +74,14 @@ const ALLOWED_STATUSES = [
     '新品予備（組込完了）'
 ];
 
+const REWORK_READY_STATUS = '改削行き（搬出可能）';
+const WORK_PROGRESS_STEPS = [
+    { key: 'requestFormCreatedAt', label: '改削依頼書作成' },
+    { key: 'sealConfirmedAt', label: '押印確認' },
+    { key: 'pdfCreatedAt', label: 'PDF化' },
+    { key: 'vendorSentAt', label: '業者送信' }
+];
+
 let roles = [];
 let nextId = 1;
 let searchQuery = '';
@@ -108,13 +116,31 @@ if (backupKeys.length > 20) {
     localStorage.setItem('roles', JSON.stringify(roles));
 }
 
+function normalizeWorkProgress(role) {
+    const progress = role && role.workProgress && typeof role.workProgress === 'object'
+        ? { ...role.workProgress }
+        : {};
+
+    if (role && role.requestSent === true && !progress.vendorSentAt) {
+        progress.vendorSentAt = role.updatedAt || new Date().toISOString();
+    }
+
+    WORK_PROGRESS_STEPS.forEach(step => {
+        progress[step.key] = progress[step.key] || '';
+    });
+
+    return progress;
+}
+
 function loadLocalRoles() {
     roles = JSON.parse(localStorage.getItem('roles')) || [];
     roles = roles.map(role => ({
         ...role,
         updatedAt: role.updatedAt || new Date().toISOString(),
         memo: role.memo || '',
-        status: ALLOWED_STATUSES.includes(role.status) ? role.status : '中古予備（バラシ前）'
+        status: ALLOWED_STATUSES.includes(role.status) ? role.status : '中古予備（バラシ前）',
+        workProgress: normalizeWorkProgress(role),
+        requestSent: role.requestSent === true || Boolean(normalizeWorkProgress(role).vendorSentAt)
     }));
     fixOnlineDuplicates();
     const ids = roles.map(r => Number(r.id) || 0);
@@ -182,6 +208,67 @@ function formatUpdatedAt(updatedAt) {
         hour: '2-digit',
         minute: '2-digit'
     });
+}
+
+function getWorkProgressCompletedCount(role) {
+    const progress = normalizeWorkProgress(role);
+    return WORK_PROGRESS_STEPS.filter(step => Boolean(progress[step.key])).length;
+}
+
+function isWorkProgressStepEnabled(role, index) {
+    if (!role || role.status !== REWORK_READY_STATUS) {
+        return false;
+    }
+
+    if (index === 0) {
+        return true;
+    }
+
+    const progress = normalizeWorkProgress(role);
+    const previousStep = WORK_PROGRESS_STEPS[index - 1];
+    return Boolean(progress[previousStep.key]);
+}
+
+function formatProgressTimestamp(value) {
+    return value ? formatUpdatedAt(value) : '';
+}
+
+function getWorkProgressHtml(role) {
+    if (role.status !== REWORK_READY_STATUS) {
+        return '';
+    }
+
+    const progress = normalizeWorkProgress(role);
+    const completedCount = getWorkProgressCompletedCount(role);
+    const stepsHtml = WORK_PROGRESS_STEPS.map((step, index) => {
+        const completedAt = progress[step.key];
+        const isDone = Boolean(completedAt);
+        const disabled = isDone || !isWorkProgressStepEnabled(role, index);
+        const title = isDone
+            ? `${step.label}: ${formatProgressTimestamp(completedAt)}`
+            : step.label;
+
+        return `
+            <button
+                type="button"
+                class="progress-step-btn ${isDone ? 'is-done' : ''}"
+                onclick="completeWorkProgressStep('${role.id}', '${step.key}')"
+                ${disabled ? 'disabled' : ''}
+                title="${escapeHtml(title)}"
+            >
+                <span class="progress-step-index">${index + 1}</span>
+                <span class="progress-step-label">${escapeHtml(step.label)}</span>
+                ${isDone ? `<span class="progress-step-date">${escapeHtml(formatProgressTimestamp(completedAt))}</span>` : ''}
+            </button>
+        `;
+    }).join('');
+
+    return `
+        <div class="work-progress" aria-label="作業依頼進捗">
+            <div class="work-progress-summary">作業依頼進捗 ${completedCount}/4</div>
+            <div class="work-progress-steps">${stepsHtml}</div>
+        </div>
+    `;
 }
 
 function getLevelBadge(level) {
@@ -544,20 +631,14 @@ if (standNumber >= 2 && standNumber <= 5) {
             <td>${getStatusBadge(role.status)}</td>
             <td>${escapeHtml(getMemoPreview(role.memo))}</td>
             <td>${formattedDate}</td>
-            <td>
-${role.status === "改削行き（搬出可能）" && role.requestSent === true
-? '<span style="color:green;font-weight:700;">✅ 作業依頼済み</span>'
-: role.status === "改削行き（搬出可能）"
-? '<span style="color:red;font-weight:700;">⚠ 作業依頼未送信</span>'
-: ''}
-</td>
+            <td>${getWorkProgressHtml(role)}</td>
 
             <td>
             
                 <div class="action-buttons">
                     <button class="action-btn edit-btn" onclick="editRole('${role.id}')">✏️ 編集</button>
                     <button class="action-btn edit-btn" onclick="showMemo('${role.id}')">📝 詳細</button>
-                    ${role.status === "改削行き（搬出可能）" ? `
+                    ${role.status === REWORK_READY_STATUS ? `
   <button class="action-btn request-btn" onclick="requestWork('${role.id}')">
     📦 作業依頼
   </button>
@@ -587,7 +668,7 @@ function addRole() {
         alert('このスタンド番号は既に登録されています');
         return;
     }
-    const newRole = { id: nextId++, name: roleName, status: roleStatus, memo: roleMemo, updatedAt: new Date().toISOString() };
+    const newRole = { id: nextId++, name: roleName, status: roleStatus, memo: roleMemo, updatedAt: new Date().toISOString(), workProgress: normalizeWorkProgress({}) };
     
     // オンライン重複制御
     if (roleStatus === 'オンライン') {
@@ -671,6 +752,7 @@ function updateRole() {
     role.status = roleStatus;
     role.memo = roleMemo;
     role.updatedAt = new Date().toISOString();
+    role.workProgress = normalizeWorkProgress(role);
 
     updatedRoleId = role.id;
     
@@ -723,6 +805,17 @@ function requestWork(roleId) {
     const role = roles.find(r => String(r.id) === String(roleId));
 
     if (!role) return;
+    role.workProgress = normalizeWorkProgress(role);
+
+    if (role.workProgress.vendorSentAt) {
+        alert('業者送信は完了済みです');
+        return;
+    }
+
+    if (!isWorkProgressStepEnabled(role, 3)) {
+        alert('前工程が完了していないため、業者送信は完了できません');
+        return;
+    }
 
     const subject = `【作業依頼】${role.name}`;
 
@@ -745,17 +838,61 @@ ${new Date().toLocaleString("ja-JP")}
     const mailtoUrl =
 `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 
-    const confirmed = confirm("作業依頼メールを作成し、依頼済みにしますか？");
+    const confirmed = confirm("業者送信メールを作成し、工程「業者送信」を完了にしますか？");
 
     if (!confirmed) return;
 
-    role.requestSent = true;
-    role.updatedAt = new Date().toISOString();
+    const completed = completeWorkProgressStep(roleId, 'vendorSentAt', { skipConfirm: true, skipRender: true });
+
+    if (!completed) {
+        return;
+    }
 
     saveLocalRoles();
     renderRoles();
+    syncRoles();
 
     window.open(mailtoUrl, "_blank");
+}
+
+function completeWorkProgressStep(roleId, stepKey, options = {}) {
+    const role = roles.find(r => String(r.id) === String(roleId));
+    const stepIndex = WORK_PROGRESS_STEPS.findIndex(step => step.key === stepKey);
+    const step = WORK_PROGRESS_STEPS[stepIndex];
+
+    if (!role || !step || role.status !== REWORK_READY_STATUS) {
+        return false;
+    }
+
+    role.workProgress = normalizeWorkProgress(role);
+
+    if (role.workProgress[stepKey]) {
+        return false;
+    }
+
+    if (!isWorkProgressStepEnabled(role, stepIndex)) {
+        alert('前工程が完了していないため、この工程は完了できません');
+        return false;
+    }
+
+    if (!options.skipConfirm && !confirm(`${step.label}を完了にしますか？`)) {
+        return false;
+    }
+
+    const completedAt = new Date().toISOString();
+    role.workProgress[stepKey] = completedAt;
+    role.requestSent = Boolean(role.workProgress.vendorSentAt);
+    role.updatedAt = completedAt;
+
+    saveLocalRoles();
+
+    if (!options.skipRender) {
+        renderRoles();
+        syncRoles();
+        showToast(`${step.label}を完了しました`);
+    }
+
+    return true;
 }
 
 function deleteRole(id) {
