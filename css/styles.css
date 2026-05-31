@@ -1400,3 +1400,78 @@ body:not(.tablet-mode) th,
 body:not(.tablet-mode) td {
   display: table-cell !important;
 }
+
+body:not(.tablet-mode) .table-container {
+  overflow-x: visible;
+}
+
+body:not(.tablet-mode) #role-table {
+  table-layout: fixed;
+}
+
+body:not(.tablet-mode) #role-table th,
+body:not(.tablet-mode) #role-table td {
+  overflow-wrap: anywhere;
+}
+
+body:not(.tablet-mode) #role-table .actions-column,
+body:not(.tablet-mode) #role-table td:last-child {
+  width: 240px;
+  min-width: 0;
+}
+
+body:not(.tablet-mode) #role-table .action-buttons {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+
+body:not(.tablet-mode) #role-table .action-btn {
+  width: 100%;
+  min-width: 0;
+  padding: 10px 8px;
+  font-size: 14px;
+  line-height: 1.2;
+  white-space: normal;
+}
+
+@media (max-width: 720px) {
+  body:not(.tablet-mode) #role-table {
+    display: block !important;
+  }
+
+  body:not(.tablet-mode) #role-table thead {
+    display: none !important;
+  }
+
+  body:not(.tablet-mode) #role-table tbody {
+    display: grid !important;
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  body:not(.tablet-mode) #role-table tr {
+    display: block !important;
+    padding: 12px;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    background: #fff;
+  }
+
+  body:not(.tablet-mode) #role-table td {
+    display: block !important;
+    width: 100% !important;
+    padding: 8px 4px;
+    border-bottom: 1px solid #edf2f7;
+  }
+
+  body:not(.tablet-mode) #role-table td:last-child {
+    border-bottom: none;
+  }
+
+  body:not(.tablet-mode) #role-table .action-buttons {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
