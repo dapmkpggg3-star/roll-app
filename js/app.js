@@ -2,7 +2,8 @@
 const CORRECT_PASSWORD = '1234';
 const CURRENT_OPERATOR_KEY = 'currentOperator';
 const OPERATORS = [
-    { id: 'hiwatashi', name: '樋渡' }
+    { id: 'hiwatashi', name: '樋渡' },
+    { id: 'ohno', name: '大野' }
 ];
 
 // ログイン状態チェック
