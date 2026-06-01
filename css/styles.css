@@ -26,6 +26,56 @@ body {
     text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
+.header-actions {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 16px;
+}
+
+.operator-select-wrap {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    border: 1px solid rgba(255, 255, 255, 0.34);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.16);
+    color: #ffffff;
+    font-size: 0.95rem;
+    font-weight: 700;
+}
+
+.operator-select {
+    min-width: 150px;
+    padding: 8px 10px;
+    border: 1px solid rgba(255, 255, 255, 0.45);
+    border-radius: 6px;
+    background: #ffffff;
+    color: #1f2937;
+    font-size: 0.95rem;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.header-actions button {
+    padding: 8px 16px;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    background: rgba(255, 255, 255, 0.2);
+    color: white;
+    cursor: pointer;
+    font-size: 0.9rem;
+}
+
+.header-actions .logout-btn {
+    position: static;
+    top: auto;
+    right: auto;
+}
+
 .container {
     max-width: 900px;
     margin: 0 auto;
@@ -644,6 +694,23 @@ body.modal-open {
 
     .header h1 {
         font-size: 1.8rem;
+    }
+
+    .header-actions {
+        flex-direction: column;
+        align-items: stretch;
+        padding: 0 12px;
+    }
+
+    .operator-select-wrap,
+    .header-actions button {
+        width: 100%;
+        justify-content: space-between;
+    }
+
+    .operator-select {
+        flex: 1;
+        min-width: 0;
     }
 
     .content {

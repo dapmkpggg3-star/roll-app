@@ -1,5 +1,9 @@
 ﻿console.log("STATUS FILTER VERSION 6");
 const CORRECT_PASSWORD = '1234';
+const CURRENT_OPERATOR_KEY = 'currentOperator';
+const OPERATORS = [
+    { id: 'hiwatashi', name: '樋渡' }
+];
 
 // ログイン状態チェック
 function checkLoginStatus() {
@@ -10,6 +14,7 @@ function checkLoginStatus() {
     if (isLoggedIn) {
         loginScreen.style.display = 'none';
         mainScreen.style.display = 'block';
+        setupOperatorSelect();
         loadLocalRoles();
         renderRoles();
         if (isRemoteConfigured()) {
@@ -46,6 +51,7 @@ function logout() {
 // Enterキーでログイン
 document.addEventListener('DOMContentLoaded', function() {
     applyTabletModePreference();
+    setupOperatorSelect();
     loadRemoteRoles();
     document.getElementById('password-input').addEventListener('keypress', function(e) {
         if (e.key === 'Enter') {
@@ -66,6 +72,102 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     applyAdminMode(false);
 });
+
+function getStoredOperator() {
+    try {
+        const value = JSON.parse(localStorage.getItem(CURRENT_OPERATOR_KEY) || 'null');
+        if (!value || typeof value !== 'object') {
+            return null;
+        }
+
+        return OPERATORS.find(operator => operator.id === value.id) || null;
+    } catch (error) {
+        console.error('getStoredOperator error:', error);
+        return null;
+    }
+}
+
+function saveCurrentOperator(operatorId) {
+    const operator = OPERATORS.find(item => item.id === operatorId);
+
+    if (!operator) {
+        localStorage.removeItem(CURRENT_OPERATOR_KEY);
+        return null;
+    }
+
+    localStorage.setItem(CURRENT_OPERATOR_KEY, JSON.stringify(operator));
+    return operator;
+}
+
+function getCurrentOperator() {
+    const select = document.getElementById('operator-select');
+    const selectedId = select ? select.value : '';
+    return OPERATORS.find(operator => operator.id === selectedId) || getStoredOperator();
+}
+
+function getHistoryOperator() {
+    const operator = getCurrentOperator();
+
+    if (!operator) {
+        return null;
+    }
+
+    return {
+        id: operator.id,
+        name: operator.name
+    };
+}
+
+function getOperatorNameForDisplay(entry) {
+    const operator = entry && entry.operator;
+
+    if (operator && typeof operator === 'object' && operator.name) {
+        return operator.name;
+    }
+
+    if (typeof operator === 'string' && operator.trim()) {
+        return operator.trim();
+    }
+
+    return '-';
+}
+
+function warnIfOperatorMissing() {
+    if (getCurrentOperator()) {
+        return false;
+    }
+
+    setSyncMessage('担当者を選択してください', true);
+    if (typeof showToast === 'function') {
+        showToast('担当者を選択してください');
+    }
+    return true;
+}
+
+function setupOperatorSelect() {
+    const select = document.getElementById('operator-select');
+
+    if (!select) {
+        return;
+    }
+
+    const selected = getStoredOperator();
+    select.innerHTML = [
+        '<option value="">選択してください</option>',
+        ...OPERATORS.map(operator => `<option value="${operator.id}">${operator.name}</option>`)
+    ].join('');
+    select.value = selected ? selected.id : '';
+}
+
+function changeOperator(event) {
+    const operator = saveCurrentOperator(event.target.value);
+
+    if (operator) {
+        setSyncMessage(`担当者: ${operator.name}`);
+    } else {
+        setSyncMessage('担当者を選択してください', true);
+    }
+}
 
 const ALLOWED_STATUSES = [
     'オンライン',
@@ -140,7 +242,7 @@ function normalizeRoleHistory(role) {
         : [];
 }
 
-function addRoleHistoryEntry(role, type, label, beforeValue, afterValue, at = new Date().toISOString()) {
+function addRoleHistoryEntry(role, type, label, beforeValue, afterValue, at = new Date().toISOString(), options = {}) {
     if (!role) {
         return;
     }
@@ -152,15 +254,22 @@ function addRoleHistoryEntry(role, type, label, beforeValue, afterValue, at = ne
         return;
     }
 
-    role.history = normalizeRoleHistory(role);
-    role.history.push({
+    const entry = {
         at,
         roleName: role.name || '',
         type,
         label,
         before: beforeText || '-',
         after: afterText || '-'
-    });
+    };
+    const operator = getHistoryOperator();
+
+    if (operator && !options.skipOperator) {
+        entry.operator = operator;
+    }
+
+    role.history = normalizeRoleHistory(role);
+    role.history.push(entry);
 }
 
 function loadLocalRoles() {
@@ -190,7 +299,7 @@ function fixOnlineDuplicates() {
         const onlineRoles = groupRoles.filter(r => r.status === 'オンライン').sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
         if (onlineRoles.length > 1) {
             for (let i = 1; i < onlineRoles.length; i++) {
-                addRoleHistoryEntry(onlineRoles[i], 'status', 'ステータス変更', onlineRoles[i].status, '中古予備（バラシ前）');
+                addRoleHistoryEntry(onlineRoles[i], 'status', 'ステータス変更', onlineRoles[i].status, '中古予備（バラシ前）', new Date().toISOString(), { skipOperator: true });
                 onlineRoles[i].status = '中古予備（バラシ前）';
             }
         }
@@ -423,6 +532,7 @@ function showHistory(id) {
                 </div>
                 <div class="history-entry-body">
                     <div><span>対象</span>${escapeHtml(entry.roleName || role.name || '-')}</div>
+                    <div><span>担当者</span>${escapeHtml(getOperatorNameForDisplay(entry))}</div>
                     <div><span>変更前</span>${escapeHtml(entry.before || '-')}</div>
                     <div><span>変更後</span>${escapeHtml(entry.after || '-')}</div>
                 </div>
@@ -740,6 +850,7 @@ if (standNumber >= 2 && standNumber <= 5) {
 }
 
 function addRole() {
+    warnIfOperatorMissing();
     const roleName = document.getElementById('role-name').value.trim();
     const roleStatus = document.getElementById('role-status').value;
     const roleMemo = document.getElementById('role-memo').value.trim();
@@ -757,6 +868,7 @@ function addRole() {
         return;
     }
     const newRole = { id: nextId++, name: roleName, status: roleStatus, memo: roleMemo, updatedAt: new Date().toISOString(), workProgress: normalizeWorkProgress({}), history: [] };
+    addRoleHistoryEntry(newRole, 'create', '新規追加', '-', roleStatus, newRole.updatedAt);
     
     // オンライン重複制御
     if (roleStatus === 'オンライン') {
@@ -805,6 +917,7 @@ console.log('editing mode ON');
 
 function updateRole() {
     if (editingId === null) return;
+    warnIfOperatorMissing();
     
     const roleName = document.getElementById('role-name').value.trim();
     const roleStatus = document.getElementById('role-status').value;
@@ -959,6 +1072,7 @@ ${new Date().toLocaleString("ja-JP")}
 }
 
 function completeWorkProgressStep(roleId, stepKey, options = {}) {
+    warnIfOperatorMissing();
     const role = roles.find(r => String(r.id) === String(roleId));
     const stepIndex = WORK_PROGRESS_STEPS.findIndex(step => step.key === stepKey);
     const step = WORK_PROGRESS_STEPS[stepIndex];
@@ -1001,6 +1115,7 @@ function completeWorkProgressStep(roleId, stepKey, options = {}) {
 }
 
 function deleteRole(id) {
+    warnIfOperatorMissing();
     const target = roles.find(r => String(r.id) === String(id));
 
     if (!target) {
