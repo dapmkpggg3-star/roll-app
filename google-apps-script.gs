@@ -162,8 +162,8 @@ function fetchRoles() {
 
 function writeRoles(roles) {
   const sheet = getSheet();
-  Logger.log('writeRoles: clearing sheet');
-  sheet.clear();
+  Logger.log('writeRoles: clearing sheet contents');
+  sheet.clearContents();
 
   const rows = roles.map((role, index) => {
     try {
@@ -464,6 +464,39 @@ function applySheetFormatting(sheet, dataRowCount) {
     sheet.getRange(2, 7, dataRowCount, 1).setWrap(false);
     sheet.getRange(2, 8, dataRowCount, 1).setWrap(false);
   }
+
+  applyStandGroupSeparators(sheet, dataRowCount, columnCount);
+}
+
+function applyStandGroupSeparators(sheet, dataRowCount, columnCount) {
+  if (dataRowCount <= 0) {
+    return;
+  }
+
+  const standValues = sheet.getRange(2, 2, dataRowCount, 1).getValues();
+
+  standValues.forEach(function(row, index) {
+    const currentStand = parseStandNumberForSort(row[0]).stand;
+    const nextRow = standValues[index + 1];
+    const nextStand = nextRow ? parseStandNumberForSort(nextRow[0]).stand : null;
+    const isKnownStand = currentStand !== 999999;
+    const isLastInGroup = !nextRow || currentStand !== nextStand;
+
+    if (isKnownStand && isLastInGroup) {
+      const sheetRow = index + 2;
+      sheet.getRange(sheetRow, 1, 1, columnCount)
+        .setBorder(
+          null,
+          null,
+          true,
+          null,
+          null,
+          null,
+          '#64748b',
+          SpreadsheetApp.BorderStyle.SOLID_MEDIUM
+        );
+    }
+  });
 }
 
 function getSheet() {
