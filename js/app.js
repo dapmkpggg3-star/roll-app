@@ -1125,6 +1125,7 @@ function deleteRole(id) {
     }
 
     if (confirm(`${target.name} を削除しますか？`)) {
+        markRoleDeleted(target.id);
         roles = roles.filter(r => String(r.id) !== String(id));
         saveLocalRoles();
         renderRoles();

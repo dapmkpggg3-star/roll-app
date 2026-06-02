@@ -1,6 +1,73 @@
 const SHEETS_ENDPOINT = 'https://script.google.com/macros/s/AKfycbyN0_AoU1dcaXzCO3ICRma2pFJyz2HvCSnwe_RAJMpaOlE53Gj5SugtDFoV78KHf9x9/exec';
+const DELETED_ROLE_IDS_KEY = 'deletedRoleIds';
+
 function isRemoteConfigured() {
     return SHEETS_ENDPOINT.trim().length > 0;
+}
+
+function normalizeRoleIdForDelete(id) {
+    if (id === undefined || id === null) {
+        return '';
+    }
+
+    return String(id).trim();
+}
+
+function getDeletedRoleIds() {
+    try {
+        const value = JSON.parse(localStorage.getItem(DELETED_ROLE_IDS_KEY) || '[]');
+
+        if (!Array.isArray(value)) {
+            return [];
+        }
+
+        return Array.from(new Set(
+            value
+                .map(normalizeRoleIdForDelete)
+                .filter(id => id !== '')
+        ));
+    } catch (error) {
+        console.error('getDeletedRoleIds error:', error);
+        return [];
+    }
+}
+
+function setDeletedRoleIds(ids) {
+    const normalizedIds = Array.from(new Set(
+        (Array.isArray(ids) ? ids : [])
+            .map(normalizeRoleIdForDelete)
+            .filter(id => id !== '')
+    ));
+
+    localStorage.setItem(DELETED_ROLE_IDS_KEY, JSON.stringify(normalizedIds));
+    return normalizedIds;
+}
+
+function markRoleDeleted(id) {
+    const normalizedId = normalizeRoleIdForDelete(id);
+
+    if (!normalizedId) {
+        return [];
+    }
+
+    return setDeletedRoleIds([...getDeletedRoleIds(), normalizedId]);
+}
+
+function clearDeletedRoleIds(ids) {
+    const clearSet = new Set((Array.isArray(ids) ? ids : [])
+        .map(normalizeRoleIdForDelete)
+        .filter(id => id !== ''));
+
+    if (clearSet.size === 0) {
+        return getDeletedRoleIds();
+    }
+
+    return setDeletedRoleIds(getDeletedRoleIds().filter(id => !clearSet.has(id)));
+}
+
+function isRoleMarkedDeleted(role, deletedRoleIds = getDeletedRoleIds()) {
+    const id = normalizeRoleIdForDelete(role && role.id);
+    return id !== '' && deletedRoleIds.includes(id);
 }
 
 function setSyncMessage(message, isError = false) {
@@ -113,14 +180,19 @@ function getRoleMergeKey(role) {
 
 function mergeRemoteAndLocalRoles(remoteRoles, localRoles) {
     const mergedMap = new Map();
+    const deletedRoleIds = getDeletedRoleIds();
 
     remoteRoles.forEach(role => {
         const normalized = normalizeRole(role);
+        if (isRoleMarkedDeleted(normalized, deletedRoleIds)) {
+            return;
+        }
         mergedMap.set(getRoleMergeKey(normalized), normalized);
     });
 
     localRoles.forEach(role => {
         if (!role || !role.name || String(role.name).trim() === '') return;
+        if (isRoleMarkedDeleted(role, deletedRoleIds)) return;
         const key = getRoleMergeKey(role);
         const localRole = normalizeRole(role);
         const remoteRole = mergedMap.get(key);
@@ -147,7 +219,10 @@ async function fetchData() {
 
         const data = await readJsonResponse(response, 'データ取得');
         validateFetchResponse(data);
-        roles = data.roles.map(normalizeRole);
+        const deletedRoleIds = getDeletedRoleIds();
+        roles = data.roles
+            .map(normalizeRole)
+            .filter(role => !isRoleMarkedDeleted(role, deletedRoleIds));
         fixOnlineDuplicates();
         saveLocalRoles();
         const ids = roles.map(r => Number(r.id) || 0);
@@ -315,30 +390,34 @@ async function syncRoles() {
         const localRoles = JSON.parse(localStorage.getItem('roles') || '[]').map(normalizeRole);
         const previousRoles = JSON.parse(localStorage.getItem('roles_backup_before_sync') || '[]').map(normalizeRole);
         const remoteRoles = await fetchRemoteRolesForGuard();
+        const pendingDeletedRoleIds = getDeletedRoleIds();
+        const remoteRolesAfterPendingDelete = remoteRoles.filter(role => !isRoleMarkedDeleted(role, pendingDeletedRoleIds));
+        const previousRolesAfterPendingDelete = previousRoles.filter(role => !isRoleMarkedDeleted(role, pendingDeletedRoleIds));
 
         console.log('SYNC GUARD CHECK', {
             local: localRoles.length,
             remote: remoteRoles.length,
+            deleted: pendingDeletedRoleIds.length,
             previous: previousRoles.length
         });
 
-        if (!Array.isArray(localRoles) || localRoles.length === 0) {
+        if (!Array.isArray(localRoles) || (localRoles.length === 0 && remoteRolesAfterPendingDelete.length > 0)) {
             alert('アプリ側データが0件のため同期を停止しました。');
             setSyncMessage('アプリ側データが0件のため同期を停止しました。', true);
             return;
         }
 
-        if (remoteRoles.length >= 10 && localRoles.length < remoteRoles.length * 0.2) {
+        if (remoteRolesAfterPendingDelete.length >= 10 && localRoles.length < remoteRolesAfterPendingDelete.length * 0.2) {
             alert(
-                `アプリ側データが少なすぎるため同期を停止しました。\nアプリ:${localRoles.length}件\nスプレッドシート:${remoteRoles.length}件`
+                `アプリ側データが少なすぎるため同期を停止しました。\nアプリ:${localRoles.length}件\nスプレッドシート:${remoteRolesAfterPendingDelete.length}件`
             );
             setSyncMessage('件数差が大きいため同期を停止しました。', true);
             return;
         }
 
-        if (previousRoles.length >= 10 && localRoles.length < previousRoles.length * 0.2) {
+        if (previousRolesAfterPendingDelete.length >= 10 && localRoles.length < previousRolesAfterPendingDelete.length * 0.2) {
             alert(
-                `前回同期前よりデータ件数が急減しています。\n同期を停止しました。\n現在:${localRoles.length}件\n前回:${previousRoles.length}件`
+                `前回同期前よりデータ件数が急減しています。\n同期を停止しました。\n現在:${localRoles.length}件\n前回:${previousRolesAfterPendingDelete.length}件`
             );
             setSyncMessage('前回より件数が急減したため同期を停止しました。', true);
             return;
@@ -360,6 +439,7 @@ async function syncRoles() {
             setSyncMessage('保存結果を確認しています...');
             const savedRemoteRoles = await fetchRemoteRolesForGuard('同期後データ確認');
             verifySavedRoles(mergedRoles, savedRemoteRoles);
+            clearDeletedRoleIds(pendingDeletedRoleIds);
             saveLastSyncAt();
             renderRoles();
             setSyncMessage('スプレッドシートと同期しました。');
