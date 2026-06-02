@@ -1,7 +1,7 @@
 const SHEET_NAME = 'Roles';
 const INPUT_SHEET_NAMES = ['入力シート', 'Input', '入力'];
 const SPREADSHEET_ID = '1X07qQa7u9YPLvErT0D48goT5wYmvcpgNjqzK3FhRFeA';
-const HEADER_VALUES = ['ID', 'スタンド番号', 'ステータス', 'メモ', '最終更新日', '作業依頼済み', '作業依頼進捗', '履歴'];
+const HEADER_VALUES = ['ID', 'スタンド番号', 'ステータス', 'メモ', '最終更新日', '作業依頼済み', '作業依頼進捗', '履歴', '現在径'];
 const STATUS_COLUMN_INDEX = 3;
 const HEADER_BACKGROUND = '#1f4e78';
 const HEADER_FONT_COLOR = '#ffffff';
@@ -152,7 +152,8 @@ function fetchRoles() {
       updatedAt: row[4],
       requestSent: requestSent,
       workProgress: workProgress,
-      history: parseHistory(row[7])
+      history: parseHistory(row[7]),
+      currentDiameter: normalizeCurrentDiameterForSheet(row[8])
     };
   }).filter(row => row.name && String(row.name).trim() !== '');
   
@@ -175,7 +176,8 @@ function writeRoles(roles) {
         role.updatedAt || '',
         role.requestSent === true,
         JSON.stringify(normalizeWorkProgressForSheet(role)),
-        JSON.stringify(normalizeHistoryForSheet(role))
+        JSON.stringify(normalizeHistoryForSheet(role)),
+        normalizeCurrentDiameterForSheet(role.currentDiameter)
       ];
     } catch (err) {
       Logger.log('writeRoles error at row ' + index + ': ' + err.toString());
@@ -227,7 +229,8 @@ function addRoleFromInputArea() {
     now,
     false,
     JSON.stringify(normalizeWorkProgressForSheet({})),
-    JSON.stringify([])
+    JSON.stringify([]),
+    ''
   ];
 
   sheet.getRange(sheet.getLastRow() + 1, 1, 1, HEADER_VALUES.length).setValues([row]);
@@ -388,6 +391,15 @@ function normalizeHistoryForSheet(role) {
   return parseHistory(role && role.history).filter(function(entry) {
     return entry && typeof entry === 'object';
   });
+}
+
+function normalizeCurrentDiameterForSheet(value) {
+  if (value === undefined || value === null || String(value).trim() === '') {
+    return '';
+  }
+
+  const numericValue = Number(value);
+  return isFinite(numericValue) ? numericValue : '';
 }
 
 

@@ -243,6 +243,20 @@ function normalizeRoleHistory(role) {
         : [];
 }
 
+function normalizeCurrentDiameter(value) {
+    if (value === undefined || value === null || String(value).trim() === '') {
+        return '';
+    }
+
+    const numericValue = Number(value);
+    return Number.isFinite(numericValue) ? numericValue : '';
+}
+
+function formatCurrentDiameter(value) {
+    const normalized = normalizeCurrentDiameter(value);
+    return normalized === '' ? '-' : `φ${normalized.toFixed(1)}`;
+}
+
 function addRoleHistoryEntry(role, type, label, beforeValue, afterValue, at = new Date().toISOString(), options = {}) {
     if (!role) {
         return;
@@ -280,6 +294,7 @@ function loadLocalRoles() {
         updatedAt: role.updatedAt || new Date().toISOString(),
         memo: role.memo || '',
         status: ALLOWED_STATUSES.includes(role.status) ? role.status : '中古予備（バラシ前）',
+        currentDiameter: normalizeCurrentDiameter(role.currentDiameter),
         workProgress: normalizeWorkProgress(role),
         history: normalizeRoleHistory(role),
         requestSent: role.requestSent === true || Boolean(normalizeWorkProgress(role).vendorSentAt)
@@ -828,6 +843,7 @@ if (standNumber >= 2 && standNumber <= 5) {
 </td>
             <td>${getStatusBadge(role.status)}</td>
             <td>${escapeHtml(getMemoPreview(role.memo))}</td>
+            <td>${escapeHtml(formatCurrentDiameter(role.currentDiameter))}</td>
             <td>${formattedDate}</td>
             <td>${getWorkProgressHtml(role)}</td>
 
@@ -854,6 +870,7 @@ function addRole() {
     warnIfOperatorMissing();
     const roleName = document.getElementById('role-name').value.trim();
     const roleStatus = document.getElementById('role-status').value;
+    const roleCurrentDiameter = normalizeCurrentDiameter(document.getElementById('role-current-diameter').value);
     const roleMemo = document.getElementById('role-memo').value.trim();
     
     if (!roleName) {
@@ -868,7 +885,7 @@ function addRole() {
         alert('このスタンド番号は既に登録されています');
         return;
     }
-    const newRole = { id: nextId++, name: roleName, status: roleStatus, memo: roleMemo, updatedAt: new Date().toISOString(), workProgress: normalizeWorkProgress({}), history: [] };
+    const newRole = { id: nextId++, name: roleName, status: roleStatus, memo: roleMemo, currentDiameter: roleCurrentDiameter, updatedAt: new Date().toISOString(), workProgress: normalizeWorkProgress({}), history: [] };
     addRoleHistoryEntry(newRole, 'create', '新規追加', '-', roleStatus, newRole.updatedAt);
     
     // オンライン重複制御
@@ -888,6 +905,7 @@ function addRole() {
     document.getElementById('role-name').value = '';
     document.getElementById('role-status').value = '';
     updateStatusPreview(document.getElementById('role-status'));
+    document.getElementById('role-current-diameter').value = '';
     document.getElementById('role-memo').value = '';
     renderRoles();
     syncRoles();
@@ -903,6 +921,7 @@ function editRole(id) {
     document.getElementById('role-name').value = role.name;
     document.getElementById('role-status').value = role.status;
     updateStatusPreview(document.getElementById('role-status'));
+    document.getElementById('role-current-diameter').value = normalizeCurrentDiameter(role.currentDiameter);
     document.getElementById('role-memo').value = role.memo || '';
     
     document.getElementById('addRoleBtn').style.display = 'none';
@@ -922,6 +941,7 @@ function updateRole() {
     
     const roleName = document.getElementById('role-name').value.trim();
     const roleStatus = document.getElementById('role-status').value;
+    const roleCurrentDiameter = normalizeCurrentDiameter(document.getElementById('role-current-diameter').value);
     const roleMemo = document.getElementById('role-memo').value.trim();
     
     if (!roleName) {
@@ -938,6 +958,7 @@ function updateRole() {
     const beforeName = role.name;
     const beforeStatus = role.status || '';
     const beforeMemo = role.memo || '';
+    const beforeCurrentDiameter = normalizeCurrentDiameter(role.currentDiameter);
     
     if (roleName !== role.name && roles.some(r => r.id !== editingId && r.name === roleName)) {
         alert('このスタンド番号は既に登録されています');
@@ -958,6 +979,7 @@ function updateRole() {
     role.name = roleName;
     role.status = roleStatus;
     role.memo = roleMemo;
+    role.currentDiameter = roleCurrentDiameter;
     role.updatedAt = new Date().toISOString();
     role.workProgress = normalizeWorkProgress(role);
     if (beforeName !== roleName) {
@@ -968,6 +990,7 @@ function updateRole() {
     }
     addRoleHistoryEntry(role, 'status', 'ステータス変更', beforeStatus, roleStatus, role.updatedAt);
     addRoleHistoryEntry(role, 'memo', 'メモ変更', beforeMemo, roleMemo, role.updatedAt);
+    addRoleHistoryEntry(role, 'diameter', '現在径変更', formatCurrentDiameter(beforeCurrentDiameter), formatCurrentDiameter(roleCurrentDiameter), role.updatedAt);
 
     updatedRoleId = role.id;
     
@@ -1009,6 +1032,7 @@ function cancelEdit() {
     document.getElementById('role-name').value = '';
     document.getElementById('role-status').value = '';
     updateStatusPreview(document.getElementById('role-status'));
+    document.getElementById('role-current-diameter').value = '';
     document.getElementById('role-memo').value = '';
     document.body.classList.remove('editing-mode');
     

@@ -70,6 +70,15 @@ function isRoleMarkedDeleted(role, deletedRoleIds = getDeletedRoleIds()) {
     return id !== '' && deletedRoleIds.includes(id);
 }
 
+function normalizeCurrentDiameter(value) {
+    if (value === undefined || value === null || String(value).trim() === '') {
+        return '';
+    }
+
+    const numericValue = Number(value);
+    return Number.isFinite(numericValue) ? numericValue : '';
+}
+
 function setSyncMessage(message, isError = false) {
     const syncEl = document.getElementById('sync-message');
     if (syncEl) {
@@ -145,6 +154,7 @@ function normalizeRole(role) {
         updatedAt: role.updatedAt || new Date().toISOString(),
         memo: role.memo || '',
         status: ALLOWED_STATUSES.includes(role.status) ? role.status : '中古予備（バラシ前）',
+        currentDiameter: normalizeCurrentDiameter(role.currentDiameter),
         workProgress: progress,
         history: history,
         requestSent: role.requestSent === true || Boolean(progress.vendorSentAt)
@@ -315,6 +325,7 @@ function getRoleVerificationSnapshot(role) {
         name: String(normalized.name ?? ''),
         status: String(normalized.status ?? ''),
         memo: String(normalized.memo ?? ''),
+        currentDiameter: normalized.currentDiameter === '' ? '' : Number(normalized.currentDiameter),
         updatedAt: String(normalized.updatedAt ?? ''),
         requestSent: normalized.requestSent === true,
         workProgress: normalized.workProgress || {},

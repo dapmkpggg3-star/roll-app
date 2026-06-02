@@ -124,6 +124,7 @@
                     <div class="status-preview-row" aria-label="現在のステータス色プレビュー">
                         <span id="role-status-preview" class="status-preview status-badge status-empty" aria-live="polite">現在のステータス：未選択</span>
                     </div>
+                    <input type="number" id="role-current-diameter" placeholder="現在径 (例: 450.0)" step="0.1" min="0" style="flex: 1;">
                     <textarea id="role-memo" placeholder="メモを入力...(改行可)" style="flex: 1; min-height: 40px; padding: 12px 15px; border: 2px solid #e0e0e0; border-radius: 6px; font-size: 1rem; resize: vertical;"></textarea>
                     <input id="csv-import-input" type="file" accept=".csv,text/csv" style="display:none" onchange="importCsv(event)">
                     <div class="form-actions">
@@ -146,6 +147,7 @@
                                 <th>スタンド番号</th>
                                 <th>ステータス</th>
                                 <th>メモ</th>
+                                <th>現在径</th>
                                 <th>最終更新日</th>
                                 <th>作業依頼進捗</th>
                                 <th class="actions-column">アクション</th>
