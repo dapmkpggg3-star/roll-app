@@ -3,6 +3,8 @@ const INPUT_SHEET_NAMES = ['入力シート', 'Input', '入力'];
 const SPREADSHEET_ID = '1X07qQa7u9YPLvErT0D48goT5wYmvcpgNjqzK3FhRFeA';
 const HEADER_VALUES = ['ID', 'スタンド番号', 'ステータス', 'メモ', '最終更新日', '作業依頼済み', '作業依頼進捗', '履歴', '現在径'];
 const STATUS_COLUMN_INDEX = 3;
+const CURRENT_DIAMETER_COLUMN_INDEX = 9;
+const ADD_ROLE_ACTION_NAME = 'addRoleFromInputArea';
 const HEADER_BACKGROUND = '#1f4e78';
 const HEADER_FONT_COLOR = '#ffffff';
 const DEFAULT_STATUS = '中古予備（バラシ前）';
@@ -466,18 +468,62 @@ function applySheetFormatting(sheet, dataRowCount) {
   sheet.setColumnWidth(6, 95);
   sheet.setColumnWidth(7, 80);
   sheet.setColumnWidth(8, 80);
+  sheet.setColumnWidth(CURRENT_DIAMETER_COLUMN_INDEX, 95);
   sheet.hideColumns(1);
   sheet.hideColumns(7);
   sheet.hideColumns(8);
+
+  sheet.getRange(2, CURRENT_DIAMETER_COLUMN_INDEX, maxRows - 1, 1)
+    .setHorizontalAlignment('right')
+    .setNumberFormat('"Φ"0.0');
 
   sheet.getRange(1, 1, totalRows, columnCount).setVerticalAlignment('middle');
   if (dataRowCount > 0) {
     sheet.getRange(2, 1, dataRowCount, columnCount).setWrap(true);
     sheet.getRange(2, 7, dataRowCount, 1).setWrap(false);
     sheet.getRange(2, 8, dataRowCount, 1).setWrap(false);
+    sheet.getRange(2, CURRENT_DIAMETER_COLUMN_INDEX, dataRowCount, 1).setWrap(false);
   }
 
+  hideAddRoleButtons(sheet);
   applyStandGroupSeparators(sheet, dataRowCount, columnCount);
+}
+
+function hideAddRoleButtons(sheet) {
+  removeDrawingsByAction(sheet, ADD_ROLE_ACTION_NAME);
+  removeImagesByAction(sheet, ADD_ROLE_ACTION_NAME);
+}
+
+function removeDrawingsByAction(sheet, actionName) {
+  if (!sheet.getDrawings) {
+    return;
+  }
+
+  sheet.getDrawings().forEach(function(drawing) {
+    try {
+      if (drawing.getOnAction && drawing.getOnAction() === actionName && drawing.remove) {
+        drawing.remove();
+      }
+    } catch (error) {
+      Logger.log('removeDrawingsByAction error: ' + error.toString());
+    }
+  });
+}
+
+function removeImagesByAction(sheet, actionName) {
+  if (!sheet.getImages) {
+    return;
+  }
+
+  sheet.getImages().forEach(function(image) {
+    try {
+      if (image.getScript && image.getScript() === actionName && image.remove) {
+        image.remove();
+      }
+    } catch (error) {
+      Logger.log('removeImagesByAction error: ' + error.toString());
+    }
+  });
 }
 
 function applyStandGroupSeparators(sheet, dataRowCount, columnCount) {
