@@ -1872,3 +1872,85 @@ body.tablet-mode #role-table .work-progress-steps {
     font-size: 20px !important;
   }
 }
+
+.mobile-history-btn {
+  display: none !important;
+}
+
+@media (max-width: 640px) {
+  body.tablet-mode #role-table tbody tr {
+    display: flex !important;
+    flex-direction: column;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  body.tablet-mode #role-table tbody td {
+    display: grid !important;
+    grid-column: auto !important;
+    grid-row: auto !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  body.tablet-mode #role-table .stand-card-header {
+    grid-template-columns: 1fr;
+  }
+
+  body.tablet-mode #role-table .stand-card-header > .history-card-btn {
+    display: none !important;
+  }
+
+  body.tablet-mode #role-table .card-actions {
+    display: block !important;
+    position: static !important;
+    grid-column: auto !important;
+    grid-row: auto !important;
+    align-self: auto !important;
+    justify-self: stretch !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  body.tablet-mode #role-table .card-actions-list {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    grid-auto-rows: 64px !important;
+    gap: 10px !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    height: auto !important;
+    align-content: start !important;
+  }
+
+  body.tablet-mode #role-table .card-actions-list .mobile-history-btn {
+    display: inline-flex !important;
+  }
+
+  body.tablet-mode #role-table .card-actions-list .action-btn {
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    height: 64px !important;
+    min-height: 64px !important;
+    padding: 10px 8px !important;
+    font-size: 18px !important;
+    line-height: 1.15;
+    white-space: normal;
+  }
+}
+
+@media (max-width: 360px) {
+  body.tablet-mode #role-table .card-actions-list {
+    grid-template-columns: 1fr !important;
+  }
+}
