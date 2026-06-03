@@ -1623,7 +1623,7 @@ body.tablet-mode #role-table tbody {
 body.tablet-mode #role-table tbody tr {
   position: relative;
   display: grid !important;
-  grid-template-columns: 1fr;
+  grid-template-columns: minmax(0, 1fr) 190px;
   gap: 12px;
   min-height: 0 !important;
   padding: 18px !important;
@@ -1643,6 +1643,7 @@ body.tablet-mode #role-table tbody td {
   border-bottom: none !important;
   color: #1f2937;
   font-size: 17px;
+  grid-column: 1;
 }
 
 body.tablet-mode #role-table tbody td::before {
@@ -1741,20 +1742,27 @@ body.tablet-mode #role-table .updated-at-cell {
 
 body.tablet-mode #role-table .actions-cell {
   display: block !important;
-  margin-top: 4px;
+  grid-column: 2;
+  grid-row: 1 / span 6;
+  align-self: stretch;
+  margin-top: 0;
 }
 
 body.tablet-mode #role-table .action-buttons {
   display: grid !important;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: 1fr;
+  grid-auto-rows: 74px;
   gap: 12px;
   width: 100%;
+  height: 100%;
   min-width: 0;
+  align-content: start;
 }
 
 body.tablet-mode #role-table .actions-cell .action-btn {
   width: 100%;
   min-width: 0 !important;
+  height: 74px !important;
   min-height: 74px !important;
   padding: 16px 12px !important;
   border-radius: 8px;
@@ -1764,7 +1772,7 @@ body.tablet-mode #role-table .actions-cell .action-btn {
 }
 
 body.tablet-mode #role-table .actions-cell .request-btn {
-  grid-column: 1 / -1;
+  grid-column: auto;
 }
 
 body.tablet-mode #role-table .work-progress {
@@ -1779,5 +1787,24 @@ body.tablet-mode #role-table .work-progress-steps {
 @media (max-width: 900px) {
   body.tablet-mode #role-table tbody {
     grid-template-columns: 1fr !important;
+  }
+
+  body.tablet-mode #role-table tbody tr {
+    grid-template-columns: minmax(0, 1fr) 180px;
+  }
+}
+
+@media (max-width: 640px) {
+  body.tablet-mode #role-table tbody tr {
+    grid-template-columns: 1fr;
+  }
+
+  body.tablet-mode #role-table .actions-cell {
+    grid-column: 1;
+    grid-row: auto;
+  }
+
+  body.tablet-mode #role-table .action-buttons {
+    height: auto;
   }
 }

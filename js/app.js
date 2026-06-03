@@ -180,6 +180,7 @@ const ALLOWED_STATUSES = [
 ];
 
 const REWORK_READY_STATUS = '改削行き（搬出可能）';
+const WORK_REQUEST_ACTION_LABEL = '作業依頼';
 const WORK_PROGRESS_STEPS = [
     { key: 'requestFormCreatedAt', label: '改削依頼書作成' },
     { key: 'sealConfirmedAt', label: '押印確認' },
@@ -856,7 +857,7 @@ if (standNumber >= 2 && standNumber <= 5) {
                     <button class="action-btn edit-btn" onclick="editRole('${role.id}')">✏️ 編集</button>
                     ${role.status === REWORK_READY_STATUS ? `
   <button class="action-btn request-btn" onclick="requestWork('${role.id}')">
-    📦 作業依頼
+    📦 ${WORK_REQUEST_ACTION_LABEL}
   </button>
 ` : ""}
                     <button class="action-btn delete-btn" onclick="deleteRole('${role.id}')">🗑️ 削除</button>
