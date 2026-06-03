@@ -807,7 +807,7 @@ return String(a.name || '').localeCompare(String(b.name || ''), 'ja');
         const message = roles.length === 0
             ? 'ロールがまだ登録されていません'
             : '検索条件に一致するロールが見つかりません';
-        roleList.innerHTML = `<tr><td colspan="6" style="text-align: center; padding: 40px; color: #999;">${message}</td></tr>`;
+        roleList.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 40px; color: #999;">${message}</td></tr>`;
         return;
     }
 
@@ -837,22 +837,23 @@ if (standNumber >= 2 && standNumber <= 5) {
 }
         const formattedDate = formatUpdatedAt(role.updatedAt);
         row.innerHTML = `
-            <td>
-  <span class="role-id stand-name-cell">${escapeHtml(role.name)}</span>
+            <td class="stand-cell">
+  <div class="stand-card-header">
+    <span class="role-id stand-name-cell">${escapeHtml(role.name)}</span>
+    <button class="action-btn history-btn history-card-btn" onclick="showHistory('${role.id}')">履歴</button>
+  </div>
   ${updatedRoleId === role.id ? '<span class="updated-badge">更新しました</span>' : ''}
 </td>
-            <td>${getStatusBadge(role.status)}</td>
-            <td>${escapeHtml(getMemoPreview(role.memo))}</td>
-            <td>${escapeHtml(formatCurrentDiameter(role.currentDiameter))}</td>
-            <td>${formattedDate}</td>
-            <td>${getWorkProgressHtml(role)}</td>
+            <td class="status-cell">${getStatusBadge(role.status)}</td>
+            <td class="memo-cell">${escapeHtml(getMemoPreview(role.memo))}</td>
+            <td class="current-diameter-cell"><span class="current-diameter-value">${escapeHtml(formatCurrentDiameter(role.currentDiameter))}</span></td>
+            <td class="updated-at-cell">${formattedDate}</td>
+            <td class="progress-cell">${getWorkProgressHtml(role)}</td>
 
-            <td>
+            <td class="actions-cell">
             
                 <div class="action-buttons">
                     <button class="action-btn edit-btn" onclick="editRole('${role.id}')">✏️ 編集</button>
-                    <button class="action-btn edit-btn" onclick="showMemo('${role.id}')">📝 詳細</button>
-                    <button class="action-btn history-btn" onclick="showHistory('${role.id}')">履歴</button>
                     ${role.status === REWORK_READY_STATUS ? `
   <button class="action-btn request-btn" onclick="requestWork('${role.id}')">
     📦 作業依頼

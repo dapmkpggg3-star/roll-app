@@ -1542,3 +1542,242 @@ body:not(.tablet-mode) #role-table .action-btn {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+/* Field tablet list refinements */
+.stand-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.current-diameter-value {
+  display: inline-flex;
+  align-items: baseline;
+  justify-content: center;
+  min-width: 96px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #0f172a;
+  border: 1px solid #cbd5e1;
+  font-size: 1.35rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
+body:not(.tablet-mode) #role-table .stand-card-header {
+  align-items: center;
+}
+
+body:not(.tablet-mode) #role-table .history-card-btn {
+  min-height: 40px;
+  width: auto;
+  min-width: 72px;
+  padding: 8px 10px;
+  font-size: 13px;
+}
+
+body:not(.tablet-mode) #role-table .status-badge {
+  min-width: 112px;
+  padding: 8px 12px;
+  font-size: 0.9rem;
+}
+
+body:not(.tablet-mode) #role-table .current-diameter-value {
+  min-width: 86px;
+  font-size: 1.2rem;
+}
+
+body:not(.tablet-mode) #role-table .actions-column,
+body:not(.tablet-mode) #role-table .actions-cell {
+  width: 220px;
+}
+
+body:not(.tablet-mode) #role-table .actions-cell .action-buttons {
+  grid-template-columns: 1fr;
+}
+
+body:not(.tablet-mode) #role-table .actions-cell .action-btn {
+  min-height: 48px;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+body.tablet-mode .table-container {
+  overflow: visible !important;
+}
+
+body.tablet-mode #role-table,
+body.tablet-mode #role-table tbody {
+  display: block !important;
+  width: 100% !important;
+}
+
+body.tablet-mode #role-table tbody {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 18px !important;
+}
+
+body.tablet-mode #role-table tbody tr {
+  position: relative;
+  display: grid !important;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  min-height: 0 !important;
+  padding: 18px !important;
+  border-radius: 8px !important;
+  border: 1px solid #d8dee8;
+  background-color: #ffffff !important;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.12);
+}
+
+body.tablet-mode #role-table tbody td {
+  display: grid !important;
+  grid-template-columns: 112px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  width: 100% !important;
+  padding: 0 !important;
+  border-bottom: none !important;
+  color: #1f2937;
+  font-size: 17px;
+}
+
+body.tablet-mode #role-table tbody td::before {
+  display: block;
+  color: #64748b;
+  font-size: 0.86rem;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+body.tablet-mode #role-table .stand-cell {
+  display: block !important;
+  padding-right: 0 !important;
+}
+
+body.tablet-mode #role-table .stand-cell::before {
+  content: none !important;
+}
+
+body.tablet-mode #role-table .stand-card-header {
+  min-height: 66px;
+  align-items: flex-start;
+}
+
+body.tablet-mode #role-table .stand-name-cell {
+  min-width: 0;
+  color: #111827 !important;
+  font-size: 40px !important;
+  font-weight: 900;
+  line-height: 1;
+  word-break: break-word;
+}
+
+body.tablet-mode #role-table .history-card-btn {
+  flex: 0 0 auto;
+  min-width: 92px !important;
+  min-height: 58px !important;
+  padding: 12px 14px !important;
+  border-radius: 8px;
+  font-size: 18px !important;
+  font-weight: 900;
+}
+
+body.tablet-mode #role-table .status-cell::before {
+  content: "ステータス";
+}
+
+body.tablet-mode #role-table .memo-cell::before {
+  content: "メモ";
+}
+
+body.tablet-mode #role-table .current-diameter-cell::before {
+  content: "現在径";
+}
+
+body.tablet-mode #role-table .updated-at-cell::before {
+  content: "最終更新";
+}
+
+body.tablet-mode #role-table .progress-cell::before {
+  content: "進捗";
+}
+
+body.tablet-mode #role-table .actions-cell::before {
+  content: none !important;
+}
+
+body.tablet-mode #role-table .status-badge {
+  width: fit-content;
+  min-width: 168px;
+  min-height: 44px;
+  padding: 10px 16px;
+  border-radius: 999px;
+  font-size: 1rem;
+  font-weight: 900;
+  white-space: normal;
+  text-align: center;
+}
+
+body.tablet-mode #role-table .current-diameter-value {
+  min-width: 138px;
+  min-height: 58px;
+  padding: 10px 18px;
+  font-size: 2.15rem;
+  letter-spacing: 0;
+}
+
+body.tablet-mode #role-table .memo-cell {
+  align-items: start;
+}
+
+body.tablet-mode #role-table .memo-cell,
+body.tablet-mode #role-table .updated-at-cell {
+  color: #334155;
+}
+
+body.tablet-mode #role-table .actions-cell {
+  display: block !important;
+  margin-top: 4px;
+}
+
+body.tablet-mode #role-table .action-buttons {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  width: 100%;
+  min-width: 0;
+}
+
+body.tablet-mode #role-table .actions-cell .action-btn {
+  width: 100%;
+  min-width: 0 !important;
+  min-height: 74px !important;
+  padding: 16px 12px !important;
+  border-radius: 8px;
+  font-size: 22px !important;
+  font-weight: 900;
+  line-height: 1.15;
+}
+
+body.tablet-mode #role-table .actions-cell .request-btn {
+  grid-column: 1 / -1;
+}
+
+body.tablet-mode #role-table .work-progress {
+  min-width: 0;
+  width: 100%;
+}
+
+body.tablet-mode #role-table .work-progress-steps {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (max-width: 900px) {
+  body.tablet-mode #role-table tbody {
+    grid-template-columns: 1fr !important;
+  }
+}
