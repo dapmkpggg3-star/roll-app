@@ -1635,7 +1635,7 @@ body.tablet-mode #role-table tbody {
 body.tablet-mode #role-table tbody tr {
   position: relative;
   display: grid !important;
-  grid-template-columns: minmax(0, 1fr) 190px;
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
   min-height: 0 !important;
   padding: 18px !important;
@@ -1690,6 +1690,7 @@ body.tablet-mode #role-table .stand-name-cell {
 }
 
 body.tablet-mode #role-table .history-card-btn {
+  display: none !important;
   flex: 0 0 auto;
   min-width: 92px !important;
   min-height: 58px !important;
@@ -1754,28 +1755,34 @@ body.tablet-mode #role-table .updated-at-cell {
 
 body.tablet-mode #role-table .actions-cell {
   display: block !important;
-  grid-column: 2;
-  grid-row: 1 / span 6;
-  align-self: stretch;
-  margin-top: 0;
+  grid-column: 1;
+  grid-row: auto;
+  align-self: auto;
+  margin-top: 4px;
+  width: 100% !important;
+  min-width: 0 !important;
 }
 
 body.tablet-mode #role-table .action-buttons {
   display: grid !important;
-  grid-template-columns: 1fr;
-  grid-auto-rows: 74px;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  grid-auto-rows: minmax(68px, auto);
   gap: 12px;
   width: 100%;
-  height: 100%;
+  height: auto;
   min-width: 0;
   align-content: start;
+}
+
+body.tablet-mode #role-table .card-actions-list .mobile-history-btn {
+  display: inline-flex !important;
 }
 
 body.tablet-mode #role-table .actions-cell .action-btn {
   width: 100%;
   min-width: 0 !important;
-  height: 74px !important;
-  min-height: 74px !important;
+  height: auto !important;
+  min-height: 68px !important;
   padding: 16px 12px !important;
   border-radius: 8px;
   font-size: 22px !important;
@@ -1811,7 +1818,7 @@ body.tablet-mode #role-table .progress-step-btn {
   }
 
   body.tablet-mode #role-table tbody tr {
-    grid-template-columns: minmax(0, 1fr) 180px;
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
