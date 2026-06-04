@@ -1589,6 +1589,23 @@ body:not(.tablet-mode) #role-table .action-btn {
   flex-wrap: wrap;
 }
 
+.header-diameter-value {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 104px;
+  min-height: 44px;
+  padding: 7px 12px;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #0f172a;
+  border: 1px solid #cbd5e1;
+  font-size: clamp(22px, 3vw, 30px);
+  font-weight: 900;
+  line-height: 1;
+  white-space: nowrap;
+}
+
 .work-request-badge {
   display: inline-flex;
   align-items: center;
@@ -1659,14 +1676,14 @@ body:not(.tablet-mode) #role-table .action-btn {
     grid-template-columns: minmax(0, 1fr) auto;
     grid-template-areas:
       "header header"
-      "diameter status"
+      "status status"
       "info info"
       "progress progress"
       "actions actions";
     align-content: start;
-    gap: 14px;
-    min-height: 510px;
-    padding: 18px !important;
+    gap: 12px;
+    min-height: 420px;
+    padding: 16px !important;
     border-radius: 8px !important;
     border: 1px solid #d8dee8;
     background-color: #ffffff !important;
@@ -1691,11 +1708,11 @@ body:not(.tablet-mode) #role-table .action-btn {
 
   body:not(.mobile-layout) #role-table .stand-card-header {
     display: grid !important;
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: start;
-    gap: 16px;
-    min-height: 74px;
-    padding-bottom: 14px;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    align-items: center;
+    gap: 12px;
+    min-height: 58px;
+    padding-bottom: 12px;
     border-bottom: 1px solid #e2e8f0;
   }
 
@@ -1723,7 +1740,7 @@ body:not(.tablet-mode) #role-table .action-btn {
   body:not(.mobile-layout) #role-table .status-cell {
     grid-area: status;
     align-self: center;
-    justify-self: end;
+    justify-self: start;
   }
 
   body:not(.mobile-layout) #role-table .status-badge {
@@ -1737,10 +1754,7 @@ body:not(.tablet-mode) #role-table .action-btn {
   }
 
   body:not(.mobile-layout) #role-table .current-diameter-cell {
-    grid-area: diameter;
-    display: grid !important;
-    place-items: center;
-    min-height: 82px;
+    display: none !important;
   }
 
   body:not(.mobile-layout) #role-table .diameter-hero {
@@ -1961,10 +1975,10 @@ body.tablet-mode #role-table .stand-cell::before {
 
 body.tablet-mode #role-table .stand-card-header {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: start;
-  gap: 16px;
-  min-height: 66px;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 58px;
   padding-bottom: 12px;
   border-bottom: 1px solid #e2e8f0;
 }
@@ -2127,13 +2141,13 @@ body.tablet-mode #role-table .progress-step-btn {
     grid-template-columns: minmax(0, 1fr) auto !important;
     grid-template-areas:
       "header header"
-      "diameter status"
+      "status status"
       "info info"
       "progress progress"
       "actions actions";
-    gap: 14px;
-    min-height: 510px !important;
-    padding: 18px !important;
+    gap: 12px;
+    min-height: 420px !important;
+    padding: 16px !important;
     border-radius: 8px !important;
     border: 1px solid #d8dee8;
     background-color: #ffffff !important;
@@ -2155,14 +2169,11 @@ body.tablet-mode #role-table .progress-step-btn {
   body:not(.mobile-layout) #role-table .status-cell {
     grid-area: status;
     align-self: center;
-    justify-self: end;
+    justify-self: start;
   }
 
   body:not(.mobile-layout) #role-table .current-diameter-cell {
-    grid-area: diameter;
-    display: grid !important;
-    place-items: center;
-    min-height: 94px;
+    display: none !important;
   }
 
   body:not(.mobile-layout) #role-table .memo-cell {
@@ -2183,11 +2194,11 @@ body.tablet-mode #role-table .progress-step-btn {
 
   body:not(.mobile-layout) #role-table .stand-card-header {
     display: grid !important;
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: start;
-    gap: 16px;
-    min-height: 74px;
-    padding-bottom: 14px;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    align-items: center;
+    gap: 12px;
+    min-height: 58px;
+    padding-bottom: 12px;
     border-bottom: 1px solid #e2e8f0;
   }
 
@@ -2265,6 +2276,10 @@ body.tablet-mode #role-table .progress-step-btn {
     font-size: 20px !important;
     font-weight: 900;
   }
+}
+
+body.tablet-mode #role-table .current-diameter-cell {
+  display: none !important;
 }
 
 @media (max-width: 900px) {
@@ -2400,15 +2415,26 @@ body.tablet-mode #role-table .progress-step-btn {
 
   body #role-table .stand-card-header {
     display: grid !important;
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) auto auto;
     gap: 10px;
-    align-items: start;
+    align-items: center;
   }
 
   body #role-table .stand-card-header .history-card-btn {
     display: inline-flex !important;
     align-items: center;
     justify-content: center;
+  }
+
+  body #role-table .header-diameter-value {
+    min-width: 84px;
+    min-height: 38px;
+    padding: 6px 9px;
+    font-size: 1.15rem;
+  }
+
+  body #role-table .current-diameter-cell {
+    display: none !important;
   }
 
   body #role-table .card-actions {
@@ -2500,15 +2526,26 @@ body.mobile-layout #role-table tbody td {
 
 body.mobile-layout #role-table .stand-card-header {
   display: grid !important;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   gap: 10px;
-  align-items: start;
+  align-items: center;
 }
 
 body.mobile-layout #role-table .stand-card-header .history-card-btn {
   display: inline-flex !important;
   align-items: center;
   justify-content: center;
+}
+
+body.mobile-layout #role-table .header-diameter-value {
+  min-width: 84px;
+  min-height: 38px;
+  padding: 6px 9px;
+  font-size: 1.15rem;
+}
+
+body.mobile-layout #role-table .current-diameter-cell {
+  display: none !important;
 }
 
 body.mobile-layout #role-table .card-actions {

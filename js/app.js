@@ -562,12 +562,8 @@ function getRollSymbol(roleName) {
 }
 
 function getRoleInfoHtml(role, formattedDate) {
-    const roleName = role.name || '-';
-    const currentDiameter = formatCurrentDiameter(role.currentDiameter);
     const memo = getMemoPreview(role.memo);
     const rows = [
-        ['ロールNo', roleName],
-        ['現在径', currentDiameter],
         ['使用開始日', '-'],
         ['最終更新', formattedDate]
     ];
@@ -935,6 +931,7 @@ if (standNumber >= 2 && standNumber <= 5) {
             <td class="stand-cell">
   <div class="stand-card-header">
     <span class="role-id stand-name-cell">${escapeHtml(role.name)}</span>
+    <span class="header-diameter-value">${escapeHtml(currentDiameterText)}</span>
     <div class="stand-card-actions">
       ${workProgressState.isIncomplete ? '<span class="work-request-badge">作業依頼中</span>' : ''}
       <button class="action-btn history-btn history-card-btn" onclick="showHistory('${role.id}')">履歴</button>
@@ -948,10 +945,6 @@ if (standNumber >= 2 && standNumber <= 5) {
                 <span class="memo-mobile-text">${escapeHtml(memoMobileText)}</span>
             </td>
             <td class="current-diameter-cell">
-                <div class="diameter-hero">
-                    <span class="diameter-label">現在径</span>
-                    <span class="current-diameter-value">${escapeHtml(currentDiameterText)}</span>
-                </div>
             </td>
             <td class="updated-at-cell">${formattedDate}</td>
             <td class="progress-cell">${getWorkProgressHtml(role)}</td>
