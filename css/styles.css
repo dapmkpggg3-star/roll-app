@@ -374,7 +374,7 @@ body {
     display: flex;
     gap: 18px;
     margin-bottom: 30px;
-    flex-wrap: nowrap;
+    flex-wrap: wrap;
     align-items: stretch;
 }
 
@@ -390,7 +390,7 @@ body {
 }
 
 .form-input-zone {
-    flex: 1 1 auto;
+    flex: 1 1 520px;
     min-width: 0;
 }
 
@@ -1205,6 +1205,7 @@ body.editing-mode .form-section {
 }
 
 .editing-banner {
+  flex: 1 0 100%;
   width: 100%;
   padding: 12px 14px;
   border: 2px solid #f59e0b;
