@@ -1578,6 +1578,248 @@ body:not(.tablet-mode) #role-table .action-btn {
   line-height: 1;
 }
 
+.role-info-grid {
+  display: none;
+}
+
+.memo-mobile-text {
+  display: inline;
+}
+
+.diameter-label {
+  display: none;
+}
+
+@media (min-width: 768px) {
+  body:not(.mobile-layout) .table-container {
+    overflow: visible !important;
+  }
+
+  body:not(.mobile-layout) #role-table,
+  body:not(.mobile-layout) #role-table tbody {
+    display: block !important;
+    width: 100% !important;
+  }
+
+  body:not(.mobile-layout) #role-table thead {
+    display: none !important;
+  }
+
+  body:not(.mobile-layout) #role-table tbody {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)) !important;
+    gap: 18px !important;
+  }
+
+  body:not(.mobile-layout) #role-table tbody tr {
+    position: relative;
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "header header"
+      "diameter status"
+      "info info"
+      "progress progress"
+      "actions actions";
+    align-content: start;
+    gap: 16px;
+    min-height: 560px;
+    padding: 22px !important;
+    border-radius: 8px !important;
+    border: 1px solid #d8dee8;
+    background-color: #ffffff !important;
+    box-shadow: 0 6px 18px rgba(15, 23, 42, 0.12);
+  }
+
+  body:not(.mobile-layout) #role-table tbody td {
+    display: block !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    padding: 0 !important;
+    border-bottom: none !important;
+  }
+
+  body:not(.mobile-layout) #role-table tbody td::before {
+    content: none !important;
+  }
+
+  body:not(.mobile-layout) #role-table .stand-cell {
+    grid-area: header;
+  }
+
+  body:not(.mobile-layout) #role-table .stand-card-header {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 16px;
+    min-height: 74px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid #e2e8f0;
+  }
+
+  body:not(.mobile-layout) #role-table .stand-name-cell {
+    min-width: 0;
+    color: #111827 !important;
+    font-size: clamp(34px, 4vw, 48px) !important;
+    font-weight: 900;
+    line-height: 1;
+    word-break: break-word;
+  }
+
+  body:not(.mobile-layout) #role-table .history-card-btn {
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    min-width: 92px !important;
+    min-height: 56px !important;
+    padding: 12px 14px !important;
+    border-radius: 8px;
+    font-size: 18px !important;
+    font-weight: 900;
+  }
+
+  body:not(.mobile-layout) #role-table .status-cell {
+    grid-area: status;
+    align-self: center;
+    justify-self: end;
+  }
+
+  body:not(.mobile-layout) #role-table .status-badge {
+    min-width: 150px;
+    min-height: 46px;
+    padding: 10px 16px;
+    font-size: 1rem;
+    font-weight: 900;
+    white-space: normal;
+    text-align: center;
+  }
+
+  body:not(.mobile-layout) #role-table .current-diameter-cell {
+    grid-area: diameter;
+    display: grid !important;
+    place-items: center;
+    min-height: 128px;
+  }
+
+  body:not(.mobile-layout) #role-table .diameter-hero {
+    display: grid;
+    justify-items: center;
+    gap: 8px;
+  }
+
+  body:not(.mobile-layout) #role-table .diameter-label {
+    display: block;
+    color: #64748b;
+    font-size: 0.88rem;
+    font-weight: 900;
+  }
+
+  body:not(.mobile-layout) #role-table .current-diameter-value {
+    min-width: 190px;
+    min-height: 82px;
+    padding: 14px 22px;
+    font-size: clamp(42px, 6vw, 64px);
+    letter-spacing: 0;
+  }
+
+  body:not(.mobile-layout) #role-table .memo-cell {
+    grid-area: info;
+  }
+
+  body:not(.mobile-layout) #role-table .role-info-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  body:not(.mobile-layout) #role-table .role-info-item {
+    display: grid;
+    gap: 5px;
+    min-height: 70px;
+    padding: 10px 12px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    background: #f8fafc;
+  }
+
+  body:not(.mobile-layout) #role-table .role-info-label {
+    color: #64748b;
+    font-size: 0.78rem;
+    font-weight: 900;
+  }
+
+  body:not(.mobile-layout) #role-table .role-info-value {
+    min-width: 0;
+    color: #111827;
+    font-size: 1rem;
+    font-weight: 800;
+    overflow-wrap: anywhere;
+  }
+
+  body:not(.mobile-layout) #role-table .memo-mobile-text {
+    display: none;
+  }
+
+  body:not(.mobile-layout) #role-table .updated-at-cell {
+    display: none !important;
+  }
+
+  body:not(.mobile-layout) #role-table .progress-cell {
+    grid-area: progress;
+    min-height: 0;
+  }
+
+  body:not(.mobile-layout) #role-table .work-progress {
+    min-width: 0;
+    width: 100%;
+    height: auto;
+  }
+
+  body:not(.mobile-layout) #role-table .work-progress-steps {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    grid-auto-flow: row !important;
+    grid-auto-rows: minmax(58px, auto);
+    gap: 8px;
+  }
+
+  body:not(.mobile-layout) #role-table .progress-step-btn {
+    min-height: 58px;
+    height: auto !important;
+  }
+
+  body:not(.mobile-layout) #role-table .actions-cell {
+    grid-area: actions;
+    align-self: end;
+    padding-top: 16px !important;
+    border-top: 1px solid #e2e8f0 !important;
+  }
+
+  body:not(.mobile-layout) #role-table .card-actions-list {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)) !important;
+    grid-auto-rows: minmax(68px, auto);
+    gap: 12px;
+    width: 100%;
+    min-width: 0;
+  }
+
+  body:not(.mobile-layout) #role-table .card-actions-list .mobile-history-btn {
+    display: none !important;
+  }
+
+  body:not(.mobile-layout) #role-table .actions-cell .action-btn {
+    width: 100%;
+    min-width: 0 !important;
+    height: auto !important;
+    min-height: 68px !important;
+    padding: 16px 12px !important;
+    border-radius: 8px;
+    font-size: 20px !important;
+    font-weight: 900;
+    line-height: 1.15;
+  }
+}
+
 body:not(.tablet-mode) #role-table .stand-card-header {
   align-items: center;
 }
@@ -1819,6 +2061,162 @@ body.tablet-mode #role-table .work-progress-steps {
 body.tablet-mode #role-table .progress-step-btn {
   min-height: 58px;
   height: auto !important;
+}
+
+@media (min-width: 768px) {
+  body:not(.mobile-layout) #role-table,
+  body:not(.mobile-layout) #role-table tbody {
+    display: block !important;
+    width: 100% !important;
+  }
+
+  body:not(.mobile-layout) #role-table thead {
+    display: none !important;
+  }
+
+  body:not(.mobile-layout) #role-table tbody {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)) !important;
+    gap: 18px !important;
+  }
+
+  body:not(.mobile-layout) #role-table tbody tr {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    grid-template-areas:
+      "header header"
+      "diameter status"
+      "info info"
+      "progress progress"
+      "actions actions";
+    gap: 16px;
+    min-height: 560px !important;
+    padding: 22px !important;
+    border-radius: 8px !important;
+    border: 1px solid #d8dee8;
+    background-color: #ffffff !important;
+    box-shadow: 0 6px 18px rgba(15, 23, 42, 0.12);
+  }
+
+  body:not(.mobile-layout) #role-table tbody td {
+    display: block !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    padding: 0 !important;
+    border-bottom: none !important;
+  }
+
+  body:not(.mobile-layout) #role-table .stand-cell {
+    grid-area: header;
+  }
+
+  body:not(.mobile-layout) #role-table .status-cell {
+    grid-area: status;
+    align-self: center;
+    justify-self: end;
+  }
+
+  body:not(.mobile-layout) #role-table .current-diameter-cell {
+    grid-area: diameter;
+    display: grid !important;
+    place-items: center;
+    min-height: 128px;
+  }
+
+  body:not(.mobile-layout) #role-table .memo-cell {
+    grid-area: info;
+  }
+
+  body:not(.mobile-layout) #role-table .progress-cell {
+    grid-area: progress;
+  }
+
+  body:not(.mobile-layout) #role-table .actions-cell {
+    grid-area: actions;
+    align-self: end;
+    width: 100% !important;
+    padding-top: 16px !important;
+    border-top: 1px solid #e2e8f0 !important;
+  }
+
+  body:not(.mobile-layout) #role-table .stand-card-header {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 16px;
+    min-height: 74px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid #e2e8f0;
+  }
+
+  body:not(.mobile-layout) #role-table .stand-name-cell {
+    color: #111827 !important;
+    font-size: clamp(34px, 4vw, 48px) !important;
+    font-weight: 900;
+    line-height: 1;
+  }
+
+  body:not(.mobile-layout) #role-table .history-card-btn {
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    min-width: 92px !important;
+    min-height: 56px !important;
+    padding: 12px 14px !important;
+    font-size: 18px !important;
+    font-weight: 900;
+  }
+
+  body:not(.mobile-layout) #role-table .status-badge {
+    min-width: 150px !important;
+    min-height: 46px;
+    padding: 10px 16px;
+    font-size: 1rem !important;
+    font-weight: 900;
+  }
+
+  body:not(.mobile-layout) #role-table .diameter-label {
+    display: block;
+  }
+
+  body:not(.mobile-layout) #role-table .current-diameter-value {
+    min-width: 190px !important;
+    min-height: 82px;
+    padding: 14px 22px;
+    font-size: clamp(42px, 6vw, 64px) !important;
+  }
+
+  body:not(.mobile-layout) #role-table .role-info-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  body:not(.mobile-layout) #role-table .memo-mobile-text,
+  body:not(.mobile-layout) #role-table .updated-at-cell,
+  body:not(.mobile-layout) #role-table .card-actions-list .mobile-history-btn {
+    display: none !important;
+  }
+
+  body:not(.mobile-layout) #role-table .card-actions-list {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)) !important;
+    grid-auto-rows: minmax(68px, auto);
+    gap: 12px;
+    width: 100% !important;
+    min-width: 0 !important;
+    height: auto;
+  }
+
+  body:not(.mobile-layout) #role-table .actions-cell .action-btn {
+    width: 100%;
+    min-width: 0 !important;
+    height: auto !important;
+    min-height: 68px !important;
+    padding: 16px 12px !important;
+    font-size: 20px !important;
+    font-weight: 900;
+  }
 }
 
 @media (max-width: 900px) {

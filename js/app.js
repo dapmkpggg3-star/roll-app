@@ -530,6 +530,39 @@ function escapeHtml(str) {
         .replace(/'/g, '&#039;');
 }
 
+function getRollSymbol(roleName) {
+    const parts = String(roleName || '')
+        .replace(/^#/, '')
+        .split('-')
+        .map(part => part.trim())
+        .filter(Boolean);
+    const symbol = parts.length > 2 ? parts[parts.length - 1] : '';
+    return symbol && /[^\d.]/.test(symbol) ? symbol : '-';
+}
+
+function getRoleInfoHtml(role, formattedDate) {
+    const roleName = role.name || '-';
+    const currentDiameter = formatCurrentDiameter(role.currentDiameter);
+    const memo = getMemoPreview(role.memo);
+    const rows = [
+        ['ロールNo', roleName],
+        ['ロール記号', getRollSymbol(roleName)],
+        ['材質', '-'],
+        ['サイズ', '-'],
+        ['現在径', currentDiameter],
+        ['使用開始日', '-'],
+        ['最終更新', formattedDate],
+        ['備考', memo]
+    ];
+
+    return rows.map(([label, value]) => `
+        <div class="role-info-item">
+            <span class="role-info-label">${escapeHtml(label)}</span>
+            <span class="role-info-value">${escapeHtml(value)}</span>
+        </div>
+    `).join('');
+}
+
 function showMemo(id) {
     const role = roles.find(r => String(r.id) === String(id));
     if (!role) {
@@ -867,6 +900,7 @@ if (standNumber >= 2 && standNumber <= 5) {
     row.style.backgroundColor = 'rgba(233, 30, 99, 0.08)';
 }
         const formattedDate = formatUpdatedAt(role.updatedAt);
+        const currentDiameterText = formatCurrentDiameter(role.currentDiameter);
         row.innerHTML = `
             <td class="stand-cell">
   <div class="stand-card-header">
@@ -876,8 +910,16 @@ if (standNumber >= 2 && standNumber <= 5) {
   ${updatedRoleId === role.id ? '<span class="updated-badge">更新しました</span>' : ''}
 </td>
             <td class="status-cell">${getStatusBadge(role.status)}</td>
-            <td class="memo-cell">${escapeHtml(getMemoPreview(role.memo))}</td>
-            <td class="current-diameter-cell"><span class="current-diameter-value">${escapeHtml(formatCurrentDiameter(role.currentDiameter))}</span></td>
+            <td class="memo-cell">
+                <div class="role-info-grid">${getRoleInfoHtml(role, formattedDate)}</div>
+                <span class="memo-mobile-text">${escapeHtml(getMemoPreview(role.memo))}</span>
+            </td>
+            <td class="current-diameter-cell">
+                <div class="diameter-hero">
+                    <span class="diameter-label">現在径</span>
+                    <span class="current-diameter-value">${escapeHtml(currentDiameterText)}</span>
+                </div>
+            </td>
             <td class="updated-at-cell">${formattedDate}</td>
             <td class="progress-cell">${getWorkProgressHtml(role)}</td>
 
