@@ -1794,7 +1794,7 @@ body.tablet-mode #role-table .work-progress-steps {
   }
 }
 
-@media (max-width: 640px) {
+@media (max-width: 767px) {
   body.tablet-mode #role-table tbody tr {
     grid-template-columns: 1fr;
     gap: 14px;
@@ -1877,8 +1877,24 @@ body.tablet-mode #role-table .work-progress-steps {
   display: none !important;
 }
 
-@media (max-width: 640px) {
-  body.tablet-mode #role-table tbody tr {
+@media (max-width: 767px) {
+  body #role-table,
+  body #role-table tbody {
+    display: block !important;
+    width: 100% !important;
+  }
+
+  body #role-table thead {
+    display: none !important;
+  }
+
+  body #role-table tbody {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 14px !important;
+  }
+
+  body #role-table tbody tr {
     display: flex !important;
     flex-direction: column;
     width: 100% !important;
@@ -1886,24 +1902,30 @@ body.tablet-mode #role-table .work-progress-steps {
     min-width: 0 !important;
   }
 
-  body.tablet-mode #role-table tbody td {
+  body #role-table tbody td {
     display: grid !important;
     grid-column: auto !important;
     grid-row: auto !important;
+    grid-template-columns: 88px minmax(0, 1fr);
+    gap: 10px;
     width: 100% !important;
     max-width: 100% !important;
     min-width: 0 !important;
+    padding: 0 !important;
+    border-bottom: none !important;
   }
 
-  body.tablet-mode #role-table .stand-card-header {
+  body #role-table .stand-card-header {
+    display: grid !important;
     grid-template-columns: 1fr;
+    align-items: start;
   }
 
-  body.tablet-mode #role-table .stand-card-header > .history-card-btn {
+  body #role-table .stand-card-header > .history-card-btn {
     display: none !important;
   }
 
-  body.tablet-mode #role-table .card-actions {
+  body #role-table .card-actions {
     display: block !important;
     position: static !important;
     grid-column: auto !important;
@@ -1917,7 +1939,7 @@ body.tablet-mode #role-table .work-progress-steps {
     padding: 0 !important;
   }
 
-  body.tablet-mode #role-table .card-actions-list {
+  body #role-table .card-actions-list {
     display: grid !important;
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
     grid-auto-rows: 64px !important;
@@ -1929,11 +1951,11 @@ body.tablet-mode #role-table .work-progress-steps {
     align-content: start !important;
   }
 
-  body.tablet-mode #role-table .card-actions-list .mobile-history-btn {
+  body #role-table .card-actions-list .mobile-history-btn {
     display: inline-flex !important;
   }
 
-  body.tablet-mode #role-table .card-actions-list .action-btn {
+  body #role-table .card-actions-list .action-btn {
     display: inline-flex !important;
     align-items: center;
     justify-content: center;
@@ -1950,7 +1972,7 @@ body.tablet-mode #role-table .work-progress-steps {
 }
 
 @media (max-width: 360px) {
-  body.tablet-mode #role-table .card-actions-list {
+  body #role-table .card-actions-list {
     grid-template-columns: 1fr !important;
   }
 }
