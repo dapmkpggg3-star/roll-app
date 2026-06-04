@@ -1954,12 +1954,15 @@ body.tablet-mode #role-table .progress-step-btn {
 
   body #role-table .stand-card-header {
     display: grid !important;
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
     align-items: start;
   }
 
   body #role-table .stand-card-header > .history-card-btn {
-    display: none !important;
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
   }
 
   body #role-table .card-actions {
@@ -1989,7 +1992,7 @@ body.tablet-mode #role-table .progress-step-btn {
   }
 
   body #role-table .card-actions-list .mobile-history-btn {
-    display: inline-flex !important;
+    display: none !important;
   }
 
   body #role-table .card-actions-list .action-btn {
@@ -2047,12 +2050,15 @@ body.mobile-layout #role-table tbody td {
 
 body.mobile-layout #role-table .stand-card-header {
   display: grid !important;
-  grid-template-columns: 1fr;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
   align-items: start;
 }
 
 body.mobile-layout #role-table .stand-card-header > .history-card-btn {
-  display: none !important;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
 }
 
 body.mobile-layout #role-table .card-actions {
@@ -2082,7 +2088,7 @@ body.mobile-layout #role-table .card-actions-list {
 }
 
 body.mobile-layout #role-table .card-actions-list .mobile-history-btn {
-  display: inline-flex !important;
+  display: none !important;
 }
 
 body.mobile-layout #role-table .card-actions-list .action-btn {
