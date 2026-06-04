@@ -185,8 +185,9 @@ body {
 }
 
 .role-form .status-preview {
-    min-height: 72px;
-    font-size: 1.12rem;
+    min-height: 40px;
+    padding: 8px 12px;
+    font-size: 0.92rem;
 }
 
 .search-bar button {
@@ -299,11 +300,17 @@ body {
 }
 
 .role-form {
-    display: flex;
-    gap: 10px;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-areas:
+        "editing editing"
+        "name status"
+        "diameter memo"
+        "preview preview"
+        "actions actions";
+    gap: 14px;
     margin-bottom: 30px;
-    flex-wrap: wrap;
-    align-items: center;
+    align-items: stretch;
 }
 
 .role-form input {
@@ -338,10 +345,35 @@ body {
 }
 
 .form-actions {
+    grid-area: actions;
     display: flex;
     gap: 10px;
     flex-wrap: wrap;
     align-items: center;
+}
+
+#editing-banner {
+    grid-area: editing;
+}
+
+#role-name {
+    grid-area: name;
+}
+
+.status-field {
+    grid-area: status;
+}
+
+#role-current-diameter {
+    grid-area: diameter;
+}
+
+#role-memo {
+    grid-area: memo;
+}
+
+.status-preview-row {
+    grid-area: preview;
 }
 
 .csv-btn {
@@ -758,6 +790,7 @@ body.modal-open {
     }
 
     .role-form {
+        display: flex;
         flex-direction: column;
         gap: 10px;
         margin-bottom: 20px;
@@ -1642,7 +1675,7 @@ body:not(.tablet-mode) #role-table .action-btn {
     align-content: start;
     gap: 16px;
     min-height: 560px;
-    padding: 22px !important;
+    padding: 18px !important;
     border-radius: 8px !important;
     border: 1px solid #d8dee8;
     background-color: #ffffff !important;
@@ -1716,7 +1749,7 @@ body:not(.tablet-mode) #role-table .action-btn {
     grid-area: diameter;
     display: grid !important;
     place-items: center;
-    min-height: 92px;
+    min-height: 82px;
   }
 
   body:not(.mobile-layout) #role-table .diameter-hero {
@@ -1733,10 +1766,10 @@ body:not(.tablet-mode) #role-table .action-btn {
   }
 
   body:not(.mobile-layout) #role-table .current-diameter-value {
-    min-width: 132px;
-    min-height: 54px;
-    padding: 9px 16px;
-    font-size: clamp(28px, 3.8vw, 40px);
+    min-width: 118px;
+    min-height: 48px;
+    padding: 8px 14px;
+    font-size: clamp(25px, 3.3vw, 35px);
     letter-spacing: 0;
   }
 
@@ -1747,29 +1780,29 @@ body:not(.tablet-mode) #role-table .action-btn {
   body:not(.mobile-layout) #role-table .role-info-grid {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 14px;
+    gap: 15px;
   }
 
   body:not(.mobile-layout) #role-table .role-info-item {
     display: grid;
-    gap: 8px;
-    min-height: 84px;
-    padding: 14px 16px;
-    border: 1px solid #e2e8f0;
+    gap: 9px;
+    min-height: 88px;
+    padding: 16px 18px;
+    border: 1px solid #edf2f7;
     border-radius: 8px;
-    background: #f8fafc;
+    background: #fbfdff;
   }
 
   body:not(.mobile-layout) #role-table .role-info-label {
     color: #64748b;
-    font-size: 0.9rem;
+    font-size: 0.94rem;
     font-weight: 900;
   }
 
   body:not(.mobile-layout) #role-table .role-info-value {
     min-width: 0;
     color: #111827;
-    font-size: 1.14rem;
+    font-size: 1.2rem;
     font-weight: 800;
     overflow-wrap: anywhere;
   }
@@ -2198,16 +2231,16 @@ body.tablet-mode #role-table .progress-step-btn {
   }
 
   body:not(.mobile-layout) #role-table .current-diameter-value {
-    min-width: 132px !important;
-    min-height: 54px;
-    padding: 9px 16px;
-    font-size: clamp(28px, 3.8vw, 40px) !important;
+    min-width: 118px !important;
+    min-height: 48px;
+    padding: 8px 14px;
+    font-size: clamp(25px, 3.3vw, 35px) !important;
   }
 
   body:not(.mobile-layout) #role-table .role-info-grid {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 14px;
+    gap: 15px;
   }
 
   body:not(.mobile-layout) #role-table .memo-mobile-text,
