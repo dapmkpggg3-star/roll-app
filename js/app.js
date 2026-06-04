@@ -89,6 +89,7 @@ document.addEventListener('DOMContentLoaded', function() {
             updateStatusPreview(e.target);
         });
     }
+    setRoleFormOpen(false);
     document.addEventListener('keydown', function(e) {
         if (e.key === 'Escape') {
             closeDetailModal();
@@ -227,6 +228,32 @@ let editingId = null; // 編集中のID
 let lastScrollY = 0;
 let updatedRoleId = null;
 
+function setRoleFormOpen(isOpen) {
+    const roleForm = document.getElementById('role-form');
+    const toggleBtn = document.getElementById('toggleRoleFormBtn');
+
+    if (roleForm) {
+        roleForm.classList.toggle('is-collapsed', !isOpen);
+    }
+
+    if (toggleBtn) {
+        toggleBtn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+        toggleBtn.textContent = isOpen ? '− フォームを閉じる' : '＋ 新規ロール追加';
+    }
+}
+
+function toggleRoleForm() {
+    const roleForm = document.getElementById('role-form');
+    const isOpen = roleForm ? !roleForm.classList.contains('is-collapsed') : false;
+
+    if (isOpen && editingId !== null) {
+        cancelEdit();
+        return;
+    }
+
+    setRoleFormOpen(!isOpen);
+}
+
 function setEditModeUi(role = null) {
     const isEditing = Boolean(role);
     const addRoleBtn = document.getElementById('addRoleBtn');
@@ -239,6 +266,7 @@ function setEditModeUi(role = null) {
     const editingHelp = document.querySelector('#editing-banner .editing-help');
 
     document.body.classList.toggle('editing-mode', isEditing);
+    setRoleFormOpen(isEditing);
 
     if (addRoleBtn) addRoleBtn.style.display = isEditing ? 'none' : 'inline-block';
     if (updateRoleBtn) updateRoleBtn.style.display = isEditing ? 'inline-block' : 'none';
@@ -1062,6 +1090,7 @@ function addRole() {
     updateStatusPreview(document.getElementById('role-status'));
     document.getElementById('role-current-diameter').value = '';
     document.getElementById('role-memo').value = '';
+    setRoleFormOpen(false);
     renderRoles();
     syncRoles();
 }

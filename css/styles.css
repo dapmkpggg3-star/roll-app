@@ -378,6 +378,28 @@ body {
     align-items: stretch;
 }
 
+.role-form.is-collapsed {
+    display: none !important;
+}
+
+.toggle-role-form-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    min-height: 64px;
+    margin: 0 0 16px;
+    padding: 14px 18px;
+    border: none;
+    border-radius: 12px;
+    background: linear-gradient(135deg, #16a34a 0%, #15803d 100%);
+    color: #ffffff;
+    font-size: 1.16rem;
+    font-weight: 900;
+    cursor: pointer;
+    box-shadow: 0 8px 18px rgba(22, 163, 74, 0.18);
+}
+
 .form-input-zone,
 .form-action-zone {
     display: flex;
