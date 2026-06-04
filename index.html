@@ -11,7 +11,7 @@
     <link rel="manifest" href="manifest.json">
     <link rel="icon" type="image/png" sizes="192x192" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect fill='%23667eea' width='192' height='192'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' font-size='96' fill='white' font-family='Arial'>📋</text></svg>">
     <title>ロール管理アプリ</title>
-    <link rel="stylesheet" href="css/styles.css?v=20260604-work-dashboard">
+    <link rel="stylesheet" href="css/styles.css?v=20260604-form-zones">
 </head>
 <body>
     <!-- ログイン画面 -->
@@ -116,6 +116,8 @@
                         </div>
                         <span class="editing-help">内容を変更したら「入力内容を更新」を押してください。</span>
                     </div>
+                    <div class="form-input-zone">
+                        <div class="form-zone-heading">入力</div>
                     <input type="text" id="role-name" placeholder="スタンド番号を入力 (例: #2-11)" style="flex: 1;">
                     <div class="status-field">
                         <select id="role-status" class="status-select status-empty" style="padding: 12px 15px; border: 2px solid #e0e0e0; border-radius: 6px; font-size: 1rem; min-width: 200px; cursor: pointer;">
@@ -133,7 +135,10 @@
                     </div>
                     <input type="number" id="role-current-diameter" placeholder="現在径 (例: 450.0)" step="0.1" min="0" style="flex: 1;">
                     <textarea id="role-memo" placeholder="メモを入力...(改行可)" style="flex: 1; min-height: 40px; padding: 12px 15px; border: 2px solid #e0e0e0; border-radius: 6px; font-size: 1rem; resize: vertical;"></textarea>
+                    </div>
                     <input id="csv-import-input" type="file" accept=".csv,text/csv" style="display:none" onchange="importCsv(event)">
+                    <div class="form-action-zone">
+                        <div class="form-zone-heading">操作</div>
                     <div class="form-actions">
                         <button type="button" id="addRoleBtn" onclick="addRole()">➕ 追加</button>
                         <button type="button" id="updateRoleBtn" onclick="updateRole()" style="display: none;">🔄 入力内容を更新</button>
@@ -143,6 +148,7 @@
                         <button type="button" class="btn admin-only" onclick="restoreLatestBackup()">バックアップ復元</button>
 <button type="button" id="syncSheetsBtn" class="sync-btn" onclick="syncRoles()">スプレッドシートと同期</button>
 <button type="button" id="adminModeBtn" class="admin-mode-btn" onclick="toggleAdminMode()" aria-pressed="false">管理者モード OFF</button>
+</div>
 </div>
 <div id="last-sync-time" class="last-sync-time">
   最終同期: 未同期
