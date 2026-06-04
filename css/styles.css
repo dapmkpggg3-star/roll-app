@@ -11,6 +11,40 @@ body {
     padding: 20px;
 }
 
+.app-update-notice {
+    position: fixed;
+    left: 50%;
+    bottom: 18px;
+    z-index: 100000;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: min(520px, calc(100vw - 24px));
+    padding: 12px 14px;
+    border-radius: 12px;
+    background: #111827;
+    color: #ffffff;
+    box-shadow: 0 12px 30px rgba(15, 23, 42, 0.32);
+    transform: translateX(-50%);
+    font-weight: 800;
+}
+
+.app-update-notice[hidden] {
+    display: none !important;
+}
+
+.app-update-notice button {
+    flex: 0 0 auto;
+    min-height: 40px;
+    padding: 8px 14px;
+    border: none;
+    border-radius: 8px;
+    background: #22c55e;
+    color: #ffffff;
+    font-weight: 900;
+    cursor: pointer;
+}
+
 .header {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     color: white;
@@ -296,76 +330,6 @@ body {
     font-size: 1.55rem;
     font-weight: 800;
     line-height: 1;
-}
-
-.priority-task-dashboard {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 10px;
-    width: 100%;
-    margin: -6px 0 18px;
-    padding: 14px;
-    border-radius: 14px;
-    background: #ffffff;
-    border: 1px solid #e2e8f0;
-    box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08);
-}
-
-.priority-task-heading {
-    grid-column: 1 / -1;
-    color: #334155;
-    font-size: 1.05rem;
-    font-weight: 900;
-}
-
-.priority-task-card {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    min-height: 58px;
-    padding: 12px 14px;
-    border-radius: 12px;
-    border: 1px solid transparent;
-    background: #f8fafc;
-    cursor: pointer;
-    font: inherit;
-    text-align: left;
-}
-
-.priority-task-card:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 8px 18px rgba(15, 23, 42, 0.12);
-}
-
-.priority-work {
-    background: #fff1f2;
-    color: #991b1b;
-    border-color: #fecaca;
-}
-
-.priority-rework-ready {
-    background: #fff7ed;
-    color: #9a3412;
-    border-color: #fed7aa;
-}
-
-.priority-reworking {
-    background: #fefce8;
-    color: #854d0e;
-    border-color: #fde68a;
-}
-
-.priority-task-label {
-    font-size: 0.94rem;
-    font-weight: 900;
-}
-
-.priority-task-count {
-    font-size: 1.45rem;
-    font-weight: 900;
-    line-height: 1;
-    white-space: nowrap;
 }
 
 .incomplete-work-dashboard {
@@ -969,12 +933,6 @@ body.modal-open {
     .count-summary {
         grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 10px;
-    }
-
-    .priority-task-dashboard {
-        grid-template-columns: 1fr;
-        gap: 8px;
-        padding: 12px;
     }
 
     .summary-card {

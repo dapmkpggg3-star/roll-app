@@ -223,7 +223,6 @@ let roles = [];
 let nextId = 1;
 let searchQuery = '';
 let statusFilter = 'all';
-let priorityTaskFilter = 'all';
 let sortOption = 'name';
 let editingId = null; // 編集中のID
 let lastScrollY = 0;
@@ -735,53 +734,24 @@ function clearSearch() {
 }
 
 function changeStatusFilter(event) {
-    priorityTaskFilter = 'all';
     statusFilter = event.target.value || 'all';
     renderRoles();
 }
 
 function resetStatusFilter() {
     statusFilter = 'all';
-    priorityTaskFilter = 'all';
     const statusFilterSelect = document.getElementById('status-filter');
     if (statusFilterSelect) {
         statusFilterSelect.value = 'all';
     }
 }
 function setSummaryFilter(filterValue) {
-    priorityTaskFilter = 'all';
     statusFilter = filterValue || 'all';
 
     const statusFilterSelect = document.getElementById('status-filter');
 
     if (statusFilterSelect) {
         statusFilterSelect.value = statusFilter;
-    }
-
-    renderRoles();
-}
-
-function setPriorityTaskFilter(taskType) {
-    priorityTaskFilter = taskType || 'all';
-    searchQuery = '';
-
-    const searchInput = document.getElementById('role-search');
-    if (searchInput) {
-        searchInput.value = '';
-    }
-
-    const statusFilterSelect = document.getElementById('status-filter');
-    if (statusFilterSelect) {
-        if (taskType === 'reworkReady') {
-            statusFilter = REWORK_READY_STATUS;
-            statusFilterSelect.value = statusFilter;
-        } else if (taskType === 'reworking') {
-            statusFilter = '改削中';
-            statusFilterSelect.value = statusFilter;
-        } else {
-            statusFilter = 'all';
-            statusFilterSelect.value = 'all';
-        }
     }
 
     renderRoles();
@@ -901,44 +871,11 @@ function updateIncompleteWorkDashboard(allRoles) {
     `).join('');
 }
 
-function updatePriorityTaskDashboard(allRoles) {
-    const pendingWork = allRoles.filter(role => getWorkProgressState(role).isIncomplete);
-    const reworkReady = allRoles.filter(role => role.status === REWORK_READY_STATUS);
-    const reworking = allRoles.filter(role => role.status === '改削中');
-
-    const pendingEl = document.getElementById('priority-pending-work-count');
-    const readyEl = document.getElementById('priority-rework-ready-count');
-    const reworkingEl = document.getElementById('priority-reworking-count');
-
-    if (pendingEl) pendingEl.textContent = `${pendingWork.length}件`;
-    if (readyEl) readyEl.textContent = `${reworkReady.length}件`;
-    if (reworkingEl) reworkingEl.textContent = `${reworking.length}件`;
-}
-
-function isPriorityTaskMatched(role) {
-    if (priorityTaskFilter === 'pendingWork') {
-        return getWorkProgressState(role).isIncomplete;
-    }
-
-    if (priorityTaskFilter === 'reworkReady') {
-        return role.status === REWORK_READY_STATUS;
-    }
-
-    if (priorityTaskFilter === 'reworking') {
-        return role.status === '改削中';
-    }
-
-    return true;
-}
-
 function getFilteredRoles() {
     const normalizedQuery = String(searchQuery).trim().toLowerCase();
     return roles.filter(role => {
         const matchesStatus = isStatusMatched(role);
         if (!isStatusMatched(role)) {
-            return false;
-        }
-        if (!isPriorityTaskMatched(role)) {
             return false;
         }
         if (!normalizedQuery) {
@@ -990,7 +927,6 @@ function renderRoles() {
     
     const filteredRoles = getFilteredRoles();
     updateCountSummary(filteredRoles);
-    updatePriorityTaskDashboard(roles);
     updateIncompleteWorkDashboard(roles);
 
     const visibleRoles = filteredRoles
@@ -1407,33 +1343,48 @@ if (searchInput) {
     });
 }
 
+function showAppUpdateNotice() {
+    const notice = document.getElementById('app-update-notice');
+    const reloadBtn = document.getElementById('app-update-reload-btn');
+
+    if (!notice || !reloadBtn) {
+        return;
+    }
+
+    notice.hidden = false;
+    reloadBtn.onclick = () => {
+        location.reload();
+    };
+}
+
 // Service Worker登録
 if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('service-worker.js')
         .then(registration => {
             console.log('Service Worker registered:', registration);
             
-            // 新しいService Workerの更新をチェック
+            if (registration.waiting) {
+                showAppUpdateNotice();
+            }
+
             registration.addEventListener('updatefound', () => {
                 const newWorker = registration.installing;
+                if (!newWorker) {
+                    return;
+                }
                 newWorker.addEventListener('statechange', () => {
-                    if (newWorker.state === 'activated') {
-                        console.log('New Service Worker activated');
-                        // 自動リロード
-                        window.location.reload();
+                    if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                        showAppUpdateNotice();
                     }
                 });
             });
 
-            // Service Workerからのメッセージを処理
             navigator.serviceWorker.addEventListener('message', event => {
                 if (event.data && event.data.type === 'SW_UPDATED') {
-                    console.log('Service Worker updated, reloading...');
-                    window.location.reload();
+                    showAppUpdateNotice();
                 }
             });
 
-            // 定期的に更新チェック（スマホ側自動更新用）
             setInterval(() => {
                 registration.update();
             }, 60000); // 1分ごとにチェック
@@ -1545,8 +1496,6 @@ function toggleAdminMode() {
 }
 
 function setSummaryFilter(status) {
-    priorityTaskFilter = 'all';
-
     const statusFilter = document.getElementById('status-filter');
 
     if (!statusFilter) {

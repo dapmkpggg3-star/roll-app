@@ -1,4 +1,5 @@
-const CACHE_NAME = 'roll-app-v31';
+const CACHE_NAME = 'roll-app-v32';
+const CACHE_PREFIX = 'roll-app-';
 const urlsToCache = [
   '/roll-app/',
   '/roll-app/index.html',
@@ -7,15 +8,28 @@ const urlsToCache = [
 ];
 
 // Service Worker インストール
+function deleteOldCaches() {
+  return caches.keys().then(cacheNames => Promise.all(
+    cacheNames
+      .filter(cacheName => cacheName.startsWith(CACHE_PREFIX) && cacheName !== CACHE_NAME)
+      .map(cacheName => {
+        console.log('Deleting old cache:', cacheName);
+        return caches.delete(cacheName);
+      })
+  ));
+}
+
 self.addEventListener('install', event => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then(cache => {
-      console.log('Cache opened');
-      return cache.addAll(urlsToCache).catch(err => {
-        console.log('Cache addAll error:', err);
-        // Some resources may fail to cache, continue anyway
-      });
-    })
+    deleteOldCaches()
+      .then(() => caches.open(CACHE_NAME))
+      .then(cache => {
+        console.log('Cache opened');
+        return cache.addAll(urlsToCache).catch(err => {
+          console.log('Cache addAll error:', err);
+          // Some resources may fail to cache, continue anyway
+        });
+      })
   );
   self.skipWaiting();
 });
@@ -23,16 +37,7 @@ self.addEventListener('install', event => {
 // Service Worker アクティベーション
 self.addEventListener('activate', event => {
   event.waitUntil(
-    caches.keys().then(cacheNames => {
-      return Promise.all(
-        cacheNames.map(cacheName => {
-          if (cacheName !== CACHE_NAME) {
-            console.log('Deleting old cache:', cacheName);
-            return caches.delete(cacheName);
-          }
-        })
-      );
-    })
+    deleteOldCaches()
   );
   self.clients.claim();
   // 自動更新: すべてのクライアントに更新を通知
