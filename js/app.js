@@ -1035,7 +1035,6 @@ if (standNumber >= 2 && standNumber <= 5) {
             <td class="actions-cell card-actions">
             
                 <div class="action-buttons card-actions-list">
-                    <button class="action-btn history-btn mobile-history-btn" onclick="showHistory('${role.id}')">履歴</button>
                     <button class="action-btn edit-btn" onclick="editRole('${role.id}')">✏️ 編集</button>
                     ${role.status === REWORK_READY_STATUS ? `
   <button class="action-btn request-btn" onclick="requestWork('${role.id}')">

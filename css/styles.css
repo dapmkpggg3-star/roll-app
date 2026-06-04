@@ -2694,6 +2694,10 @@ body.tablet-mode #role-table .current-diameter-cell {
     display: none !important;
   }
 
+  body #role-table .card-actions-list .request-btn {
+    display: none !important;
+  }
+
   body #role-table .card-actions-list .action-btn {
     display: inline-flex !important;
     align-items: center;
@@ -2806,6 +2810,10 @@ body.mobile-layout #role-table .card-actions-list {
 }
 
 body.mobile-layout #role-table .card-actions-list .mobile-history-btn {
+  display: none !important;
+}
+
+body.mobile-layout #role-table .card-actions-list .request-btn {
   display: none !important;
 }
 
