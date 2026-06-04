@@ -1067,6 +1067,36 @@ body.editing-mode .form-section {
   box-shadow: 0 0 20px rgba(255,255,0,0.35);
 }
 
+.editing-banner {
+  width: 100%;
+  padding: 12px 14px;
+  border: 2px solid #f59e0b;
+  border-radius: 8px;
+  background: #fffbeb;
+  color: #92400e;
+  font-weight: 800;
+}
+
+.editing-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.editing-help {
+  display: block;
+  margin-top: 6px;
+  color: #78350f;
+  font-size: 0.9rem;
+}
+
+.editing-status-badge .status-badge {
+  min-height: 0;
+  padding: 5px 9px;
+  font-size: 0.8rem;
+}
+
 body.tablet-mode tbody td {
     padding: 8px 4px;
     border-bottom: 1px solid #eee;
@@ -1255,6 +1285,7 @@ body.tablet-mode tbody td:last-child .action-buttons button {
   padding: 20px !important;
 }
 #updateRoleBtn {
+  display: none !important;
   width: 100%;
   min-height: 90px !important;
   font-size: 32px !important;
@@ -1263,8 +1294,7 @@ body.tablet-mode tbody td:last-child .action-buttons button {
   padding: 20px !important;
   background: #ff9800;
 }
-#updateRoleBtn[style*="inline-block"],
-#updateRoleBtn {
+body.editing-mode #updateRoleBtn {
   display: block !important;
   width: 100% !important;
   min-height: 90px !important;
@@ -1273,6 +1303,9 @@ body.tablet-mode tbody td:last-child .action-buttons button {
   border-radius: 18px !important;
   padding: 20px !important;
   background: #ff9800 !important;
+}
+body.editing-mode #addRoleBtn {
+  display: none !important;
 }
 .request-btn {
   background: #0ea5e9 !important;

@@ -227,6 +227,29 @@ let editingId = null; // 編集中のID
 let lastScrollY = 0;
 let updatedRoleId = null;
 
+function setEditModeUi(role = null) {
+    const isEditing = Boolean(role);
+    const addRoleBtn = document.getElementById('addRoleBtn');
+    const updateRoleBtn = document.getElementById('updateRoleBtn');
+    const cancelEditBtn = document.getElementById('cancelEditBtn');
+    const editingBanner = document.getElementById('editing-banner');
+    const editingLabel = document.querySelector('#editing-banner .editing-label');
+    const editingStandName = document.getElementById('editing-stand-name');
+    const editingStatusBadge = document.getElementById('editing-status-badge');
+    const editingHelp = document.querySelector('#editing-banner .editing-help');
+
+    document.body.classList.toggle('editing-mode', isEditing);
+
+    if (addRoleBtn) addRoleBtn.style.display = isEditing ? 'none' : 'inline-block';
+    if (updateRoleBtn) updateRoleBtn.style.display = isEditing ? 'inline-block' : 'none';
+    if (cancelEditBtn) cancelEditBtn.style.display = isEditing ? 'inline-block' : 'none';
+    if (editingBanner) editingBanner.style.display = isEditing ? 'block' : 'none';
+    if (editingLabel) editingLabel.textContent = '編集中：';
+    if (editingStandName) editingStandName.textContent = role ? role.name || '-' : '-';
+    if (editingStatusBadge) editingStatusBadge.innerHTML = role ? getStatusBadge(role.status) : '';
+    if (editingHelp) editingHelp.textContent = '内容を変更したら「入力内容を更新」を押してください。';
+}
+
 function saveLocalRoles() {
 
     const currentRoles = localStorage.getItem('roles');
@@ -1025,15 +1048,11 @@ function editRole(id) {
     document.getElementById('role-current-diameter').value = normalizeCurrentDiameter(role.currentDiameter);
     document.getElementById('role-memo').value = role.memo || '';
     
-    document.getElementById('addRoleBtn').style.display = 'none';
-    document.getElementById('updateRoleBtn').style.display = 'inline-block';
-    document.getElementById('cancelEditBtn').style.display = 'inline-block';
+    setEditModeUi(role);
     window.scrollTo({
   top: 0,
   behavior: 'smooth'
 });
-document.body.classList.add('editing-mode');
-console.log('editing mode ON');
 }
 
 function updateRole() {
@@ -1097,9 +1116,6 @@ function updateRole() {
     
     saveLocalRoles();
     cancelEdit();
-    setTimeout(() => {
-  document.body.classList.remove("editing-mode");
-}, 500);
 
     renderRoles();
     syncRoles();
@@ -1135,11 +1151,7 @@ function cancelEdit() {
     updateStatusPreview(document.getElementById('role-status'));
     document.getElementById('role-current-diameter').value = '';
     document.getElementById('role-memo').value = '';
-    document.body.classList.remove('editing-mode');
-    
-    document.getElementById('addRoleBtn').style.display = 'inline-block';
-    document.getElementById('updateRoleBtn').style.display = 'none';
-    document.getElementById('cancelEditBtn').style.display = 'none';
+    setEditModeUi(null);
     renderRoles();
 }
 
