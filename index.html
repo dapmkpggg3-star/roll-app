@@ -11,7 +11,7 @@
     <link rel="manifest" href="manifest.json">
     <link rel="icon" type="image/png" sizes="192x192" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect fill='%23667eea' width='192' height='192'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' font-size='96' fill='white' font-family='Arial'>📋</text></svg>">
     <title>ロール管理アプリ</title>
-    <link rel="stylesheet" href="css/styles.css?v=20260604-dashboard-form">
+    <link rel="stylesheet" href="css/styles.css?v=20260604-priority-dashboard">
 </head>
 <body>
     <!-- ログイン画面 -->
@@ -78,6 +78,21 @@
     <span class="summary-label">新品予備（組込完了）</span>
     <span id="summary-new-installed" class="summary-count">0件</span>
 </div>
+                </div>
+                <div id="priority-task-dashboard" class="priority-task-dashboard" aria-label="要対応ダッシュボード">
+                    <div class="priority-task-heading">⚠ 要対応</div>
+                    <button type="button" class="priority-task-card priority-work" onclick="setPriorityTaskFilter('pendingWork')">
+                        <span class="priority-task-label">未完了作業依頼</span>
+                        <span id="priority-pending-work-count" class="priority-task-count">0件</span>
+                    </button>
+                    <button type="button" class="priority-task-card priority-rework-ready" onclick="setPriorityTaskFilter('reworkReady')">
+                        <span class="priority-task-label">改削行き</span>
+                        <span id="priority-rework-ready-count" class="priority-task-count">0件</span>
+                    </button>
+                    <button type="button" class="priority-task-card priority-reworking" onclick="setPriorityTaskFilter('reworking')">
+                        <span class="priority-task-label">改削中</span>
+                        <span id="priority-reworking-count" class="priority-task-count">0件</span>
+                    </button>
                 </div>
                 <div id="incomplete-work-dashboard" class="incomplete-work-dashboard" aria-live="polite">
                     <div class="incomplete-work-header">
@@ -211,7 +226,7 @@
 
     <script src="js/sync.js?v=20260531-2"></script>
 <script src="js/csv.js?v=20260531-2"></script>
-<script src="js/app.js?v=20260604-dashboard-form"></script>
+<script src="js/app.js?v=20260604-priority-dashboard"></script>
 
         // ログイン状態チェック
 </body>
