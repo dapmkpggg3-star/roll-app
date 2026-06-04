@@ -1971,8 +1971,104 @@ body.tablet-mode #role-table .work-progress-steps {
   }
 }
 
+body.mobile-layout #role-table,
+body.mobile-layout #role-table tbody {
+  display: block !important;
+  width: 100% !important;
+}
+
+body.mobile-layout #role-table thead {
+  display: none !important;
+}
+
+body.mobile-layout #role-table tbody {
+  display: grid !important;
+  grid-template-columns: 1fr !important;
+  gap: 14px !important;
+}
+
+body.mobile-layout #role-table tbody tr {
+  display: flex !important;
+  flex-direction: column;
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+}
+
+body.mobile-layout #role-table tbody td {
+  display: grid !important;
+  grid-column: auto !important;
+  grid-row: auto !important;
+  grid-template-columns: 88px minmax(0, 1fr);
+  gap: 10px;
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  padding: 0 !important;
+  border-bottom: none !important;
+}
+
+body.mobile-layout #role-table .stand-card-header {
+  display: grid !important;
+  grid-template-columns: 1fr;
+  align-items: start;
+}
+
+body.mobile-layout #role-table .stand-card-header > .history-card-btn {
+  display: none !important;
+}
+
+body.mobile-layout #role-table .card-actions {
+  display: block !important;
+  position: static !important;
+  grid-column: auto !important;
+  grid-row: auto !important;
+  align-self: auto !important;
+  justify-self: stretch !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+body.mobile-layout #role-table .card-actions-list {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  grid-auto-rows: 64px !important;
+  gap: 10px !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  height: auto !important;
+  align-content: start !important;
+}
+
+body.mobile-layout #role-table .card-actions-list .mobile-history-btn {
+  display: inline-flex !important;
+}
+
+body.mobile-layout #role-table .card-actions-list .action-btn {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  height: 64px !important;
+  min-height: 64px !important;
+  padding: 10px 8px !important;
+  font-size: 18px !important;
+  line-height: 1.15;
+  white-space: normal;
+}
+
 @media (max-width: 360px) {
   body #role-table .card-actions-list {
     grid-template-columns: 1fr !important;
   }
+}
+
+body.mobile-narrow-layout #role-table .card-actions-list {
+  grid-template-columns: 1fr !important;
 }

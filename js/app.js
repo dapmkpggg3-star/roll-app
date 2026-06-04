@@ -5,6 +5,28 @@ const OPERATORS = [
     { id: 'hiwatashi', name: '樋渡' },
     { id: 'ohno', name: '大野' }
 ];
+const MOBILE_LAYOUT_MAX_WIDTH = 767;
+const MOBILE_NARROW_MAX_WIDTH = 360;
+
+function getEffectiveViewportWidth() {
+    const widths = [
+        window.innerWidth,
+        document.documentElement ? document.documentElement.clientWidth : null,
+        window.visualViewport ? window.visualViewport.width : null,
+        window.screen ? window.screen.width : null,
+        window.screen ? window.screen.availWidth : null
+    ]
+        .map(value => Number(value))
+        .filter(value => Number.isFinite(value) && value > 0);
+
+    return widths.length > 0 ? Math.min(...widths) : window.innerWidth;
+}
+
+function applyResponsiveLayoutMode() {
+    const width = getEffectiveViewportWidth();
+    document.body.classList.toggle('mobile-layout', width <= MOBILE_LAYOUT_MAX_WIDTH);
+    document.body.classList.toggle('mobile-narrow-layout', width <= MOBILE_NARROW_MAX_WIDTH);
+}
 
 // ログイン状態チェック
 function checkLoginStatus() {
@@ -51,6 +73,7 @@ function logout() {
 
 // Enterキーでログイン
 document.addEventListener('DOMContentLoaded', function() {
+    applyResponsiveLayoutMode();
     applyTabletModePreference();
     setupOperatorSelect();
     loadRemoteRoles();
@@ -73,6 +96,13 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     applyAdminMode(false);
 });
+
+window.addEventListener('load', applyResponsiveLayoutMode);
+window.addEventListener('resize', applyResponsiveLayoutMode);
+window.addEventListener('orientationchange', applyResponsiveLayoutMode);
+if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', applyResponsiveLayoutMode);
+}
 
 function getStoredOperator() {
     try {
