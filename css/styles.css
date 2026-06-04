@@ -1676,8 +1676,13 @@ body.tablet-mode #role-table .stand-cell::before {
 }
 
 body.tablet-mode #role-table .stand-card-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 16px;
   min-height: 66px;
-  align-items: flex-start;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e2e8f0;
 }
 
 body.tablet-mode #role-table .stand-name-cell {
@@ -1690,7 +1695,9 @@ body.tablet-mode #role-table .stand-name-cell {
 }
 
 body.tablet-mode #role-table .history-card-btn {
-  display: none !important;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
   flex: 0 0 auto;
   min-width: 92px !important;
   min-height: 58px !important;
@@ -1758,7 +1765,9 @@ body.tablet-mode #role-table .actions-cell {
   grid-column: 1;
   grid-row: auto;
   align-self: auto;
-  margin-top: 4px;
+  margin-top: 8px;
+  padding-top: 14px !important;
+  border-top: 1px solid #e2e8f0 !important;
   width: 100% !important;
   min-width: 0 !important;
 }
@@ -1775,7 +1784,7 @@ body.tablet-mode #role-table .action-buttons {
 }
 
 body.tablet-mode #role-table .card-actions-list .mobile-history-btn {
-  display: inline-flex !important;
+  display: none !important;
 }
 
 body.tablet-mode #role-table .actions-cell .action-btn {
