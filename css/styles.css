@@ -320,6 +320,42 @@ body {
     border-color: #c7d2fe;
 }
 
+.count-summary .status-online {
+    background: #ecfdf5;
+    color: #065f46;
+    border-color: #a7f3d0;
+}
+
+.count-summary .status-working {
+    background: #fef2f2;
+    color: #991b1b;
+    border-color: #fecaca;
+}
+
+.count-summary .status-used {
+    background: #f8fafc;
+    color: #334155;
+    border-color: #cbd5e1;
+}
+
+.count-summary .summary-card:has(#summary-remove) {
+    background: #fff7ed;
+    color: #9a3412;
+    border-color: #fed7aa;
+}
+
+.count-summary .summary-card:has(#summary-new-ready) {
+    background: #ecfeff;
+    color: #155e75;
+    border-color: #a5f3fc;
+}
+
+.count-summary .summary-card:has(#summary-new-installed) {
+    background: #f5f3ff;
+    color: #5b21b6;
+    border-color: #ddd6fe;
+}
+
 .summary-label {
     font-size: 0.82rem;
     font-weight: 700;
@@ -327,8 +363,8 @@ body {
 }
 
 .summary-count {
-    font-size: 1.55rem;
-    font-weight: 800;
+    font-size: 1.72rem;
+    font-weight: 900;
     line-height: 1;
 }
 
