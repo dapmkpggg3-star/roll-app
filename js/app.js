@@ -404,6 +404,22 @@ function getWorkProgressCompletedCount(role) {
     return WORK_PROGRESS_STEPS.filter(step => Boolean(progress[step.key])).length;
 }
 
+function getWorkProgressState(role) {
+    const progress = normalizeWorkProgress(role);
+    const completedCount = getWorkProgressCompletedCount(role);
+    const totalCount = WORK_PROGRESS_STEPS.length;
+    const hasProgressValue = WORK_PROGRESS_STEPS.some(step => Boolean(progress[step.key]));
+    const hasWorkRequest = role.status === REWORK_READY_STATUS || hasProgressValue || role.requestSent === true;
+
+    return {
+        hasWorkRequest,
+        completedCount,
+        totalCount,
+        isIncomplete: hasWorkRequest && completedCount < totalCount,
+        isComplete: hasWorkRequest && completedCount >= totalCount
+    };
+}
+
 function isWorkProgressStepEnabled(role, index) {
     if (!role || role.status !== REWORK_READY_STATUS) {
         return false;
@@ -521,6 +537,11 @@ function getMemoPreview(memo) {
     return normalized.length > 50 ? normalized.slice(0, 50) + '…' : normalized;
 }
 
+function hasDisplayMemo(memo) {
+    const normalized = (memo || '').replace(/\n/g, ' ').trim();
+    return Boolean(normalized) && normalized !== '-';
+}
+
 function escapeHtml(str) {
     return String(str)
         .replace(/&/g, '&amp;')
@@ -546,14 +567,14 @@ function getRoleInfoHtml(role, formattedDate) {
     const memo = getMemoPreview(role.memo);
     const rows = [
         ['ロールNo', roleName],
-        ['ロール記号', getRollSymbol(roleName)],
-        ['材質', '-'],
-        ['サイズ', '-'],
         ['現在径', currentDiameter],
         ['使用開始日', '-'],
-        ['最終更新', formattedDate],
-        ['備考', memo]
+        ['最終更新', formattedDate]
     ];
+
+    if (hasDisplayMemo(role.memo)) {
+        rows.push(['備考', memo]);
+    }
 
     return rows.map(([label, value]) => `
         <div class="role-info-item">
@@ -901,18 +922,30 @@ if (standNumber >= 2 && standNumber <= 5) {
 }
         const formattedDate = formatUpdatedAt(role.updatedAt);
         const currentDiameterText = formatCurrentDiameter(role.currentDiameter);
+        const workProgressState = getWorkProgressState(role);
+        const memoMobileText = hasDisplayMemo(role.memo) ? getMemoPreview(role.memo) : '';
+        if (workProgressState.isIncomplete) {
+            row.classList.add('work-request-incomplete');
+            row.style.borderLeft = '6px solid #dc2626';
+        } else if (workProgressState.isComplete) {
+            row.classList.add('work-request-complete');
+            row.style.borderLeft = '6px solid #16a34a';
+        }
         row.innerHTML = `
             <td class="stand-cell">
   <div class="stand-card-header">
     <span class="role-id stand-name-cell">${escapeHtml(role.name)}</span>
-    <button class="action-btn history-btn history-card-btn" onclick="showHistory('${role.id}')">履歴</button>
+    <div class="stand-card-actions">
+      ${workProgressState.isIncomplete ? '<span class="work-request-badge">作業依頼中</span>' : ''}
+      <button class="action-btn history-btn history-card-btn" onclick="showHistory('${role.id}')">履歴</button>
+    </div>
   </div>
   ${updatedRoleId === role.id ? '<span class="updated-badge">更新しました</span>' : ''}
 </td>
             <td class="status-cell">${getStatusBadge(role.status)}</td>
-            <td class="memo-cell">
+            <td class="memo-cell ${hasDisplayMemo(role.memo) ? '' : 'is-empty-memo'}">
                 <div class="role-info-grid">${getRoleInfoHtml(role, formattedDate)}</div>
-                <span class="memo-mobile-text">${escapeHtml(getMemoPreview(role.memo))}</span>
+                <span class="memo-mobile-text">${escapeHtml(memoMobileText)}</span>
             </td>
             <td class="current-diameter-cell">
                 <div class="diameter-hero">
