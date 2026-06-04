@@ -298,6 +298,78 @@ body {
     line-height: 1;
 }
 
+.incomplete-work-dashboard {
+    display: grid;
+    gap: 10px;
+    width: 100%;
+    margin: 0 0 18px;
+    padding: 14px 16px;
+    border-radius: 14px;
+    border: 1px solid #e2e8f0;
+    background: #ffffff;
+    color: #334155;
+    box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08);
+}
+
+.incomplete-work-dashboard.has-incomplete-work {
+    border-color: #fecaca;
+    background: #fff1f2;
+    color: #991b1b;
+    box-shadow: 0 8px 22px rgba(185, 28, 28, 0.16);
+}
+
+.incomplete-work-dashboard.is-empty {
+    background: #f8fafc;
+    color: #64748b;
+}
+
+.incomplete-work-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.incomplete-work-title {
+    font-size: 1rem;
+    font-weight: 900;
+}
+
+.incomplete-work-count {
+    font-size: 1.65rem;
+    font-weight: 900;
+    line-height: 1;
+}
+
+.incomplete-work-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 8px;
+}
+
+.incomplete-work-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    min-height: 40px;
+    padding: 8px 10px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.72);
+    border: 1px solid rgba(248, 113, 113, 0.38);
+    font-weight: 800;
+}
+
+.incomplete-work-role,
+.incomplete-work-progress {
+    white-space: nowrap;
+}
+
+.incomplete-work-empty {
+    color: #64748b;
+    font-weight: 700;
+}
+
 .role-form {
     display: flex;
     gap: 10px;

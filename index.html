@@ -11,7 +11,7 @@
     <link rel="manifest" href="manifest.json">
     <link rel="icon" type="image/png" sizes="192x192" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect fill='%23667eea' width='192' height='192'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' font-size='96' fill='white' font-family='Arial'>📋</text></svg>">
     <title>ロール管理アプリ</title>
-    <link rel="stylesheet" href="css/styles.css?v=20260604-edit-mode">
+    <link rel="stylesheet" href="css/styles.css?v=20260604-work-dashboard">
 </head>
 <body>
     <!-- ログイン画面 -->
@@ -97,6 +97,13 @@
     <span class="summary-label">新品予備（組込完了）</span>
     <span id="summary-new-installed" class="summary-count">0件</span>
 </div>
+                </div>
+                <div id="incomplete-work-dashboard" class="incomplete-work-dashboard" aria-live="polite">
+                    <div class="incomplete-work-header">
+                        <span class="incomplete-work-title">未完了作業依頼</span>
+                        <span id="incomplete-work-count" class="incomplete-work-count">0件</span>
+                    </div>
+                    <div id="incomplete-work-list" class="incomplete-work-list"></div>
                 </div>
                 <div id="role-count" class="role-count"></div>
                 <div id="sync-message" class="sync-message"></div>
@@ -196,7 +203,7 @@
 
     <script src="js/sync.js?v=20260531-2"></script>
 <script src="js/csv.js?v=20260531-2"></script>
-<script src="js/app.js?v=20260604-edit-mode"></script>
+<script src="js/app.js?v=20260604-work-dashboard"></script>
 
         // ログイン状態チェック
 </body>

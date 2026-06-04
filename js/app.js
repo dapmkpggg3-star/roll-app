@@ -812,6 +812,36 @@ function updateCountSummary(visibleRoles) {
 });
 }
 
+function updateIncompleteWorkDashboard(allRoles) {
+    const dashboard = document.getElementById('incomplete-work-dashboard');
+    const countEl = document.getElementById('incomplete-work-count');
+    const listEl = document.getElementById('incomplete-work-list');
+
+    if (!dashboard || !countEl || !listEl) {
+        return;
+    }
+
+    const incompleteRoles = allRoles
+        .map(role => ({ role, progressState: getWorkProgressState(role) }))
+        .filter(item => item.progressState.isIncomplete);
+
+    countEl.textContent = `${incompleteRoles.length}件`;
+    dashboard.classList.toggle('has-incomplete-work', incompleteRoles.length > 0);
+    dashboard.classList.toggle('is-empty', incompleteRoles.length === 0);
+
+    if (incompleteRoles.length === 0) {
+        listEl.innerHTML = '<div class="incomplete-work-empty">未完了の作業依頼はありません</div>';
+        return;
+    }
+
+    listEl.innerHTML = incompleteRoles.map(({ role, progressState }) => `
+        <div class="incomplete-work-item">
+            <span class="incomplete-work-role">${escapeHtml(role.name || '-')}</span>
+            <span class="incomplete-work-progress">${progressState.completedCount}/${progressState.totalCount}</span>
+        </div>
+    `).join('');
+}
+
 function getFilteredRoles() {
     const normalizedQuery = String(searchQuery).trim().toLowerCase();
     return roles.filter(role => {
@@ -868,6 +898,7 @@ function renderRoles() {
     
     const filteredRoles = getFilteredRoles();
     updateCountSummary(filteredRoles);
+    updateIncompleteWorkDashboard(roles);
 
     const visibleRoles = filteredRoles
         .slice()
