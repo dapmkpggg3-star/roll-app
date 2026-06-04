@@ -1263,28 +1263,36 @@ body.tablet-mode tbody td:last-child .action-buttons button {
 }
 
 .work-progress {
+  display: grid;
+  grid-template-rows: auto auto;
+  align-items: start;
+  gap: 8px;
   min-width: 260px;
+  min-height: 0;
 }
 
 .work-progress-summary {
-  margin-bottom: 8px;
+  margin-bottom: 0;
   color: #1f2937;
   font-size: 0.95rem;
   font-weight: 800;
+  line-height: 1.35;
 }
 
 .work-progress-steps {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px;
+  align-items: stretch;
 }
 
 .progress-step-btn {
   display: grid;
   grid-template-columns: 22px 1fr;
   gap: 4px 6px;
-  align-items: center;
+  align-items: start;
   min-height: 46px;
+  height: auto;
   padding: 7px 8px;
   border: 1px solid #cbd5e1;
   border-radius: 8px;
@@ -1329,6 +1337,7 @@ body.tablet-mode tbody td:last-child .action-buttons button {
   font-size: 0.78rem;
   font-weight: 800;
   line-height: 1.25;
+  overflow-wrap: anywhere;
 }
 
 .progress-step-date {
@@ -1336,6 +1345,7 @@ body.tablet-mode tbody td:last-child .action-buttons button {
   color: #475569;
   font-size: 0.68rem;
   line-height: 1.2;
+  overflow-wrap: anywhere;
 }
 
 .action-buttons {
@@ -1778,10 +1788,17 @@ body.tablet-mode #role-table .actions-cell .request-btn {
 body.tablet-mode #role-table .work-progress {
   min-width: 0;
   width: 100%;
+  height: auto;
 }
 
 body.tablet-mode #role-table .work-progress-steps {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-rows: minmax(46px, auto);
+}
+
+body.tablet-mode #role-table .progress-step-btn {
+  min-height: 52px;
+  height: auto !important;
 }
 
 @media (max-width: 900px) {
