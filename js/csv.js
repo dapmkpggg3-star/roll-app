@@ -78,7 +78,7 @@ function importCsv(event) {
                 if (!name) {
                     continue;
                 }
-                const validStatuses = ['オンライン', '中古予備（バラシ前）', '改削行き（搬出可能）', '改削中', '新品予備（組替可能）', '新品予備（組込完了）'];
+                const validStatuses = ['オンライン', '中古予備（バラシ前）', '改削行き（搬出可能）', '改削中', '新品予備（組替可能）', '新品予備（組込完了）', '廃却待ち', '廃棄'];
                 if (!validStatuses.includes(status)) {
                     continue;
                 }

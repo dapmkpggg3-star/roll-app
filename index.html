@@ -11,7 +11,7 @@
     <link rel="manifest" href="manifest.json">
     <link rel="icon" type="image/png" sizes="192x192" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect fill='%23667eea' width='192' height='192'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' font-size='96' fill='white' font-family='Arial'>📋</text></svg>">
     <title>ロール管理アプリ</title>
-    <link rel="stylesheet" href="css/styles.css?v=20260605-use-start-date">
+    <link rel="stylesheet" href="css/styles.css?v=20260605-disposal-statuses">
 </head>
 <body>
     <div id="app-update-notice" class="app-update-notice" hidden>
@@ -82,6 +82,14 @@
     <span class="summary-label">新品予備（組込完了）</span>
     <span id="summary-new-installed" class="summary-count">0件</span>
 </div>
+<div class="summary-card status-other" onclick="setSummaryFilter('廃却待ち')">
+    <span class="summary-label">廃却待ち</span>
+    <span id="summary-scrap-waiting" class="summary-count">0件</span>
+</div>
+<div class="summary-card status-other" onclick="setSummaryFilter('廃棄')">
+    <span class="summary-label">廃棄</span>
+    <span id="summary-discarded" class="summary-count">0件</span>
+</div>
                 </div>
                 <div id="incomplete-work-dashboard" class="incomplete-work-dashboard" aria-live="polite">
                     <div class="incomplete-work-header">
@@ -107,6 +115,8 @@
 <option value="改削行き（搬出可能）">改削行き（搬出可能）</option>
 <option value="新品予備（組替可能）">新品予備（組替可能）</option>
 <option value="新品予備（組込完了）">新品予備（組込完了）</option>
+<option value="廃却待ち">廃却待ち</option>
+<option value="廃棄">廃棄</option>
                     </select>
                     <select id="sort-select" class="sort-select" onchange="changeSort(event)">
                         <option value="updatedAtDesc">更新更新日時が新しい順</option>
@@ -140,6 +150,8 @@
                             <option value="改削中">改削中</option>
                             <option value="新品予備（組替可能）">新品予備（組替可能）</option>
                             <option value="新品予備（組込完了）">新品予備（組込完了）</option>
+                            <option value="廃却待ち">廃却待ち</option>
+                            <option value="廃棄">廃棄</option>
                         </select>
                     </div>
                     <div class="status-preview-row" aria-label="現在のステータス色プレビュー">
@@ -220,9 +232,9 @@
         </div>
     </div>
 
-    <script src="js/sync.js?v=20260605-use-start-date"></script>
-<script src="js/csv.js?v=20260531-2"></script>
-<script src="js/app.js?v=20260605-use-start-date"></script>
+    <script src="js/sync.js?v=20260605-disposal-statuses"></script>
+<script src="js/csv.js?v=20260605-disposal-statuses"></script>
+<script src="js/app.js?v=20260605-disposal-statuses"></script>
 
         // ログイン状態チェック
 </body>

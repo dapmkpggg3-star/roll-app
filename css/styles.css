@@ -356,6 +356,18 @@ body {
     border-color: #ddd6fe;
 }
 
+.count-summary .summary-card:has(#summary-scrap-waiting) {
+    background: #fef2f2;
+    color: #991b1b;
+    border-color: #fecaca;
+}
+
+.count-summary .summary-card:has(#summary-discarded) {
+    background: #111827;
+    color: #f9fafb;
+    border-color: #030712;
+}
+
 .summary-label {
     font-size: 0.82rem;
     font-weight: 700;
@@ -824,6 +836,18 @@ tbody tr:hover {
     background: #ede9fe;
     color: #5b21b6;
     border-color: #c4b5fd;
+}
+
+.status-scrap-waiting {
+    background: #fee2e2;
+    color: #991b1b;
+    border-color: #fca5a5;
+}
+
+.status-discarded {
+    background: #111827;
+    color: #f9fafb;
+    border-color: #030712;
 }
 
 .status-other {

@@ -207,11 +207,14 @@ const ALLOWED_STATUSES = [
     '改削行き（搬出可能）',
     '改削中',
     '新品予備（組替可能）',
-    '新品予備（組込完了）'
+    '新品予備（組込完了）',
+    '廃却待ち',
+    '廃棄'
 ];
 
 const REWORK_READY_STATUS = '改削行き（搬出可能）';
 const SCRAP_WAITING_STATUS = '廃却待ち';
+const DISCARDED_STATUS = '廃棄';
 const REWORKING_STATUS = '改削中';
 const NEW_INSTALLED_STATUS = '新品予備（組込完了）';
 const ONLINE_STATUS = 'オンライン';
@@ -587,7 +590,9 @@ function getStatusClass(status) {
         '改削行き（搬出可能）': 'status-rework-ready',
         '改削中': 'status-reworking',
         '新品予備（組替可能）': 'status-new-ready',
-        '新品予備（組込完了）': 'status-new-done'
+        '新品予備（組込完了）': 'status-new-done',
+        '廃却待ち': 'status-scrap-waiting',
+        '廃棄': 'status-discarded'
     };
     return statusClasses[status] || 'status-other';
 }
@@ -609,6 +614,8 @@ function updateStatusPreview(selectEl) {
         'status-reworking',
         'status-new-ready',
         'status-new-done',
+        'status-scrap-waiting',
+        'status-discarded',
         'status-other'
     ];
     const previewEl = document.getElementById('role-status-preview');
@@ -853,6 +860,14 @@ function getStatusSummaryCategory(role) {
         return 'newInstalled';
     }
 
+    if (status === SCRAP_WAITING_STATUS) {
+        return 'scrapWaiting';
+    }
+
+    if (status === DISCARDED_STATUS) {
+        return 'discarded';
+    }
+
     return 'other';
 }
 
@@ -865,6 +880,8 @@ function updateCountSummary(visibleRoles) {
     remove: 0,
     newReady: 0,
     newInstalled: 0,
+    scrapWaiting: 0,
+    discarded: 0,
     other: 0
 };
 
@@ -877,7 +894,9 @@ function updateCountSummary(visibleRoles) {
     const summaryMap = {
         remove: 'summary-remove',
         newReady: 'summary-new-ready',
-        newInstalled: 'summary-new-installed'
+        newInstalled: 'summary-new-installed',
+        scrapWaiting: 'summary-scrap-waiting',
+        discarded: 'summary-discarded'
     };
 
     const targetId = summaryMap[key] || `summary-${key}`;
@@ -1149,6 +1168,13 @@ if (standNumber >= 2 && standNumber <= 5) {
     row.style.borderLeft = '6px solid #e91e63';
     row.style.backgroundColor = 'rgba(233, 30, 99, 0.08)';
 }
+        if (role.status === SCRAP_WAITING_STATUS) {
+            row.style.borderLeft = '6px solid #dc2626';
+            row.style.backgroundColor = 'rgba(220, 38, 38, 0.1)';
+        } else if (role.status === DISCARDED_STATUS) {
+            row.style.borderLeft = '6px solid #111827';
+            row.style.backgroundColor = 'rgba(17, 24, 39, 0.08)';
+        }
         const formattedDate = formatUpdatedAt(role.updatedAt);
         const currentDiameterText = formatCurrentDiameter(role.currentDiameter);
         const workProgressState = getWorkProgressState(role);
