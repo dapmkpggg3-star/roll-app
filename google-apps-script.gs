@@ -1,9 +1,10 @@
 const SHEET_NAME = 'Roles';
 const INPUT_SHEET_NAMES = ['入力シート', 'Input', '入力'];
 const SPREADSHEET_ID = '1X07qQa7u9YPLvErT0D48goT5wYmvcpgNjqzK3FhRFeA';
-const HEADER_VALUES = ['ID', 'スタンド番号', 'ステータス', 'メモ', '最終更新日', '作業依頼済み', '作業依頼進捗', '履歴', '現在径'];
+const HEADER_VALUES = ['ID', 'スタンド番号', 'ステータス', 'メモ', '最終更新日', '作業依頼済み', '作業依頼進捗', '履歴', '現在径', '使用開始日'];
 const STATUS_COLUMN_INDEX = 3;
 const CURRENT_DIAMETER_COLUMN_INDEX = 9;
+const USE_START_DATE_COLUMN_INDEX = 10;
 const ADD_ROLE_ACTION_NAME = 'addRoleFromInputArea';
 const HEADER_BACKGROUND = '#1f4e78';
 const HEADER_FONT_COLOR = '#ffffff';
@@ -155,7 +156,8 @@ function fetchRoles() {
       requestSent: requestSent,
       workProgress: workProgress,
       history: parseHistory(row[7]),
-      currentDiameter: normalizeCurrentDiameterForSheet(row[8])
+      currentDiameter: normalizeCurrentDiameterForSheet(row[8]),
+      useStartDate: normalizeUseStartDateForSheet(row[9])
     };
   }).filter(row => row.name && String(row.name).trim() !== '');
   
@@ -179,7 +181,8 @@ function writeRoles(roles) {
         role.requestSent === true,
         JSON.stringify(normalizeWorkProgressForSheet(role)),
         JSON.stringify(normalizeHistoryForSheet(role)),
-        normalizeCurrentDiameterForSheet(role.currentDiameter)
+        normalizeCurrentDiameterForSheet(role.currentDiameter),
+        normalizeUseStartDateForSheet(role.useStartDate)
       ];
     } catch (err) {
       Logger.log('writeRoles error at row ' + index + ': ' + err.toString());
@@ -232,6 +235,7 @@ function addRoleFromInputArea() {
     false,
     JSON.stringify(normalizeWorkProgressForSheet({})),
     JSON.stringify([]),
+    '',
     ''
   ];
 
@@ -404,6 +408,14 @@ function normalizeCurrentDiameterForSheet(value) {
   return isFinite(numericValue) ? numericValue : '';
 }
 
+function normalizeUseStartDateForSheet(value) {
+  if (value === undefined || value === null) {
+    return '';
+  }
+
+  return String(value).trim();
+}
+
 
 function applySheetFormatting(sheet, dataRowCount) {
   const columnCount = HEADER_VALUES.length;
@@ -469,6 +481,7 @@ function applySheetFormatting(sheet, dataRowCount) {
   sheet.setColumnWidth(7, 80);
   sheet.setColumnWidth(8, 80);
   sheet.setColumnWidth(CURRENT_DIAMETER_COLUMN_INDEX, 95);
+  sheet.setColumnWidth(USE_START_DATE_COLUMN_INDEX, 115);
   sheet.hideColumns(1);
   sheet.hideColumns(7);
   sheet.hideColumns(8);
@@ -477,12 +490,17 @@ function applySheetFormatting(sheet, dataRowCount) {
     .setHorizontalAlignment('right')
     .setNumberFormat('"Φ"0.0');
 
+  sheet.getRange(2, USE_START_DATE_COLUMN_INDEX, maxRows - 1, 1)
+    .setHorizontalAlignment('center')
+    .setNumberFormat('yyyy/mm/dd');
+
   sheet.getRange(1, 1, totalRows, columnCount).setVerticalAlignment('middle');
   if (dataRowCount > 0) {
     sheet.getRange(2, 1, dataRowCount, columnCount).setWrap(true);
     sheet.getRange(2, 7, dataRowCount, 1).setWrap(false);
     sheet.getRange(2, 8, dataRowCount, 1).setWrap(false);
     sheet.getRange(2, CURRENT_DIAMETER_COLUMN_INDEX, dataRowCount, 1).setWrap(false);
+    sheet.getRange(2, USE_START_DATE_COLUMN_INDEX, dataRowCount, 1).setWrap(false);
   }
 
   hideAddRoleButtons(sheet);

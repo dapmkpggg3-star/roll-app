@@ -214,6 +214,7 @@ const REWORK_READY_STATUS = '改削行き（搬出可能）';
 const SCRAP_WAITING_STATUS = '廃却待ち';
 const REWORKING_STATUS = '改削中';
 const NEW_INSTALLED_STATUS = '新品予備（組込完了）';
+const ONLINE_STATUS = 'オンライン';
 const WORK_REQUEST_ACTION_LABEL = '作業依頼';
 const WORK_PROGRESS_STEPS = [
     { key: 'requestFormCreatedAt', label: '改削依頼書作成' },
@@ -343,6 +344,44 @@ function formatCurrentDiameter(value) {
     return normalized === '' ? '-' : `φ${normalized.toFixed(1)}`;
 }
 
+function getTodayDateString() {
+    const now = new Date();
+    const pad = number => String(number).padStart(2, '0');
+    return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+}
+
+function normalizeUseStartDate(value) {
+    return value === undefined || value === null ? '' : String(value).trim();
+}
+
+function formatUseStartDate(value) {
+    const normalized = normalizeUseStartDate(value);
+
+    if (!normalized) {
+        return '-';
+    }
+
+    const date = new Date(normalized);
+
+    if (Number.isNaN(date.getTime())) {
+        return normalized;
+    }
+
+    const pad = number => String(number).padStart(2, '0');
+    return `${date.getFullYear()}/${pad(date.getMonth() + 1)}/${pad(date.getDate())}`;
+}
+
+function setUseStartDateIfNeeded(role, at = new Date().toISOString(), options = {}) {
+    if (!role || role.status !== ONLINE_STATUS || normalizeUseStartDate(role.useStartDate)) {
+        return false;
+    }
+
+    const useStartDate = getTodayDateString();
+    role.useStartDate = useStartDate;
+    addRoleHistoryEntry(role, 'useStartDate', '使用開始日自動設定', '-', formatUseStartDate(useStartDate), at, options);
+    return true;
+}
+
 function addRoleHistoryEntry(role, type, label, beforeValue, afterValue, at = new Date().toISOString(), options = {}) {
     if (!role) {
         return;
@@ -380,6 +419,7 @@ function loadLocalRoles() {
         updatedAt: role.updatedAt || new Date().toISOString(),
         memo: role.memo || '',
         status: ALLOWED_STATUSES.includes(role.status) ? role.status : '中古予備（バラシ前）',
+        useStartDate: normalizeUseStartDate(role.useStartDate),
         currentDiameter: normalizeCurrentDiameter(role.currentDiameter),
         workProgress: normalizeWorkProgress(role),
         history: normalizeRoleHistory(role),
@@ -619,7 +659,7 @@ function getRollSymbol(roleName) {
 function getRoleInfoHtml(role, formattedDate) {
     const memo = getMemoPreview(role.memo);
     const rows = [
-        ['使用開始日', '-'],
+        ['使用開始日', formatUseStartDate(role.useStartDate)],
         ['最終更新', formattedDate]
     ];
 
@@ -1178,8 +1218,9 @@ function addRole() {
         alert('このスタンド番号は既に登録されています');
         return;
     }
-    const newRole = { id: nextId++, name: roleName, status: roleStatus, memo: roleMemo, currentDiameter: roleCurrentDiameter, updatedAt: new Date().toISOString(), workProgress: normalizeWorkProgress({}), history: [] };
+    const newRole = { id: nextId++, name: roleName, status: roleStatus, memo: roleMemo, currentDiameter: roleCurrentDiameter, useStartDate: '', updatedAt: new Date().toISOString(), workProgress: normalizeWorkProgress({}), history: [] };
     addRoleHistoryEntry(newRole, 'create', '新規追加', '-', roleStatus, newRole.updatedAt);
+    setUseStartDateIfNeeded(newRole, newRole.updatedAt);
     
     // オンライン重複制御
     if (roleStatus === 'オンライン') {
@@ -1270,6 +1311,7 @@ function updateRole() {
     role.status = roleStatus;
     role.memo = roleMemo;
     role.currentDiameter = roleCurrentDiameter;
+    role.useStartDate = normalizeUseStartDate(role.useStartDate);
     role.updatedAt = new Date().toISOString();
     role.workProgress = normalizeWorkProgress(role);
     if (beforeName !== roleName) {
@@ -1279,6 +1321,7 @@ function updateRole() {
         }));
     }
     addRoleHistoryEntry(role, 'status', 'ステータス変更', beforeStatus, roleStatus, role.updatedAt);
+    setUseStartDateIfNeeded(role, role.updatedAt);
     addRoleHistoryEntry(role, 'memo', 'メモ変更', beforeMemo, roleMemo, role.updatedAt);
     addRoleHistoryEntry(role, 'diameter', '現在径変更', formatCurrentDiameter(beforeCurrentDiameter), formatCurrentDiameter(roleCurrentDiameter), role.updatedAt);
 
