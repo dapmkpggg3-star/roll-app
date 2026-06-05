@@ -211,6 +211,9 @@ const ALLOWED_STATUSES = [
 ];
 
 const REWORK_READY_STATUS = '改削行き（搬出可能）';
+const SCRAP_WAITING_STATUS = '廃却待ち';
+const REWORKING_STATUS = '改削中';
+const NEW_INSTALLED_STATUS = '新品予備（組込完了）';
 const WORK_REQUEST_ACTION_LABEL = '作業依頼';
 const WORK_PROGRESS_STEPS = [
     { key: 'requestFormCreatedAt', label: '改削依頼書作成' },
@@ -223,6 +226,7 @@ let roles = [];
 let nextId = 1;
 let searchQuery = '';
 let statusFilter = 'all';
+let watchStandFilter = null;
 let sortOption = 'name';
 let editingId = null; // 編集中のID
 let lastScrollY = 0;
@@ -716,6 +720,7 @@ function closeDetailModal() {
 
 function searchRoles(event) {
     searchQuery = event.target.value || '';
+    watchStandFilter = null;
 
     if (searchQuery.trim().length > 0) {
         resetStatusFilter();
@@ -726,6 +731,7 @@ function searchRoles(event) {
 
 function clearSearch() {
     searchQuery = '';
+    watchStandFilter = null;
     const searchInput = document.getElementById('role-search');
     if (searchInput) {
         searchInput.value = '';
@@ -735,6 +741,7 @@ function clearSearch() {
 
 function changeStatusFilter(event) {
     statusFilter = event.target.value || 'all';
+    watchStandFilter = null;
     renderRoles();
 }
 
@@ -747,6 +754,7 @@ function resetStatusFilter() {
 }
 function setSummaryFilter(filterValue) {
     statusFilter = filterValue || 'all';
+    watchStandFilter = null;
 
     const statusFilterSelect = document.getElementById('status-filter');
 
@@ -759,6 +767,7 @@ function setSummaryFilter(filterValue) {
 
 function showAllRoles() {
     searchQuery = '';
+    watchStandFilter = null;
     const searchInput = document.getElementById('role-search');
     if (searchInput) {
         searchInput.value = '';
@@ -841,6 +850,19 @@ function updateCountSummary(visibleRoles) {
 });
 }
 
+function getStandKey(roleName) {
+    const match = String(roleName || '').match(/#?(\d+)(?:-|$)/);
+    return match ? match[1] : '';
+}
+
+function isWatchStandMatched(role) {
+    if (!watchStandFilter) {
+        return true;
+    }
+
+    return getStandKey(role.name) === watchStandFilter;
+}
+
 function updateIncompleteWorkDashboard(allRoles) {
     const dashboard = document.getElementById('incomplete-work-dashboard');
     const countEl = document.getElementById('incomplete-work-count');
@@ -871,11 +893,97 @@ function updateIncompleteWorkDashboard(allRoles) {
     `).join('');
 }
 
+function getWatchStandItems(allRoles) {
+    const groups = new Map();
+
+    allRoles.forEach(role => {
+        const standKey = getStandKey(role.name);
+        if (!standKey) {
+            return;
+        }
+
+        if (!groups.has(standKey)) {
+            groups.set(standKey, []);
+        }
+        groups.get(standKey).push(role);
+    });
+
+    return Array.from(groups.entries())
+        .map(([standKey, standRoles]) => {
+            const statuses = standRoles.map(role => String(role.status || ''));
+            const reasons = [];
+            let severity = 0;
+
+            if (statuses.includes(SCRAP_WAITING_STATUS) && !statuses.includes(NEW_INSTALLED_STATUS)) {
+                reasons.push('廃却待ちあり・予備不足');
+                severity = Math.max(severity, 2);
+            }
+
+            if (statuses.includes(REWORK_READY_STATUS) && !statuses.includes(REWORKING_STATUS)) {
+                reasons.push('改削行きあり・未着手');
+                severity = Math.max(severity, 1);
+            }
+
+            return {
+                standKey,
+                standNumber: Number(standKey),
+                reasons,
+                severity
+            };
+        })
+        .filter(item => item.reasons.length > 0)
+        .sort((a, b) => {
+            if (b.severity !== a.severity) {
+                return b.severity - a.severity;
+            }
+            return a.standNumber - b.standNumber;
+        });
+}
+
+function updateWatchStandDashboard(allRoles) {
+    const dashboard = document.getElementById('watch-stand-dashboard');
+    const countEl = document.getElementById('watch-stand-count');
+    const listEl = document.getElementById('watch-stand-list');
+
+    if (!dashboard || !countEl || !listEl) {
+        return;
+    }
+
+    const watchItems = getWatchStandItems(allRoles);
+    countEl.textContent = `${watchItems.length}件`;
+    dashboard.classList.toggle('is-empty', watchItems.length === 0);
+
+    if (watchItems.length === 0) {
+        listEl.innerHTML = '<div class="watch-stand-empty">要注意スタンドはありません</div>';
+        return;
+    }
+
+    listEl.innerHTML = watchItems.map(item => `
+        <button type="button" class="watch-stand-item" onclick="filterWatchStand('${escapeHtml(item.standKey)}')">
+            <span class="watch-stand-name">#${escapeHtml(item.standKey)}</span>
+            <span class="watch-stand-reason">理由：${escapeHtml(item.reasons.join('・'))}</span>
+        </button>
+    `).join('');
+}
+
+function filterWatchStand(standKey) {
+    watchStandFilter = String(standKey || '');
+    searchQuery = '';
+    const searchInput = document.getElementById('role-search');
+    if (searchInput) {
+        searchInput.value = '';
+    }
+    resetStatusFilter();
+    renderRoles();
+}
+
 function getFilteredRoles() {
     const normalizedQuery = String(searchQuery).trim().toLowerCase();
     return roles.filter(role => {
-        const matchesStatus = isStatusMatched(role);
         if (!isStatusMatched(role)) {
+            return false;
+        }
+        if (!isWatchStandMatched(role)) {
             return false;
         }
         if (!normalizedQuery) {
@@ -928,6 +1036,7 @@ function renderRoles() {
     const filteredRoles = getFilteredRoles();
     updateCountSummary(filteredRoles);
     updateIncompleteWorkDashboard(roles);
+    updateWatchStandDashboard(roles);
 
     const visibleRoles = filteredRoles
         .slice()
@@ -961,7 +1070,8 @@ return String(a.name || '').localeCompare(String(b.name || ''), 'ja');
     if (countInfo) {
         const hasSearch = searchQuery.trim().length > 0;
         const hasStatusFilter = statusFilter !== 'all';
-        if (hasSearch || hasStatusFilter) {
+        const hasWatchStandFilter = Boolean(watchStandFilter);
+        if (hasSearch || hasStatusFilter || hasWatchStandFilter) {
             countInfo.textContent = `現在${visibleRoles.length}件表示中 / 全${roles.length}件`;
         } else {
             countInfo.textContent = '';
@@ -1496,6 +1606,7 @@ function toggleAdminMode() {
 
 function setSummaryFilter(status) {
     const statusFilter = document.getElementById('status-filter');
+    watchStandFilter = null;
 
     if (!statusFilter) {
         return;
