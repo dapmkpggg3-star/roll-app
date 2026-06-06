@@ -150,6 +150,23 @@ function getSelectedOperator() {
     return OPERATORS.find(operator => operator.id === selectedId) || null;
 }
 
+function focusOperatorSelect() {
+    const select = document.getElementById('operator-select');
+
+    if (!select) {
+        return;
+    }
+
+    const target = select.closest('.operator-select-wrap') || select;
+    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    select.focus({ preventScroll: true });
+    target.classList.add('is-operator-attention');
+
+    window.setTimeout(() => {
+        target.classList.remove('is-operator-attention');
+    }, 1600);
+}
+
 function getHistoryOperator() {
     const operator = getCurrentOperator();
 
@@ -183,6 +200,7 @@ function warnIfOperatorMissing() {
     }
 
     alert('担当者を選択してください');
+    focusOperatorSelect();
     setSyncMessage('担当者を選択してください', true);
     if (typeof showToast === 'function') {
         showToast('担当者を選択してください');
@@ -416,6 +434,10 @@ function formatDateForDisplay(value) {
 
 function getInboundPlanDate(dispatchDate) {
     return addDaysToDateString(dispatchDate, REWORKING_CONFIRM_THRESHOLD_DAYS);
+}
+
+function isDispatchDateAllowedStatus(status) {
+    return status === REWORK_READY_STATUS || status === REWORKING_STATUS;
 }
 
 function getTodayDateString() {
@@ -729,6 +751,27 @@ function updateStatusPreview(selectEl) {
     previewEl.classList.remove(...statusClasses);
     previewEl.classList.add(selectedStatus ? getStatusClass(selectedStatus) : 'status-empty');
     previewEl.textContent = `現在のステータス：${selectedStatus || '未選択'}`;
+    updateDispatchDateFieldState(selectedStatus);
+}
+
+function updateDispatchDateFieldState(status) {
+    const field = document.querySelector('.dispatch-date-field');
+    const dispatchInput = document.getElementById('role-dispatch-date');
+    const isAllowed = isDispatchDateAllowedStatus(status);
+
+    if (!field || !dispatchInput) {
+        return;
+    }
+
+    field.classList.toggle('is-hidden', !isAllowed);
+    field.setAttribute('aria-hidden', isAllowed ? 'false' : 'true');
+    dispatchInput.disabled = !isAllowed;
+
+    if (!isAllowed) {
+        dispatchInput.value = '';
+    }
+
+    updateInboundPlanPreview();
 }
 
 function updateInboundPlanPreview() {
@@ -1530,7 +1573,9 @@ function addRole() {
     const roleName = document.getElementById('role-name').value.trim();
     const roleStatus = document.getElementById('role-status').value;
     const roleCurrentDiameter = normalizeCurrentDiameter(document.getElementById('role-current-diameter').value);
-    const roleDispatchDate = normalizeDateInputValue(document.getElementById('role-dispatch-date').value);
+    const roleDispatchDate = isDispatchDateAllowedStatus(roleStatus)
+        ? normalizeDateInputValue(document.getElementById('role-dispatch-date').value)
+        : '';
     const roleMemo = document.getElementById('role-memo').value.trim();
     
     if (!roleName) {
@@ -1586,7 +1631,9 @@ function editRole(id) {
     document.getElementById('role-status').value = role.status;
     updateStatusPreview(document.getElementById('role-status'));
     document.getElementById('role-current-diameter').value = normalizeCurrentDiameter(role.currentDiameter);
-    document.getElementById('role-dispatch-date').value = normalizeDateInputValue(role.dispatchDate);
+    document.getElementById('role-dispatch-date').value = isDispatchDateAllowedStatus(role.status)
+        ? normalizeDateInputValue(role.dispatchDate)
+        : '';
     updateInboundPlanPreview();
     document.getElementById('role-memo').value = role.memo || '';
     
@@ -1606,7 +1653,9 @@ function updateRole() {
     const roleName = document.getElementById('role-name').value.trim();
     const roleStatus = document.getElementById('role-status').value;
     const roleCurrentDiameter = normalizeCurrentDiameter(document.getElementById('role-current-diameter').value);
-    const roleDispatchDate = normalizeDateInputValue(document.getElementById('role-dispatch-date').value);
+    const roleDispatchDate = isDispatchDateAllowedStatus(roleStatus)
+        ? normalizeDateInputValue(document.getElementById('role-dispatch-date').value)
+        : '';
     const roleMemo = document.getElementById('role-memo').value.trim();
     
     if (!roleName) {
