@@ -103,13 +103,25 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
     applyAdminMode(false);
+    updatePageScrollButton();
 });
 
 window.addEventListener('load', applyResponsiveLayoutMode);
-window.addEventListener('resize', applyResponsiveLayoutMode);
-window.addEventListener('orientationchange', applyResponsiveLayoutMode);
+window.addEventListener('load', updatePageScrollButton);
+window.addEventListener('scroll', updatePageScrollButton, { passive: true });
+window.addEventListener('resize', function() {
+    applyResponsiveLayoutMode();
+    updatePageScrollButton();
+});
+window.addEventListener('orientationchange', function() {
+    applyResponsiveLayoutMode();
+    updatePageScrollButton();
+});
 if (window.visualViewport) {
-    window.visualViewport.addEventListener('resize', applyResponsiveLayoutMode);
+    window.visualViewport.addEventListener('resize', function() {
+        applyResponsiveLayoutMode();
+        updatePageScrollButton();
+    });
 }
 
 function getStoredOperator() {
@@ -1570,6 +1582,58 @@ function scrollPageToTop() {
         top: 0,
         behavior: 'smooth'
     });
+}
+
+function scrollPageToBottom() {
+    window.scrollTo({
+        top: getPageScrollableHeight(),
+        behavior: 'smooth'
+    });
+}
+
+function scrollPageByCurrentPosition() {
+    if (isPageAboveHalf()) {
+        scrollPageToBottom();
+        window.setTimeout(updatePageScrollButton, 450);
+        return;
+    }
+
+    scrollPageToTop();
+    window.setTimeout(updatePageScrollButton, 450);
+}
+
+function getPageScrollableHeight() {
+    const scrollHeight = Math.max(
+        document.body.scrollHeight,
+        document.documentElement.scrollHeight
+    );
+    return Math.max(0, scrollHeight - window.innerHeight);
+}
+
+function isPageAboveHalf() {
+    const scrollableHeight = getPageScrollableHeight();
+
+    if (scrollableHeight <= 0) {
+        return true;
+    }
+
+    return window.scrollY <= scrollableHeight / 2;
+}
+
+function updatePageScrollButton() {
+    const button = document.getElementById('pageScrollToggleBtn');
+
+    if (!button) {
+        return;
+    }
+
+    if (isPageAboveHalf()) {
+        button.textContent = '↓ 下へ';
+        button.setAttribute('aria-label', 'ページ下部へ移動');
+    } else {
+        button.textContent = '↑ 上へ';
+        button.setAttribute('aria-label', 'ページ上部へ移動');
+    }
 }
 
 function renderRoles() {
