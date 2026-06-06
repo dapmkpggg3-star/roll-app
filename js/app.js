@@ -1162,16 +1162,20 @@ function getTodayTaskItems(allRoles) {
         }
 
         if (role.status === REWORK_READY_STATUS) {
-            tasks.push({
-                id: `rework-ready-${role.id}`,
-                priority: 'high',
-                standKey,
-                standNumber: Number(standKey) || 999999,
-                roleName: role.name || '-',
-                title: '改削依頼',
-                actions: ['改削依頼書作成', '業者連絡', '搬出日決定'],
-                reason: '改削行き（搬出可能）'
-            });
+            const workProgressState = getWorkProgressState(role);
+
+            if (workProgressState.completedCount < workProgressState.totalCount) {
+                tasks.push({
+                    id: `rework-ready-${role.id}`,
+                    priority: 'high',
+                    standKey,
+                    standNumber: Number(standKey) || 999999,
+                    roleName: role.name || '-',
+                    title: `改削依頼（${workProgressState.completedCount}/${workProgressState.totalCount}）`,
+                    actions: ['改削依頼書作成', '業者連絡', '搬出日決定'],
+                    reason: '改削行き（搬出可能）'
+                });
+            }
         }
 
         if (role.status === REWORKING_STATUS) {
@@ -1836,6 +1840,7 @@ function completeWorkProgressStep(roleId, stepKey, options = {}) {
     }
 
     role.workProgress = normalizeWorkProgress(role);
+    const beforeCompletedCount = getWorkProgressCompletedCount(role);
 
     if (role.workProgress[stepKey]) {
         return false;
@@ -1856,6 +1861,21 @@ function completeWorkProgressStep(roleId, stepKey, options = {}) {
     role.requestSent = Boolean(role.workProgress.vendorSentAt);
     role.updatedAt = completedAt;
     addRoleHistoryEntry(role, 'workProgress', '作業依頼進捗変更', beforeValue, `${step.label}: ${formatUpdatedAt(completedAt)}`, completedAt);
+
+    const afterCompletedCount = getWorkProgressCompletedCount(role);
+    const isWorkProgressJustCompleted = beforeCompletedCount < WORK_PROGRESS_STEPS.length
+        && afterCompletedCount >= WORK_PROGRESS_STEPS.length;
+
+    if (isWorkProgressJustCompleted && role.status === REWORK_READY_STATUS) {
+        const shouldStartReworking = confirm('作業依頼が完了しました。ステータスを「改削中」に変更しますか？');
+
+        if (shouldStartReworking) {
+            const beforeStatus = role.status;
+            role.status = REWORKING_STATUS;
+            role.updatedAt = completedAt;
+            addRoleHistoryEntry(role, 'status', 'ステータス変更', beforeStatus, REWORKING_STATUS, completedAt);
+        }
+    }
 
     saveLocalRoles();
 
