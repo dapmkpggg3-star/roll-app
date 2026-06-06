@@ -144,6 +144,12 @@ function getCurrentOperator() {
     return OPERATORS.find(operator => operator.id === selectedId) || getStoredOperator();
 }
 
+function getSelectedOperator() {
+    const select = document.getElementById('operator-select');
+    const selectedId = select ? select.value : '';
+    return OPERATORS.find(operator => operator.id === selectedId) || null;
+}
+
 function getHistoryOperator() {
     const operator = getCurrentOperator();
 
@@ -172,7 +178,7 @@ function getOperatorNameForDisplay(entry) {
 }
 
 function warnIfOperatorMissing() {
-    if (getCurrentOperator()) {
+    if (getSelectedOperator()) {
         return false;
     }
 
