@@ -545,6 +545,16 @@ body {
     background: #f8fafc;
     border: 1px solid #e2e8f0;
     color: #334155;
+    cursor: pointer;
+    transition: transform 0.16s ease, box-shadow 0.16s ease, filter 0.16s ease;
+}
+
+.today-task-item:hover,
+.today-task-item:focus-visible {
+    transform: translateY(-1px);
+    filter: brightness(0.99);
+    outline: 3px solid rgba(37, 99, 235, 0.22);
+    outline-offset: 2px;
 }
 
 .today-task-high {
@@ -637,6 +647,25 @@ body {
     background: #ffffff;
     color: #64748b;
     font-weight: 800;
+}
+
+.today-task-target-highlight {
+    animation: todayTaskTargetPulse 1.8s ease-out;
+}
+
+@keyframes todayTaskTargetPulse {
+    0% {
+        box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.55), 0 0 0 4px rgba(250, 204, 21, 0.85);
+        transform: scale(1.01);
+    }
+    55% {
+        box-shadow: 0 0 0 10px rgba(37, 99, 235, 0.16), 0 0 0 4px rgba(250, 204, 21, 0.45);
+        transform: scale(1.01);
+    }
+    100% {
+        box-shadow: none;
+        transform: scale(1);
+    }
 }
 
 @media (max-width: 640px) {

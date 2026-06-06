@@ -1281,9 +1281,10 @@ function updateTodayTaskDashboard(allRoles) {
                 <ul class="today-task-items">
                     ${priorityTasks.map(task => {
                         const warning = getTodayTaskWarning(task, allRoles);
+                        const taskId = encodeURIComponent(String(task.id || ''));
 
                         return `
-                        <li class="today-task-item">
+                        <li class="today-task-item" role="button" tabindex="0" onclick="focusTodayTaskRole('${taskId}')" onkeydown="handleTodayTaskKeydown(event, '${taskId}')">
                             <div class="today-task-main">
                                 <span class="today-task-role">${escapeHtml(task.roleName || task.standLabel || '-')}</span>
                                 <span class="today-task-label">${escapeHtml(task.title)}</span>
@@ -1321,6 +1322,51 @@ function getTodayTaskWarning(task, allRoles = []) {
     }
 
     return '';
+}
+
+function handleTodayTaskKeydown(event, taskId) {
+    if (!event || (event.key !== 'Enter' && event.key !== ' ')) {
+        return;
+    }
+
+    event.preventDefault();
+    focusTodayTaskRole(taskId);
+}
+
+function focusTodayTaskRole(taskId) {
+    const decodedTaskId = decodeURIComponent(String(taskId || ''));
+    const task = getTodayTaskItems(roles).find(item => String(item.id) === decodedTaskId);
+    const targetRole = getTodayTaskTargetRole(task);
+
+    if (!targetRole) {
+        showToast('対象ロールが見つかりません');
+        return;
+    }
+
+    scrollToRoleCard(targetRole.id, null, { highlight: true, notifyMissing: true });
+}
+
+function getTodayTaskTargetRole(task) {
+    if (!task) {
+        return null;
+    }
+
+    const taskId = String(task.id || '');
+    const roleTaskPrefixes = ['rework-ready-', 'reworking-confirm-'];
+    const roleTaskPrefix = roleTaskPrefixes.find(prefix => taskId.startsWith(prefix));
+
+    if (roleTaskPrefix) {
+        const roleId = taskId.replace(roleTaskPrefix, '');
+        return roles.find(role => String(role.id) === String(roleId)) || null;
+    }
+
+    if (task.standKey) {
+        return roles
+            .filter(role => getStandKey(role.name) === task.standKey)
+            .sort((a, b) => compareUpdatedAt(a, b, 'desc'))[0] || null;
+    }
+
+    return null;
 }
 
 function getWatchStandItems(allRoles) {
@@ -1460,7 +1506,7 @@ function showToast(message) {
   }, 1800);
 }
 
-function scrollToRoleCard(roleId, fallbackScrollY = null) {
+function scrollToRoleCard(roleId, fallbackScrollY = null, options = {}) {
     window.setTimeout(() => {
         const targetRow = document.getElementById(`role-${roleId}`);
 
@@ -1469,6 +1515,15 @@ function scrollToRoleCard(roleId, fallbackScrollY = null) {
                 behavior: "smooth",
                 block: "center"
             });
+
+            if (options.highlight) {
+                targetRow.classList.remove('today-task-target-highlight');
+                void targetRow.offsetWidth;
+                targetRow.classList.add('today-task-target-highlight');
+                window.setTimeout(() => {
+                    targetRow.classList.remove('today-task-target-highlight');
+                }, 1800);
+            }
             return;
         }
 
@@ -1477,6 +1532,8 @@ function scrollToRoleCard(roleId, fallbackScrollY = null) {
                 top: fallbackScrollY,
                 behavior: "smooth"
             });
+        } else if (options.notifyMissing) {
+            showToast('対象ロールは現在の表示条件では見つかりません');
         }
     }, 300);
 }
