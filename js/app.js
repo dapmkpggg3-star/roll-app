@@ -176,6 +176,7 @@ function warnIfOperatorMissing() {
         return false;
     }
 
+    alert('担当者を選択してください');
     setSyncMessage('担当者を選択してください', true);
     if (typeof showToast === 'function') {
         showToast('担当者を選択してください');
@@ -1516,7 +1517,10 @@ if (standNumber >= 2 && standNumber <= 5) {
 }
 
 function addRole() {
-    warnIfOperatorMissing();
+    if (warnIfOperatorMissing()) {
+        return;
+    }
+
     const roleName = document.getElementById('role-name').value.trim();
     const roleStatus = document.getElementById('role-status').value;
     const roleCurrentDiameter = normalizeCurrentDiameter(document.getElementById('role-current-diameter').value);
@@ -1589,7 +1593,9 @@ function editRole(id) {
 
 function updateRole() {
     if (editingId === null) return;
-    warnIfOperatorMissing();
+    if (warnIfOperatorMissing()) {
+        return;
+    }
     
     const roleName = document.getElementById('role-name').value.trim();
     const roleStatus = document.getElementById('role-status').value;
