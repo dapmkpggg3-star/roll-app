@@ -1133,6 +1133,31 @@ function getRoleStatusChangedAt(role, status) {
     return history.length > 0 ? history[0].at : role.updatedAt;
 }
 
+function getRoleStatusChangedTimestamp(role, status) {
+    const changedAt = getRoleStatusChangedAt(role, status);
+    const timestamp = new Date(changedAt).getTime();
+
+    if (!Number.isNaN(timestamp)) {
+        return timestamp;
+    }
+
+    const fallbackTimestamp = new Date(role && role.updatedAt).getTime();
+    return Number.isNaN(fallbackTimestamp) ? null : fallbackTimestamp;
+}
+
+function getOldestStatusChangedAt(rolesForTask, statuses) {
+    const timestamps = rolesForTask
+        .filter(role => statuses.includes(role.status))
+        .map(role => getRoleStatusChangedTimestamp(role, role.status))
+        .filter(timestamp => timestamp !== null);
+
+    if (timestamps.length === 0) {
+        return null;
+    }
+
+    return new Date(Math.min(...timestamps)).toISOString();
+}
+
 function getElapsedDaysSince(dateValue, now = new Date()) {
     const date = new Date(dateValue);
 
@@ -1149,6 +1174,12 @@ function sortTodayTasks(a, b) {
 
     if (priorityDiff !== 0) {
         return priorityDiff;
+    }
+
+    const elapsedDiff = (b.elapsedDays || 0) - (a.elapsedDays || 0);
+
+    if (elapsedDiff !== 0) {
+        return elapsedDiff;
     }
 
     if (a.standNumber !== b.standNumber) {
@@ -1175,6 +1206,7 @@ function getTodayTaskItems(allRoles) {
 
         if (role.status === REWORK_READY_STATUS) {
             const workProgressState = getWorkProgressState(role);
+            const occurredAt = getRoleStatusChangedAt(role, REWORK_READY_STATUS);
 
             if (workProgressState.completedCount < workProgressState.totalCount) {
                 tasks.push({
@@ -1185,7 +1217,9 @@ function getTodayTaskItems(allRoles) {
                     roleName: role.name || '-',
                     title: `改削依頼（${workProgressState.completedCount}/${workProgressState.totalCount}）`,
                     actions: ['改削依頼書作成', '業者連絡', '搬出日決定'],
-                    reason: '改削行き（搬出可能）'
+                    reason: '改削行き（搬出可能）',
+                    occurredAt,
+                    elapsedDays: getElapsedDaysSince(occurredAt, now) || 0
                 });
             }
         }
@@ -1196,6 +1230,7 @@ function getTodayTaskItems(allRoles) {
             const isInboundPlanOverdue = Boolean(inboundPlanDate) && getTodayDateString() > inboundPlanDate;
 
             if (isInboundPlanOverdue) {
+                const occurredAt = getRoleStatusChangedAt(role, REWORKING_STATUS);
                 tasks.push({
                     id: `reworking-confirm-${role.id}`,
                     priority: 'high',
@@ -1204,7 +1239,9 @@ function getTodayTaskItems(allRoles) {
                     roleName: role.name || '-',
                     title: '搬入確認',
                     actions: ['搬入予定確認'],
-                    reason: `搬入予定日超過（${formatDateForDisplay(inboundPlanDate)}予定）`
+                    reason: `搬入予定日超過（${formatDateForDisplay(inboundPlanDate)}予定）`,
+                    occurredAt,
+                    elapsedDays: getElapsedDaysSince(occurredAt, now) || 0
                 });
             } else if (!dispatchDate) {
                 const reworkingStartedAt = getRoleStatusChangedAt(role, REWORKING_STATUS);
@@ -1219,7 +1256,9 @@ function getTodayTaskItems(allRoles) {
                         roleName: role.name || '-',
                         title: '搬入確認',
                         actions: ['搬入予定確認'],
-                        reason: `改削中${elapsedDays}日経過`
+                        reason: `改削中${elapsedDays}日経過`,
+                        occurredAt: reworkingStartedAt,
+                        elapsedDays
                     });
                 }
             }
@@ -1230,6 +1269,7 @@ function getTodayTaskItems(allRoles) {
         const statuses = standRoles.map(role => role.status);
 
         if (statuses.includes(USED_STANDBY_STATUS) && statuses.includes(NEW_READY_STATUS)) {
+            const occurredAt = getOldestStatusChangedAt(standRoles, [USED_STANDBY_STATUS, NEW_READY_STATUS]);
             tasks.push({
                 id: `assembly-${standKey}`,
                 priority: 'medium',
@@ -1238,11 +1278,14 @@ function getTodayTaskItems(allRoles) {
                 standLabel: `#${standKey}`,
                 title: '組替作業予定',
                 actions: ['組替作業を予定に入れる'],
-                reason: '中古予備と新品予備（組替可能）が同一スタンド内に存在'
+                reason: '中古予備と新品予備（組替可能）が同一スタンド内に存在',
+                occurredAt,
+                elapsedDays: getElapsedDaysSince(occurredAt, now) || 0
             });
         }
 
         if (statuses.includes(SCRAP_WAITING_STATUS) && !statuses.includes(NEW_INSTALLED_STATUS)) {
+            const occurredAt = getOldestStatusChangedAt(standRoles, [SCRAP_WAITING_STATUS]);
             tasks.push({
                 id: `reserve-shortage-${standKey}`,
                 priority: 'low',
@@ -1251,7 +1294,9 @@ function getTodayTaskItems(allRoles) {
                 standLabel: `#${standKey}`,
                 title: '予備不足確認',
                 actions: ['新品予備または組込完了ロールの手配状況確認'],
-                reason: '廃却待ちあり・予備不足'
+                reason: '廃却待ちあり・予備不足',
+                occurredAt,
+                elapsedDays: getElapsedDaysSince(occurredAt, now) || 0
             });
         }
     });
@@ -1294,6 +1339,7 @@ function updateTodayTaskDashboard(allRoles) {
                     ${priorityTasks.map(task => {
                         const warning = getTodayTaskWarning(task, allRoles);
                         const taskId = encodeURIComponent(String(task.id || ''));
+                        const elapsedClass = getTodayTaskElapsedClass(task.elapsedDays);
 
                         return `
                         <li class="today-task-item" role="button" tabindex="0" onclick="focusTodayTaskRole('${taskId}')" onkeydown="handleTodayTaskKeydown(event, '${taskId}')">
@@ -1302,6 +1348,7 @@ function updateTodayTaskDashboard(allRoles) {
                                 <span class="today-task-label">${escapeHtml(task.title)}</span>
                             </div>
                             ${warning ? `<div class="today-task-warning">${escapeHtml(warning)}</div>` : ''}
+                            <div class="today-task-elapsed ${elapsedClass}">発生${escapeHtml(task.elapsedDays || 0)}日</div>
                         </li>
                     `;
                     }).join('')}
@@ -1334,6 +1381,20 @@ function getTodayTaskWarning(task, allRoles = []) {
     }
 
     return '';
+}
+
+function getTodayTaskElapsedClass(elapsedDays) {
+    const days = Number(elapsedDays) || 0;
+
+    if (days >= 7) {
+        return 'is-critical';
+    }
+
+    if (days >= 4) {
+        return 'is-warning';
+    }
+
+    return 'is-normal';
 }
 
 function handleTodayTaskKeydown(event, taskId) {

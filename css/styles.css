@@ -679,6 +679,31 @@ body {
     line-height: 1.2;
 }
 
+.today-task-elapsed {
+    width: fit-content;
+    padding: 3px 8px;
+    border-radius: 999px;
+    font-size: 0.82rem;
+    font-weight: 900;
+    line-height: 1.15;
+}
+
+.today-task-elapsed.is-normal {
+    background: rgba(100, 116, 139, 0.12);
+    color: #475569;
+}
+
+.today-task-elapsed.is-warning {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.today-task-elapsed.is-critical {
+    background: #fee2e2;
+    color: #991b1b;
+    box-shadow: inset 0 0 0 1px #fca5a5;
+}
+
 .today-task-empty {
     min-height: 56px;
     display: flex;
