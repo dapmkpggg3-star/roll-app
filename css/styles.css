@@ -650,16 +650,66 @@ body {
 }
 
 .today-task-target-highlight {
-    animation: todayTaskTargetPulse 1.8s ease-out;
+    position: relative;
+    z-index: 2;
+    animation: todayTaskTargetPulse 4s ease-out;
+}
+
+.today-task-target-highlight::before {
+    content: "対象タスク";
+    position: absolute;
+    top: -14px;
+    left: 16px;
+    z-index: 3;
+    min-height: 28px;
+    padding: 5px 12px;
+    border-radius: 999px;
+    color: #ffffff;
+    font-size: 14px;
+    font-weight: 900;
+    line-height: 1.1;
+    box-shadow: 0 8px 18px rgba(15, 23, 42, 0.24);
+    pointer-events: none;
+}
+
+.today-task-target-high {
+    border-color: #dc2626 !important;
+    background: #fff1f2 !important;
+}
+
+.today-task-target-high::before {
+    background: #dc2626;
+}
+
+.today-task-target-medium {
+    border-color: #f59e0b !important;
+    background: #fffbeb !important;
+}
+
+.today-task-target-medium::before {
+    background: #b45309;
+}
+
+.today-task-target-low {
+    border-color: #2563eb !important;
+    background: #eff6ff !important;
+}
+
+.today-task-target-low::before {
+    background: #2563eb;
 }
 
 @keyframes todayTaskTargetPulse {
     0% {
-        box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.55), 0 0 0 4px rgba(250, 204, 21, 0.85);
-        transform: scale(1.01);
+        box-shadow: 0 0 0 5px rgba(250, 204, 21, 0.95), 0 20px 42px rgba(15, 23, 42, 0.32);
+        transform: scale(1.018);
     }
-    55% {
-        box-shadow: 0 0 0 10px rgba(37, 99, 235, 0.16), 0 0 0 4px rgba(250, 204, 21, 0.45);
+    18% {
+        box-shadow: 0 0 0 9px rgba(250, 204, 21, 0.72), 0 18px 38px rgba(15, 23, 42, 0.28);
+        transform: scale(1.018);
+    }
+    72% {
+        box-shadow: 0 0 0 5px rgba(250, 204, 21, 0.38), 0 14px 30px rgba(15, 23, 42, 0.18);
         transform: scale(1.01);
     }
     100% {

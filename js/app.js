@@ -1343,7 +1343,11 @@ function focusTodayTaskRole(taskId) {
         return;
     }
 
-    scrollToRoleCard(targetRole.id, null, { highlight: true, notifyMissing: true });
+    scrollToRoleCard(targetRole.id, null, {
+        highlight: true,
+        notifyMissing: true,
+        priority: task.priority
+    });
 }
 
 function getTodayTaskTargetRole(task) {
@@ -1517,12 +1521,23 @@ function scrollToRoleCard(roleId, fallbackScrollY = null, options = {}) {
             });
 
             if (options.highlight) {
-                targetRow.classList.remove('today-task-target-highlight');
+                const priorityClass = getTodayTaskHighlightClass(options.priority);
+                targetRow.classList.remove(
+                    'today-task-target-highlight',
+                    'today-task-target-high',
+                    'today-task-target-medium',
+                    'today-task-target-low'
+                );
                 void targetRow.offsetWidth;
-                targetRow.classList.add('today-task-target-highlight');
+                targetRow.classList.add('today-task-target-highlight', priorityClass);
                 window.setTimeout(() => {
-                    targetRow.classList.remove('today-task-target-highlight');
-                }, 1800);
+                    targetRow.classList.remove(
+                        'today-task-target-highlight',
+                        'today-task-target-high',
+                        'today-task-target-medium',
+                        'today-task-target-low'
+                    );
+                }, 4000);
             }
             return;
         }
@@ -1536,6 +1551,18 @@ function scrollToRoleCard(roleId, fallbackScrollY = null, options = {}) {
             showToast('対象ロールは現在の表示条件では見つかりません');
         }
     }, 300);
+}
+
+function getTodayTaskHighlightClass(priority) {
+    if (priority === 'high') {
+        return 'today-task-target-high';
+    }
+
+    if (priority === 'medium') {
+        return 'today-task-target-medium';
+    }
+
+    return 'today-task-target-low';
 }
 
 function renderRoles() {
