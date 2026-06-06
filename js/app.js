@@ -253,12 +253,13 @@ const ALLOWED_STATUSES = [
     '新品予備（組替可能）',
     '新品予備（組込完了）',
     '新品予備保管',
-    '廃却待ち',
+    '廃却待ち（ラック保管）',
     '廃棄'
 ];
 
 const REWORK_READY_STATUS = '改削行き（搬出可能）';
-const SCRAP_WAITING_STATUS = '廃却待ち';
+const LEGACY_SCRAP_WAITING_STATUS = '廃却待ち';
+const SCRAP_WAITING_STATUS = '廃却待ち（ラック保管）';
 const DISCARDED_STATUS = '廃棄';
 const REWORKING_STATUS = '改削中';
 const USED_STANDBY_STATUS = '中古予備（バラシ前）';
@@ -284,6 +285,16 @@ const WORK_PROGRESS_STEPS = [
     { key: 'pdfCreatedAt', label: 'PDF化' },
     { key: 'vendorSentAt', label: '業者送信' }
 ];
+
+function normalizeRoleStatusValue(status) {
+    const normalizedStatus = String(status || '');
+
+    if (normalizedStatus === LEGACY_SCRAP_WAITING_STATUS) {
+        return SCRAP_WAITING_STATUS;
+    }
+
+    return ALLOWED_STATUSES.includes(normalizedStatus) ? normalizedStatus : '中古予備（バラシ前）';
+}
 
 let roles = [];
 let nextId = 1;
@@ -528,7 +539,7 @@ function loadLocalRoles() {
         ...role,
         updatedAt: role.updatedAt || new Date().toISOString(),
         memo: role.memo || '',
-        status: ALLOWED_STATUSES.includes(role.status) ? role.status : '中古予備（バラシ前）',
+        status: normalizeRoleStatusValue(role.status),
         useStartDate: normalizeUseStartDate(role.useStartDate),
         dispatchDate: normalizeDateInputValue(role.dispatchDate),
         currentDiameter: normalizeCurrentDiameter(role.currentDiameter),
@@ -700,7 +711,7 @@ function getStatusClass(status) {
         '新品予備（組替可能）': 'status-new-ready',
         '新品予備（組込完了）': 'status-new-done',
         '新品予備保管': 'status-new-storage',
-        '廃却待ち': 'status-scrap-waiting',
+        '廃却待ち（ラック保管）': 'status-scrap-waiting',
         '廃棄': 'status-discarded'
     };
     return statusClasses[status] || 'status-other';
@@ -1137,8 +1148,11 @@ function updateIncompleteWorkDashboard(allRoles) {
 }
 
 function getRoleStatusChangedAt(role, status) {
+    const statusValues = status === SCRAP_WAITING_STATUS
+        ? [SCRAP_WAITING_STATUS, LEGACY_SCRAP_WAITING_STATUS]
+        : [status];
     const history = normalizeRoleHistory(role)
-        .filter(entry => entry.type === 'status' && entry.after === status && entry.at)
+        .filter(entry => entry.type === 'status' && statusValues.includes(entry.after) && entry.at)
         .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
 
     return history.length > 0 ? history[0].at : role.updatedAt;
@@ -1305,7 +1319,7 @@ function getTodayTaskItems(allRoles) {
                 standLabel: `#${standKey}`,
                 title: '予備不足確認',
                 actions: ['新品予備または組込完了ロールの手配状況確認'],
-                reason: '廃却待ちあり・予備不足',
+                reason: '廃却待ち（ラック保管）あり・予備不足',
                 occurredAt,
                 elapsedDays: getElapsedDaysSince(occurredAt, now) || 0
             });
@@ -1479,7 +1493,7 @@ function getWatchStandItems(allRoles) {
             let severity = 0;
 
             if (statuses.includes(SCRAP_WAITING_STATUS) && !statuses.includes(NEW_INSTALLED_STATUS)) {
-                reasons.push('廃却待ちあり・予備不足');
+                reasons.push('廃却待ち（ラック保管）あり・予備不足');
                 severity = Math.max(severity, 2);
             }
 

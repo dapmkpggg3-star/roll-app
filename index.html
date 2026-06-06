@@ -11,7 +11,7 @@
     <link rel="manifest" href="manifest.json">
     <link rel="icon" type="image/png" sizes="192x192" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect fill='%23667eea' width='192' height='192'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' font-size='96' fill='white' font-family='Arial'>📋</text></svg>">
     <title>ロール管理アプリ</title>
-    <link rel="stylesheet" href="css/styles.css?v=20260607-new-storage-status">
+    <link rel="stylesheet" href="css/styles.css?v=20260607-summary-groups">
 </head>
 <body>
     <div id="app-update-notice" class="app-update-notice" hidden>
@@ -52,48 +52,52 @@
             <div class="content">
                 <div id="count-summary" class="count-summary" aria-label="スタンド件数サマリー">
                     <div class="summary-heading">件数サマリー</div>
-                    <div class="summary-card summary-total" onclick="setSummaryFilter('all')">
-                        <span class="summary-label">全体</span>
-                        <span id="summary-total" class="summary-count">0件</span>
+                    <div class="summary-group summary-group-active">
+                        <div class="summary-group-title">運用ロール</div>
+                        <div class="summary-card summary-total" onclick="setSummaryFilter('all')">
+                            <span class="summary-label">全体</span>
+                            <span id="summary-total" class="summary-count">0件</span>
+                        </div>
+                        <div class="summary-card status-online" onclick="setSummaryFilter('オンライン')">
+                            <span class="summary-label">オンライン</span>
+                            <span id="summary-online" class="summary-count">0件</span>
+                        </div>
+                        <div class="summary-card status-used" onclick="setSummaryFilter('中古予備（バラシ前）')">
+                            <span class="summary-label">中古予備</span>
+                            <span id="summary-used" class="summary-count">0件</span>
+                        </div>
+                        <div class="summary-card status-other" onclick="setSummaryFilter('改削行き（搬出可能）')">
+                            <span class="summary-label">改削行き</span>
+                            <span id="summary-remove" class="summary-count">0件</span>
+                        </div>
+                        <div class="summary-card status-working" onclick="setSummaryFilter('改削中')">
+                            <span class="summary-label">改削中</span>
+                            <span id="summary-reworking" class="summary-count">0件</span>
+                        </div>
+                        <div class="summary-card status-other" onclick="setSummaryFilter('新品予備（組替可能）')">
+                            <span class="summary-label">新品予備（組替可能）</span>
+                            <span id="summary-new-ready" class="summary-count">0件</span>
+                        </div>
+                        <div class="summary-card status-other" onclick="setSummaryFilter('新品予備（組込完了）')">
+                            <span class="summary-label">新品予備（組込完了）</span>
+                            <span id="summary-new-installed" class="summary-count">0件</span>
+                        </div>
                     </div>
-                    <div class="summary-card status-online" onclick="setSummaryFilter('オンライン')">
-                        <span class="summary-label">オンライン</span>
-                        <span id="summary-online" class="summary-count">0件</span>
+                    <div class="summary-group summary-group-storage">
+                        <div class="summary-group-title">保管・退役</div>
+                        <div class="summary-card status-other" onclick="setSummaryFilter('新品予備保管')">
+                            <span class="summary-label">新品予備保管</span>
+                            <span id="summary-new-storage" class="summary-count">0件</span>
+                        </div>
+                        <div class="summary-card status-other" onclick="setSummaryFilter('廃却待ち（ラック保管）')">
+                            <span class="summary-label">廃却待ち（ラック保管）</span>
+                            <span id="summary-scrap-waiting" class="summary-count">0件</span>
+                        </div>
+                        <div class="summary-card status-other" onclick="setSummaryFilter('廃棄')">
+                            <span class="summary-label">廃棄</span>
+                            <span id="summary-discarded" class="summary-count">0件</span>
+                        </div>
                     </div>
-                    <div class="summary-card status-working" onclick="setSummaryFilter('改削中')">
-                        <span class="summary-label">改削中</span>
-                        <span id="summary-reworking" class="summary-count">0件</span>
-                    </div>
-                    <div class="summary-card status-used" onclick="setSummaryFilter('中古予備（バラシ前）')">
-                        <span class="summary-label">中古予備</span>
-                        <span id="summary-used" class="summary-count">0件</span>
-                    </div>
-                    <div class="summary-card status-other" onclick="setSummaryFilter('改削行き（搬出可能）')">
-    <span class="summary-label">改削行き</span>
-    <span id="summary-remove" class="summary-count">0件</span>
-</div>
-
-<div class="summary-card status-other" onclick="setSummaryFilter('新品予備（組替可能）')">
-    <span class="summary-label">新品予備（組替可能）</span>
-    <span id="summary-new-ready" class="summary-count">0件</span>
-</div>
-
-<div class="summary-card status-other" onclick="setSummaryFilter('新品予備（組込完了）')">
-    <span class="summary-label">新品予備（組込完了）</span>
-    <span id="summary-new-installed" class="summary-count">0件</span>
-</div>
-<div class="summary-card status-other" onclick="setSummaryFilter('新品予備保管')">
-    <span class="summary-label">新品予備保管</span>
-    <span id="summary-new-storage" class="summary-count">0件</span>
-</div>
-<div class="summary-card status-other" onclick="setSummaryFilter('廃却待ち')">
-    <span class="summary-label">廃却待ち</span>
-    <span id="summary-scrap-waiting" class="summary-count">0件</span>
-</div>
-<div class="summary-card status-other" onclick="setSummaryFilter('廃棄')">
-    <span class="summary-label">廃棄</span>
-    <span id="summary-discarded" class="summary-count">0件</span>
-</div>
                 </div>
                 <div id="incomplete-work-dashboard" class="incomplete-work-dashboard" aria-live="polite">
                     <div class="incomplete-work-header">
@@ -120,7 +124,7 @@
 <option value="新品予備（組替可能）">新品予備（組替可能）</option>
 <option value="新品予備（組込完了）">新品予備（組込完了）</option>
 <option value="新品予備保管">新品予備保管</option>
-<option value="廃却待ち">廃却待ち</option>
+<option value="廃却待ち（ラック保管）">廃却待ち（ラック保管）</option>
 <option value="廃棄">廃棄</option>
                     </select>
                     <select id="sort-select" class="sort-select" onchange="changeSort(event)">
@@ -156,7 +160,7 @@
                             <option value="新品予備（組替可能）">新品予備（組替可能）</option>
                             <option value="新品予備（組込完了）">新品予備（組込完了）</option>
                             <option value="新品予備保管">新品予備保管</option>
-                            <option value="廃却待ち">廃却待ち</option>
+                            <option value="廃却待ち（ラック保管）">廃却待ち（ラック保管）</option>
                             <option value="廃棄">廃棄</option>
                         </select>
                     </div>
@@ -251,8 +255,8 @@
     </div>
 
     <script src="js/sync.js?v=20260606-rework-judgment"></script>
-<script src="js/csv.js?v=20260607-new-storage-status"></script>
-<script src="js/app.js?v=20260607-new-storage-status"></script>
+<script src="js/csv.js?v=20260607-summary-groups"></script>
+<script src="js/app.js?v=20260607-summary-groups"></script>
 
         // ログイン状態チェック
 </body>

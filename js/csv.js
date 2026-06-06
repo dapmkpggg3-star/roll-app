@@ -72,13 +72,14 @@ function importCsv(event) {
                 }
                 const rawId = parseInt(row[0].trim(), 10);
                 const name = row[1].trim();
-                const status = hasStatusColumn ? (row[2] ? row[2].trim() : 'オンライン') : 'オンライン';
+                const rawStatus = hasStatusColumn ? (row[2] ? row[2].trim() : 'オンライン') : 'オンライン';
+                const status = rawStatus === '廃却待ち' ? '廃却待ち（ラック保管）' : rawStatus;
                 const memo = hasStatusColumn ? (row[3] ? row[3].trim() : '') : (row[2] ? row[2].trim() : '');
                 const updatedAt = hasStatusColumn ? (row[4] ? row[4].trim() : new Date().toISOString()) : (row[3] ? row[3].trim() : new Date().toISOString());
                 if (!name) {
                     continue;
                 }
-                const validStatuses = ['オンライン', '中古予備（バラシ前）', '改削行き（搬出可能）', '改削中', '新品予備（組替可能）', '新品予備（組込完了）', '新品予備保管', '廃却待ち', '廃棄'];
+                const validStatuses = ['オンライン', '中古予備（バラシ前）', '改削行き（搬出可能）', '改削中', '新品予備（組替可能）', '新品予備（組込完了）', '新品予備保管', '廃却待ち（ラック保管）', '廃棄'];
                 if (!validStatuses.includes(status)) {
                     continue;
                 }
