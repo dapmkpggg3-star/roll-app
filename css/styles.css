@@ -452,6 +452,129 @@ body {
     font-weight: 700;
 }
 
+.today-task-dashboard {
+    display: grid;
+    gap: 12px;
+    width: 100%;
+    margin: 0 0 18px;
+    padding: 14px 16px;
+    border-radius: 14px;
+    border: 1px solid #bfdbfe;
+    background: #eff6ff;
+    color: #1e3a8a;
+    box-shadow: 0 8px 22px rgba(30, 64, 175, 0.12);
+}
+
+.today-task-dashboard.is-empty {
+    border-color: #e2e8f0;
+    background: #f8fafc;
+    color: #64748b;
+    box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08);
+}
+
+.today-task-header,
+.today-task-priority {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.today-task-title {
+    font-size: 1rem;
+    font-weight: 900;
+}
+
+.today-task-count {
+    font-size: 1.65rem;
+    font-weight: 900;
+    line-height: 1;
+}
+
+.today-task-list {
+    display: grid;
+    gap: 12px;
+}
+
+.today-task-group {
+    display: grid;
+    gap: 8px;
+}
+
+.today-task-priority {
+    font-size: 0.92rem;
+    font-weight: 900;
+}
+
+.today-task-items {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 8px;
+    padding: 0;
+    margin: 0;
+    list-style: none;
+}
+
+.today-task-item {
+    display: grid;
+    gap: 5px;
+    min-height: 88px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.82);
+    border: 1px solid rgba(59, 130, 246, 0.32);
+}
+
+.today-task-high .today-task-item {
+    border-color: rgba(220, 38, 38, 0.36);
+    background: #fff1f2;
+    color: #991b1b;
+}
+
+.today-task-medium .today-task-item {
+    border-color: rgba(217, 119, 6, 0.35);
+    background: #fffbeb;
+    color: #92400e;
+}
+
+.today-task-main {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    min-width: 0;
+}
+
+.today-task-role {
+    flex: 0 0 auto;
+    font-size: 1.04rem;
+    font-weight: 900;
+    line-height: 1.15;
+}
+
+.today-task-label {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    font-weight: 900;
+    line-height: 1.2;
+}
+
+.today-task-actions,
+.today-task-reason {
+    overflow-wrap: anywhere;
+    font-size: 0.84rem;
+    font-weight: 800;
+    line-height: 1.35;
+}
+
+.today-task-reason {
+    color: #475569;
+}
+
+.today-task-empty {
+    color: #64748b;
+    font-weight: 700;
+}
+
 .watch-stand-dashboard {
     display: grid;
     gap: 10px;

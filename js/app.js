@@ -223,8 +223,21 @@ const REWORK_READY_STATUS = '改削行き（搬出可能）';
 const SCRAP_WAITING_STATUS = '廃却待ち';
 const DISCARDED_STATUS = '廃棄';
 const REWORKING_STATUS = '改削中';
+const USED_STANDBY_STATUS = '中古予備（バラシ前）';
+const NEW_READY_STATUS = '新品予備（組替可能）';
 const NEW_INSTALLED_STATUS = '新品予備（組込完了）';
 const ONLINE_STATUS = 'オンライン';
+const REWORKING_CONFIRM_THRESHOLD_DAYS = 25;
+const TASK_PRIORITY_LABELS = {
+    high: '高優先',
+    medium: '中優先',
+    low: '低優先'
+};
+const TASK_PRIORITY_ORDER = {
+    high: 1,
+    medium: 2,
+    low: 3
+};
 const WORK_REQUEST_ACTION_LABEL = '作業依頼';
 const WORK_PROGRESS_STEPS = [
     { key: 'requestFormCreatedAt', label: '改削依頼書作成' },
@@ -987,6 +1000,154 @@ function updateIncompleteWorkDashboard(allRoles) {
     `).join('');
 }
 
+function getRoleStatusChangedAt(role, status) {
+    const history = normalizeRoleHistory(role)
+        .filter(entry => entry.type === 'status' && entry.after === status && entry.at)
+        .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
+
+    return history.length > 0 ? history[0].at : role.updatedAt;
+}
+
+function getElapsedDaysSince(dateValue, now = new Date()) {
+    const date = new Date(dateValue);
+
+    if (Number.isNaN(date.getTime())) {
+        return null;
+    }
+
+    const elapsedMs = now.getTime() - date.getTime();
+    return Math.floor(elapsedMs / (1000 * 60 * 60 * 24));
+}
+
+function sortTodayTasks(a, b) {
+    const priorityDiff = TASK_PRIORITY_ORDER[a.priority] - TASK_PRIORITY_ORDER[b.priority];
+
+    if (priorityDiff !== 0) {
+        return priorityDiff;
+    }
+
+    if (a.standNumber !== b.standNumber) {
+        return a.standNumber - b.standNumber;
+    }
+
+    return String(a.roleName || a.standLabel || '').localeCompare(String(b.roleName || b.standLabel || ''), 'ja');
+}
+
+function getTodayTaskItems(allRoles) {
+    const tasks = [];
+    const groups = new Map();
+    const now = new Date();
+
+    allRoles.forEach(role => {
+        const standKey = getStandKey(role.name);
+
+        if (standKey) {
+            if (!groups.has(standKey)) {
+                groups.set(standKey, []);
+            }
+            groups.get(standKey).push(role);
+        }
+
+        if (role.status === REWORK_READY_STATUS) {
+            tasks.push({
+                id: `rework-ready-${role.id}`,
+                priority: 'high',
+                standKey,
+                standNumber: Number(standKey) || 999999,
+                roleName: role.name || '-',
+                title: '改削依頼',
+                actions: ['改削依頼書作成', '業者連絡', '搬出日決定'],
+                reason: '改削行き（搬出可能）'
+            });
+        }
+
+        if (role.status === REWORKING_STATUS) {
+            const reworkingStartedAt = getRoleStatusChangedAt(role, REWORKING_STATUS);
+            const elapsedDays = getElapsedDaysSince(reworkingStartedAt, now);
+
+            if (elapsedDays !== null && elapsedDays > REWORKING_CONFIRM_THRESHOLD_DAYS) {
+                tasks.push({
+                    id: `reworking-confirm-${role.id}`,
+                    priority: 'high',
+                    standKey,
+                    standNumber: Number(standKey) || 999999,
+                    roleName: role.name || '-',
+                    title: '搬入確認',
+                    actions: ['搬入予定確認'],
+                    reason: `改削中${elapsedDays}日経過`
+                });
+            }
+        }
+    });
+
+    groups.forEach((standRoles, standKey) => {
+        const statuses = standRoles.map(role => role.status);
+
+        if (statuses.includes(USED_STANDBY_STATUS) && statuses.includes(NEW_READY_STATUS)) {
+            tasks.push({
+                id: `assembly-${standKey}`,
+                priority: 'medium',
+                standKey,
+                standNumber: Number(standKey) || 999999,
+                standLabel: `#${standKey}`,
+                title: '組替作業予定',
+                actions: ['組替作業を予定に入れる'],
+                reason: '中古予備と新品予備（組替可能）が同一スタンド内に存在'
+            });
+        }
+    });
+
+    return tasks.sort(sortTodayTasks);
+}
+
+function updateTodayTaskDashboard(allRoles) {
+    const dashboard = document.getElementById('today-task-dashboard');
+    const countEl = document.getElementById('today-task-count');
+    const listEl = document.getElementById('today-task-list');
+
+    if (!dashboard || !countEl || !listEl) {
+        return;
+    }
+
+    const tasks = getTodayTaskItems(allRoles);
+    countEl.textContent = `${tasks.length}件`;
+    dashboard.classList.toggle('is-empty', tasks.length === 0);
+
+    if (tasks.length === 0) {
+        listEl.innerHTML = '<div class="today-task-empty">本日のタスクはありません</div>';
+        return;
+    }
+
+    listEl.innerHTML = ['high', 'medium', 'low'].map(priority => {
+        const priorityTasks = tasks.filter(task => task.priority === priority);
+
+        if (priorityTasks.length === 0) {
+            return '';
+        }
+
+        return `
+            <section class="today-task-group today-task-${priority}">
+                <div class="today-task-priority">
+                    <span>${TASK_PRIORITY_LABELS[priority]}</span>
+                    <span>${priorityTasks.length}件</span>
+                </div>
+                <ul class="today-task-items">
+                    ${priorityTasks.map(task => `
+                        <li class="today-task-item">
+                            <div class="today-task-main">
+                                <span class="today-task-role">${escapeHtml(task.roleName || task.standLabel || '-')}</span>
+                                <span class="today-task-label">${escapeHtml(task.title)}</span>
+                            </div>
+                            <div class="today-task-actions">${escapeHtml(task.actions.join('・'))}</div>
+                            <div class="today-task-reason">理由：${escapeHtml(task.reason)}</div>
+                        </li>
+                    `).join('')}
+                </ul>
+            </section>
+        `;
+    }).join('');
+}
+
 function getWatchStandItems(allRoles) {
     const groups = new Map();
 
@@ -1130,6 +1291,7 @@ function renderRoles() {
     const filteredRoles = getFilteredRoles();
     updateCountSummary(filteredRoles);
     updateIncompleteWorkDashboard(roles);
+    updateTodayTaskDashboard(roles);
     updateWatchStandDashboard(roles);
 
     const visibleRoles = filteredRoles
