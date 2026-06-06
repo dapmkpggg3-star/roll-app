@@ -1095,6 +1095,19 @@ function getTodayTaskItems(allRoles) {
                 reason: '中古予備と新品予備（組替可能）が同一スタンド内に存在'
             });
         }
+
+        if (statuses.includes(SCRAP_WAITING_STATUS) && !statuses.includes(NEW_INSTALLED_STATUS)) {
+            tasks.push({
+                id: `reserve-shortage-${standKey}`,
+                priority: 'low',
+                standKey,
+                standNumber: Number(standKey) || 999999,
+                standLabel: `#${standKey}`,
+                title: '予備不足確認',
+                actions: ['新品予備または組込完了ロールの手配状況確認'],
+                reason: '廃却待ちあり・予備不足'
+            });
+        }
     });
 
     return tasks.sort(sortTodayTasks);
@@ -1292,7 +1305,6 @@ function renderRoles() {
     updateCountSummary(filteredRoles);
     updateIncompleteWorkDashboard(roles);
     updateTodayTaskDashboard(roles);
-    updateWatchStandDashboard(roles);
 
     const visibleRoles = filteredRoles
         .slice()
