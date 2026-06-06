@@ -7,6 +7,13 @@ const OPERATORS = [
 ];
 const MOBILE_LAYOUT_MAX_WIDTH = 767;
 const MOBILE_NARROW_MAX_WIDTH = 360;
+const REWORK_JUDGMENT_AVERAGE_CUT_MM = 7;
+const REWORK_JUDGMENT_SCRAP_DIAMETERS = {
+    2: 400,
+    3: 400,
+    4: 400,
+    5: 400
+};
 
 function getEffectiveViewportWidth() {
     const widths = [
@@ -600,6 +607,34 @@ function getStatusClass(status) {
 function getStatusBadge(status) {
     const className = getStatusClass(status);
     return `<span class="status-badge ${className}">${escapeHtml(status || '-')}</span>`;
+}
+
+function getReworkJudgment(role) {
+    const standNumber = Number(getStandKey(role.name));
+    const scrapDiameter = REWORK_JUDGMENT_SCRAP_DIAMETERS[standNumber];
+    const currentDiameter = normalizeCurrentDiameter(role.currentDiameter);
+
+    if (!scrapDiameter || currentDiameter === '') {
+        return null;
+    }
+
+    const predictedDiameter = currentDiameter - REWORK_JUDGMENT_AVERAGE_CUT_MM;
+    const isReworkable = predictedDiameter > scrapDiameter;
+
+    return {
+        label: isReworkable ? '改削可能' : '廃却待ち候補',
+        className: isReworkable ? 'is-reworkable' : 'is-scrap-candidate'
+    };
+}
+
+function getReworkJudgmentHtml(role) {
+    const judgment = getReworkJudgment(role);
+
+    if (!judgment) {
+        return '';
+    }
+
+    return `<div class="rework-judgment ${judgment.className}">${escapeHtml(judgment.label)}</div>`;
 }
 
 function updateStatusPreview(selectEl) {
@@ -1196,6 +1231,7 @@ if (standNumber >= 2 && standNumber <= 5) {
       <button class="action-btn history-btn history-card-btn" onclick="showHistory('${role.id}')">履歴</button>
     </div>
   </div>
+  ${getReworkJudgmentHtml(role)}
   ${updatedRoleId === role.id ? '<span class="updated-badge">更新しました</span>' : ''}
 </td>
             <td class="status-cell">${getStatusBadge(role.status)}</td>

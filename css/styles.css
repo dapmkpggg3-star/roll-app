@@ -1990,6 +1990,33 @@ body:not(.tablet-mode) #role-table .action-btn {
   white-space: nowrap;
 }
 
+.rework-judgment {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: fit-content;
+  min-height: 28px;
+  margin-top: 8px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 0.86rem;
+  font-weight: 900;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.rework-judgment.is-reworkable {
+  background: #dcfce7;
+  color: #166534;
+  border: 1px solid #86efac;
+}
+
+.rework-judgment.is-scrap-candidate {
+  background: #fee2e2;
+  color: #b91c1c;
+  border: 1px solid #fecaca;
+}
+
 .current-diameter-value {
   display: inline-flex;
   align-items: baseline;
