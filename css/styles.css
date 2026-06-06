@@ -45,6 +45,48 @@ body {
     cursor: pointer;
 }
 
+.page-scroll-controls {
+    position: fixed;
+    right: max(14px, env(safe-area-inset-right));
+    bottom: calc(92px + env(safe-area-inset-bottom));
+    z-index: 9000;
+    display: grid;
+    gap: 10px;
+    width: 92px;
+    pointer-events: none;
+}
+
+.page-scroll-btn {
+    pointer-events: auto;
+    min-height: 48px;
+    width: 100%;
+    padding: 10px 8px;
+    border: 1px solid rgba(15, 23, 42, 0.16);
+    border-radius: 999px;
+    background: rgba(15, 23, 42, 0.88);
+    color: #ffffff;
+    font-size: 15px;
+    font-weight: 900;
+    line-height: 1.1;
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.22);
+    cursor: pointer;
+    backdrop-filter: blur(8px);
+    transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.page-scroll-btn:hover,
+.page-scroll-btn:focus-visible {
+    background: rgba(30, 41, 59, 0.96);
+    box-shadow: 0 12px 28px rgba(15, 23, 42, 0.28);
+    transform: translateY(-1px);
+    outline: 3px solid rgba(37, 99, 235, 0.24);
+    outline-offset: 2px;
+}
+
+.page-scroll-btn:active {
+    transform: translateY(1px);
+}
+
 .header {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     color: white;
@@ -1271,6 +1313,19 @@ body.modal-open {
 @media (max-width: 768px) {
     body {
         padding: 10px;
+    }
+
+    .page-scroll-controls {
+        right: max(10px, env(safe-area-inset-right));
+        bottom: calc(82px + env(safe-area-inset-bottom));
+        width: 86px;
+        gap: 8px;
+    }
+
+    .page-scroll-btn {
+        min-height: 54px;
+        padding: 10px 6px;
+        font-size: 15px;
     }
 
     .header {
