@@ -1279,20 +1279,48 @@ function updateTodayTaskDashboard(allRoles) {
                     <span>${priorityTasks.length}件</span>
                 </div>
                 <ul class="today-task-items">
-                    ${priorityTasks.map(task => `
+                    ${priorityTasks.map(task => {
+                        const warning = getTodayTaskWarning(task, allRoles);
+
+                        return `
                         <li class="today-task-item">
                             <div class="today-task-main">
                                 <span class="today-task-role">${escapeHtml(task.roleName || task.standLabel || '-')}</span>
                                 <span class="today-task-label">${escapeHtml(task.title)}</span>
                             </div>
-                            <div class="today-task-actions">${escapeHtml(task.actions.join('・'))}</div>
-                            <div class="today-task-reason">理由：${escapeHtml(task.reason)}</div>
+                            ${warning ? `<div class="today-task-warning">${escapeHtml(warning)}</div>` : ''}
                         </li>
-                    `).join('')}
+                    `;
+                    }).join('')}
                 </ul>
             </section>
         `;
     }).join('');
+}
+
+function getTodayTaskWarning(task, allRoles = []) {
+    if (!task) {
+        return '';
+    }
+
+    if (String(task.id || '').startsWith('rework-ready-')) {
+        const role = allRoles.find(item => String(item.id) === String(task.id).replace('rework-ready-', ''));
+        return role && normalizeDateInputValue(role.dispatchDate) ? '' : '⚠ 搬出日未設定';
+    }
+
+    if (String(task.id || '').startsWith('assembly-')) {
+        return '⚠ 日程未設定';
+    }
+
+    if (String(task.id || '').startsWith('reworking-confirm-')) {
+        return `⚠ ${task.reason || '搬入確認'}`;
+    }
+
+    if (String(task.id || '').startsWith('reserve-shortage-')) {
+        return '⚠ 予備不足';
+    }
+
+    return '';
 }
 
 function getWatchStandItems(allRoles) {

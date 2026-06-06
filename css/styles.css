@@ -492,7 +492,7 @@ body {
 }
 
 .today-task-count {
-    display: inline-flex;
+    display: none;
     align-items: center;
     justify-content: center;
     min-width: 58px;
@@ -513,8 +513,8 @@ body {
 
 .today-task-group {
     display: grid;
-    gap: 10px;
-    padding: 12px;
+    gap: 8px;
+    padding: 10px;
     border-radius: 10px;
     border: 1px solid #e2e8f0;
     background: #ffffff;
@@ -530,7 +530,7 @@ body {
 .today-task-items {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    gap: 8px;
+    gap: 7px;
     padding: 0;
     margin: 0;
     list-style: none;
@@ -538,9 +538,9 @@ body {
 
 .today-task-item {
     display: grid;
-    gap: 5px;
-    min-height: 88px;
-    padding: 12px 14px;
+    gap: 6px;
+    min-height: 62px;
+    padding: 10px 12px;
     border-radius: 10px;
     background: #f8fafc;
     border: 1px solid #e2e8f0;
@@ -600,14 +600,15 @@ body {
 
 .today-task-main {
     display: flex;
-    align-items: baseline;
-    gap: 8px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 3px;
     min-width: 0;
 }
 
 .today-task-role {
     flex: 0 0 auto;
-    font-size: 1.04rem;
+    font-size: 1.12rem;
     font-weight: 900;
     line-height: 1.15;
 }
@@ -616,19 +617,14 @@ body {
     min-width: 0;
     overflow-wrap: anywhere;
     font-weight: 900;
-    line-height: 1.2;
+    line-height: 1.15;
 }
 
-.today-task-actions,
-.today-task-reason {
+.today-task-warning {
     overflow-wrap: anywhere;
-    font-size: 0.84rem;
-    font-weight: 800;
-    line-height: 1.35;
-}
-
-.today-task-reason {
-    color: #475569;
+    font-size: 0.86rem;
+    font-weight: 900;
+    line-height: 1.2;
 }
 
 .today-task-empty {
@@ -650,8 +646,7 @@ body {
     }
 
     .today-task-header,
-    .today-task-priority,
-    .today-task-main {
+    .today-task-priority {
         align-items: flex-start;
     }
 
@@ -669,10 +664,6 @@ body {
         grid-template-columns: 1fr;
     }
 
-    .today-task-main {
-        flex-direction: column;
-        gap: 4px;
-    }
 }
 
 .role-form {
