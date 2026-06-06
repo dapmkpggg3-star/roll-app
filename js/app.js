@@ -1065,7 +1065,7 @@ function getStatusSummaryCategory(role) {
 
 function updateCountSummary(visibleRoles, allRoles = roles) {
     const summary = {
-    total: visibleRoles.length,
+    total: allRoles.length,
     online: 0,
     reworking: 0,
     used: 0,
