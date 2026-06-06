@@ -367,6 +367,50 @@ function formatCurrentDiameter(value) {
     return normalized === '' ? '-' : `φ${normalized.toFixed(1)}`;
 }
 
+function normalizeDateInputValue(value) {
+    const normalized = value === undefined || value === null ? '' : String(value).trim();
+
+    if (!normalized) {
+        return '';
+    }
+
+    const date = new Date(normalized);
+
+    if (Number.isNaN(date.getTime())) {
+        return '';
+    }
+
+    const pad = number => String(number).padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+function addDaysToDateString(dateValue, days) {
+    const normalized = normalizeDateInputValue(dateValue);
+
+    if (!normalized) {
+        return '';
+    }
+
+    const date = new Date(`${normalized}T00:00:00`);
+    date.setDate(date.getDate() + days);
+    return normalizeDateInputValue(date.toISOString());
+}
+
+function formatDateForDisplay(value) {
+    const normalized = normalizeDateInputValue(value);
+
+    if (!normalized) {
+        return '-';
+    }
+
+    const [year, month, day] = normalized.split('-');
+    return `${year}/${month}/${day}`;
+}
+
+function getInboundPlanDate(dispatchDate) {
+    return addDaysToDateString(dispatchDate, REWORKING_CONFIRM_THRESHOLD_DAYS);
+}
+
 function getTodayDateString() {
     const now = new Date();
     const pad = number => String(number).padStart(2, '0');
@@ -443,6 +487,7 @@ function loadLocalRoles() {
         memo: role.memo || '',
         status: ALLOWED_STATUSES.includes(role.status) ? role.status : '中古予備（バラシ前）',
         useStartDate: normalizeUseStartDate(role.useStartDate),
+        dispatchDate: normalizeDateInputValue(role.dispatchDate),
         currentDiameter: normalizeCurrentDiameter(role.currentDiameter),
         workProgress: normalizeWorkProgress(role),
         history: normalizeRoleHistory(role),
@@ -679,6 +724,18 @@ function updateStatusPreview(selectEl) {
     previewEl.textContent = `現在のステータス：${selectedStatus || '未選択'}`;
 }
 
+function updateInboundPlanPreview() {
+    const dispatchInput = document.getElementById('role-dispatch-date');
+    const previewEl = document.getElementById('role-inbound-plan-preview');
+
+    if (!dispatchInput || !previewEl) {
+        return;
+    }
+
+    const inboundPlanDate = getInboundPlanDate(dispatchInput.value);
+    previewEl.textContent = formatDateForDisplay(inboundPlanDate);
+}
+
 function getMemoPreview(memo) {
     const normalized = (memo || '').replace(/\n/g, ' ').trim();
     if (!normalized) {
@@ -713,10 +770,16 @@ function getRollSymbol(roleName) {
 
 function getRoleInfoHtml(role, formattedDate) {
     const memo = getMemoPreview(role.memo);
+    const dispatchDate = normalizeDateInputValue(role.dispatchDate);
     const rows = [
         ['使用開始日', formatUseStartDate(role.useStartDate)],
         ['最終更新', formattedDate]
     ];
+
+    if (dispatchDate) {
+        rows.push(['搬出日', formatDateForDisplay(dispatchDate)]);
+        rows.push(['搬入予定日', formatDateForDisplay(getInboundPlanDate(dispatchDate))]);
+    }
 
     if (hasDisplayMemo(role.memo)) {
         rows.push(['備考', memo]);
@@ -1062,10 +1125,11 @@ function getTodayTaskItems(allRoles) {
         }
 
         if (role.status === REWORKING_STATUS) {
-            const reworkingStartedAt = getRoleStatusChangedAt(role, REWORKING_STATUS);
-            const elapsedDays = getElapsedDaysSince(reworkingStartedAt, now);
+            const dispatchDate = normalizeDateInputValue(role.dispatchDate);
+            const inboundPlanDate = getInboundPlanDate(dispatchDate);
+            const isInboundPlanOverdue = Boolean(inboundPlanDate) && getTodayDateString() > inboundPlanDate;
 
-            if (elapsedDays !== null && elapsedDays > REWORKING_CONFIRM_THRESHOLD_DAYS) {
+            if (isInboundPlanOverdue) {
                 tasks.push({
                     id: `reworking-confirm-${role.id}`,
                     priority: 'high',
@@ -1074,8 +1138,24 @@ function getTodayTaskItems(allRoles) {
                     roleName: role.name || '-',
                     title: '搬入確認',
                     actions: ['搬入予定確認'],
-                    reason: `改削中${elapsedDays}日経過`
+                    reason: `搬入予定日超過（${formatDateForDisplay(inboundPlanDate)}予定）`
                 });
+            } else if (!dispatchDate) {
+                const reworkingStartedAt = getRoleStatusChangedAt(role, REWORKING_STATUS);
+                const elapsedDays = getElapsedDaysSince(reworkingStartedAt, now);
+
+                if (elapsedDays !== null && elapsedDays > REWORKING_CONFIRM_THRESHOLD_DAYS) {
+                    tasks.push({
+                        id: `reworking-confirm-${role.id}`,
+                        priority: 'high',
+                        standKey,
+                        standNumber: Number(standKey) || 999999,
+                        roleName: role.name || '-',
+                        title: '搬入確認',
+                        actions: ['搬入予定確認'],
+                        reason: `改削中${elapsedDays}日経過`
+                    });
+                }
             }
         }
     });
@@ -1440,6 +1520,7 @@ function addRole() {
     const roleName = document.getElementById('role-name').value.trim();
     const roleStatus = document.getElementById('role-status').value;
     const roleCurrentDiameter = normalizeCurrentDiameter(document.getElementById('role-current-diameter').value);
+    const roleDispatchDate = normalizeDateInputValue(document.getElementById('role-dispatch-date').value);
     const roleMemo = document.getElementById('role-memo').value.trim();
     
     if (!roleName) {
@@ -1454,7 +1535,7 @@ function addRole() {
         alert('このスタンド番号は既に登録されています');
         return;
     }
-    const newRole = { id: nextId++, name: roleName, status: roleStatus, memo: roleMemo, currentDiameter: roleCurrentDiameter, useStartDate: '', updatedAt: new Date().toISOString(), workProgress: normalizeWorkProgress({}), history: [] };
+    const newRole = { id: nextId++, name: roleName, status: roleStatus, memo: roleMemo, currentDiameter: roleCurrentDiameter, dispatchDate: roleDispatchDate, useStartDate: '', updatedAt: new Date().toISOString(), workProgress: normalizeWorkProgress({}), history: [] };
     addRoleHistoryEntry(newRole, 'create', '新規追加', '-', roleStatus, newRole.updatedAt);
     setUseStartDateIfNeeded(newRole, newRole.updatedAt);
     
@@ -1476,6 +1557,8 @@ function addRole() {
     document.getElementById('role-status').value = '';
     updateStatusPreview(document.getElementById('role-status'));
     document.getElementById('role-current-diameter').value = '';
+    document.getElementById('role-dispatch-date').value = '';
+    updateInboundPlanPreview();
     document.getElementById('role-memo').value = '';
     setRoleFormOpen(false);
     renderRoles();
@@ -1493,6 +1576,8 @@ function editRole(id) {
     document.getElementById('role-status').value = role.status;
     updateStatusPreview(document.getElementById('role-status'));
     document.getElementById('role-current-diameter').value = normalizeCurrentDiameter(role.currentDiameter);
+    document.getElementById('role-dispatch-date').value = normalizeDateInputValue(role.dispatchDate);
+    updateInboundPlanPreview();
     document.getElementById('role-memo').value = role.memo || '';
     
     setEditModeUi(role);
@@ -1509,6 +1594,7 @@ function updateRole() {
     const roleName = document.getElementById('role-name').value.trim();
     const roleStatus = document.getElementById('role-status').value;
     const roleCurrentDiameter = normalizeCurrentDiameter(document.getElementById('role-current-diameter').value);
+    const roleDispatchDate = normalizeDateInputValue(document.getElementById('role-dispatch-date').value);
     const roleMemo = document.getElementById('role-memo').value.trim();
     
     if (!roleName) {
@@ -1526,6 +1612,7 @@ function updateRole() {
     const beforeStatus = role.status || '';
     const beforeMemo = role.memo || '';
     const beforeCurrentDiameter = normalizeCurrentDiameter(role.currentDiameter);
+    const beforeDispatchDate = normalizeDateInputValue(role.dispatchDate);
     
     if (roleName !== role.name && roles.some(r => r.id !== editingId && r.name === roleName)) {
         alert('このスタンド番号は既に登録されています');
@@ -1547,6 +1634,7 @@ function updateRole() {
     role.status = roleStatus;
     role.memo = roleMemo;
     role.currentDiameter = roleCurrentDiameter;
+    role.dispatchDate = roleDispatchDate;
     role.useStartDate = normalizeUseStartDate(role.useStartDate);
     role.updatedAt = new Date().toISOString();
     role.workProgress = normalizeWorkProgress(role);
@@ -1560,6 +1648,7 @@ function updateRole() {
     setUseStartDateIfNeeded(role, role.updatedAt);
     addRoleHistoryEntry(role, 'memo', 'メモ変更', beforeMemo, roleMemo, role.updatedAt);
     addRoleHistoryEntry(role, 'diameter', '現在径変更', formatCurrentDiameter(beforeCurrentDiameter), formatCurrentDiameter(roleCurrentDiameter), role.updatedAt);
+    addRoleHistoryEntry(role, 'dispatchDate', '搬出日変更', formatDateForDisplay(beforeDispatchDate), formatDateForDisplay(roleDispatchDate), role.updatedAt);
 
     updatedRoleId = role.id;
     
@@ -1599,6 +1688,8 @@ function cancelEdit() {
     document.getElementById('role-status').value = '';
     updateStatusPreview(document.getElementById('role-status'));
     document.getElementById('role-current-diameter').value = '';
+    document.getElementById('role-dispatch-date').value = '';
+    updateInboundPlanPreview();
     document.getElementById('role-memo').value = '';
     setEditModeUi(null);
     renderRoles();

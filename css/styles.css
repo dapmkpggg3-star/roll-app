@@ -622,7 +622,8 @@ body {
 }
 
 .form-input-zone .status-field,
-.form-input-zone .status-preview-row {
+.form-input-zone .status-preview-row,
+.form-input-zone .dispatch-date-field {
     width: 100%;
     min-width: 0;
     flex: 0 0 auto;
@@ -631,12 +632,33 @@ body {
 .form-input-zone .status-select,
 .form-input-zone #role-name,
 .form-input-zone #role-current-diameter,
+.form-input-zone #role-dispatch-date,
 .form-input-zone #role-memo {
     flex: 0 0 auto !important;
 }
 
 .form-input-zone .status-preview {
     min-height: 54px;
+}
+
+.dispatch-date-field {
+    display: grid;
+    gap: 8px;
+}
+
+.dispatch-date-label {
+    color: #334155;
+    font-size: 0.92rem;
+    font-weight: 900;
+}
+
+.inbound-plan-preview {
+    min-height: 38px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    background: #f1f5f9;
+    color: #334155;
+    font-weight: 800;
 }
 
 .form-action-zone {

@@ -158,6 +158,13 @@
                         <span id="role-status-preview" class="status-preview status-badge status-empty" aria-live="polite">現在のステータス：未選択</span>
                     </div>
                     <input type="number" id="role-current-diameter" placeholder="現在径 (例: 450.0)" step="0.1" min="0" style="flex: 1;">
+                    <div class="dispatch-date-field">
+                        <label for="role-dispatch-date" class="dispatch-date-label">搬出日</label>
+                        <input type="date" id="role-dispatch-date" onchange="updateInboundPlanPreview()" oninput="updateInboundPlanPreview()">
+                        <div class="inbound-plan-preview">
+                            搬入予定日：<span id="role-inbound-plan-preview">-</span>
+                        </div>
+                    </div>
                     <textarea id="role-memo" placeholder="メモを入力...(改行可)" style="flex: 1; min-height: 40px; padding: 12px 15px; border: 2px solid #e0e0e0; border-radius: 6px; font-size: 1rem; resize: vertical;"></textarea>
                     </div>
                     <input id="csv-import-input" type="file" accept=".csv,text/csv" style="display:none" onchange="importCsv(event)">
