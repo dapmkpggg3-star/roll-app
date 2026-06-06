@@ -1427,6 +1427,28 @@ function showToast(message) {
     }, 250);
   }, 1800);
 }
+
+function scrollToRoleCard(roleId, fallbackScrollY = null) {
+    window.setTimeout(() => {
+        const targetRow = document.getElementById(`role-${roleId}`);
+
+        if (targetRow) {
+            targetRow.scrollIntoView({
+                behavior: "smooth",
+                block: "center"
+            });
+            return;
+        }
+
+        if (fallbackScrollY !== null) {
+            window.scrollTo({
+                top: fallbackScrollY,
+                behavior: "smooth"
+            });
+        }
+    }, 300);
+}
+
 function renderRoles() {
     const roleList = document.getElementById('role-list');
     roleList.innerHTML = '';
@@ -1607,6 +1629,7 @@ function addRole() {
     }
     
     roles.push(newRole);
+    updatedRoleId = newRole.id;
     saveLocalRoles();
     document.getElementById('role-name').value = '';
     document.getElementById('role-status').value = '';
@@ -1617,7 +1640,13 @@ function addRole() {
     document.getElementById('role-memo').value = '';
     setRoleFormOpen(false);
     renderRoles();
+    scrollToRoleCard(newRole.id);
     syncRoles();
+
+    setTimeout(() => {
+        updatedRoleId = null;
+        renderRoles();
+    }, 3000);
 }
 
 
@@ -1720,26 +1749,12 @@ function updateRole() {
     syncRoles();
     showToast("更新しました");
 
-    setTimeout(() => {
+setTimeout(() => {
   updatedRoleId = null;
   renderRoles();
 }, 3000);
 
-setTimeout(() => {
-  const updatedRow = document.getElementById(`role-${updatedRoleId}`);
-
-  if (updatedRow) {
-    updatedRow.scrollIntoView({
-      behavior: "smooth",
-      block: "center"
-    });
-  } else {
-    window.scrollTo({
-      top: lastScrollY,
-      behavior: "smooth"
-    });
-  }
-}, 300);
+scrollToRoleCard(role.id, lastScrollY);
 }
 
 
