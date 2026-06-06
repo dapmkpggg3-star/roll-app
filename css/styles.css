@@ -48,7 +48,7 @@ body {
 .page-scroll-controls {
     position: fixed;
     right: max(14px, env(safe-area-inset-right));
-    bottom: calc(92px + env(safe-area-inset-bottom));
+    bottom: calc(196px + env(safe-area-inset-bottom));
     z-index: 9000;
     display: grid;
     gap: 10px;
@@ -1317,7 +1317,7 @@ body.modal-open {
 
     .page-scroll-controls {
         right: max(10px, env(safe-area-inset-right));
-        bottom: calc(82px + env(safe-area-inset-bottom));
+        bottom: calc(188px + env(safe-area-inset-bottom));
         width: 86px;
         gap: 8px;
     }

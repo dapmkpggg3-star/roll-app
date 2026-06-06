@@ -1572,18 +1572,6 @@ function scrollPageToTop() {
     });
 }
 
-function scrollPageToBottom() {
-    const scrollHeight = Math.max(
-        document.body.scrollHeight,
-        document.documentElement.scrollHeight
-    );
-
-    window.scrollTo({
-        top: scrollHeight,
-        behavior: 'smooth'
-    });
-}
-
 function renderRoles() {
     const roleList = document.getElementById('role-list');
     roleList.innerHTML = '';
