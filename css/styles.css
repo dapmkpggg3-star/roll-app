@@ -2390,6 +2390,14 @@ body:not(.tablet-mode) #role-table .actions-cell .action-btn {
   font-weight: 800;
 }
 
+body:not(.tablet-mode) #role-table .actions-cell .edit-btn,
+body:not(.tablet-mode) #role-table .actions-cell .delete-btn {
+  min-height: 56px;
+  padding: 12px 12px !important;
+  font-size: 17px;
+  font-weight: 900;
+}
+
 body.tablet-mode .table-container {
   overflow: visible !important;
 }
@@ -2571,6 +2579,13 @@ body.tablet-mode #role-table .actions-cell .action-btn {
   font-size: 22px !important;
   font-weight: 900;
   line-height: 1.15;
+}
+
+body.tablet-mode #role-table .actions-cell .edit-btn,
+body.tablet-mode #role-table .actions-cell .delete-btn {
+  min-height: 76px !important;
+  padding: 18px 14px !important;
+  font-size: 24px !important;
 }
 
 body.tablet-mode #role-table .actions-cell .request-btn {
@@ -2845,6 +2860,15 @@ body.tablet-mode #role-table .current-diameter-cell {
     padding: 12px 10px !important;
     font-size: 20px !important;
   }
+
+  body.tablet-mode #role-table .actions-cell .edit-btn,
+  body.tablet-mode #role-table .actions-cell .delete-btn {
+    height: 72px !important;
+    min-height: 72px !important;
+    padding: 16px 10px !important;
+    font-size: 22px !important;
+    font-weight: 900;
+  }
 }
 
 .mobile-history-btn {
@@ -3079,6 +3103,15 @@ body.mobile-layout #role-table .card-actions-list .action-btn {
   font-size: 18px !important;
   line-height: 1.15;
   white-space: normal;
+}
+
+body.mobile-layout #role-table .card-actions-list .edit-btn,
+body.mobile-layout #role-table .card-actions-list .delete-btn {
+  height: 68px !important;
+  min-height: 68px !important;
+  padding: 12px 8px !important;
+  font-size: 19px !important;
+  font-weight: 900;
 }
 
 @media (max-width: 360px) {
