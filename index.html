@@ -11,7 +11,7 @@
     <link rel="manifest" href="manifest.json">
     <link rel="icon" type="image/png" sizes="192x192" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect fill='%23667eea' width='192' height='192'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' font-size='96' fill='white' font-family='Arial'>📋</text></svg>">
     <title>ロール管理アプリ</title>
-    <link rel="stylesheet" href="css/styles.css?v=20260607-task-elapsed-days">
+    <link rel="stylesheet" href="css/styles.css?v=20260607-new-storage-status">
 </head>
 <body>
     <div id="app-update-notice" class="app-update-notice" hidden>
@@ -82,6 +82,10 @@
     <span class="summary-label">新品予備（組込完了）</span>
     <span id="summary-new-installed" class="summary-count">0件</span>
 </div>
+<div class="summary-card status-other" onclick="setSummaryFilter('新品予備保管')">
+    <span class="summary-label">新品予備保管</span>
+    <span id="summary-new-storage" class="summary-count">0件</span>
+</div>
 <div class="summary-card status-other" onclick="setSummaryFilter('廃却待ち')">
     <span class="summary-label">廃却待ち</span>
     <span id="summary-scrap-waiting" class="summary-count">0件</span>
@@ -115,6 +119,7 @@
 <option value="改削行き（搬出可能）">改削行き（搬出可能）</option>
 <option value="新品予備（組替可能）">新品予備（組替可能）</option>
 <option value="新品予備（組込完了）">新品予備（組込完了）</option>
+<option value="新品予備保管">新品予備保管</option>
 <option value="廃却待ち">廃却待ち</option>
 <option value="廃棄">廃棄</option>
                     </select>
@@ -150,6 +155,7 @@
                             <option value="改削中">改削中</option>
                             <option value="新品予備（組替可能）">新品予備（組替可能）</option>
                             <option value="新品予備（組込完了）">新品予備（組込完了）</option>
+                            <option value="新品予備保管">新品予備保管</option>
                             <option value="廃却待ち">廃却待ち</option>
                             <option value="廃棄">廃棄</option>
                         </select>
@@ -245,8 +251,8 @@
     </div>
 
     <script src="js/sync.js?v=20260606-rework-judgment"></script>
-<script src="js/csv.js?v=20260606-rework-judgment"></script>
-<script src="js/app.js?v=20260607-task-elapsed-days"></script>
+<script src="js/csv.js?v=20260607-new-storage-status"></script>
+<script src="js/app.js?v=20260607-new-storage-status"></script>
 
         // ログイン状態チェック
 </body>

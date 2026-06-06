@@ -252,6 +252,7 @@ const ALLOWED_STATUSES = [
     '改削中',
     '新品予備（組替可能）',
     '新品予備（組込完了）',
+    '新品予備保管',
     '廃却待ち',
     '廃棄'
 ];
@@ -263,6 +264,7 @@ const REWORKING_STATUS = '改削中';
 const USED_STANDBY_STATUS = '中古予備（バラシ前）';
 const NEW_READY_STATUS = '新品予備（組替可能）';
 const NEW_INSTALLED_STATUS = '新品予備（組込完了）';
+const NEW_STORAGE_STATUS = '新品予備保管';
 const ONLINE_STATUS = 'オンライン';
 const REWORKING_CONFIRM_THRESHOLD_DAYS = 25;
 const TASK_PRIORITY_LABELS = {
@@ -697,6 +699,7 @@ function getStatusClass(status) {
         '改削中': 'status-reworking',
         '新品予備（組替可能）': 'status-new-ready',
         '新品予備（組込完了）': 'status-new-done',
+        '新品予備保管': 'status-new-storage',
         '廃却待ち': 'status-scrap-waiting',
         '廃棄': 'status-discarded'
     };
@@ -748,6 +751,7 @@ function updateStatusPreview(selectEl) {
         'status-reworking',
         'status-new-ready',
         'status-new-done',
+        'status-new-storage',
         'status-scrap-waiting',
         'status-discarded',
         'status-other'
@@ -1033,6 +1037,10 @@ function getStatusSummaryCategory(role) {
         return 'newInstalled';
     }
 
+    if (status === NEW_STORAGE_STATUS) {
+        return 'newStorage';
+    }
+
     if (status === SCRAP_WAITING_STATUS) {
         return 'scrapWaiting';
     }
@@ -1044,7 +1052,7 @@ function getStatusSummaryCategory(role) {
     return 'other';
 }
 
-function updateCountSummary(visibleRoles) {
+function updateCountSummary(visibleRoles, allRoles = roles) {
     const summary = {
     total: visibleRoles.length,
     online: 0,
@@ -1053,6 +1061,7 @@ function updateCountSummary(visibleRoles) {
     remove: 0,
     newReady: 0,
     newInstalled: 0,
+    newStorage: 0,
     scrapWaiting: 0,
     discarded: 0,
     other: 0
@@ -1061,6 +1070,7 @@ function updateCountSummary(visibleRoles) {
     visibleRoles.forEach(role => {
         summary[getStatusSummaryCategory(role)] += 1;
     });
+    summary.newStorage = allRoles.filter(role => role.status === NEW_STORAGE_STATUS).length;
 
     Object.entries(summary).forEach(([key, value]) => {
 
@@ -1068,6 +1078,7 @@ function updateCountSummary(visibleRoles) {
         remove: 'summary-remove',
         newReady: 'summary-new-ready',
         newInstalled: 'summary-new-installed',
+        newStorage: 'summary-new-storage',
         scrapWaiting: 'summary-scrap-waiting',
         discarded: 'summary-discarded'
     };
@@ -1532,6 +1543,7 @@ function filterWatchStand(standKey) {
 
 function getFilteredRoles() {
     const normalizedQuery = String(searchQuery).trim().toLowerCase();
+    const hasSearch = normalizedQuery.length > 0;
     return roles.filter(role => {
         if (!isStatusMatched(role)) {
             return false;
@@ -1539,7 +1551,10 @@ function getFilteredRoles() {
         if (!isWatchStandMatched(role)) {
             return false;
         }
-        if (!normalizedQuery) {
+        if (role.status === NEW_STORAGE_STATUS && statusFilter !== NEW_STORAGE_STATUS && !hasSearch) {
+            return false;
+        }
+        if (!hasSearch) {
             return true;
         }
         return [
@@ -1702,7 +1717,7 @@ function renderRoles() {
     roleList.innerHTML = '';
     
     const filteredRoles = getFilteredRoles();
-    updateCountSummary(filteredRoles);
+    updateCountSummary(filteredRoles, roles);
     updateIncompleteWorkDashboard(roles);
     updateTodayTaskDashboard(roles);
 
