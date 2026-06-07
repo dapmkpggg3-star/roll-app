@@ -16,6 +16,30 @@ function normalizeRoleIdForDelete(id) {
     return String(id).trim();
 }
 
+function getRollDebugSnapshot(role) {
+    if (!role) {
+        return null;
+    }
+
+    return {
+        id: role.id,
+        name: role.name,
+        status: role.status
+    };
+}
+
+function findRollDebugIndex(roleList, roleName = '#11-44') {
+    return (Array.isArray(roleList) ? roleList : []).findIndex(role => String(role.name || '') === roleName);
+}
+
+function getRollDebugSlice(roleList, startIndex, count = 5) {
+    if (!Array.isArray(roleList) || startIndex < 0) {
+        return [];
+    }
+
+    return roleList.slice(startIndex, startIndex + count).map(getRollDebugSnapshot);
+}
+
 function getDeletedRoleIds() {
     try {
         const value = JSON.parse(localStorage.getItem(DELETED_ROLE_IDS_KEY) || '[]');
@@ -369,13 +393,20 @@ function getRoleMergeKey(role) {
 function mergeRemoteAndLocalRoles(remoteRoles, localRoles) {
     const mergedMap = new Map();
     const deletedRoleIds = getDeletedRoleIds();
+    const seenKeys = new Set();
+    const duplicateKeys = [];
 
     remoteRoles.forEach(role => {
         const normalized = normalizeRole(role);
         if (isRoleMarkedDeleted(normalized, deletedRoleIds)) {
             return;
         }
-        mergedMap.set(getRoleMergeKey(normalized), normalized);
+        const key = getRoleMergeKey(normalized);
+        if (seenKeys.has(key)) {
+            duplicateKeys.push({ source: 'remote', key, role: getRollDebugSnapshot(normalized) });
+        }
+        seenKeys.add(key);
+        mergedMap.set(key, normalized);
     });
 
     localRoles.forEach(role => {
@@ -385,12 +416,24 @@ function mergeRemoteAndLocalRoles(remoteRoles, localRoles) {
         const localRole = normalizeRole(role);
         const remoteRole = mergedMap.get(key);
         if (remoteRole) {
+            duplicateKeys.push({ source: 'local', key, role: getRollDebugSnapshot(localRole) });
             localRole.history = mergeRoleHistory(remoteRole.history, localRole.history);
+        } else if (seenKeys.has(key)) {
+            duplicateKeys.push({ source: 'local', key, role: getRollDebugSnapshot(localRole) });
         }
+        seenKeys.add(key);
         mergedMap.set(key, localRole);
     });
 
-    return Array.from(mergedMap.values());
+    const mergedRoles = Array.from(mergedMap.values());
+    console.log('ROLL_DEBUG_MERGE_BEFORE_RETURN', {
+        remoteLength: remoteRoles.length,
+        localLength: localRoles.length,
+        mergedLength: mergedRoles.length,
+        deletedRoleIdsLength: deletedRoleIds.length,
+        duplicateKeys
+    });
+    return mergedRoles;
 }
 
 async function fetchData() {
@@ -445,6 +488,12 @@ async function saveData() {
         const payload = JSON.stringify({
             action: 'save',
             roles: roles
+        });
+        const debugSendIndex = findRollDebugIndex(roles);
+        console.log('ROLL_DEBUG_SAVE_DATA_BEFORE_POST', {
+            sendLength: roles.length,
+            targetIndex: debugSendIndex,
+            afterTarget5: getRollDebugSlice(roles, debugSendIndex)
         });
 
         const controller = new AbortController();
@@ -590,6 +639,12 @@ async function syncRoles() {
         }
 
         const localRoles = JSON.parse(localStorage.getItem('roles') || '[]').map(normalizeRole);
+        const debugLocalIndex = findRollDebugIndex(localRoles);
+        console.log('ROLL_DEBUG_SYNC_LOCAL_ROLES', {
+            localLength: localRoles.length,
+            targetIndex: debugLocalIndex,
+            afterTarget5: getRollDebugSlice(localRoles, debugLocalIndex)
+        });
         const previousRoles = JSON.parse(localStorage.getItem('roles_backup_before_sync') || '[]').map(normalizeRole);
         const remoteRoles = await fetchRemoteRolesForGuard();
         const pendingDeletedRoleIds = getDeletedRoleIds();

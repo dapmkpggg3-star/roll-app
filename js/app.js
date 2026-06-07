@@ -306,6 +306,30 @@ let editingId = null; // 編集中のID
 let lastScrollY = 0;
 let updatedRoleId = null;
 
+function getDebugRoleSnapshot(role) {
+    if (!role) {
+        return null;
+    }
+
+    return {
+        id: role.id,
+        name: role.name,
+        status: role.status
+    };
+}
+
+function findDebugRoleIndex(roleList, roleName = '#11-44') {
+    return (Array.isArray(roleList) ? roleList : []).findIndex(role => String(role.name || '') === roleName);
+}
+
+function getDebugRoleSlice(roleList, startIndex, count = 5) {
+    if (!Array.isArray(roleList) || startIndex < 0) {
+        return [];
+    }
+
+    return roleList.slice(startIndex, startIndex + count).map(getDebugRoleSnapshot);
+}
+
 function setRoleFormOpen(isOpen) {
     const roleForm = document.getElementById('role-form');
     const toggleBtn = document.getElementById('toggleRoleFormBtn');
@@ -378,6 +402,10 @@ if (backupKeys.length > 20) {
         localStorage.removeItem(key);
     });
 }
+    console.log('ROLL_DEBUG_SAVE_LOCAL_BEFORE_WRITE', {
+        rolesLength: roles.length,
+        tail5: roles.slice(-5).map(getDebugRoleSnapshot)
+    });
     localStorage.setItem('roles', JSON.stringify(roles));
 }
 
@@ -2021,6 +2049,13 @@ function updateRole() {
     addRoleHistoryEntry(role, 'dispatchDate', '搬出日変更', formatDateForDisplay(beforeDispatchDate), formatDateForDisplay(roleDispatchDate), role.updatedAt);
 
     updatedRoleId = role.id;
+    const debugRoleIndex = findDebugRoleIndex(roles);
+    console.log('ROLL_DEBUG_UPDATE_ROLE_BEFORE_SAVE', {
+        rolesLength: roles.length,
+        targetIndex: debugRoleIndex,
+        target: debugRoleIndex >= 0 ? getDebugRoleSnapshot(roles[debugRoleIndex]) : null,
+        afterTarget5: getDebugRoleSlice(roles, debugRoleIndex)
+    });
     
     saveLocalRoles();
     cancelEdit();

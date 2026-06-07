@@ -105,6 +105,7 @@ function doPost(e) {
         throw new Error('roles must be an array');
       }
 
+      Logger.log('ROLL_DEBUG_GAS_DO_POST_RECEIVED roles.length=' + roles.length);
       Logger.log('doPost save: writing ' + roles.length + ' roles');
 
       writeRoles(roles);
@@ -192,6 +193,17 @@ function writeRoles(roles) {
 
   Logger.log('writeRoles: writing header and ' + rows.length + ' data rows');
   const values = [HEADER_VALUES].concat(rows);
+  const invalidColumnRows = values
+    .map(function(row, index) {
+      return {
+        index: index,
+        length: row.length
+      };
+    })
+    .filter(function(row) {
+      return row.length !== HEADER_VALUES.length;
+    });
+  Logger.log('ROLL_DEBUG_GAS_WRITE_BEFORE_SET_VALUES values.length=' + values.length + ', expectedColumns=' + HEADER_VALUES.length + ', invalidColumnRows=' + JSON.stringify(invalidColumnRows));
   sheet.getRange(1, 1, values.length, HEADER_VALUES.length).setValues(values);
   applySheetFormatting(sheet, rows.length);
 
