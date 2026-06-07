@@ -5,6 +5,7 @@ const SYNC_COUNT_DROP_ABORT_RATIO = 0.3;
 let syncDiagnosticRemoteRoles = null;
 let lastGasSaveDebug = null;
 let lastSavedRemoteRoleCount = null;
+const STATUS_DEBUG_ROLE_NAME = '#11-44';
 
 function parseStandRoleNumber(value) {
     const text = String(value || '').trim();
@@ -82,6 +83,12 @@ function getRollDebugSlice(roleList, startIndex, count = 5) {
     }
 
     return roleList.slice(startIndex, startIndex + count).map(getRollDebugSnapshot);
+}
+
+function logStatusDebug(label, roleList, roleName = STATUS_DEBUG_ROLE_NAME) {
+    const role = (Array.isArray(roleList) ? roleList : []).find(item => String(item && item.name || '') === roleName);
+
+    console.log(`${label}:\n${roleName}\n${role ? role.status : 'NOT_FOUND'}`);
 }
 
 function getDeletedRoleIds() {
@@ -639,7 +646,9 @@ async function fetchRemoteRolesForGuard(actionLabel = '同期前データ確認'
 
     const data = await readJsonResponse(response, actionLabel);
     validateFetchResponse(data);
+    logStatusDebug('REMOTE_STATUS_BEFORE_NORMALIZE', data.roles);
     const remoteRoles = data.roles.map(normalizeRole);
+    logStatusDebug('REMOTE_STATUS_AFTER_NORMALIZE', remoteRoles);
     setSyncDiagnosticRemoteRoles(remoteRoles);
     return remoteRoles;
 }

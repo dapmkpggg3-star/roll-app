@@ -305,6 +305,7 @@ let sortOption = 'name';
 let editingId = null; // 編集中のID
 let lastScrollY = 0;
 let updatedRoleId = null;
+const RENDER_STATUS_DEBUG_ROLE_NAME = '#11-44';
 
 function getDebugRoleSnapshot(role) {
     if (!role) {
@@ -328,6 +329,12 @@ function getDebugRoleSlice(roleList, startIndex, count = 5) {
     }
 
     return roleList.slice(startIndex, startIndex + count).map(getDebugRoleSnapshot);
+}
+
+function logRenderStatusDebug(roleList, roleName = RENDER_STATUS_DEBUG_ROLE_NAME) {
+    const role = (Array.isArray(roleList) ? roleList : []).find(item => String(item && item.name || '') === roleName);
+
+    console.log(`RENDER_STATUS:\n${roleName}\n${role ? role.status : 'NOT_FOUND'}`);
 }
 
 function setRoleFormOpen(isOpen) {
@@ -1777,6 +1784,7 @@ function renderRoles() {
             }
             return compareUpdatedAt(a, b, 'desc');
         });
+    logRenderStatusDebug(visibleRoles);
     const countInfo = document.getElementById('role-count');
     if (countInfo) {
         const hasSearch = searchQuery.trim().length > 0;
