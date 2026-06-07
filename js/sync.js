@@ -5,6 +5,7 @@ const SYNC_COUNT_DROP_ABORT_RATIO = 0.3;
 let syncDiagnosticRemoteRoles = null;
 let lastGasSaveDebug = null;
 let lastSavedRemoteRoleCount = null;
+let isSyncQueued = false;
 const STATUS_DEBUG_ROLE_NAME = '#11-44';
 
 function parseStandRoleNumber(value) {
@@ -772,6 +773,7 @@ function setSyncButtonBusy(isBusy) {
 
 async function syncRoles() {
     if (isSyncing) {
+        isSyncQueued = true;
         setSyncMessage('同期中です。少し待ってください。');
         return;
     }
@@ -896,6 +898,11 @@ async function syncRoles() {
     } finally {
         isSyncing = false;
         setSyncButtonBusy(false);
+
+        if (isSyncQueued) {
+            isSyncQueued = false;
+            syncRoles();
+        }
     }
 }
 
