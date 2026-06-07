@@ -792,7 +792,9 @@ async function syncRoles() {
             return;
         }
 
-        const localRoles = JSON.parse(localStorage.getItem('roles') || '[]').map(normalizeRole);
+        const syncStartRolesSnapshot = localStorage.getItem('roles') || '[]';
+        const syncStartDeletedRoleIdsSnapshot = localStorage.getItem(DELETED_ROLE_IDS_KEY) || '[]';
+        const localRoles = JSON.parse(syncStartRolesSnapshot).map(normalizeRole);
         const debugLocalIndex = findRollDebugIndex(localRoles);
         console.log('ROLL_DEBUG_SYNC_LOCAL_ROLES', {
             localLength: localRoles.length,
@@ -862,6 +864,17 @@ async function syncRoles() {
         }
 
         const sortedMergedRoles = sortRolesByStandRole(mergedRoles);
+        const currentRolesSnapshot = localStorage.getItem('roles') || '[]';
+        const currentDeletedRoleIdsSnapshot = localStorage.getItem(DELETED_ROLE_IDS_KEY) || '[]';
+
+        if (
+            currentRolesSnapshot !== syncStartRolesSnapshot
+            || currentDeletedRoleIdsSnapshot !== syncStartDeletedRoleIdsSnapshot
+        ) {
+            isSyncQueued = true;
+            setSyncMessage('同期中に変更が入ったため、最新データで再同期します。');
+            return;
+        }
 
         roles = sortedMergedRoles;
         saveLocalRoles();
