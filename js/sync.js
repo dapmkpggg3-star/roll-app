@@ -100,6 +100,48 @@ function getBlankNameRoleDiagnostics(roleList) {
         }));
 }
 
+function parseStoredJsonArray(key) {
+    try {
+        const value = JSON.parse(localStorage.getItem(key) || '[]');
+        return Array.isArray(value) ? value : [];
+    } catch (error) {
+        console.error(`parseStoredJsonArray error: ${key}`, error);
+        return [];
+    }
+}
+
+function getStoredRolesSnapshot() {
+    return localStorage.getItem('roles') || '[]';
+}
+
+function getStoredDeletedRoleIdsSnapshot() {
+    return localStorage.getItem(DELETED_ROLE_IDS_KEY) || '[]';
+}
+
+function getLocalRolesFromSnapshot(snapshot) {
+    return parseStoredJsonArrayFromText(snapshot).map(normalizeRole);
+}
+
+function parseStoredJsonArrayFromText(text) {
+    try {
+        const value = JSON.parse(text || '[]');
+        return Array.isArray(value) ? value : [];
+    } catch (error) {
+        console.error('parseStoredJsonArrayFromText error:', error);
+        return [];
+    }
+}
+
+function getLocalStorageSyncSignature() {
+    return stableStringify({
+        roles: parseStoredJsonArrayFromText(getStoredRolesSnapshot()),
+        deletedRoleIds: parseStoredJsonArrayFromText(getStoredDeletedRoleIdsSnapshot())
+            .map(normalizeRoleIdForDelete)
+            .filter(id => id !== '')
+            .sort()
+    });
+}
+
 function logStatusDebug(label, roleList, roleName = STATUS_DEBUG_ROLE_NAME) {
     const role = (Array.isArray(roleList) ? roleList : []).find(item => String(item && item.name || '') === roleName);
 
@@ -107,22 +149,11 @@ function logStatusDebug(label, roleList, roleName = STATUS_DEBUG_ROLE_NAME) {
 }
 
 function getDeletedRoleIds() {
-    try {
-        const value = JSON.parse(localStorage.getItem(DELETED_ROLE_IDS_KEY) || '[]');
-
-        if (!Array.isArray(value)) {
-            return [];
-        }
-
-        return Array.from(new Set(
-            value
-                .map(normalizeRoleIdForDelete)
-                .filter(id => id !== '')
-        ));
-    } catch (error) {
-        console.error('getDeletedRoleIds error:', error);
-        return [];
-    }
+    return Array.from(new Set(
+        parseStoredJsonArray(DELETED_ROLE_IDS_KEY)
+            .map(normalizeRoleIdForDelete)
+            .filter(id => id !== '')
+    ));
 }
 
 function setDeletedRoleIds(ids) {
@@ -559,7 +590,39 @@ function mergeRemoteAndLocalRoles(remoteRoles, localRoles) {
     return mergedRoles;
 }
 
+function getMissingLocalRolesAfterMerge(localRoles, mergedRoles) {
+    const mergedKeys = new Set((Array.isArray(mergedRoles) ? mergedRoles : [])
+        .map(role => getRoleMergeKey(normalizeRole(role))));
+
+    return (Array.isArray(localRoles) ? localRoles : [])
+        .filter(role => role && role.name && String(role.name).trim() !== '')
+        .filter(role => !isRoleMarkedDeleted(role))
+        .filter(role => !mergedKeys.has(getRoleMergeKey(normalizeRole(role))))
+        .map(getRollDebugSnapshot);
+}
+
+function assertLocalRolesPreservedForPost(localRoles, rolesToPost) {
+    const missingLocalRoles = getMissingLocalRolesAfterMerge(localRoles, rolesToPost);
+
+    if (missingLocalRoles.length === 0) {
+        return;
+    }
+
+    console.error('ROLL_SYNC_ABORT_LOCAL_ROLES_DROPPED_BEFORE_POST', {
+        missingLocalRoles,
+        localLength: Array.isArray(localRoles) ? localRoles.length : null,
+        postLength: Array.isArray(rolesToPost) ? rolesToPost.length : null
+    });
+    throw createSyncError('同期前データ確認', `Local role missing before POST: ${missingLocalRoles.map(role => role.name || role.id).join(', ')}`);
+}
+
 async function fetchData() {
+    if (isSyncing) {
+        isSyncQueued = true;
+        setSyncMessage('同期中のためリモート読み込みを予約しました。');
+        return;
+    }
+
     if (!isRemoteConfigured()) {
         setSyncMessage('スプレッドシート同期先が設定されていません。設定を確認してください。', true);
         return;
@@ -574,6 +637,13 @@ async function fetchData() {
         const data = await readJsonResponse(response, 'データ取得');
         validateFetchResponse(data);
         setSyncDiagnosticRemoteRoles(data.roles);
+
+        if (isSyncing) {
+            isSyncQueued = true;
+            setSyncMessage('同期中のためリモート読み込みを予約しました。');
+            return;
+        }
+
         const deletedRoleIds = getDeletedRoleIds();
         roles = data.roles
             .map(normalizeRole)
@@ -591,39 +661,40 @@ async function fetchData() {
     }
 }
 
-async function saveData() {
+async function saveData(roleList = roles) {
     if (!isRemoteConfigured()) {
         return false;
     }
 
     try {
         lastSavedRemoteRoleCount = null;
+        const rolesToSend = Array.isArray(roleList) ? roleList.map(normalizeRole) : [];
         console.log('saveRemoteRoles: Sending data to', SHEETS_ENDPOINT);
         console.log('SYNC SEND PAYLOAD COUNT', {
-            roles: Array.isArray(roles) ? roles.length : null
+            roles: rolesToSend.length
         });
 
-        if (!Array.isArray(roles) || roles.length === 0) {
+        if (rolesToSend.length === 0) {
             alert('同期を中止しました。0件のデータ送信は禁止されています。データ消失防止のため確認してください。');
             setSyncMessage('同期を中止しました。0件送信は禁止されています。', true);
             return false;
         }
 
-        const blankNameRoles = getBlankNameRoleDiagnostics(roles);
-        const debugSendIndex = findRollDebugIndex(roles);
+        const blankNameRoles = getBlankNameRoleDiagnostics(rolesToSend);
+        const debugSendIndex = findRollDebugIndex(rolesToSend);
         console.log('ROLL_DEBUG_SAVE_DATA_BEFORE_POST', {
-            'roles.length': roles.length,
-            rolesLength: roles.length,
+            'roles.length': rolesToSend.length,
+            rolesLength: rolesToSend.length,
             blankNameCount: blankNameRoles.length,
             blankNameRoles,
             targetIndex: debugSendIndex,
-            afterTarget5: getRollDebugSlice(roles, debugSendIndex)
+            afterTarget5: getRollDebugSlice(rolesToSend, debugSendIndex)
         });
 
         if (blankNameRoles.length > 0) {
             console.error('ROLL_SYNC_ABORT_BLANK_ROLE_NAMES', {
-                'roles.length': roles.length,
-                rolesLength: roles.length,
+                'roles.length': rolesToSend.length,
+                rolesLength: rolesToSend.length,
                 blankNameCount: blankNameRoles.length,
                 blankNameRoles
             });
@@ -634,7 +705,7 @@ async function saveData() {
 
         const payload = JSON.stringify({
             action: 'save',
-            roles: roles
+            roles: rolesToSend
         });
 
         const controller = new AbortController();
@@ -792,16 +863,16 @@ async function syncRoles() {
             return;
         }
 
-        const syncStartRolesSnapshot = localStorage.getItem('roles') || '[]';
-        const syncStartDeletedRoleIdsSnapshot = localStorage.getItem(DELETED_ROLE_IDS_KEY) || '[]';
-        const localRoles = JSON.parse(syncStartRolesSnapshot).map(normalizeRole);
+        const syncStartRolesSnapshot = getStoredRolesSnapshot();
+        const syncStartLocalStorageSignature = getLocalStorageSyncSignature();
+        const localRoles = getLocalRolesFromSnapshot(syncStartRolesSnapshot);
         const debugLocalIndex = findRollDebugIndex(localRoles);
         console.log('ROLL_DEBUG_SYNC_LOCAL_ROLES', {
             localLength: localRoles.length,
             targetIndex: debugLocalIndex,
             afterTarget5: getRollDebugSlice(localRoles, debugLocalIndex)
         });
-        const previousRoles = JSON.parse(localStorage.getItem('roles_backup_before_sync') || '[]').map(normalizeRole);
+        const previousRoles = parseStoredJsonArray('roles_backup_before_sync').map(normalizeRole);
         const remoteRoles = await fetchRemoteRolesForGuard();
         const pendingDeletedRoleIds = getDeletedRoleIds();
         const remoteRolesAfterPendingDelete = remoteRoles.filter(role => !isRoleMarkedDeleted(role, pendingDeletedRoleIds));
@@ -864,18 +935,17 @@ async function syncRoles() {
         }
 
         const sortedMergedRoles = sortRolesByStandRole(mergedRoles);
-        const currentRolesSnapshot = localStorage.getItem('roles') || '[]';
-        const currentDeletedRoleIdsSnapshot = localStorage.getItem(DELETED_ROLE_IDS_KEY) || '[]';
+        const currentLocalStorageSignature = getLocalStorageSyncSignature();
 
         if (
-            currentRolesSnapshot !== syncStartRolesSnapshot
-            || currentDeletedRoleIdsSnapshot !== syncStartDeletedRoleIdsSnapshot
+            currentLocalStorageSignature !== syncStartLocalStorageSignature
         ) {
             isSyncQueued = true;
             setSyncMessage('同期中に変更が入ったため、最新データで再同期します。');
             return;
         }
 
+        assertLocalRolesPreservedForPost(localRoles, sortedMergedRoles);
         roles = sortedMergedRoles;
         saveLocalRoles();
 
@@ -884,7 +954,7 @@ async function syncRoles() {
 
         setSyncMessage('スプレッドシートと同期中です...');
 
-        const ok = await saveData();
+        const ok = await saveData(sortedMergedRoles);
 
         if (ok) {
             setSyncMessage('保存結果を確認しています...');
