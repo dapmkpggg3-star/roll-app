@@ -8,6 +8,7 @@ const USE_START_DATE_COLUMN_INDEX = 10;
 const ADD_ROLE_ACTION_NAME = 'addRoleFromInputArea';
 const HEADER_BACKGROUND = '#1f4e78';
 const HEADER_FONT_COLOR = '#ffffff';
+const LAST_SAVE_DEBUG_KEY = 'ROLL_LAST_SAVE_DEBUG';
 const DEFAULT_STATUS = '中古予備（バラシ前）';
 
 
@@ -42,11 +43,18 @@ function doGet(e) {
       }
       
       Logger.log('doGet save: writing ' + roles.length + ' roles');
-      writeRoles(roles);
+      const writtenRoleCount = writeRoles(roles);
+      const debug = buildSaveDebugState(roles.length, writtenRoleCount, 'doGet');
+      storeLastSaveDebugState(debug);
       Logger.log('doGet save: write complete');
       
       return ContentService
-        .createTextOutput(JSON.stringify({ success: true }))
+        .createTextOutput(JSON.stringify({
+          success: true,
+          receivedRoleCount: debug.receivedRoleCount,
+          writtenRoleCount: debug.writtenRoleCount,
+          debug: debug
+        }))
         .setMimeType(ContentService.MimeType.JSON);
     } catch (error) {
       Logger.log('doGet save error: ' + error.toString());
@@ -63,6 +71,31 @@ function doGet(e) {
         .setMimeType(ContentService.MimeType.JSON);
     } catch (error) {
       Logger.log('doGet debug-formatting error: ' + error.toString());
+      return ContentService
+        .createTextOutput(JSON.stringify({ success: false, error: error.toString() }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+  } else if (action === 'debug-sort-roles') {
+    try {
+      const result = debugSortRolesSheet();
+      Logger.log('doGet debug-sort-roles: ' + JSON.stringify(result));
+      return ContentService
+        .createTextOutput(JSON.stringify({ success: true, debug: result }))
+        .setMimeType(ContentService.MimeType.JSON);
+    } catch (error) {
+      Logger.log('doGet debug-sort-roles error: ' + error.toString());
+      return ContentService
+        .createTextOutput(JSON.stringify({ success: false, error: error.toString() }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+  } else if (action === 'debug-last-save') {
+    try {
+      const debug = getLastSaveDebugState();
+      return ContentService
+        .createTextOutput(JSON.stringify({ success: true, debug: debug }))
+        .setMimeType(ContentService.MimeType.JSON);
+    } catch (error) {
+      Logger.log('doGet debug-last-save error: ' + error.toString());
       return ContentService
         .createTextOutput(JSON.stringify({ success: false, error: error.toString() }))
         .setMimeType(ContentService.MimeType.JSON);
@@ -108,12 +141,19 @@ function doPost(e) {
       Logger.log('ROLL_DEBUG_GAS_DO_POST_RECEIVED roles.length=' + roles.length);
       Logger.log('doPost save: writing ' + roles.length + ' roles');
 
-      writeRoles(roles);
+      const writtenRoleCount = writeRoles(roles);
+      const debug = buildSaveDebugState(roles.length, writtenRoleCount, 'doPost');
+      storeLastSaveDebugState(debug);
 
       Logger.log('doPost save: write complete');
 
       return ContentService
-        .createTextOutput(JSON.stringify({ success: true }))
+        .createTextOutput(JSON.stringify({
+          success: true,
+          receivedRoleCount: debug.receivedRoleCount,
+          writtenRoleCount: debug.writtenRoleCount,
+          debug: debug
+        }))
         .setMimeType(ContentService.MimeType.JSON);
     }
 
@@ -134,6 +174,61 @@ function doPost(e) {
       .setMimeType(ContentService.MimeType.JSON);
   }
 }
+
+function buildSaveDebugState(receivedRoleCount, writtenRoleCount, source) {
+  return {
+    source: source,
+    receivedRoleCount: Number(receivedRoleCount),
+    writtenRoleCount: Number(writtenRoleCount),
+    savedAt: new Date().toISOString()
+  };
+}
+
+function storeLastSaveDebugState(debug) {
+  const text = JSON.stringify(debug || {});
+
+  try {
+    CacheService.getScriptCache().put(LAST_SAVE_DEBUG_KEY, text, 21600);
+  } catch (error) {
+    Logger.log('storeLastSaveDebugState cache error: ' + error.toString());
+  }
+
+  try {
+    PropertiesService.getScriptProperties().setProperty(LAST_SAVE_DEBUG_KEY, text);
+  } catch (error) {
+    Logger.log('storeLastSaveDebugState properties error: ' + error.toString());
+  }
+}
+
+function getLastSaveDebugState() {
+  let text = '';
+
+  try {
+    text = CacheService.getScriptCache().get(LAST_SAVE_DEBUG_KEY) || '';
+  } catch (error) {
+    Logger.log('getLastSaveDebugState cache error: ' + error.toString());
+  }
+
+  if (!text) {
+    try {
+      text = PropertiesService.getScriptProperties().getProperty(LAST_SAVE_DEBUG_KEY) || '';
+    } catch (error) {
+      Logger.log('getLastSaveDebugState properties error: ' + error.toString());
+    }
+  }
+
+  if (!text) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    Logger.log('getLastSaveDebugState parse error: ' + error.toString());
+    return null;
+  }
+}
+
 function fetchRoles() {
   const sheet = getSheet();
   const values = sheet.getDataRange().getValues();
@@ -209,6 +304,7 @@ function writeRoles(roles) {
   applySheetFormatting(sheet, rows.length);
 
   Logger.log('writeRoles: complete');
+  return rows.length;
 }
 
 function sortRolesByStandRoleForSheet(roles) {
@@ -279,12 +375,31 @@ function addRoleFromInputArea() {
   SpreadsheetApp.getUi().alert('Rolesシートに追加しました。');
 }
 
+function debugSortRolesSheet() {
+  const sheet = getSheet();
+  ensureRolesHeader(sheet);
+  const beforeRowCount = Math.max(sheet.getLastRow() - 1, 0);
+  const rowCount = sortRolesSheet();
+  const afterRowCount = Math.max(sheet.getLastRow() - 1, 0);
+
+  if (beforeRowCount !== afterRowCount) {
+    throw new Error('Row count changed during sort: before=' + beforeRowCount + ', after=' + afterRowCount);
+  }
+
+  return {
+    action: 'debug-sort-roles',
+    rowCount: afterRowCount,
+    sortedRows: rowCount
+  };
+}
+
 function sortRolesSheet() {
   const sheet = getSheet();
   const lastRow = sheet.getLastRow();
 
   if (lastRow <= 2) {
-    return;
+    applySheetFormatting(sheet, Math.max(lastRow - 1, 0));
+    return Math.max(lastRow - 1, 0);
   }
 
   const lastColumn = Math.max(sheet.getLastColumn(), HEADER_VALUES.length);
@@ -308,6 +423,7 @@ function sortRolesSheet() {
 
   range.setValues(values);
   applySheetFormatting(sheet, values.length);
+  return values.length;
 }
 
 function parseStandNumberForSort(value) {

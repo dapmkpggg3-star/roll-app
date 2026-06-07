@@ -3,6 +3,8 @@ const DELETED_ROLE_IDS_KEY = 'deletedRoleIds';
 const LAST_SUCCESSFUL_SYNC_COUNT_KEY = 'lastSuccessfulSyncRoleCount';
 const SYNC_COUNT_DROP_ABORT_RATIO = 0.3;
 let syncDiagnosticRemoteRoles = null;
+let lastGasSaveDebug = null;
+let lastSavedRemoteRoleCount = null;
 
 function parseStandRoleNumber(value) {
     const text = String(value || '').trim();
@@ -173,6 +175,58 @@ function formatSyncDiagnosticCount(count) {
     return Number.isFinite(count) ? String(count) : '未取得';
 }
 
+function normalizeGasSaveDebug(debug) {
+    if (!debug || typeof debug !== 'object') {
+        return null;
+    }
+
+    return {
+        source: debug.source || '',
+        receivedRoleCount: Number.isFinite(Number(debug.receivedRoleCount)) ? Number(debug.receivedRoleCount) : null,
+        writtenRoleCount: Number.isFinite(Number(debug.writtenRoleCount)) ? Number(debug.writtenRoleCount) : null,
+        savedAt: debug.savedAt || ''
+    };
+}
+
+function formatDebugCount(count) {
+    return Number.isFinite(count) ? String(count) : '未取得';
+}
+
+function getSyncSaveDebugText(savedRemoteRoleCount = lastSavedRemoteRoleCount) {
+    const debug = normalizeGasSaveDebug(lastGasSaveDebug);
+
+    return [
+        `GAS受信件数: ${formatDebugCount(debug ? debug.receivedRoleCount : null)}`,
+        `GAS書込件数: ${formatDebugCount(debug ? debug.writtenRoleCount : null)}`,
+        `保存後取得件数: ${formatDebugCount(savedRemoteRoleCount)}`
+    ].join(' / ');
+}
+
+function logSyncSaveDebugCounts(savedRemoteRoleCount = lastSavedRemoteRoleCount) {
+    const debug = normalizeGasSaveDebug(lastGasSaveDebug);
+
+    console.info(`GAS受信件数: ${formatDebugCount(debug ? debug.receivedRoleCount : null)}`);
+    console.info(`GAS書込件数: ${formatDebugCount(debug ? debug.writtenRoleCount : null)}`);
+    console.info(`保存後取得件数: ${formatDebugCount(savedRemoteRoleCount)}`);
+}
+
+async function fetchLastGasSaveDebug() {
+    const url = `${SHEETS_ENDPOINT}?action=debug-last-save&t=${Date.now()}`;
+    const response = await fetch(url, {
+        method: 'GET',
+        cache: 'no-store'
+    });
+    const data = await readJsonResponse(response, 'GAS保存診断取得');
+
+    if (!data || data.success !== true) {
+        const detail = data && data.error ? data.error : 'debug-last-save が取得できませんでした。';
+        throw createSyncError('GAS保存診断取得', detail);
+    }
+
+    lastGasSaveDebug = normalizeGasSaveDebug(data.debug);
+    return lastGasSaveDebug;
+}
+
 function setSyncDiagnosticRemoteRoles(remoteRoles) {
     syncDiagnosticRemoteRoles = Array.isArray(remoteRoles)
         ? remoteRoles.map(normalizeRole)
@@ -283,7 +337,12 @@ function updateSyncDiagnosticPanel(options = {}) {
     if (localEl) localEl.textContent = formatSyncDiagnosticCount(counts.local);
     if (remoteEl) remoteEl.textContent = formatSyncDiagnosticCount(counts.remote);
     if (mergedEl) mergedEl.textContent = formatSyncDiagnosticCount(counts.merged);
-    if (detailEl) detailEl.textContent = status.detail;
+    if (detailEl) {
+        const saveDebugText = lastGasSaveDebug || Number.isFinite(lastSavedRemoteRoleCount)
+            ? ` / ${getSyncSaveDebugText()}`
+            : '';
+        detailEl.textContent = `${status.detail}${saveDebugText}`;
+    }
 }
 
 function markRoleDeleted(id) {
@@ -516,6 +575,7 @@ async function saveData() {
     }
 
     try {
+        lastSavedRemoteRoleCount = null;
         console.log('saveRemoteRoles: Sending data to', SHEETS_ENDPOINT);
         console.log('SYNC SEND PAYLOAD COUNT', {
             roles: Array.isArray(roles) ? roles.length : null
@@ -553,7 +613,17 @@ async function saveData() {
         }
 
         await new Promise(resolve => setTimeout(resolve, 1200));
-        return true;
+
+        try {
+            await fetchLastGasSaveDebug();
+        } catch (debugError) {
+            console.warn('GAS save debug fetch failed:', debugError);
+            lastGasSaveDebug = null;
+        }
+
+        logSyncSaveDebugCounts();
+        updateSyncDiagnosticPanel();
+        return lastGasSaveDebug || true;
     } catch (error) {
         console.error('saveRemoteRoles error:', error);
         throw error;
@@ -764,11 +834,18 @@ async function syncRoles() {
         if (ok) {
             setSyncMessage('保存結果を確認しています...');
             const savedRemoteRoles = await fetchRemoteRolesForGuard('同期後データ確認');
+            lastSavedRemoteRoleCount = savedRemoteRoles.length;
+            logSyncSaveDebugCounts(lastSavedRemoteRoleCount);
             verifySavedRoles(mergedRoles, savedRemoteRoles);
             clearDeletedRoleIds(pendingDeletedRoleIds);
             saveLastSuccessfulSyncCount(savedRemoteRoles.length);
             saveLastSyncAt();
             renderRoles();
+            updateSyncDiagnosticPanel({
+                localRoles: roles,
+                remoteRoles: savedRemoteRoles,
+                mergedRoles: roles
+            });
             setSyncMessage('スプレッドシートと同期しました。');
         } else {
             setSyncMessage('スプレッドシートと同期できませんでした。ブラウザ内には保存されています。', true);
