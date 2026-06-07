@@ -4,6 +4,48 @@ const LAST_SUCCESSFUL_SYNC_COUNT_KEY = 'lastSuccessfulSyncRoleCount';
 const SYNC_COUNT_DROP_ABORT_RATIO = 0.3;
 let syncDiagnosticRemoteRoles = null;
 
+function parseStandRoleNumber(value) {
+    const text = String(value || '').trim();
+    const match = text.match(/#?\s*(\d+)(?:\s*-\s*(\d+))?/);
+
+    if (!match) {
+        return {
+            stand: Number.POSITIVE_INFINITY,
+            role: Number.POSITIVE_INFINITY,
+            text
+        };
+    }
+
+    return {
+        stand: Number(match[1]),
+        role: match[2] ? Number(match[2]) : 0,
+        text
+    };
+}
+
+function compareStandRoleNames(aName, bName) {
+    const a = parseStandRoleNumber(aName);
+    const b = parseStandRoleNumber(bName);
+
+    if (a.stand !== b.stand) {
+        return a.stand - b.stand;
+    }
+
+    if (a.role !== b.role) {
+        return a.role - b.role;
+    }
+
+    return a.text.localeCompare(b.text, 'ja');
+}
+
+function compareRolesByStandRole(a, b) {
+    return compareStandRoleNames(a && a.name, b && b.name);
+}
+
+function sortRolesByStandRole(roleList) {
+    return (Array.isArray(roleList) ? roleList : []).slice().sort(compareRolesByStandRole);
+}
+
 function isRemoteConfigured() {
     return SHEETS_ENDPOINT.trim().length > 0;
 }
@@ -707,10 +749,12 @@ async function syncRoles() {
             return;
         }
 
-        roles = mergedRoles;
+        const sortedMergedRoles = sortRolesByStandRole(mergedRoles);
+
+        roles = sortedMergedRoles;
         saveLocalRoles();
 
-        localStorage.setItem('roles_backup_before_sync', JSON.stringify(mergedRoles));
+        localStorage.setItem('roles_backup_before_sync', JSON.stringify(sortedMergedRoles));
         localStorage.setItem('roles_backup_before_sync_saved_at', new Date().toISOString());
 
         setSyncMessage('スプレッドシートと同期中です...');

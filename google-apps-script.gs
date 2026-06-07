@@ -171,7 +171,8 @@ function writeRoles(roles) {
   Logger.log('writeRoles: clearing sheet contents');
   sheet.clearContents();
 
-  const rows = roles.map((role, index) => {
+  const sortedRoles = sortRolesByStandRoleForSheet(roles);
+  const rows = sortedRoles.map((role, index) => {
     try {
       return [
         role.id || '',
@@ -208,6 +209,27 @@ function writeRoles(roles) {
   applySheetFormatting(sheet, rows.length);
 
   Logger.log('writeRoles: complete');
+}
+
+function sortRolesByStandRoleForSheet(roles) {
+  return (Array.isArray(roles) ? roles : []).slice().sort(function(a, b) {
+    return compareStandRoleNamesForSheet(a && a.name, b && b.name);
+  });
+}
+
+function compareStandRoleNamesForSheet(aName, bName) {
+  const a = parseStandNumberForSort(aName);
+  const b = parseStandNumberForSort(bName);
+
+  if (a.stand !== b.stand) {
+    return a.stand - b.stand;
+  }
+
+  if (a.number !== b.number) {
+    return a.number - b.number;
+  }
+
+  return String(aName || '').localeCompare(String(bName || ''), 'ja');
 }
 
 function addRoleFromInputArea() {
