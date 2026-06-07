@@ -10,6 +10,17 @@ const HEADER_BACKGROUND = '#1f4e78';
 const HEADER_FONT_COLOR = '#ffffff';
 const LAST_SAVE_DEBUG_KEY = 'ROLL_LAST_SAVE_DEBUG';
 const DEFAULT_STATUS = '中古予備（バラシ前）';
+const STATUS_OPTIONS = [
+  'オンライン',
+  '中古予備（バラシ前）',
+  '改削行き（搬出可能）',
+  '改削中',
+  '新品予備（組替可能）',
+  '新品予備（組込完了）',
+  '新品予備保管',
+  '廃却待ち（ラック保管）',
+  '廃棄'
+];
 
 
 function doGet(e) {
@@ -71,6 +82,19 @@ function doGet(e) {
         .setMimeType(ContentService.MimeType.JSON);
     } catch (error) {
       Logger.log('doGet debug-formatting error: ' + error.toString());
+      return ContentService
+        .createTextOutput(JSON.stringify({ success: false, error: error.toString() }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+  } else if (action === 'debug-update-status-dropdown') {
+    try {
+      const result = applyStatusDropdowns(getSheet());
+      Logger.log('doGet debug-update-status-dropdown: ' + JSON.stringify(result));
+      return ContentService
+        .createTextOutput(JSON.stringify({ success: true, debug: result }))
+        .setMimeType(ContentService.MimeType.JSON);
+    } catch (error) {
+      Logger.log('doGet debug-update-status-dropdown error: ' + error.toString());
       return ContentService
         .createTextOutput(JSON.stringify({ success: false, error: error.toString() }))
         .setMimeType(ContentService.MimeType.JSON);
@@ -265,6 +289,7 @@ function writeRoles(roles) {
   const sheet = getSheet();
   Logger.log('writeRoles: clearing sheet contents');
   sheet.clearContents();
+  applyStatusDropdowns(sheet);
 
   const sortedRoles = sortRolesByStandRoleForSheet(roles);
   const rows = sortedRoles.map((role, index) => {
@@ -564,6 +589,27 @@ function normalizeUseStartDateForSheet(value) {
   }
 
   return String(value).trim();
+}
+
+function applyStatusDropdowns(sheet) {
+  const targetSheet = sheet || getSheet();
+  const maxRows = Math.max(targetSheet.getMaxRows(), 2);
+  const statusRange = targetSheet.getRange(2, STATUS_COLUMN_INDEX, maxRows - 1, 1);
+  const rule = SpreadsheetApp.newDataValidation()
+    .requireValueInList(STATUS_OPTIONS, true)
+    .setAllowInvalid(false)
+    .build();
+
+  statusRange.setDataValidation(rule);
+
+  return {
+    action: 'debug-update-status-dropdown',
+    sheetName: targetSheet.getName(),
+    column: STATUS_COLUMN_INDEX,
+    startRow: 2,
+    rowCount: maxRows - 1,
+    statusOptions: STATUS_OPTIONS.slice()
+  };
 }
 
 
