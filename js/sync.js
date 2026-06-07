@@ -85,6 +85,20 @@ function getRollDebugSlice(roleList, startIndex, count = 5) {
     return roleList.slice(startIndex, startIndex + count).map(getRollDebugSnapshot);
 }
 
+function isRoleNameBlank(role) {
+    return String(role && role.name !== undefined && role.name !== null ? role.name : '').trim() === '';
+}
+
+function getBlankNameRoleDiagnostics(roleList) {
+    return (Array.isArray(roleList) ? roleList : [])
+        .filter(isRoleNameBlank)
+        .map(role => ({
+            id: role && role.id,
+            status: role && role.status,
+            updatedAt: role && role.updatedAt
+        }));
+}
+
 function logStatusDebug(label, roleList, roleName = STATUS_DEBUG_ROLE_NAME) {
     const role = (Array.isArray(roleList) ? roleList : []).find(item => String(item && item.name || '') === roleName);
 
@@ -594,15 +608,32 @@ async function saveData() {
             return false;
         }
 
+        const blankNameRoles = getBlankNameRoleDiagnostics(roles);
+        const debugSendIndex = findRollDebugIndex(roles);
+        console.log('ROLL_DEBUG_SAVE_DATA_BEFORE_POST', {
+            'roles.length': roles.length,
+            rolesLength: roles.length,
+            blankNameCount: blankNameRoles.length,
+            blankNameRoles,
+            targetIndex: debugSendIndex,
+            afterTarget5: getRollDebugSlice(roles, debugSendIndex)
+        });
+
+        if (blankNameRoles.length > 0) {
+            console.error('ROLL_SYNC_ABORT_BLANK_ROLE_NAMES', {
+                'roles.length': roles.length,
+                rolesLength: roles.length,
+                blankNameCount: blankNameRoles.length,
+                blankNameRoles
+            });
+            alert(`同期を中止しました。スタンド番号が空のデータが含まれています（${blankNameRoles.length}件）。データ消失防止のため確認してください。`);
+            setSyncMessage(`同期を中止しました。スタンド番号が空のデータが含まれています（${blankNameRoles.length}件）。`, true);
+            return false;
+        }
+
         const payload = JSON.stringify({
             action: 'save',
             roles: roles
-        });
-        const debugSendIndex = findRollDebugIndex(roles);
-        console.log('ROLL_DEBUG_SAVE_DATA_BEFORE_POST', {
-            sendLength: roles.length,
-            targetIndex: debugSendIndex,
-            afterTarget5: getRollDebugSlice(roles, debugSendIndex)
         });
 
         const controller = new AbortController();
