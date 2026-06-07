@@ -99,6 +99,19 @@
                         </div>
                     </div>
                 </div>
+                <div id="sync-diagnostic-panel" class="sync-diagnostic-panel sync-diagnostic-warning" aria-live="polite">
+                    <div class="sync-diagnostic-header">
+                        <span class="sync-diagnostic-title">同期診断</span>
+                        <span id="sync-diagnostic-status" class="sync-diagnostic-status">状態: 要確認</span>
+                    </div>
+                    <div class="sync-diagnostic-counts">
+                        <span>前回正常: <strong id="sync-diagnostic-last">未取得</strong></span>
+                        <span>Local: <strong id="sync-diagnostic-local">0</strong></span>
+                        <span>Remote: <strong id="sync-diagnostic-remote">未取得</strong></span>
+                        <span>Merged: <strong id="sync-diagnostic-merged">未取得</strong></span>
+                    </div>
+                    <div id="sync-diagnostic-detail" class="sync-diagnostic-detail">Remote件数を取得中です</div>
+                </div>
                 <div id="incomplete-work-dashboard" class="incomplete-work-dashboard" aria-live="polite">
                     <div class="incomplete-work-header">
                         <span class="incomplete-work-title">未完了作業依頼</span>

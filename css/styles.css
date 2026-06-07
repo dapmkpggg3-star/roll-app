@@ -462,6 +462,68 @@ body {
     line-height: 1;
 }
 
+.sync-diagnostic-panel {
+    display: grid;
+    gap: 10px;
+    width: 100%;
+    margin: 0 0 18px;
+    padding: 14px 16px;
+    border-radius: 12px;
+    border: 1px solid #e2e8f0;
+    background: #f8fafc;
+    color: #0f172a;
+    box-shadow: 0 8px 22px rgba(15, 23, 42, 0.08);
+}
+
+.sync-diagnostic-header,
+.sync-diagnostic-counts {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.sync-diagnostic-header {
+    justify-content: space-between;
+}
+
+.sync-diagnostic-title,
+.sync-diagnostic-status {
+    font-weight: 900;
+}
+
+.sync-diagnostic-counts {
+    font-size: 0.95rem;
+    font-weight: 700;
+}
+
+.sync-diagnostic-counts strong {
+    font-size: 1.04rem;
+}
+
+.sync-diagnostic-detail {
+    font-size: 0.92rem;
+    font-weight: 700;
+}
+
+.sync-diagnostic-normal {
+    background: #ecfdf5;
+    border-color: #a7f3d0;
+    color: #065f46;
+}
+
+.sync-diagnostic-warning {
+    background: #fffbeb;
+    border-color: #fde68a;
+    color: #92400e;
+}
+
+.sync-diagnostic-danger {
+    background: #fef2f2;
+    border-color: #fecaca;
+    color: #991b1b;
+}
+
 .incomplete-work-dashboard {
     display: grid;
     gap: 10px;

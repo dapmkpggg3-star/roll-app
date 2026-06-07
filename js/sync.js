@@ -1,5 +1,8 @@
 const SHEETS_ENDPOINT = 'https://script.google.com/macros/s/AKfycbyN0_AoU1dcaXzCO3ICRma2pFJyz2HvCSnwe_RAJMpaOlE53Gj5SugtDFoV78KHf9x9/exec';
 const DELETED_ROLE_IDS_KEY = 'deletedRoleIds';
+const LAST_SUCCESSFUL_SYNC_COUNT_KEY = 'lastSuccessfulSyncRoleCount';
+const SYNC_COUNT_DROP_ABORT_RATIO = 0.3;
+let syncDiagnosticRemoteRoles = null;
 
 function isRemoteConfigured() {
     return SHEETS_ENDPOINT.trim().length > 0;
@@ -41,6 +44,180 @@ function setDeletedRoleIds(ids) {
 
     localStorage.setItem(DELETED_ROLE_IDS_KEY, JSON.stringify(normalizedIds));
     return normalizedIds;
+}
+
+function getLastSuccessfulSyncCount() {
+    const count = Number(localStorage.getItem(LAST_SUCCESSFUL_SYNC_COUNT_KEY));
+
+    if (Number.isFinite(count) && count > 0) {
+        return count;
+    }
+
+    try {
+        const previousRoles = JSON.parse(localStorage.getItem('roles_backup_before_sync') || '[]');
+        return Array.isArray(previousRoles) && previousRoles.length > 0 ? previousRoles.length : 0;
+    } catch (error) {
+        console.error('getLastSuccessfulSyncCount error:', error);
+        return 0;
+    }
+}
+
+function saveLastSuccessfulSyncCount(count) {
+    if (!Number.isFinite(count) || count < 0) {
+        return;
+    }
+
+    localStorage.setItem(LAST_SUCCESSFUL_SYNC_COUNT_KEY, String(count));
+}
+
+function getSyncCountBaseline(counts) {
+    const validCounts = counts.filter(count => Number.isFinite(count) && count > 0);
+    return validCounts.length > 0 ? Math.max(...validCounts) : 0;
+}
+
+function shouldAbortForSyncCountDrop(sendCount, baselineCount) {
+    if (!Number.isFinite(sendCount) || sendCount <= 0) {
+        return true;
+    }
+
+    if (!Number.isFinite(baselineCount) || baselineCount <= 0) {
+        return false;
+    }
+
+    return (baselineCount - sendCount) / baselineCount >= SYNC_COUNT_DROP_ABORT_RATIO;
+}
+
+function warnAndBlockUnsafeSyncCount(sendCount, baselineCount) {
+    if (!Number.isFinite(sendCount) || sendCount <= 0) {
+        alert('同期を中止しました。0件のデータ送信は禁止されています。データ消失防止のため確認してください。');
+        setSyncMessage('同期を中止しました。0件送信は禁止されています。', true);
+        return true;
+    }
+
+    if (shouldAbortForSyncCountDrop(sendCount, baselineCount)) {
+        alert(`同期を中止しました。送信件数が大幅に減っています（${baselineCount}件→${sendCount}件）。データ消失防止のため確認してください。`);
+        setSyncMessage('同期を中止しました。送信件数が大幅に減っています。', true);
+        return true;
+    }
+
+    return false;
+}
+
+function formatSyncDiagnosticCount(count) {
+    return Number.isFinite(count) ? String(count) : '未取得';
+}
+
+function setSyncDiagnosticRemoteRoles(remoteRoles) {
+    syncDiagnosticRemoteRoles = Array.isArray(remoteRoles)
+        ? remoteRoles.map(normalizeRole)
+        : null;
+}
+
+function getLocalRolesForDiagnostic() {
+    return Array.isArray(roles) ? roles.map(normalizeRole) : [];
+}
+
+function getSyncDiagnosticCounts(options = {}) {
+    const localRoles = Array.isArray(options.localRoles)
+        ? options.localRoles.map(normalizeRole)
+        : getLocalRolesForDiagnostic();
+    const remoteRoles = Array.isArray(options.remoteRoles)
+        ? options.remoteRoles.map(normalizeRole)
+        : syncDiagnosticRemoteRoles;
+    const hasRemote = Array.isArray(remoteRoles);
+    const mergedRoles = Array.isArray(options.mergedRoles)
+        ? options.mergedRoles.map(normalizeRole)
+        : (hasRemote ? mergeRemoteAndLocalRoles(remoteRoles, localRoles) : null);
+
+    return {
+        lastSuccessful: getLastSuccessfulSyncCount(),
+        local: localRoles.length,
+        remote: hasRemote ? remoteRoles.length : null,
+        merged: Array.isArray(mergedRoles) ? mergedRoles.length : null,
+        hasRemote
+    };
+}
+
+function getSyncDiagnosticStatus(counts) {
+    const comparableCounts = [counts.local];
+
+    if (counts.hasRemote) {
+        comparableCounts.push(counts.remote);
+    }
+
+    if (Number.isFinite(counts.merged)) {
+        comparableCounts.push(counts.merged);
+    }
+
+    const maxCount = Math.max(...comparableCounts);
+    const minCount = Math.min(...comparableCounts);
+    const diff = maxCount - minCount;
+    const baseline = getSyncCountBaseline([
+        counts.lastSuccessful,
+        Number.isFinite(counts.remote) ? counts.remote : 0
+    ]);
+    const mergedCount = Number.isFinite(counts.merged) ? counts.merged : counts.local;
+    const hasZero = counts.local === 0
+        || (counts.hasRemote && counts.remote === 0)
+        || mergedCount === 0;
+    const hasDangerDrop = shouldAbortForSyncCountDrop(mergedCount, baseline);
+
+    if (hasZero || hasDangerDrop) {
+        return {
+            level: 'danger',
+            statusText: '状態: ⛔ 同期停止',
+            detail: hasZero
+                ? '0件が含まれています。データ消失防止のため同期前に確認してください。'
+                : `30%以上減少しています（${baseline}件→${mergedCount}件）。同期停止対象です。`
+        };
+    }
+
+    if (counts.hasRemote && counts.local === counts.remote && counts.remote === mergedCount) {
+        return {
+            level: 'normal',
+            statusText: '状態: 正常',
+            detail: 'Local / Remote / Merged の件数が一致しています'
+        };
+    }
+
+    return {
+        level: 'warning',
+        statusText: '状態: 要確認',
+        detail: counts.hasRemote
+            ? `差分: ${diff}件。同期前に確認してください`
+            : 'Remote件数を取得中です'
+    };
+}
+
+function updateSyncDiagnosticPanel(options = {}) {
+    if (Array.isArray(options.remoteRoles)) {
+        setSyncDiagnosticRemoteRoles(options.remoteRoles);
+    }
+
+    const panel = document.getElementById('sync-diagnostic-panel');
+
+    if (!panel) {
+        return;
+    }
+
+    const counts = getSyncDiagnosticCounts(options);
+    const status = getSyncDiagnosticStatus(counts);
+    const statusEl = document.getElementById('sync-diagnostic-status');
+    const lastEl = document.getElementById('sync-diagnostic-last');
+    const localEl = document.getElementById('sync-diagnostic-local');
+    const remoteEl = document.getElementById('sync-diagnostic-remote');
+    const mergedEl = document.getElementById('sync-diagnostic-merged');
+    const detailEl = document.getElementById('sync-diagnostic-detail');
+
+    panel.classList.remove('sync-diagnostic-normal', 'sync-diagnostic-warning', 'sync-diagnostic-danger');
+    panel.classList.add(`sync-diagnostic-${status.level}`);
+
+    if (statusEl) statusEl.textContent = status.statusText;
+    if (lastEl) lastEl.textContent = counts.lastSuccessful > 0 ? String(counts.lastSuccessful) : '未取得';
+    if (localEl) localEl.textContent = formatSyncDiagnosticCount(counts.local);
+    if (remoteEl) remoteEl.textContent = formatSyncDiagnosticCount(counts.remote);
+    if (mergedEl) mergedEl.textContent = formatSyncDiagnosticCount(counts.merged);
+    if (detailEl) detailEl.textContent = status.detail;
 }
 
 function markRoleDeleted(id) {
@@ -230,6 +407,7 @@ async function fetchData() {
 
         const data = await readJsonResponse(response, 'データ取得');
         validateFetchResponse(data);
+        setSyncDiagnosticRemoteRoles(data.roles);
         const deletedRoleIds = getDeletedRoleIds();
         roles = data.roles
             .map(normalizeRole)
@@ -254,6 +432,15 @@ async function saveData() {
 
     try {
         console.log('saveRemoteRoles: Sending data to', SHEETS_ENDPOINT);
+        console.log('SYNC SEND PAYLOAD COUNT', {
+            roles: Array.isArray(roles) ? roles.length : null
+        });
+
+        if (!Array.isArray(roles) || roles.length === 0) {
+            alert('同期を中止しました。0件のデータ送信は禁止されています。データ消失防止のため確認してください。');
+            setSyncMessage('同期を中止しました。0件送信は禁止されています。', true);
+            return false;
+        }
 
         const payload = JSON.stringify({
             action: 'save',
@@ -291,7 +478,9 @@ async function fetchRemoteRolesForGuard(actionLabel = '同期前データ確認'
 
     const data = await readJsonResponse(response, actionLabel);
     validateFetchResponse(data);
-    return data.roles.map(normalizeRole);
+    const remoteRoles = data.roles.map(normalizeRole);
+    setSyncDiagnosticRemoteRoles(remoteRoles);
+    return remoteRoles;
 }
 
 function loadRemoteRoles() {
@@ -437,6 +626,31 @@ async function syncRoles() {
         }
 
         const mergedRoles = mergeRemoteAndLocalRoles(remoteRoles, localRoles);
+        const lastSuccessfulSyncCount = getLastSuccessfulSyncCount();
+        const syncCountBaseline = getSyncCountBaseline([
+            remoteRoles.length,
+            previousRoles.length,
+            lastSuccessfulSyncCount
+        ]);
+
+        console.log('SYNC SEND COUNT CHECK', {
+            send: mergedRoles.length,
+            baseline: syncCountBaseline,
+            remote: remoteRoles.length,
+            local: localRoles.length,
+            previous: previousRoles.length,
+            lastSuccessful: lastSuccessfulSyncCount,
+            deleted: pendingDeletedRoleIds.length
+        });
+        updateSyncDiagnosticPanel({
+            localRoles,
+            remoteRoles,
+            mergedRoles
+        });
+
+        if (warnAndBlockUnsafeSyncCount(mergedRoles.length, syncCountBaseline)) {
+            return;
+        }
 
         roles = mergedRoles;
         saveLocalRoles();
@@ -453,6 +667,7 @@ async function syncRoles() {
             const savedRemoteRoles = await fetchRemoteRolesForGuard('同期後データ確認');
             verifySavedRoles(mergedRoles, savedRemoteRoles);
             clearDeletedRoleIds(pendingDeletedRoleIds);
+            saveLastSuccessfulSyncCount(savedRemoteRoles.length);
             saveLastSyncAt();
             renderRoles();
             setSyncMessage('スプレッドシートと同期しました。');

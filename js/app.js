@@ -1734,6 +1734,9 @@ function renderRoles() {
     updateCountSummary(filteredRoles, roles);
     updateIncompleteWorkDashboard(roles);
     updateTodayTaskDashboard(roles);
+    if (typeof updateSyncDiagnosticPanel === 'function') {
+        updateSyncDiagnosticPanel();
+    }
 
     const visibleRoles = filteredRoles
         .slice()
