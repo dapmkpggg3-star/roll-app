@@ -1666,7 +1666,8 @@ function getFilteredRoles() {
         if (!isWatchStandMatched(role)) {
             return false;
         }
-        if (role.status === NEW_STORAGE_STATUS && statusFilter !== NEW_STORAGE_STATUS && !hasSearch) {
+        const isNormallyHiddenStatus = role.status === NEW_STORAGE_STATUS || role.status === SCRAP_WAITING_STATUS;
+        if (isNormallyHiddenStatus && statusFilter !== role.status && !hasSearch) {
             return false;
         }
         if (!hasSearch) {
