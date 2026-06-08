@@ -572,6 +572,9 @@ function mergeRemoteAndLocalRoles(remoteRoles, localRoles) {
         if (remoteRole) {
             duplicateKeys.push({ source: 'local', key, role: getRollDebugSnapshot(localRole) });
             localRole.history = mergeRoleHistory(remoteRole.history, localRole.history);
+            if (!localRole.useStartDate && remoteRole.useStartDate) {
+                localRole.useStartDate = remoteRole.useStartDate;
+            }
         } else if (seenKeys.has(key)) {
             duplicateKeys.push({ source: 'local', key, role: getRollDebugSnapshot(localRole) });
         }
