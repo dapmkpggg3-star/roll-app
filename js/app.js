@@ -507,7 +507,80 @@ function getTodayDateString() {
 }
 
 function normalizeUseStartDate(value) {
-    return value === undefined || value === null ? '' : String(value).trim();
+    if (value === undefined || value === null) {
+        return '';
+    }
+
+    if (value instanceof Date && !Number.isNaN(value.getTime())) {
+        return formatUseStartDateDate(value);
+    }
+
+    const text = String(value).trim();
+
+    if (!text) {
+        return '';
+    }
+
+    const ymdMatch = text.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})$/);
+    if (ymdMatch) {
+        const year = Number(ymdMatch[1]);
+        const month = Number(ymdMatch[2]);
+        const day = Number(ymdMatch[3]);
+        const date = new Date(year, month - 1, day);
+
+        if (
+            date.getFullYear() === year &&
+            date.getMonth() === month - 1 &&
+            date.getDate() === day
+        ) {
+            return formatUseStartDateDate(date);
+        }
+    }
+
+    const monthNameMatch = text.match(/^([A-Za-z]+)\s+(\d{1,2})(?:,?\s+(\d{4}))?$/);
+    if (monthNameMatch) {
+        const monthIndexes = {
+            jan: 0,
+            feb: 1,
+            mar: 2,
+            apr: 3,
+            may: 4,
+            jun: 5,
+            jul: 6,
+            aug: 7,
+            sep: 8,
+            oct: 9,
+            nov: 10,
+            dec: 11
+        };
+        const monthIndex = monthIndexes[monthNameMatch[1].slice(0, 3).toLowerCase()];
+        const day = Number(monthNameMatch[2]);
+        const year = monthNameMatch[3] ? Number(monthNameMatch[3]) : new Date().getFullYear();
+
+        if (monthIndex !== undefined) {
+            const date = new Date(year, monthIndex, day);
+
+            if (
+                date.getFullYear() === year &&
+                date.getMonth() === monthIndex &&
+                date.getDate() === day
+            ) {
+                return formatUseStartDateDate(date);
+            }
+        }
+    }
+
+    const parsed = new Date(text);
+    if (!Number.isNaN(parsed.getTime())) {
+        return formatUseStartDateDate(parsed);
+    }
+
+    return text;
+}
+
+function formatUseStartDateDate(date) {
+    const pad = number => String(number).padStart(2, '0');
+    return `${date.getFullYear()}/${pad(date.getMonth() + 1)}/${pad(date.getDate())}`;
 }
 
 function formatUseStartDate(value) {
@@ -517,14 +590,7 @@ function formatUseStartDate(value) {
         return '-';
     }
 
-    const date = new Date(normalized);
-
-    if (Number.isNaN(date.getTime())) {
-        return normalized;
-    }
-
-    const pad = number => String(number).padStart(2, '0');
-    return `${date.getFullYear()}/${pad(date.getMonth() + 1)}/${pad(date.getDate())}`;
+    return normalized;
 }
 
 function setUseStartDateIfNeeded(role, at = new Date().toISOString(), options = {}) {
