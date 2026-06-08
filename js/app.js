@@ -1402,8 +1402,8 @@ function getTodayTaskItems(allRoles) {
                 standKey,
                 standNumber: Number(standKey) || 999999,
                 standLabel: `#${standKey}`,
-                title: '組替作業予定',
-                actions: ['組替作業を予定に入れる'],
+                title: '組替候補あり',
+                actions: ['組替対象を確認する'],
                 reason: '中古予備と新品予備（組替可能）が同一スタンド内に存在',
                 occurredAt,
                 elapsedDays: getElapsedDaysSince(occurredAt, now) || 0
