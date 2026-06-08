@@ -1538,7 +1538,7 @@ function focusTodayTaskRole(taskId) {
     const targetRole = getTodayTaskTargetRole(task);
 
     if (!targetRole) {
-        showToast('対象ロールが見つかりません');
+        showToast(task ? '対象ロールは現在の表示条件では見つかりません' : '対象ロールが見つかりません');
         return;
     }
 
@@ -1563,13 +1563,45 @@ function getTodayTaskTargetRole(task) {
         return roles.find(role => String(role.id) === String(roleId)) || null;
     }
 
+    if (taskId.startsWith('assembly-')) {
+        return getTodayTaskStandTargetRole(task, [USED_STANDBY_STATUS, NEW_READY_STATUS]);
+    }
+
+    if (taskId.startsWith('reserve-shortage-')) {
+        const normallyHiddenStatuses = [NEW_STORAGE_STATUS, SCRAP_WAITING_STATUS, DISCARDED_STATUS];
+        return getTodayTaskStandTargetRole(task, ALLOWED_STATUSES.filter(status => !normallyHiddenStatuses.includes(status)));
+    }
+
     if (task.standKey) {
-        return roles
-            .filter(role => getStandKey(role.name) === task.standKey)
-            .sort((a, b) => compareUpdatedAt(a, b, 'desc'))[0] || null;
+        return getTodayTaskStandTargetRole(task);
     }
 
     return null;
+}
+
+function getTodayTaskStandTargetRole(task, targetStatuses = null) {
+    if (!task || !task.standKey) {
+        return null;
+    }
+
+    const visibleRoleIds = new Set(getFilteredRoles().map(role => String(role.id)));
+    const statusPriority = Array.isArray(targetStatuses)
+        ? new Map(targetStatuses.map((status, index) => [status, index]))
+        : null;
+    const candidates = roles
+        .filter(role => getStandKey(role.name) === task.standKey)
+        .filter(role => !statusPriority || statusPriority.has(role.status))
+        .sort((a, b) => {
+            if (statusPriority) {
+                const priorityDiff = statusPriority.get(a.status) - statusPriority.get(b.status);
+                if (priorityDiff !== 0) {
+                    return priorityDiff;
+                }
+            }
+            return compareUpdatedAt(a, b, 'desc');
+        });
+
+    return candidates.find(role => visibleRoleIds.has(String(role.id))) || null;
 }
 
 function getWatchStandItems(allRoles) {
