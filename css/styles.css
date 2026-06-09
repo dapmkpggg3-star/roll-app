@@ -158,6 +158,19 @@ body {
     right: auto;
 }
 
+.header-actions .workshop-board-btn {
+    background: #f59e0b;
+    color: #1f2937;
+    border-color: rgba(146, 64, 14, 0.35);
+    font-weight: 900;
+}
+
+.header-actions .workshop-board-btn[aria-pressed="true"] {
+    background: #ffffff;
+    color: #92400e;
+    box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.28);
+}
+
 .container {
     max-width: 900px;
     margin: 0 auto;
@@ -824,6 +837,169 @@ body {
     background: #ffffff;
     color: #64748b;
     font-weight: 800;
+}
+
+.workshop-board {
+    display: none;
+    gap: 16px;
+    width: 100%;
+    margin: 0 0 18px;
+    padding: 18px;
+    border-radius: 12px;
+    border: 1px solid #fde68a;
+    background: #fffbeb;
+    color: #1f2937;
+    box-shadow: 0 8px 22px rgba(146, 64, 14, 0.12);
+}
+
+body.workshop-board-mode .workshop-board {
+    display: grid;
+}
+
+body.workshop-board-mode #count-summary,
+body.workshop-board-mode #sync-diagnostic-panel,
+body.workshop-board-mode #incomplete-work-dashboard,
+body.workshop-board-mode #today-task-dashboard,
+body.workshop-board-mode .search-bar,
+body.workshop-board-mode #role-count,
+body.workshop-board-mode #sync-message,
+body.workshop-board-mode #toggleRoleFormBtn,
+body.workshop-board-mode #role-form,
+body.workshop-board-mode #last-sync-time,
+body.workshop-board-mode .table-container {
+    display: none !important;
+}
+
+.workshop-board-header,
+.workshop-board-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.workshop-board-header {
+    border-bottom: 1px solid rgba(146, 64, 14, 0.18);
+    padding-bottom: 12px;
+}
+
+.workshop-board-header h2 {
+    margin: 0;
+    color: #92400e;
+    font-size: 1.35rem;
+    line-height: 1.2;
+}
+
+.workshop-board-header p {
+    margin: 4px 0 0;
+    color: #78350f;
+    font-weight: 800;
+}
+
+.workshop-board-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 58px;
+    min-height: 34px;
+    padding: 6px 12px;
+    border-radius: 999px;
+    background: #92400e;
+    color: #ffffff;
+    font-size: 1.15rem;
+    font-weight: 900;
+}
+
+.workshop-board-back-btn {
+    min-height: 38px;
+    padding: 8px 14px;
+    border: none;
+    border-radius: 8px;
+    background: #1f2937;
+    color: #ffffff;
+    cursor: pointer;
+    font-weight: 900;
+}
+
+.workshop-board-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 12px;
+}
+
+.workshop-card {
+    display: grid;
+    gap: 12px;
+    padding: 14px;
+    border-radius: 10px;
+    border: 1px solid #fcd34d;
+    border-left: 6px solid #f59e0b;
+    background: #ffffff;
+    box-shadow: 0 6px 16px rgba(146, 64, 14, 0.10);
+}
+
+.workshop-card-title {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+    color: #92400e;
+    font-weight: 900;
+}
+
+.workshop-stand {
+    font-size: 1.45rem;
+    line-height: 1.1;
+}
+
+.workshop-card-section {
+    display: grid;
+    gap: 6px;
+    padding: 10px;
+    border-radius: 8px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+}
+
+.workshop-card-label {
+    color: #475569;
+    font-size: 0.82rem;
+    font-weight: 900;
+}
+
+.workshop-role-list {
+    display: grid;
+    gap: 6px;
+}
+
+.workshop-role-line {
+    display: grid;
+    gap: 3px;
+}
+
+.workshop-role-name {
+    color: #0f172a;
+    font-size: 1.05rem;
+    font-weight: 900;
+}
+
+.workshop-role-meta {
+    color: #475569;
+    font-size: 0.86rem;
+    font-weight: 700;
+    overflow-wrap: anywhere;
+}
+
+.workshop-board-empty {
+    min-height: 90px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 10px;
+    border: 1px dashed #fcd34d;
+    background: #ffffff;
+    color: #92400e;
+    font-weight: 900;
 }
 
 .today-task-target-highlight {

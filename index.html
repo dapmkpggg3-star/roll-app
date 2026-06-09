@@ -44,6 +44,7 @@
                     </select>
                 </label>
                 <button type="button" id="tabletModeBtn" onclick="toggleTabletMode()" class="tablet-mode-btn" aria-pressed="false">タブレットモード OFF</button>
+                <button type="button" id="workshopBoardBtn" onclick="toggleWorkshopBoard()" class="workshop-board-btn" aria-pressed="false">工作課ボード</button>
                 <button type="button" id="logout-btn" onclick="logout()" class="logout-btn">ログアウト</button>
             </div>
         </div>
@@ -126,6 +127,19 @@
                     </div>
                     <div id="today-task-list" class="today-task-list"></div>
                 </div>
+                <section id="workshop-board" class="workshop-board" aria-live="polite">
+                    <div class="workshop-board-header">
+                        <div>
+                            <h2>工作課ボード</h2>
+                            <p>組替候補あり</p>
+                        </div>
+                        <div class="workshop-board-actions">
+                            <span id="workshop-board-count" class="workshop-board-count">0件</span>
+                            <button type="button" onclick="closeWorkshopBoard()" class="workshop-board-back-btn">ロール一覧に戻る</button>
+                        </div>
+                    </div>
+                    <div id="workshop-board-list" class="workshop-board-list"></div>
+                </section>
                 <div class="search-bar">
                     <input type="search" id="role-search" placeholder="スタンド番号、ステータス、メモで検索..." aria-label="ロール検索" oninput="searchRoles(event)">
                     <select id="status-filter" class="status-filter-select" aria-label="ステータス絞り込み" onchange="changeStatusFilter(event)">

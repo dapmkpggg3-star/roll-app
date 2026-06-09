@@ -305,6 +305,7 @@ let sortOption = 'name';
 let editingId = null; // 編集中のID
 let lastScrollY = 0;
 let updatedRoleId = null;
+let isWorkshopBoardOpen = false;
 const RENDER_STATUS_DEBUG_ROLE_NAME = '#11-44';
 
 function getDebugRoleSnapshot(role) {
@@ -1317,6 +1318,51 @@ function sortTodayTasks(a, b) {
     return String(a.roleName || a.standLabel || '').localeCompare(String(b.roleName || b.standLabel || ''), 'ja');
 }
 
+function getAssemblyCandidateItems(allRoles) {
+    const groups = new Map();
+
+    (Array.isArray(allRoles) ? allRoles : []).forEach(role => {
+        const standKey = getStandKey(role.name);
+
+        if (!standKey) {
+            return;
+        }
+
+        if (!groups.has(standKey)) {
+            groups.set(standKey, []);
+        }
+
+        groups.get(standKey).push(role);
+    });
+
+    return Array.from(groups.entries())
+        .map(([standKey, standRoles]) => {
+            const usedRoles = standRoles.filter(role => role.status === USED_STANDBY_STATUS);
+            const newReadyRoles = standRoles.filter(role => role.status === NEW_READY_STATUS);
+
+            if (usedRoles.length === 0 || newReadyRoles.length === 0) {
+                return null;
+            }
+
+            return {
+                standKey,
+                standNumber: Number(standKey) || 999999,
+                standLabel: `#${standKey}`,
+                standRoles,
+                usedRoles,
+                newReadyRoles
+            };
+        })
+        .filter(Boolean)
+        .sort((a, b) => {
+            if (a.standNumber !== b.standNumber) {
+                return a.standNumber - b.standNumber;
+            }
+
+            return a.standLabel.localeCompare(b.standLabel, 'ja');
+        });
+}
+
 function getTodayTaskItems(allRoles) {
     const tasks = [];
     const groups = new Map();
@@ -1396,22 +1442,6 @@ function getTodayTaskItems(allRoles) {
     groups.forEach((standRoles, standKey) => {
         const statuses = standRoles.map(role => role.status);
 
-        if (statuses.includes(USED_STANDBY_STATUS) && statuses.includes(NEW_READY_STATUS)) {
-            const occurredAt = getOldestStatusChangedAt(standRoles, [USED_STANDBY_STATUS, NEW_READY_STATUS]);
-            tasks.push({
-                id: `assembly-${standKey}`,
-                priority: 'medium',
-                standKey,
-                standNumber: Number(standKey) || 999999,
-                standLabel: `#${standKey}`,
-                title: '組替候補あり',
-                actions: ['組替対象を確認する'],
-                reason: '中古予備と新品予備（組替可能）が同一スタンド内に存在',
-                occurredAt,
-                elapsedDays: getElapsedDaysSince(occurredAt, now) || 0
-            });
-        }
-
         if (statuses.includes(SCRAP_WAITING_STATUS) && !statuses.includes(NEW_INSTALLED_STATUS)) {
             const occurredAt = getOldestStatusChangedAt(standRoles, [SCRAP_WAITING_STATUS]);
             tasks.push({
@@ -1427,6 +1457,22 @@ function getTodayTaskItems(allRoles) {
                 elapsedDays: getElapsedDaysSince(occurredAt, now) || 0
             });
         }
+    });
+
+    getAssemblyCandidateItems(allRoles).forEach(candidate => {
+        const occurredAt = getOldestStatusChangedAt(candidate.standRoles, [USED_STANDBY_STATUS, NEW_READY_STATUS]);
+        tasks.push({
+            id: `assembly-${candidate.standKey}`,
+            priority: 'medium',
+            standKey: candidate.standKey,
+            standNumber: candidate.standNumber,
+            standLabel: candidate.standLabel,
+            title: '組替候補あり',
+            actions: ['組替対象を確認する'],
+            reason: '中古予備と新品予備（組替可能）が同一スタンド内に存在',
+            occurredAt,
+            elapsedDays: getElapsedDaysSince(occurredAt, now) || 0
+        });
     });
 
     return tasks.sort(sortTodayTasks);
@@ -1484,6 +1530,80 @@ function updateTodayTaskDashboard(allRoles) {
             </section>
         `;
     }).join('');
+}
+
+function getWorkshopRoleLines(roleList) {
+    return roleList
+        .slice()
+        .sort(compareRolesByStandRole)
+        .map(role => {
+            const currentDiameter = formatCurrentDiameter(role.currentDiameter);
+            const useStartDate = formatUseStartDate(role.useStartDate);
+
+            return `
+                <div class="workshop-role-line">
+                    <span class="workshop-role-name">${escapeHtml(role.name || '-')}</span>
+                    <span class="workshop-role-meta">現在径 ${escapeHtml(currentDiameter)} / 使用開始日 ${escapeHtml(useStartDate)}</span>
+                </div>
+            `;
+        })
+        .join('');
+}
+
+function updateWorkshopBoard(allRoles) {
+    const board = document.getElementById('workshop-board');
+    const countEl = document.getElementById('workshop-board-count');
+    const listEl = document.getElementById('workshop-board-list');
+
+    if (!board || !countEl || !listEl) {
+        return;
+    }
+
+    const candidates = getAssemblyCandidateItems(allRoles);
+    countEl.textContent = `${candidates.length}件`;
+
+    if (candidates.length === 0) {
+        listEl.innerHTML = '<div class="workshop-board-empty">組替候補はありません</div>';
+        return;
+    }
+
+    listEl.innerHTML = candidates.map(candidate => `
+        <article class="workshop-card">
+            <div class="workshop-card-title">
+                <span class="workshop-stand">${escapeHtml(candidate.standLabel)}</span>
+                <span>組替候補</span>
+            </div>
+            <div class="workshop-card-section">
+                <span class="workshop-card-label">中古予備（バラシ前）</span>
+                <div class="workshop-role-list">${getWorkshopRoleLines(candidate.usedRoles)}</div>
+            </div>
+            <div class="workshop-card-section">
+                <span class="workshop-card-label">新品予備（組替可能）</span>
+                <div class="workshop-role-list">${getWorkshopRoleLines(candidate.newReadyRoles)}</div>
+            </div>
+        </article>
+    `).join('');
+}
+
+function setWorkshopBoardOpen(isOpen) {
+    isWorkshopBoardOpen = Boolean(isOpen);
+    document.body.classList.toggle('workshop-board-mode', isWorkshopBoardOpen);
+
+    const button = document.getElementById('workshopBoardBtn');
+    if (button) {
+        button.setAttribute('aria-pressed', isWorkshopBoardOpen ? 'true' : 'false');
+        button.textContent = isWorkshopBoardOpen ? 'ロール一覧に戻る' : '工作課ボード';
+    }
+
+    updateWorkshopBoard(roles);
+}
+
+function toggleWorkshopBoard() {
+    setWorkshopBoardOpen(!isWorkshopBoardOpen);
+}
+
+function closeWorkshopBoard() {
+    setWorkshopBoardOpen(false);
 }
 
 function getTodayTaskWarning(task, allRoles = []) {
@@ -1870,6 +1990,7 @@ function renderRoles() {
     updateCountSummary(roles);
     updateIncompleteWorkDashboard(roles);
     updateTodayTaskDashboard(roles);
+    updateWorkshopBoard(roles);
     if (typeof updateSyncDiagnosticPanel === 'function') {
         updateSyncDiagnosticPanel();
     }
