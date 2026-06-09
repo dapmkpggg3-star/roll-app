@@ -168,7 +168,21 @@ body {
 }
 
 .content {
+    display: flex;
+    flex-direction: column;
     padding: 30px;
+}
+
+#toggleRoleFormBtn {
+    order: -30;
+}
+
+#role-form {
+    order: -29;
+}
+
+#last-sync-time {
+    order: -28;
 }
 
 .search-bar {

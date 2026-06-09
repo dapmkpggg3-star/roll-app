@@ -1113,17 +1113,17 @@ function showAllRoles() {
 }
 
 function isStatusMatched(role) {
-    const status = String(role.status || '');
+    const status = normalizeRoleStatusValue(role.status);
 
     if (statusFilter === 'all') {
         return true;
     }
 
-    return status === statusFilter;
+    return status === normalizeRoleStatusValue(statusFilter);
 }
 
 function getStatusSummaryCategory(role) {
-    const status = String(role.status || '');
+    const status = normalizeRoleStatusValue(role.status);
 
     if (status === 'オンライン') {
         return 'online';
@@ -1164,7 +1164,7 @@ function getStatusSummaryCategory(role) {
     return 'other';
 }
 
-function updateCountSummary(visibleRoles, allRoles = roles) {
+function updateCountSummary(allRoles = roles) {
     const summary = {
     total: allRoles.length,
     online: 0,
@@ -1179,10 +1179,12 @@ function updateCountSummary(visibleRoles, allRoles = roles) {
     other: 0
 };
 
-    visibleRoles.forEach(role => {
-        summary[getStatusSummaryCategory(role)] += 1;
+    allRoles.forEach(role => {
+        const category = getStatusSummaryCategory(role);
+        if (Object.prototype.hasOwnProperty.call(summary, category)) {
+            summary[category] += 1;
+        }
     });
-    summary.newStorage = allRoles.filter(role => role.status === NEW_STORAGE_STATUS).length;
 
     Object.entries(summary).forEach(([key, value]) => {
 
@@ -1865,7 +1867,7 @@ function renderRoles() {
     roleList.innerHTML = '';
     
     const filteredRoles = getFilteredRoles();
-    updateCountSummary(filteredRoles, roles);
+    updateCountSummary(roles);
     updateIncompleteWorkDashboard(roles);
     updateTodayTaskDashboard(roles);
     if (typeof updateSyncDiagnosticPanel === 'function') {
