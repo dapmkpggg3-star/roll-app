@@ -158,6 +158,10 @@ body {
     right: auto;
 }
 
+#tabletModeBtn {
+    display: none !important;
+}
+
 .header-actions .workshop-board-btn {
     background: #f59e0b;
     color: #1f2937;
