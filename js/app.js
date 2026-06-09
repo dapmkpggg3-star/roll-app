@@ -1305,6 +1305,13 @@ function sortTodayTasks(a, b) {
         return priorityDiff;
     }
 
+    const aIsAssemblyTask = String(a.id || '').startsWith('assembly-');
+    const bIsAssemblyTask = String(b.id || '').startsWith('assembly-');
+
+    if (aIsAssemblyTask && bIsAssemblyTask && a.standNumber !== b.standNumber) {
+        return a.standNumber - b.standNumber;
+    }
+
     const elapsedDiff = (b.elapsedDays || 0) - (a.elapsedDays || 0);
 
     if (elapsedDiff !== 0) {
