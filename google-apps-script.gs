@@ -322,6 +322,91 @@ function fetchStandMaster() {
   return result;
 }
 
+function initializeStandMaster() {
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  let sheet = ss.getSheetByName(STAND_MASTER_SHEET_NAME);
+  let createdSheet = false;
+
+  if (!sheet) {
+    sheet = ss.insertSheet(STAND_MASTER_SHEET_NAME);
+    createdSheet = true;
+  }
+
+  const headers = ['スタンド', '新径', '廃却径', '購入リードタイム月'];
+  const rows = [
+    ['#2', 450, 400, 6],
+    ['#3', 450, 400, 6],
+    ['#4', 450, 400, 6],
+    ['#5', 450, 400, 6],
+    ['#6', 365, 320, 6],
+    ['#7', 365, 320, 6],
+    ['#8', 365, 320, 6],
+    ['#9', 365, 320, 6],
+    ['#10', 340, 292, 6],
+    ['#11', 340, 292, 6],
+    ['#12', 340, 292, 6],
+    ['#13', 340, 292, 6],
+    ['#14', 340, 292, 6],
+    ['#15', 335, 292, 6],
+    ['#16', 340, 292, 6],
+    ['#17', 340, 292, 6]
+  ];
+  const dataRows = getStandMasterDataRows(sheet);
+
+  if (dataRows.length === rows.length && isStandMasterCanonicalRows(dataRows)) {
+    Logger.log('initializeStandMaster: skipped because StandMaster is already canonical');
+    return {
+      success: false,
+      skipped: true,
+      reason: 'StandMaster is already canonical',
+      createdSheet: createdSheet,
+      insertedRows: 0
+    };
+  }
+
+  sheet.clearContents();
+  sheet.getRange(1, 1, 1 + rows.length, headers.length).setValues([headers].concat(rows));
+
+  Logger.log('initializeStandMaster: wrote headers and ' + rows.length + ' rows');
+  return {
+    success: true,
+    skipped: false,
+    createdSheet: createdSheet,
+    insertedRows: rows.length
+  };
+}
+
+function getStandMasterDataRows(sheet) {
+  const lastRow = sheet.getLastRow();
+
+  if (lastRow <= 1) {
+    return [];
+  }
+
+  return sheet.getRange(2, 1, lastRow - 1, 4).getValues().map(function(row) {
+    return {
+      stand: normalizeStandMasterStandValue(row[0]),
+      newDiameter: normalizeStandMasterNumericValue(row[1]),
+      scrapDiameter: normalizeStandMasterNumericValue(row[2]),
+      leadTimeMonths: normalizeStandMasterNumericValue(row[3])
+    };
+  }).filter(function(row) {
+    return row.stand !== '';
+  });
+}
+
+function isStandMasterCanonicalRows(rows) {
+  const canonicalStands = ['#2', '#3', '#4', '#5', '#6', '#7', '#8', '#9', '#10', '#11', '#12', '#13', '#14', '#15', '#16', '#17'];
+
+  if (!Array.isArray(rows) || rows.length !== canonicalStands.length) {
+    return false;
+  }
+
+  return rows.every(function(row, index) {
+    return String(row.stand || '') === canonicalStands[index];
+  });
+}
+
 function writeRoles(roles) {
   const sheet = getSheet();
   Logger.log('writeRoles: clearing sheet contents');
