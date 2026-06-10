@@ -3,6 +3,9 @@ const DELETED_ROLE_IDS_KEY = 'deletedRoleIds';
 const LAST_SUCCESSFUL_SYNC_COUNT_KEY = 'lastSuccessfulSyncRoleCount';
 const SYNC_COUNT_DROP_ABORT_RATIO = 0.3;
 let syncDiagnosticRemoteRoles = null;
+let standMasterRows = [];
+let standMasterByStand = new Map();
+let lastStandMasterFetchAt = null;
 let lastGasSaveDebug = null;
 let lastSavedRemoteRoleCount = null;
 let isSyncQueued = false;
@@ -48,6 +51,48 @@ function compareRolesByStandRole(a, b) {
 
 function sortRolesByStandRole(roleList) {
     return (Array.isArray(roleList) ? roleList : []).slice().sort(compareRolesByStandRole);
+}
+
+function normalizeStandMasterKey(value) {
+    const parsed = parseStandRoleNumber(value);
+    return Number.isFinite(parsed.stand) ? String(parsed.stand) : '';
+}
+
+function normalizeStandMasterNumericValue(value) {
+    if (value === undefined || value === null || String(value).trim() === '') {
+        return '';
+    }
+
+    const numericValue = Number(value);
+    return Number.isFinite(numericValue) ? numericValue : '';
+}
+
+function normalizeStandMasterRow(row) {
+    const stand = String(row && row.stand !== undefined && row.stand !== null ? row.stand : '').trim();
+
+    return {
+        stand,
+        standKey: normalizeStandMasterKey(stand),
+        newDiameter: normalizeStandMasterNumericValue(row && row.newDiameter),
+        scrapDiameter: normalizeStandMasterNumericValue(row && row.scrapDiameter),
+        leadTimeMonths: normalizeStandMasterNumericValue(row && row.leadTimeMonths)
+    };
+}
+
+function setStandMasterRows(rows) {
+    const normalizedRows = (Array.isArray(rows) ? rows : [])
+        .map(normalizeStandMasterRow)
+        .filter(row => row.standKey !== '')
+        .sort((a, b) => Number(a.standKey) - Number(b.standKey));
+
+    standMasterRows = normalizedRows;
+    standMasterByStand = new Map(normalizedRows.map(row => [row.standKey, row]));
+    return standMasterRows;
+}
+
+function getStandMaster(standKey) {
+    const key = normalizeStandMasterKey(standKey);
+    return key ? (standMasterByStand.get(key) || null) : null;
 }
 
 function isRemoteConfigured() {
@@ -486,6 +531,13 @@ function validateFetchResponse(data) {
     }
 }
 
+function validateStandMasterFetchResponse(data) {
+    if (!data || data.success !== true || !Array.isArray(data.standMaster)) {
+        const detail = data && data.error ? `詳細: ${data.error}` : 'standMaster配列が見つかりません。';
+        throw createSyncError('StandMaster取得', `Apps Scriptから不正なデータ形式が返りました。${detail}`);
+    }
+}
+
 function formatUseStartDateForSync(date) {
     const pad = number => String(number).padStart(2, '0');
     return `${date.getFullYear()}/${pad(date.getMonth() + 1)}/${pad(date.getDate())}`;
@@ -741,6 +793,30 @@ async function fetchData() {
     }
 }
 
+async function fetchStandMaster() {
+    if (!isRemoteConfigured()) {
+        setStandMasterRows([]);
+        return [];
+    }
+
+    try {
+        const url = `${SHEETS_ENDPOINT}?action=fetchStandMaster&t=${Date.now()}`;
+        const response = await fetch(url, {
+            method: 'GET',
+            cache: 'no-store'
+        });
+
+        const data = await readJsonResponse(response, 'StandMaster取得');
+        validateStandMasterFetchResponse(data);
+        lastStandMasterFetchAt = new Date().toISOString();
+        return setStandMasterRows(data.standMaster);
+    } catch (error) {
+        console.error('fetchStandMaster error:', error);
+        setStandMasterRows([]);
+        return standMasterRows;
+    }
+}
+
 async function saveData(roleList = roles) {
     if (!isRemoteConfigured()) {
         return false;
@@ -838,6 +914,10 @@ async function fetchRemoteRolesForGuard(actionLabel = '同期前データ確認'
 
 function loadRemoteRoles() {
     return fetchData();
+}
+
+function loadStandMaster() {
+    return fetchStandMaster();
 }
 
 function saveRemoteRoles() {

@@ -64,6 +64,7 @@ function checkLoginStatus() {
         renderRoles();
         if (isRemoteConfigured()) {
             loadRemoteRoles();
+            loadStandMaster();
         }
     } else {
         loginScreen.style.display = 'flex';
@@ -99,6 +100,7 @@ document.addEventListener('DOMContentLoaded', function() {
     applyTabletModePreference();
     setupOperatorSelect();
     loadRemoteRoles();
+    loadStandMaster();
     document.getElementById('password-input').addEventListener('keypress', function(e) {
         if (e.key === 'Enter') {
             login();

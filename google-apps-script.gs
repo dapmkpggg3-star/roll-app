@@ -1,4 +1,5 @@
 const SHEET_NAME = 'Roles';
+const STAND_MASTER_SHEET_NAME = 'StandMaster';
 const INPUT_SHEET_NAMES = ['入力シート', 'Input', '入力'];
 const SPREADSHEET_ID = '1X07qQa7u9YPLvErT0D48goT5wYmvcpgNjqzK3FhRFeA';
 const HEADER_VALUES = ['ID', 'スタンド番号', 'ステータス', 'メモ', '最終更新日', '作業依頼済み', '作業依頼進捗', '履歴', '現在径', '使用開始日'];
@@ -37,6 +38,19 @@ function doGet(e) {
         .setMimeType(ContentService.MimeType.JSON);
     } catch (error) {
       Logger.log('doGet fetch error: ' + error.toString());
+      return ContentService
+        .createTextOutput(JSON.stringify({ success: false, error: error.toString() }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+  } else if (action === 'fetchstandmaster') {
+    try {
+      const standMaster = fetchStandMaster();
+      Logger.log('doGet fetchStandMaster: returning ' + standMaster.length + ' rows');
+      return ContentService
+        .createTextOutput(JSON.stringify({ success: true, standMaster: standMaster }))
+        .setMimeType(ContentService.MimeType.JSON);
+    } catch (error) {
+      Logger.log('doGet fetchStandMaster error: ' + error.toString());
       return ContentService
         .createTextOutput(JSON.stringify({ success: false, error: error.toString() }))
         .setMimeType(ContentService.MimeType.JSON);
@@ -282,6 +296,29 @@ function fetchRoles() {
   }).filter(row => row.name && String(row.name).trim() !== '');
   
   Logger.log('fetchRoles: returning ' + result.length + ' roles');
+  return result;
+}
+
+function fetchStandMaster() {
+  const sheet = getStandMasterSheet();
+  const values = sheet.getDataRange().getValues();
+  Logger.log('fetchStandMaster: sheet has ' + values.length + ' rows');
+
+  if (values.length <= 1) {
+    return [];
+  }
+
+  const rows = values.slice(1);
+  const result = rows.map(row => {
+    return {
+      stand: normalizeStandMasterStandValue(row[0]),
+      newDiameter: normalizeStandMasterNumericValue(row[1]),
+      scrapDiameter: normalizeStandMasterNumericValue(row[2]),
+      leadTimeMonths: normalizeStandMasterNumericValue(row[3])
+    };
+  }).filter(row => row.stand && String(row.stand).trim() !== '');
+
+  Logger.log('fetchStandMaster: returning ' + result.length + ' rows');
   return result;
 }
 
@@ -854,4 +891,34 @@ function getSheet() {
     Logger.log('getSheet error: ' + error.toString());
     throw new Error('Failed to open spreadsheet or get sheet: ' + error.toString());
   }
+}
+
+function getStandMasterSheet() {
+  try {
+    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    Logger.log('getStandMasterSheet: opened spreadsheet: ' + ss.getName());
+
+    const sheet = ss.getSheetByName(STAND_MASTER_SHEET_NAME);
+    if (!sheet) {
+      throw new Error('StandMasterシートが見つかりません。');
+    }
+
+    return sheet;
+  } catch (error) {
+    Logger.log('getStandMasterSheet error: ' + error.toString());
+    throw new Error('Failed to open StandMaster sheet: ' + error.toString());
+  }
+}
+
+function normalizeStandMasterStandValue(value) {
+  return String(value === undefined || value === null ? '' : value).trim();
+}
+
+function normalizeStandMasterNumericValue(value) {
+  if (value === undefined || value === null || String(value).trim() === '') {
+    return '';
+  }
+
+  const numericValue = Number(value);
+  return isFinite(numericValue) ? numericValue : '';
 }
