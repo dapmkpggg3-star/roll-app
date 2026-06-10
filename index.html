@@ -134,6 +134,13 @@
                             <p>組替候補あり</p>
                         </div>
                         <div class="workshop-board-actions">
+                            <label class="workshop-board-sort-wrap">
+                                <span class="workshop-board-sort-label">並び順</span>
+                                <select id="workshop-board-sort" class="workshop-board-sort-select" aria-label="工作課ボード並び順" onchange="changeWorkshopBoardSort(event)">
+                                    <option value="stand">スタンド番号順</option>
+                                    <option value="priority">優先度順</option>
+                                </select>
+                            </label>
                             <span id="workshop-board-count" class="workshop-board-count">0件</span>
                             <button type="button" onclick="closeWorkshopBoard()" class="workshop-board-back-btn">ロール一覧に戻る</button>
                         </div>
