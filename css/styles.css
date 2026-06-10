@@ -1016,15 +1016,15 @@ body.workshop-board-mode .table-container {
     line-height: 1;
 }
 
-.workshop-priority-A {
+.workshop-priority-high {
     background: #b91c1c;
 }
 
-.workshop-priority-B {
+.workshop-priority-medium {
     background: #d97706;
 }
 
-.workshop-priority-C {
+.workshop-priority-low {
     background: #475569;
 }
 

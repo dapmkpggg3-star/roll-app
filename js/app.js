@@ -14,15 +14,20 @@ const REWORK_JUDGMENT_SCRAP_DIAMETERS = {
     4: 400,
     5: 400
 };
-const WORKSHOP_BOARD_STANDARD_USAGE_DAYS = 90;
+const WORKSHOP_BOARD_REPLACEMENT_DAYS = 90;
 const WORKSHOP_BOARD_PRIORITY_THRESHOLD_DAYS = {
-    A: 60,
-    B: 30
+    high: 30,
+    medium: 60
+};
+const WORKSHOP_BOARD_PRIORITY_LABELS = {
+    high: '高',
+    medium: '中',
+    low: '低'
 };
 const WORKSHOP_BOARD_PRIORITY_ORDER = {
-    A: 1,
-    B: 2,
-    C: 3
+    high: 1,
+    medium: 2,
+    low: 3
 };
 
 function getEffectiveViewportWidth() {
@@ -1385,21 +1390,58 @@ function normalizeWorkshopBoardSortOption(value) {
     return String(value || '').toLowerCase() === 'priority' ? 'priority' : 'stand';
 }
 
-function getWorkshopBoardOnlineRole(standRoles) {
-    const onlineRoles = (Array.isArray(standRoles) ? standRoles : [])
-        .filter(role => role && role.status === ONLINE_STATUS);
+function getWorkshopBoardUsedStandbyDateInfo(role) {
+    if (!role) {
+        return {
+            date: '',
+            source: ''
+        };
+    }
 
-    if (onlineRoles.length === 0) {
+    const historyChangedAt = getRoleStatusChangedAt(role, USED_STANDBY_STATUS);
+    const historyDate = normalizeDateInputValue(historyChangedAt);
+
+    if (historyDate) {
+        return {
+            date: historyDate,
+            source: 'history'
+        };
+    }
+
+    const updatedAtDate = normalizeDateInputValue(role.updatedAt);
+
+    return {
+        date: updatedAtDate,
+        source: updatedAtDate ? 'updatedAt' : ''
+    };
+}
+
+function getDaysUntilDate(dateValue, now = new Date()) {
+    const date = new Date(dateValue);
+
+    if (Number.isNaN(date.getTime())) {
         return null;
     }
 
-    return onlineRoles
+    const diffMs = date.getTime() - now.getTime();
+    return Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+}
+
+function getWorkshopBoardReferenceUsedRole(standRoles) {
+    const usedRoles = (Array.isArray(standRoles) ? standRoles : [])
+        .filter(role => role && role.status === USED_STANDBY_STATUS);
+
+    if (usedRoles.length === 0) {
+        return null;
+    }
+
+    return usedRoles
         .slice()
         .sort((a, b) => {
-            const aStart = normalizeDateInputValue(a.useStartDate);
-            const bStart = normalizeDateInputValue(b.useStartDate);
-            const aTimestamp = aStart ? new Date(aStart).getTime() : Number.POSITIVE_INFINITY;
-            const bTimestamp = bStart ? new Date(bStart).getTime() : Number.POSITIVE_INFINITY;
+            const aInfo = getWorkshopBoardUsedStandbyDateInfo(a);
+            const bInfo = getWorkshopBoardUsedStandbyDateInfo(b);
+            const aTimestamp = aInfo.date ? new Date(aInfo.date).getTime() : Number.POSITIVE_INFINITY;
+            const bTimestamp = bInfo.date ? new Date(bInfo.date).getTime() : Number.POSITIVE_INFINITY;
 
             if (aTimestamp !== bTimestamp) {
                 return aTimestamp - bTimestamp;
@@ -1409,50 +1451,54 @@ function getWorkshopBoardOnlineRole(standRoles) {
         })[0];
 }
 
-function getWorkshopBoardPriority(elapsedDays) {
-    if (elapsedDays === null) {
-        return 'C';
+function getWorkshopBoardPriority(daysRemaining) {
+    if (daysRemaining === null) {
+        return 'low';
     }
 
-    if (elapsedDays >= WORKSHOP_BOARD_PRIORITY_THRESHOLD_DAYS.A) {
-        return 'A';
+    if (daysRemaining <= WORKSHOP_BOARD_PRIORITY_THRESHOLD_DAYS.high) {
+        return 'high';
     }
 
-    if (elapsedDays >= WORKSHOP_BOARD_PRIORITY_THRESHOLD_DAYS.B) {
-        return 'B';
+    if (daysRemaining <= WORKSHOP_BOARD_PRIORITY_THRESHOLD_DAYS.medium) {
+        return 'medium';
     }
 
-    return 'C';
+    return 'low';
 }
 
 function getWorkshopBoardCandidateDetails(candidate, now = new Date()) {
-    const onlineRole = getWorkshopBoardOnlineRole(candidate && candidate.standRoles);
-    const useStartDate = normalizeDateInputValue(onlineRole && onlineRole.useStartDate);
-    const elapsedDays = useStartDate ? getElapsedDaysSince(useStartDate, now) : null;
-    const priority = getWorkshopBoardPriority(elapsedDays);
-    const estimatedReplacementDate = useStartDate
-        ? formatDateForDisplay(addDaysToDateString(useStartDate, WORKSHOP_BOARD_STANDARD_USAGE_DAYS))
+    const referenceRole = getWorkshopBoardReferenceUsedRole(candidate && candidate.standRoles);
+    const standbyDateInfo = getWorkshopBoardUsedStandbyDateInfo(referenceRole);
+    const standbyDate = standbyDateInfo.date;
+    const estimatedReplacementDate = standbyDate
+        ? normalizeDateInputValue(addDaysToDateString(standbyDate, WORKSHOP_BOARD_REPLACEMENT_DAYS))
         : '';
-    const hasValidElapsedDays = elapsedDays !== null && elapsedDays >= 0;
-    const hasValidEstimatedReplacementDate = estimatedReplacementDate && estimatedReplacementDate !== '-';
+    const daysRemaining = estimatedReplacementDate
+        ? getDaysUntilDate(estimatedReplacementDate, now)
+        : null;
+    const priority = getWorkshopBoardPriority(daysRemaining);
+    const remainingDaysLabel = daysRemaining === null
+        ? '算出不可'
+        : `目安まであと${Math.max(0, daysRemaining)}日`;
 
     return {
-        onlineRole,
-        useStartDate,
-        elapsedDays,
+        referenceRole,
+        standbyDate,
+        estimatedReplacementDate,
+        daysRemaining,
         priority,
-        priorityRank: WORKSHOP_BOARD_PRIORITY_ORDER[priority] || WORKSHOP_BOARD_PRIORITY_ORDER.C,
-        elapsedLabel: useStartDate
-            ? (hasValidElapsedDays ? `使用開始から${elapsedDays}日` : '算出不可')
-            : '使用開始日なし',
-        estimatedReplacementLabel: hasValidEstimatedReplacementDate ? estimatedReplacementDate : '算出不可',
-        onlineRoleLabel: onlineRole ? (onlineRole.name || '-') : 'なし'
+        priorityRank: WORKSHOP_BOARD_PRIORITY_ORDER[priority] || WORKSHOP_BOARD_PRIORITY_ORDER.low,
+        priorityLabel: WORKSHOP_BOARD_PRIORITY_LABELS[priority] || '低',
+        standbyDateLabel: standbyDate ? formatDateForDisplay(standbyDate) : '算出不可',
+        estimatedReplacementLabel: estimatedReplacementDate ? formatDateForDisplay(estimatedReplacementDate) : '算出不可',
+        remainingDaysLabel
     };
 }
 
 function compareWorkshopBoardCandidates(a, b) {
     if (workshopBoardSortOption === 'priority') {
-        const priorityDiff = (a.priorityRank || WORKSHOP_BOARD_PRIORITY_ORDER.C) - (b.priorityRank || WORKSHOP_BOARD_PRIORITY_ORDER.C);
+        const priorityDiff = (a.priorityRank || WORKSHOP_BOARD_PRIORITY_ORDER.low) - (b.priorityRank || WORKSHOP_BOARD_PRIORITY_ORDER.low);
 
         if (priorityDiff !== 0) {
             return priorityDiff;
@@ -1693,20 +1739,24 @@ function updateWorkshopBoard(allRoles) {
                     <span class="workshop-stand">${escapeHtml(candidate.standLabel)}</span>
                     <span class="workshop-card-title-text">組替候補</span>
                 </div>
-                <span class="workshop-priority-badge workshop-priority-${escapeHtml(candidate.details.priority)}">${escapeHtml(candidate.details.priority)}</span>
+                <span class="workshop-priority-badge workshop-priority-${escapeHtml(candidate.details.priority)}">${escapeHtml(candidate.details.priorityLabel)}</span>
             </div>
             <div class="workshop-card-summary">
                 <div class="workshop-card-summary-item">
-                    <span class="workshop-card-summary-label">基準ロール</span>
-                    <span class="workshop-card-summary-value">${escapeHtml(candidate.details.onlineRoleLabel)}</span>
+                    <span class="workshop-card-summary-label">優先度</span>
+                    <span class="workshop-card-summary-value">${escapeHtml(candidate.details.priorityLabel)}</span>
                 </div>
                 <div class="workshop-card-summary-item">
-                    <span class="workshop-card-summary-label">使用開始</span>
-                    <span class="workshop-card-summary-value">${escapeHtml(candidate.details.elapsedLabel)}</span>
+                    <span class="workshop-card-summary-label">中古予備になった日</span>
+                    <span class="workshop-card-summary-value">${escapeHtml(candidate.details.standbyDateLabel)}</span>
                 </div>
                 <div class="workshop-card-summary-item">
                     <span class="workshop-card-summary-label">暫定ロール替目安</span>
                     <span class="workshop-card-summary-value">${escapeHtml(candidate.details.estimatedReplacementLabel)}</span>
+                </div>
+                <div class="workshop-card-summary-item">
+                    <span class="workshop-card-summary-label">残日数</span>
+                    <span class="workshop-card-summary-value">${escapeHtml(candidate.details.remainingDaysLabel)}</span>
                 </div>
             </div>
             <div class="workshop-card-section">
