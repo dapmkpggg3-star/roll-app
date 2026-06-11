@@ -590,22 +590,17 @@ function getRemainingDiameterInfo(role) {
 function getRemainingDiameterHtml(role) {
     const info = getRemainingDiameterInfo(role);
 
-    if (!info) {
+    if (!info || !Number.isFinite(info.remainingCutCount)) {
         return '';
     }
 
-    const label = info.isScrapArea ? '廃却域' : formatMillimeterValue(info.remainingDiameter);
-
-    const remainingCutCountHtml = Number.isFinite(info.remainingCutCount)
-        ? `<span class="remaining-cut-count-value ${info.remainingCutCount <= 0 ? 'is-scrap' : ''}">残り改削回数：${escapeHtml(String(info.remainingCutCount))}回</span>`
-        : '';
+    const levelClass = info.remainingCutCount >= 3
+        ? 'is-safe'
+        : (info.remainingCutCount === 2 ? 'is-warning' : 'is-danger');
 
     return `
         <span class="remaining-diameter-info">
-            <span class="remaining-diameter-value ${info.isScrapArea ? 'is-scrap' : ''}">
-                残り径：${escapeHtml(label)}
-            </span>
-            ${remainingCutCountHtml}
+            <span class="remaining-cut-count-value ${levelClass}">残り改削回数：${escapeHtml(String(info.remainingCutCount))}回</span>
         </span>
     `;
 }
