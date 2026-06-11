@@ -15,16 +15,16 @@ const ROLL_MASTER_HEADER_FONT_COLOR = '#ffffff';
 const ROLL_MASTER_SHEET_DEFINITIONS = [
   {
     name: 'CuttingMaster',
-    headers: [
-      'stand',
-      'standardCutMm',
-      'minCutMm',
-      'maxCutMm',
-      'warningRemainingCuts',
-      'dangerRemainingCuts',
-      'effectiveFrom',
-      'active',
-      'note'
+    columns: [
+      { key: 'stand', label: 'スタンド', type: 'text' },
+      { key: 'standardCutMm', label: '標準改削量(mm)', type: 'number' },
+      { key: 'minCutMm', label: '最小改削量(mm)', type: 'number' },
+      { key: 'maxCutMm', label: '最大改削量(mm)', type: 'number' },
+      { key: 'warningRemainingCuts', label: '警告残回数', type: 'number' },
+      { key: 'dangerRemainingCuts', label: '危険残回数', type: 'number' },
+      { key: 'effectiveFrom', label: '適用開始日', type: 'text' },
+      { key: 'active', label: '有効', type: 'boolean' },
+      { key: 'note', label: '備考', type: 'text' }
     ],
     rows: [
       ['#2', '', '', '', 2, 1, '', true, ''],
@@ -43,75 +43,64 @@ const ROLL_MASTER_SHEET_DEFINITIONS = [
       ['#15', '', '', '', 2, 1, '', true, ''],
       ['#16', '', '', '', 2, 1, '', true, ''],
       ['#17', '', '', '', 2, 1, '', true, '']
-    ],
-    numericHeaders: [
-      'standardCutMm',
-      'minCutMm',
-      'maxCutMm',
-      'warningRemainingCuts',
-      'dangerRemainingCuts'
     ]
   },
   {
     name: 'StatusMaster',
-    headers: [
-      'status',
-      'category',
-      'sortOrder',
-      'visibleDefault',
-      'countsAsUsableStock',
-      'countsAsRework',
-      'countsAsScrapWaiting',
-      'countsAsScrap',
-      'active',
-      'color',
-      'note'
+    columns: [
+      { key: 'status', label: 'ステータス', type: 'text' },
+      { key: 'category', label: '分類', type: 'text' },
+      { key: 'sortOrder', label: '表示順', type: 'number' },
+      { key: 'visibleDefault', label: '標準表示', type: 'boolean' },
+      { key: 'countsAsUsableStock', label: '使用可能在庫に含める', type: 'boolean' },
+      { key: 'countsAsRework', label: '改削対象に含める', type: 'boolean' },
+      { key: 'countsAsScrapWaiting', label: '廃却待ちに含める', type: 'boolean' },
+      { key: 'countsAsScrap', label: '廃棄に含める', type: 'boolean' },
+      { key: 'active', label: '有効', type: 'boolean' },
+      { key: 'color', label: '色', type: 'text' },
+      { key: 'note', label: '備考', type: 'text' }
     ],
-    rows: [],
-    numericHeaders: ['sortOrder'],
-    textHeaders: ['color']
+    rows: []
   },
   {
     name: 'NotificationMaster',
-    headers: [
-      'notificationId',
-      'name',
-      'enabled',
-      'triggerType',
-      'thresholdValue',
-      'thresholdUnit',
-      'targetStatusCategory',
-      'recipients',
-      'leadDays',
-      'messageTemplate',
-      'active'
+    columns: [
+      { key: 'notificationId', label: '通知ID', type: 'text' },
+      { key: 'name', label: '通知名', type: 'text' },
+      { key: 'enabled', label: '通知ON', type: 'boolean' },
+      { key: 'triggerType', label: '条件種別', type: 'text' },
+      { key: 'thresholdValue', label: 'しきい値', type: 'number' },
+      { key: 'thresholdUnit', label: '単位', type: 'text' },
+      { key: 'targetStatusCategory', label: '対象分類', type: 'text' },
+      { key: 'recipients', label: '通知先', type: 'text' },
+      { key: 'leadDays', label: '事前日数', type: 'number' },
+      { key: 'messageTemplate', label: 'メッセージ', type: 'text' },
+      { key: 'active', label: '有効', type: 'boolean' }
     ],
     rows: [
       ['cut-warning', 'Cut warning', false, 'remainingCuts', 2, 'cuts', '', '', '', '', true],
       ['cut-danger', 'Cut danger', false, 'remainingCuts', 1, 'cuts', '', '', '', '', true],
       ['lead-days', 'Lead days', false, 'leadDays', '', 'days', '', '', '', '', true]
-    ],
-    numericHeaders: ['thresholdValue', 'leadDays']
+    ]
   },
   {
     name: 'WorkHistory',
-    headers: [
-      'eventId',
-      'roleId',
-      'standRollName',
-      'stand',
-      'eventType',
-      'eventAt',
-      'beforeValue',
-      'afterValue',
-      'currentDiameter',
-      'cutMm',
-      'operator',
-      'source',
-      'note'
+    columns: [
+      { key: 'eventId', label: '履歴ID', type: 'text' },
+      { key: 'roleId', label: 'ロールID', type: 'text' },
+      { key: 'standRollName', label: 'ロール名', type: 'text' },
+      { key: 'stand', label: 'スタンド', type: 'text' },
+      { key: 'eventType', label: 'イベント種別', type: 'text' },
+      { key: 'eventAt', label: '日時', type: 'text' },
+      { key: 'beforeValue', label: '変更前', type: 'text' },
+      { key: 'afterValue', label: '変更後', type: 'text' },
+      { key: 'currentDiameter', label: '現在径', type: 'number' },
+      { key: 'cutMm', label: '改削量', type: 'number' },
+      { key: 'operator', label: '担当者', type: 'text' },
+      { key: 'source', label: '登録元', type: 'text' },
+      { key: 'note', label: '備考', type: 'text' }
     ],
-    rows: [],
-    numericHeaders: ['currentDiameter', 'cutMm']
+    rows: []
   }
 ];
 const DEFAULT_STATUS = '中古予備（バラシ前）';
@@ -497,16 +486,18 @@ function initializeRollMasterSheet(ss, definition) {
   let sheet = ss.getSheetByName(definition.name);
   const createdSheet = !sheet;
   const rows = getRollMasterInitialRows(definition);
+  const columnCount = getRollMasterColumnCount(definition);
+  const labels = getRollMasterColumnLabels(definition);
 
   if (!sheet) {
     sheet = ss.insertSheet(definition.name);
-    sheet.getRange(1, 1, 1, definition.headers.length).setValues([definition.headers]);
 
     if (rows.length > 0) {
-      sheet.getRange(2, 1, rows.length, definition.headers.length).setValues(rows);
+      sheet.getRange(2, 1, rows.length, columnCount).setValues(rows);
     }
   }
 
+  sheet.getRange(1, 1, 1, columnCount).setValues([labels]);
   applyRollMasterSheetFormatting(sheet, definition);
 
   return {
@@ -542,8 +533,7 @@ function getRollMasterInitialRows(definition) {
 }
 
 function applyRollMasterSheetFormatting(sheet, definition) {
-  const headerValues = getRollMasterHeaderValues(sheet, definition);
-  const columnCount = headerValues.length || definition.headers.length;
+  const columnCount = getRollMasterColumnCount(definition);
   const totalRows = Math.max(sheet.getLastRow(), 1);
   const maxRows = Math.max(sheet.getMaxRows(), 2);
 
@@ -565,67 +555,56 @@ function applyRollMasterSheetFormatting(sheet, definition) {
   }
   sheet.getRange(1, 1, totalRows, columnCount).createFilter();
 
-  applyRollMasterBooleanValidation(sheet, headerValues, maxRows);
-  applyRollMasterNumberFormats(sheet, definition, headerValues, maxRows);
-  applyRollMasterTextFormats(sheet, definition, headerValues, maxRows);
+  applyRollMasterBooleanValidation(sheet, definition, maxRows);
+  applyRollMasterNumberFormats(sheet, definition, maxRows);
+  applyRollMasterTextFormats(sheet, definition, maxRows);
   sheet.autoResizeColumns(1, columnCount);
 }
 
-function getRollMasterHeaderValues(sheet, definition) {
-  const columnCount = Math.max(sheet.getLastColumn(), definition.headers.length);
-  const values = sheet.getRange(1, 1, 1, columnCount).getValues()[0];
+function getRollMasterColumnCount(definition) {
+  return definition.columns.length;
+}
 
-  return values.map(function(value) {
-    return String(value === undefined || value === null ? '' : value).trim();
-  }).filter(function(value, index) {
-    return value !== '' || index < definition.headers.length;
+function getRollMasterColumnLabels(definition) {
+  return definition.columns.map(function(column) {
+    return column.label;
   });
 }
 
-function applyRollMasterBooleanValidation(sheet, headerValues, maxRows) {
-  const booleanHeaders = [
-    'active',
-    'enabled',
-    'visibleDefault',
-    'countsAsUsableStock',
-    'countsAsRework',
-    'countsAsScrapWaiting',
-    'countsAsScrap'
-  ];
+function getRollMasterColumnIndexesByType(definition, type) {
+  return definition.columns.map(function(column, index) {
+    return column.type === type ? index + 1 : 0;
+  }).filter(function(columnIndex) {
+    return columnIndex > 0;
+  });
+}
+
+function applyRollMasterBooleanValidation(sheet, definition, maxRows) {
   const rule = SpreadsheetApp.newDataValidation()
     .requireValueInList(['TRUE', 'FALSE'], true)
     .setAllowInvalid(false)
     .build();
 
-  booleanHeaders.forEach(function(header) {
-    const columnIndex = headerValues.indexOf(header) + 1;
-    if (columnIndex > 0) {
-      sheet.getRange(2, columnIndex, maxRows - 1, 1)
-        .setDataValidation(rule)
-        .setHorizontalAlignment('center');
-    }
+  getRollMasterColumnIndexesByType(definition, 'boolean').forEach(function(columnIndex) {
+    sheet.getRange(2, columnIndex, maxRows - 1, 1)
+      .setDataValidation(rule)
+      .setHorizontalAlignment('center');
   });
 }
 
-function applyRollMasterNumberFormats(sheet, definition, headerValues, maxRows) {
-  (definition.numericHeaders || []).forEach(function(header) {
-    const columnIndex = headerValues.indexOf(header) + 1;
-    if (columnIndex > 0) {
-      sheet.getRange(2, columnIndex, maxRows - 1, 1)
-        .setNumberFormat('0.########')
-        .setHorizontalAlignment('right');
-    }
+function applyRollMasterNumberFormats(sheet, definition, maxRows) {
+  getRollMasterColumnIndexesByType(definition, 'number').forEach(function(columnIndex) {
+    sheet.getRange(2, columnIndex, maxRows - 1, 1)
+      .setNumberFormat('0.########')
+      .setHorizontalAlignment('right');
   });
 }
 
-function applyRollMasterTextFormats(sheet, definition, headerValues, maxRows) {
-  (definition.textHeaders || []).forEach(function(header) {
-    const columnIndex = headerValues.indexOf(header) + 1;
-    if (columnIndex > 0) {
-      sheet.getRange(2, columnIndex, maxRows - 1, 1)
-        .setNumberFormat('@')
-        .setHorizontalAlignment('left');
-    }
+function applyRollMasterTextFormats(sheet, definition, maxRows) {
+  getRollMasterColumnIndexesByType(definition, 'text').forEach(function(columnIndex) {
+    sheet.getRange(2, columnIndex, maxRows - 1, 1)
+      .setNumberFormat('@')
+      .setHorizontalAlignment('left');
   });
 }
 
