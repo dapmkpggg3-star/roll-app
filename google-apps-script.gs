@@ -10,6 +10,110 @@ const ADD_ROLE_ACTION_NAME = 'addRoleFromInputArea';
 const HEADER_BACKGROUND = '#1f4e78';
 const HEADER_FONT_COLOR = '#ffffff';
 const LAST_SAVE_DEBUG_KEY = 'ROLL_LAST_SAVE_DEBUG';
+const ROLL_MASTER_HEADER_BACKGROUND = '#334155';
+const ROLL_MASTER_HEADER_FONT_COLOR = '#ffffff';
+const ROLL_MASTER_SHEET_DEFINITIONS = [
+  {
+    name: 'CuttingMaster',
+    headers: [
+      'stand',
+      'standardCutMm',
+      'minCutMm',
+      'maxCutMm',
+      'warningRemainingCuts',
+      'dangerRemainingCuts',
+      'effectiveFrom',
+      'active',
+      'note'
+    ],
+    rows: [
+      ['#2', '', '', '', 2, 1, '', true, ''],
+      ['#3', '', '', '', 2, 1, '', true, ''],
+      ['#4', '', '', '', 2, 1, '', true, ''],
+      ['#5', '', '', '', 2, 1, '', true, ''],
+      ['#6', '', '', '', 2, 1, '', true, ''],
+      ['#7', '', '', '', 2, 1, '', true, ''],
+      ['#8', '', '', '', 2, 1, '', true, ''],
+      ['#9', '', '', '', 2, 1, '', true, ''],
+      ['#10', '', '', '', 2, 1, '', true, ''],
+      ['#11', '', '', '', 2, 1, '', true, ''],
+      ['#12', '', '', '', 2, 1, '', true, ''],
+      ['#13', '', '', '', 2, 1, '', true, ''],
+      ['#14', '', '', '', 2, 1, '', true, ''],
+      ['#15', '', '', '', 2, 1, '', true, ''],
+      ['#16', '', '', '', 2, 1, '', true, ''],
+      ['#17', '', '', '', 2, 1, '', true, '']
+    ],
+    numericHeaders: [
+      'standardCutMm',
+      'minCutMm',
+      'maxCutMm',
+      'warningRemainingCuts',
+      'dangerRemainingCuts'
+    ]
+  },
+  {
+    name: 'StatusMaster',
+    headers: [
+      'status',
+      'category',
+      'sortOrder',
+      'visibleDefault',
+      'countsAsUsableStock',
+      'countsAsRework',
+      'countsAsScrapWaiting',
+      'countsAsScrap',
+      'active',
+      'color',
+      'note'
+    ],
+    rows: [],
+    numericHeaders: ['sortOrder'],
+    textHeaders: ['color']
+  },
+  {
+    name: 'NotificationMaster',
+    headers: [
+      'notificationId',
+      'name',
+      'enabled',
+      'triggerType',
+      'thresholdValue',
+      'thresholdUnit',
+      'targetStatusCategory',
+      'recipients',
+      'leadDays',
+      'messageTemplate',
+      'active'
+    ],
+    rows: [
+      ['cut-warning', 'Cut warning', false, 'remainingCuts', 2, 'cuts', '', '', '', '', true],
+      ['cut-danger', 'Cut danger', false, 'remainingCuts', 1, 'cuts', '', '', '', '', true],
+      ['lead-days', 'Lead days', false, 'leadDays', '', 'days', '', '', '', '', true]
+    ],
+    numericHeaders: ['thresholdValue', 'leadDays']
+  },
+  {
+    name: 'WorkHistory',
+    headers: [
+      'eventId',
+      'roleId',
+      'standRollName',
+      'stand',
+      'eventType',
+      'eventAt',
+      'beforeValue',
+      'afterValue',
+      'currentDiameter',
+      'cutMm',
+      'operator',
+      'source',
+      'note'
+    ],
+    rows: [],
+    numericHeaders: ['currentDiameter', 'cutMm']
+  }
+];
 const DEFAULT_STATUS = '中古予備（バラシ前）';
 const STATUS_OPTIONS = [
   'オンライン',
@@ -374,6 +478,155 @@ function initializeStandMaster() {
     createdSheet: createdSheet,
     insertedRows: rows.length
   };
+}
+
+function initializeRollMasterSheets() {
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const results = ROLL_MASTER_SHEET_DEFINITIONS.map(function(definition) {
+    return initializeRollMasterSheet(ss, definition);
+  });
+
+  Logger.log('initializeRollMasterSheets: ' + JSON.stringify(results));
+  return {
+    success: true,
+    sheets: results
+  };
+}
+
+function initializeRollMasterSheet(ss, definition) {
+  let sheet = ss.getSheetByName(definition.name);
+  const createdSheet = !sheet;
+  const rows = getRollMasterInitialRows(definition);
+
+  if (!sheet) {
+    sheet = ss.insertSheet(definition.name);
+    sheet.getRange(1, 1, 1, definition.headers.length).setValues([definition.headers]);
+
+    if (rows.length > 0) {
+      sheet.getRange(2, 1, rows.length, definition.headers.length).setValues(rows);
+    }
+  }
+
+  applyRollMasterSheetFormatting(sheet, definition);
+
+  return {
+    name: definition.name,
+    createdSheet: createdSheet,
+    insertedRows: createdSheet ? rows.length : 0,
+    formatted: true
+  };
+}
+
+function getRollMasterInitialRows(definition) {
+  if (definition.name === 'StatusMaster') {
+    return STATUS_OPTIONS.map(function(status, index) {
+      return [
+        status,
+        '',
+        index + 1,
+        true,
+        false,
+        false,
+        false,
+        false,
+        true,
+        '',
+        ''
+      ];
+    });
+  }
+
+  return (definition.rows || []).map(function(row) {
+    return row.slice();
+  });
+}
+
+function applyRollMasterSheetFormatting(sheet, definition) {
+  const headerValues = getRollMasterHeaderValues(sheet, definition);
+  const columnCount = headerValues.length || definition.headers.length;
+  const totalRows = Math.max(sheet.getLastRow(), 1);
+  const maxRows = Math.max(sheet.getMaxRows(), 2);
+
+  sheet.setFrozenRows(1);
+
+  sheet.getRange(1, 1, 1, columnCount)
+    .setFontWeight('bold')
+    .setFontColor(ROLL_MASTER_HEADER_FONT_COLOR)
+    .setBackground(ROLL_MASTER_HEADER_BACKGROUND)
+    .setHorizontalAlignment('center');
+
+  sheet.getRange(1, 1, totalRows, columnCount)
+    .setBorder(true, true, true, true, true, true, '#cbd5e1', SpreadsheetApp.BorderStyle.SOLID)
+    .setVerticalAlignment('middle');
+
+  const existingFilter = sheet.getFilter();
+  if (existingFilter) {
+    existingFilter.remove();
+  }
+  sheet.getRange(1, 1, totalRows, columnCount).createFilter();
+
+  applyRollMasterBooleanValidation(sheet, headerValues, maxRows);
+  applyRollMasterNumberFormats(sheet, definition, headerValues, maxRows);
+  applyRollMasterTextFormats(sheet, definition, headerValues, maxRows);
+  sheet.autoResizeColumns(1, columnCount);
+}
+
+function getRollMasterHeaderValues(sheet, definition) {
+  const columnCount = Math.max(sheet.getLastColumn(), definition.headers.length);
+  const values = sheet.getRange(1, 1, 1, columnCount).getValues()[0];
+
+  return values.map(function(value) {
+    return String(value === undefined || value === null ? '' : value).trim();
+  }).filter(function(value, index) {
+    return value !== '' || index < definition.headers.length;
+  });
+}
+
+function applyRollMasterBooleanValidation(sheet, headerValues, maxRows) {
+  const booleanHeaders = [
+    'active',
+    'enabled',
+    'visibleDefault',
+    'countsAsUsableStock',
+    'countsAsRework',
+    'countsAsScrapWaiting',
+    'countsAsScrap'
+  ];
+  const rule = SpreadsheetApp.newDataValidation()
+    .requireValueInList(['TRUE', 'FALSE'], true)
+    .setAllowInvalid(false)
+    .build();
+
+  booleanHeaders.forEach(function(header) {
+    const columnIndex = headerValues.indexOf(header) + 1;
+    if (columnIndex > 0) {
+      sheet.getRange(2, columnIndex, maxRows - 1, 1)
+        .setDataValidation(rule)
+        .setHorizontalAlignment('center');
+    }
+  });
+}
+
+function applyRollMasterNumberFormats(sheet, definition, headerValues, maxRows) {
+  (definition.numericHeaders || []).forEach(function(header) {
+    const columnIndex = headerValues.indexOf(header) + 1;
+    if (columnIndex > 0) {
+      sheet.getRange(2, columnIndex, maxRows - 1, 1)
+        .setNumberFormat('0.########')
+        .setHorizontalAlignment('right');
+    }
+  });
+}
+
+function applyRollMasterTextFormats(sheet, definition, headerValues, maxRows) {
+  (definition.textHeaders || []).forEach(function(header) {
+    const columnIndex = headerValues.indexOf(header) + 1;
+    if (columnIndex > 0) {
+      sheet.getRange(2, columnIndex, maxRows - 1, 1)
+        .setNumberFormat('@')
+        .setHorizontalAlignment('left');
+    }
+  });
 }
 
 function getStandMasterDataRows(sheet) {
