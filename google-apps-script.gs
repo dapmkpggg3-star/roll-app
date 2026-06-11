@@ -19,31 +19,49 @@ const ROLL_MASTER_SHEET_DEFINITIONS = [
     columns: [
       { key: 'stand', label: 'スタンド', type: 'text' },
       { key: 'standardCutMm', label: '標準改削量(mm)', type: 'number' },
-      { key: 'minCutMm', label: '最小改削量(mm)', type: 'number' },
-      { key: 'maxCutMm', label: '最大改削量(mm)', type: 'number' },
+      { key: 'actualAverageCutMm', label: '実績平均改削量(mm)', type: 'number' },
+      { key: 'recentAverageCutMm', label: '直近平均改削量(mm)', type: 'number' },
+      { key: 'calculationCutMm', label: '計算採用改削量(mm)', type: 'number' },
+      { key: 'actualSampleCount', label: '集計対象件数', type: 'number' },
+      { key: 'recentSampleCount', label: '直近集計件数', type: 'number' },
+      { key: 'standardDiffMm', label: '標準との差(mm)', type: 'number' },
+      { key: 'standardDiffRate', label: '標準との差率(%)', type: 'number' },
       { key: 'warningRemainingCuts', label: '警告残回数', type: 'number' },
       { key: 'dangerRemainingCuts', label: '危険残回数', type: 'number' },
       { key: 'effectiveFrom', label: '適用開始日', type: 'text' },
+      { key: 'updatedAt', label: '最終更新日', type: 'text' },
+      { key: 'autoUpdate', label: '自動更新', type: 'boolean' },
       { key: 'active', label: '有効', type: 'boolean' },
       { key: 'note', label: '備考', type: 'text' }
     ],
+    legacyKeys: [
+      'stand',
+      'standardCutMm',
+      'minCutMm',
+      'maxCutMm',
+      'warningRemainingCuts',
+      'dangerRemainingCuts',
+      'effectiveFrom',
+      'active',
+      'note'
+    ],
     rows: [
-      ['#2', '', '', '', 2, 1, '', true, ''],
-      ['#3', '', '', '', 2, 1, '', true, ''],
-      ['#4', '', '', '', 2, 1, '', true, ''],
-      ['#5', '', '', '', 2, 1, '', true, ''],
-      ['#6', '', '', '', 2, 1, '', true, ''],
-      ['#7', '', '', '', 2, 1, '', true, ''],
-      ['#8', '', '', '', 2, 1, '', true, ''],
-      ['#9', '', '', '', 2, 1, '', true, ''],
-      ['#10', '', '', '', 2, 1, '', true, ''],
-      ['#11', '', '', '', 2, 1, '', true, ''],
-      ['#12', '', '', '', 2, 1, '', true, ''],
-      ['#13', '', '', '', 2, 1, '', true, ''],
-      ['#14', '', '', '', 2, 1, '', true, ''],
-      ['#15', '', '', '', 2, 1, '', true, ''],
-      ['#16', '', '', '', 2, 1, '', true, ''],
-      ['#17', '', '', '', 2, 1, '', true, '']
+      ['#2', '', '', '', '', '', 5, '', '', 2, 1, '', '', true, true, ''],
+      ['#3', '', '', '', '', '', 5, '', '', 2, 1, '', '', true, true, ''],
+      ['#4', '', '', '', '', '', 5, '', '', 2, 1, '', '', true, true, ''],
+      ['#5', '', '', '', '', '', 5, '', '', 2, 1, '', '', true, true, ''],
+      ['#6', '', '', '', '', '', 5, '', '', 2, 1, '', '', true, true, ''],
+      ['#7', '', '', '', '', '', 5, '', '', 2, 1, '', '', true, true, ''],
+      ['#8', '', '', '', '', '', 5, '', '', 2, 1, '', '', true, true, ''],
+      ['#9', '', '', '', '', '', 5, '', '', 2, 1, '', '', true, true, ''],
+      ['#10', '', '', '', '', '', 5, '', '', 2, 1, '', '', true, true, ''],
+      ['#11', '', '', '', '', '', 5, '', '', 2, 1, '', '', true, true, ''],
+      ['#12', '', '', '', '', '', 5, '', '', 2, 1, '', '', true, true, ''],
+      ['#13', '', '', '', '', '', 5, '', '', 2, 1, '', '', true, true, ''],
+      ['#14', '', '', '', '', '', 5, '', '', 2, 1, '', '', true, true, ''],
+      ['#15', '', '', '', '', '', 5, '', '', 2, 1, '', '', true, true, ''],
+      ['#16', '', '', '', '', '', 5, '', '', 2, 1, '', '', true, true, ''],
+      ['#17', '', '', '', '', '', 5, '', '', 2, 1, '', '', true, true, '']
     ]
   },
   {
@@ -444,12 +462,17 @@ function fetchCuttingMaster() {
 
   const standIndex = getRollMasterColumnIndexByKey(definition, 'stand') - 1;
   const standardCutMmIndex = getRollMasterColumnIndexByKey(definition, 'standardCutMm') - 1;
+  const calculationCutMmIndex = getRollMasterColumnIndexByKey(definition, 'calculationCutMm') - 1;
   const activeIndex = getRollMasterColumnIndexByKey(definition, 'active') - 1;
   const rows = values.slice(1);
   const result = rows.map(function(row) {
+    const standardCutMm = normalizeStandMasterNumericValue(row[standardCutMmIndex]);
+    const calculationCutMm = normalizeStandMasterNumericValue(row[calculationCutMmIndex]);
+
     return {
       stand: normalizeStandMasterStandValue(row[standIndex]),
-      standardCutMm: normalizeStandMasterNumericValue(row[standardCutMmIndex]),
+      standardCutMm: standardCutMm,
+      calculationCutMm: calculationCutMm,
       active: normalizeRollMasterBooleanValue(row[activeIndex])
     };
   }).filter(function(row) {
@@ -538,6 +561,8 @@ function initializeRollMasterSheet(ss, definition) {
     if (rows.length > 0) {
       sheet.getRange(2, 1, rows.length, columnCount).setValues(rows);
     }
+  } else if (definition.legacyName === 'CuttingMaster') {
+    upgradeCuttingMasterSheetRows(sheet, definition);
   }
 
   sheet.getRange(1, 1, 1, columnCount).setValues([labels]);
@@ -605,6 +630,102 @@ function getRollMasterInitialRows(definition) {
   return (definition.rows || []).map(function(row) {
     return row.slice();
   });
+}
+
+function upgradeCuttingMasterSheetRows(sheet, definition) {
+  const values = sheet.getDataRange().getValues();
+  const currentColumnCount = values.length > 0 ? values[0].length : 0;
+  const sourceKeys = currentColumnCount <= (definition.legacyKeys || []).length
+    ? definition.legacyKeys
+    : definition.columns.map(function(column) {
+      return column.key;
+    });
+  const existingRecords = values.slice(1).map(function(row) {
+    return getRollMasterRecordFromRow(row, sourceKeys);
+  }).filter(function(record) {
+    return normalizeStandMasterStandValue(record.stand) !== '';
+  });
+  const recordsByStand = {};
+
+  existingRecords.forEach(function(record) {
+    recordsByStand[normalizeStandMasterStandValue(record.stand)] = record;
+  });
+
+  const canonicalRows = getCuttingMasterCanonicalStands().map(function(stand) {
+    return normalizeCuttingMasterRecord(recordsByStand[stand] || { stand: stand });
+  });
+  const extraRows = existingRecords.filter(function(record) {
+    return getCuttingMasterCanonicalStands().indexOf(normalizeStandMasterStandValue(record.stand)) === -1;
+  }).map(function(record) {
+    return normalizeCuttingMasterRecord(record);
+  });
+  const rows = canonicalRows.concat(extraRows).map(function(record) {
+    return getRollMasterRowFromRecord(record, definition);
+  });
+  const columnCount = getRollMasterColumnCount(definition);
+
+  if (rows.length > 0) {
+    sheet.getRange(2, 1, rows.length, columnCount).setValues(rows);
+  }
+}
+
+function getCuttingMasterCanonicalStands() {
+  return ['#2', '#3', '#4', '#5', '#6', '#7', '#8', '#9', '#10', '#11', '#12', '#13', '#14', '#15', '#16', '#17'];
+}
+
+function getRollMasterRecordFromRow(row, keys) {
+  const record = {};
+
+  keys.forEach(function(key, index) {
+    record[key] = row[index];
+  });
+
+  return record;
+}
+
+function getRollMasterRowFromRecord(record, definition) {
+  return definition.columns.map(function(column) {
+    return record[column.key] === undefined || record[column.key] === null ? '' : record[column.key];
+  });
+}
+
+function normalizeCuttingMasterRecord(record) {
+  const normalized = {};
+
+  normalized.stand = normalizeStandMasterStandValue(record.stand);
+  normalized.standardCutMm = normalizeStandMasterNumericValue(record.standardCutMm);
+  normalized.actualAverageCutMm = normalizeStandMasterNumericValue(record.actualAverageCutMm);
+  normalized.recentAverageCutMm = normalizeStandMasterNumericValue(record.recentAverageCutMm);
+  normalized.calculationCutMm = normalizeStandMasterNumericValue(record.calculationCutMm);
+  normalized.actualSampleCount = normalizeStandMasterNumericValue(record.actualSampleCount);
+  normalized.recentSampleCount = normalizeStandMasterNumericValue(record.recentSampleCount);
+  normalized.standardDiffMm = normalizeStandMasterNumericValue(record.standardDiffMm);
+  normalized.standardDiffRate = normalizeStandMasterNumericValue(record.standardDiffRate);
+  normalized.warningRemainingCuts = normalizeStandMasterNumericValue(record.warningRemainingCuts);
+  normalized.dangerRemainingCuts = normalizeStandMasterNumericValue(record.dangerRemainingCuts);
+  normalized.effectiveFrom = record.effectiveFrom || '';
+  normalized.updatedAt = record.updatedAt || '';
+  normalized.autoUpdate = normalizeRollMasterBooleanValue(record.autoUpdate);
+  normalized.active = normalizeRollMasterBooleanValue(record.active);
+  normalized.note = record.note || '';
+
+  if (normalized.calculationCutMm === '' && normalized.standardCutMm !== '') {
+    normalized.calculationCutMm = normalized.standardCutMm;
+  }
+
+  if (normalized.recentSampleCount === '') {
+    normalized.recentSampleCount = 5;
+  }
+
+  if (normalized.warningRemainingCuts === '') {
+    normalized.warningRemainingCuts = 2;
+  }
+
+  if (normalized.dangerRemainingCuts === '') {
+    normalized.dangerRemainingCuts = 1;
+  }
+
+  return normalized;
 }
 
 function applyRollMasterSheetFormatting(sheet, definition) {
@@ -676,9 +797,17 @@ function applyRollMasterBooleanValidation(sheet, definition, maxRows) {
 }
 
 function applyRollMasterNumberFormats(sheet, definition, maxRows) {
-  getRollMasterColumnIndexesByType(definition, 'number').forEach(function(columnIndex) {
-    sheet.getRange(2, columnIndex, maxRows - 1, 1)
-      .setNumberFormat('0.########')
+  definition.columns.forEach(function(column, index) {
+    if (column.type !== 'number') {
+      return;
+    }
+
+    const numberFormat = column.key === 'standardDiffRate'
+      ? '0.00%'
+      : '0.########';
+
+    sheet.getRange(2, index + 1, maxRows - 1, 1)
+      .setNumberFormat(numberFormat)
       .setHorizontalAlignment('right');
   });
 }

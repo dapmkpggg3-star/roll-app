@@ -503,6 +503,7 @@ function normalizeCuttingMasterRow(row) {
         stand,
         standKey: getStandKey(stand),
         standardCutMm: normalizeCuttingMasterNumericValue(row && row.standardCutMm),
+        calculationCutMm: normalizeCuttingMasterNumericValue(row && row.calculationCutMm),
         active: row && row.active !== false && String(row && row.active).toLowerCase() !== 'false'
     };
 }
@@ -570,11 +571,15 @@ function getRemainingDiameterInfo(role) {
 
     const remainingDiameter = currentDiameter - scrapDiameter;
     const cuttingMaster = getCuttingMaster(getStandKey(role && role.name));
+    const calculationCutMm = cuttingMaster && cuttingMaster.active
+        ? normalizeCuttingMasterNumericValue(cuttingMaster.calculationCutMm)
+        : '';
     const standardCutMm = cuttingMaster && cuttingMaster.active
         ? normalizeCuttingMasterNumericValue(cuttingMaster.standardCutMm)
         : '';
-    const remainingCutCount = standardCutMm !== '' && standardCutMm > 0
-        ? Math.floor(remainingDiameter / standardCutMm)
+    const adoptedCutMm = calculationCutMm !== '' ? calculationCutMm : standardCutMm;
+    const remainingCutCount = adoptedCutMm !== '' && adoptedCutMm > 0
+        ? Math.floor(remainingDiameter / adoptedCutMm)
         : null;
 
     return {
@@ -582,6 +587,8 @@ function getRemainingDiameterInfo(role) {
         scrapDiameter,
         remainingDiameter,
         standardCutMm,
+        calculationCutMm,
+        adoptedCutMm,
         remainingCutCount,
         isScrapArea: remainingDiameter <= 0
     };
