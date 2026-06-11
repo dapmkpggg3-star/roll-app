@@ -64,7 +64,7 @@ function checkLoginStatus() {
         renderRoles();
         if (isRemoteConfigured()) {
             loadRemoteRoles();
-            loadStandMaster();
+            loadStandMaster().then(() => renderRoles());
         }
     } else {
         loginScreen.style.display = 'flex';
@@ -100,7 +100,7 @@ document.addEventListener('DOMContentLoaded', function() {
     applyTabletModePreference();
     setupOperatorSelect();
     loadRemoteRoles();
-    loadStandMaster();
+    loadStandMaster().then(() => renderRoles());
     document.getElementById('password-input').addEventListener('keypress', function(e) {
         if (e.key === 'Enter') {
             login();
@@ -469,6 +469,51 @@ function normalizeCurrentDiameter(value) {
 function formatCurrentDiameter(value) {
     const normalized = normalizeCurrentDiameter(value);
     return normalized === '' ? '-' : `φ${normalized.toFixed(1)}`;
+}
+
+function getRemainingDiameterInfo(role) {
+    const currentDiameter = normalizeCurrentDiameter(role && role.currentDiameter);
+
+    if (currentDiameter === '') {
+        return null;
+    }
+
+    const standMaster = typeof getStandMaster === 'function'
+        ? getStandMaster(getStandKey(role && role.name))
+        : null;
+    const scrapDiameterValue = standMaster ? standMaster.scrapDiameter : '';
+    const scrapDiameter = scrapDiameterValue === '' || scrapDiameterValue === null || scrapDiameterValue === undefined
+        ? Number.NaN
+        : Number(scrapDiameterValue);
+
+    if (!Number.isFinite(scrapDiameter)) {
+        return null;
+    }
+
+    const remainingDiameter = currentDiameter - scrapDiameter;
+
+    return {
+        currentDiameter,
+        scrapDiameter,
+        remainingDiameter,
+        isScrapArea: remainingDiameter <= 0
+    };
+}
+
+function getRemainingDiameterHtml(role) {
+    const info = getRemainingDiameterInfo(role);
+
+    if (!info) {
+        return '';
+    }
+
+    const label = info.isScrapArea ? '廃却域' : `${info.remainingDiameter.toFixed(1)}mm`;
+
+    return `
+        <span class="remaining-diameter-value ${info.isScrapArea ? 'is-scrap' : ''}">
+            残り径：${escapeHtml(label)}
+        </span>
+    `;
 }
 
 function normalizeDateInputValue(value) {
@@ -2260,7 +2305,10 @@ if (standNumber >= 2 && standNumber <= 5) {
             <td class="stand-cell">
   <div class="stand-card-header">
     <span class="role-id stand-name-cell">${escapeHtml(role.name)}</span>
-    <span class="header-diameter-value">${escapeHtml(currentDiameterText)}</span>
+    <div class="diameter-hero">
+      <span class="header-diameter-value">${escapeHtml(currentDiameterText)}</span>
+      ${getRemainingDiameterHtml(role)}
+    </div>
     <div class="stand-card-actions">
       ${workProgressState.isIncomplete ? '<span class="work-request-badge">作業依頼中</span>' : ''}
       <button class="action-btn history-btn history-card-btn" onclick="showHistory('${role.id}')">履歴</button>

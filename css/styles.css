@@ -2727,6 +2727,35 @@ body:not(.tablet-mode) #role-table .action-btn {
   white-space: nowrap;
 }
 
+.diameter-hero {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.remaining-diameter-value {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  padding: 5px 10px;
+  border-radius: 8px;
+  background: #e0f2fe;
+  color: #075985;
+  border: 1px solid #bae6fd;
+  font-size: 0.84rem;
+  font-weight: 900;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.remaining-diameter-value.is-scrap {
+  background: #fee2e2;
+  color: #b91c1c;
+  border-color: #fecaca;
+}
+
 .work-request-badge {
   display: inline-flex;
   align-items: center;
