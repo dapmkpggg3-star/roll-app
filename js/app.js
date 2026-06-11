@@ -394,6 +394,7 @@ function setEditModeUi(role = null) {
     const editingStandName = document.getElementById('editing-stand-name');
     const editingStatusBadge = document.getElementById('editing-status-badge');
     const editingHelp = document.querySelector('#editing-banner .editing-help');
+    const diameterChangeReasonField = document.querySelector('.diameter-change-reason-field');
 
     document.body.classList.toggle('editing-mode', isEditing);
     setRoleFormOpen(isEditing);
@@ -406,6 +407,7 @@ function setEditModeUi(role = null) {
     if (editingStandName) editingStandName.textContent = role ? role.name || '-' : '-';
     if (editingStatusBadge) editingStatusBadge.innerHTML = role ? getStatusBadge(role.status) : '';
     if (editingHelp) editingHelp.textContent = '内容を変更したら「入力内容を更新」を押してください。';
+    if (diameterChangeReasonField) diameterChangeReasonField.style.display = isEditing ? 'grid' : 'none';
 }
 
 function saveLocalRoles() {
@@ -548,6 +550,60 @@ async function fetchCuttingMaster() {
 
 function loadCuttingMaster() {
     return fetchCuttingMaster();
+}
+
+function getDiameterChangeReason() {
+    const select = document.getElementById('diameter-change-reason');
+    return select ? String(select.value || '').trim() : '';
+}
+
+function clearDiameterChangeReason() {
+    const select = document.getElementById('diameter-change-reason');
+    if (select) {
+        select.value = '';
+    }
+}
+
+function buildWorkHistoryDiameterEvent(role, beforeDiameter, afterDiameter, eventAt) {
+    const beforeValue = normalizeCurrentDiameter(beforeDiameter);
+    const afterValue = normalizeCurrentDiameter(afterDiameter);
+    const operator = getCurrentOperator();
+
+    return {
+        roleId: role.id || '',
+        standRollName: role.name || '',
+        stand: getStandKey(role.name) ? `#${getStandKey(role.name)}` : '',
+        eventType: '改削',
+        eventAt: eventAt || new Date().toISOString(),
+        beforeValue: beforeValue,
+        afterValue: afterValue,
+        currentDiameter: afterValue,
+        cutMm: beforeValue !== '' && afterValue !== '' ? beforeValue - afterValue : '',
+        operator: operator ? operator.name : '',
+        source: 'web-app',
+        note: '径変更理由: 改削'
+    };
+}
+
+async function appendWorkHistoryEvent(event) {
+    if (!isRemoteConfigured()) {
+        return false;
+    }
+
+    try {
+        await fetch(SHEETS_ENDPOINT, {
+            method: 'POST',
+            mode: 'no-cors',
+            body: JSON.stringify({
+                action: 'appendWorkHistory',
+                event
+            })
+        });
+        return true;
+    } catch (error) {
+        console.error('appendWorkHistoryEvent error:', error);
+        return false;
+    }
 }
 
 function getRemainingDiameterInfo(role) {
@@ -2488,6 +2544,7 @@ function addRole() {
     document.getElementById('role-status').value = '';
     updateStatusPreview(document.getElementById('role-status'));
     document.getElementById('role-current-diameter').value = '';
+    clearDiameterChangeReason();
     document.getElementById('role-dispatch-date').value = '';
     updateInboundPlanPreview();
     document.getElementById('role-memo').value = '';
@@ -2513,6 +2570,7 @@ function editRole(id) {
     document.getElementById('role-status').value = role.status;
     updateStatusPreview(document.getElementById('role-status'));
     document.getElementById('role-current-diameter').value = normalizeCurrentDiameter(role.currentDiameter);
+    clearDiameterChangeReason();
     document.getElementById('role-dispatch-date').value = isDispatchDateAllowedStatus(role.status)
         ? normalizeDateInputValue(role.dispatchDate)
         : '';
@@ -2535,6 +2593,7 @@ function updateRole() {
     const roleName = document.getElementById('role-name').value.trim();
     const roleStatus = document.getElementById('role-status').value;
     const roleCurrentDiameter = normalizeCurrentDiameter(document.getElementById('role-current-diameter').value);
+    const diameterChangeReason = getDiameterChangeReason();
     const roleDispatchDate = isDispatchDateAllowedStatus(roleStatus)
         ? normalizeDateInputValue(document.getElementById('role-dispatch-date').value)
         : '';
@@ -2592,6 +2651,10 @@ function updateRole() {
     addRoleHistoryEntry(role, 'memo', 'メモ変更', beforeMemo, roleMemo, role.updatedAt);
     addRoleHistoryEntry(role, 'diameter', '現在径変更', formatCurrentDiameter(beforeCurrentDiameter), formatCurrentDiameter(roleCurrentDiameter), role.updatedAt);
     addRoleHistoryEntry(role, 'dispatchDate', '搬出日変更', formatDateForDisplay(beforeDispatchDate), formatDateForDisplay(roleDispatchDate), role.updatedAt);
+    const shouldAppendWorkHistory = beforeCurrentDiameter !== roleCurrentDiameter && diameterChangeReason === '改削';
+    const workHistoryEvent = shouldAppendWorkHistory
+        ? buildWorkHistoryDiameterEvent(role, beforeCurrentDiameter, roleCurrentDiameter, role.updatedAt)
+        : null;
 
     updatedRoleId = role.id;
     const debugRoleIndex = findDebugRoleIndex(roles);
@@ -2603,6 +2666,13 @@ function updateRole() {
     });
     
     saveLocalRoles();
+    if (workHistoryEvent) {
+        appendWorkHistoryEvent(workHistoryEvent).then(success => {
+            if (!success) {
+                showToast('作業履歴への記録に失敗しました');
+            }
+        });
+    }
     cancelEdit();
 
     renderRoles();
@@ -2624,6 +2694,7 @@ function cancelEdit() {
     document.getElementById('role-status').value = '';
     updateStatusPreview(document.getElementById('role-status'));
     document.getElementById('role-current-diameter').value = '';
+    clearDiameterChangeReason();
     document.getElementById('role-dispatch-date').value = '';
     updateInboundPlanPreview();
     document.getElementById('role-memo').value = '';

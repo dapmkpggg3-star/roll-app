@@ -1269,6 +1269,7 @@ body.workshop-board-mode .table-container {
 
 .form-input-zone .status-field,
 .form-input-zone .status-preview-row,
+.form-input-zone .diameter-change-reason-field,
 .form-input-zone .dispatch-date-field {
     width: 100%;
     min-width: 0;
@@ -1278,6 +1279,7 @@ body.workshop-board-mode .table-container {
 .form-input-zone .status-select,
 .form-input-zone #role-name,
 .form-input-zone #role-current-diameter,
+.form-input-zone #diameter-change-reason,
 .form-input-zone #role-dispatch-date,
 .form-input-zone #role-memo {
     flex: 0 0 auto !important;
@@ -1290,6 +1292,17 @@ body.workshop-board-mode .table-container {
 .dispatch-date-field {
     display: grid;
     gap: 8px;
+}
+
+.diameter-change-reason-field {
+    display: none;
+    gap: 8px;
+}
+
+.diameter-change-reason-label {
+    color: #334155;
+    font-size: 0.92rem;
+    font-weight: 900;
 }
 
 .dispatch-date-field.is-hidden {

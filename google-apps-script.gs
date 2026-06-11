@@ -321,6 +321,15 @@ function doPost(e) {
           debug: debug
         }))
         .setMimeType(ContentService.MimeType.JSON);
+    } else if (action === 'appendworkhistory') {
+      const event = appendWorkHistoryEvent(payload.event || {});
+
+      return ContentService
+        .createTextOutput(JSON.stringify({
+          success: true,
+          event: event
+        }))
+        .setMimeType(ContentService.MimeType.JSON);
     }
 
     return ContentService
@@ -854,6 +863,59 @@ function normalizeRollMasterBooleanValue(value) {
   }
 
   return true;
+}
+
+function appendWorkHistoryEvent(event) {
+  const definition = getRollMasterDefinitionByLegacyName('WorkHistory');
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const sheetResult = getOrCreateRollMasterSheet(ss, definition);
+  const sheet = sheetResult.sheet;
+  const columnCount = getRollMasterColumnCount(definition);
+  const labels = getRollMasterColumnLabels(definition);
+  const normalizedEvent = normalizeWorkHistoryEventForSheet(event);
+  const row = getRollMasterRowFromRecord(normalizedEvent, definition);
+
+  if (sheet.getLastRow() < 1) {
+    sheet.getRange(1, 1, 1, columnCount).setValues([labels]);
+  }
+
+  sheet.getRange(sheet.getLastRow() + 1, 1, 1, columnCount).setValues([row]);
+  applyRollMasterSheetFormatting(sheet, definition);
+
+  Logger.log('appendWorkHistoryEvent: appended ' + normalizedEvent.eventId);
+  return normalizedEvent;
+}
+
+function normalizeWorkHistoryEventForSheet(event) {
+  const eventAt = event.eventAt || new Date().toISOString();
+  const roleId = event.roleId || '';
+  const standRollName = event.standRollName || '';
+  const beforeValue = normalizeStandMasterNumericValue(event.beforeValue);
+  const afterValue = normalizeStandMasterNumericValue(event.afterValue);
+  const currentDiameter = normalizeStandMasterNumericValue(event.currentDiameter);
+  const cutMm = normalizeStandMasterNumericValue(event.cutMm);
+
+  return {
+    eventId: event.eventId || createWorkHistoryEventId(roleId, eventAt),
+    roleId: roleId,
+    standRollName: standRollName,
+    stand: event.stand || '',
+    eventType: event.eventType || '',
+    eventAt: eventAt,
+    beforeValue: beforeValue,
+    afterValue: afterValue,
+    currentDiameter: currentDiameter,
+    cutMm: cutMm,
+    operator: event.operator || '',
+    source: event.source || '',
+    note: event.note || ''
+  };
+}
+
+function createWorkHistoryEventId(roleId, eventAt) {
+  const safeRoleId = String(roleId || 'role').replace(/[^A-Za-z0-9_-]/g, '');
+  const safeTime = String(eventAt || new Date().toISOString()).replace(/[^0-9A-Za-z]/g, '');
+  return 'wh-' + safeRoleId + '-' + safeTime;
 }
 
 function getStandMasterDataRows(sheet) {
