@@ -2734,6 +2734,13 @@ body:not(.tablet-mode) #role-table .action-btn {
   min-width: 0;
 }
 
+.remaining-diameter-info {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
 .remaining-diameter-value {
   display: inline-flex;
   align-items: center;
@@ -2751,6 +2758,28 @@ body:not(.tablet-mode) #role-table .action-btn {
 }
 
 .remaining-diameter-value.is-scrap {
+  background: #fee2e2;
+  color: #b91c1c;
+  border-color: #fecaca;
+}
+
+.remaining-cut-count-value {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  padding: 5px 10px;
+  border-radius: 8px;
+  background: #ecfdf5;
+  color: #047857;
+  border: 1px solid #bbf7d0;
+  font-size: 0.84rem;
+  font-weight: 900;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.remaining-cut-count-value.is-scrap {
   background: #fee2e2;
   color: #b91c1c;
   border-color: #fecaca;

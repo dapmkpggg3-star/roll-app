@@ -64,7 +64,7 @@ function checkLoginStatus() {
         renderRoles();
         if (isRemoteConfigured()) {
             loadRemoteRoles();
-            loadStandMaster().then(() => renderRoles());
+            Promise.all([loadStandMaster(), loadCuttingMaster()]).then(() => renderRoles());
         }
     } else {
         loginScreen.style.display = 'flex';
@@ -100,7 +100,7 @@ document.addEventListener('DOMContentLoaded', function() {
     applyTabletModePreference();
     setupOperatorSelect();
     loadRemoteRoles();
-    loadStandMaster().then(() => renderRoles());
+    Promise.all([loadStandMaster(), loadCuttingMaster()]).then(() => renderRoles());
     document.getElementById('password-input').addEventListener('keypress', function(e) {
         if (e.key === 'Enter') {
             login();
@@ -324,6 +324,8 @@ let lastScrollY = 0;
 let updatedRoleId = null;
 let isWorkshopBoardOpen = false;
 let workshopBoardSortOption = 'stand';
+let cuttingMasterRows = [];
+let cuttingMasterByStand = new Map();
 const RENDER_STATUS_DEBUG_ROLE_NAME = '#11-44';
 
 function getDebugRoleSnapshot(role) {
@@ -471,6 +473,82 @@ function formatCurrentDiameter(value) {
     return normalized === '' ? '-' : `φ${normalized.toFixed(1)}`;
 }
 
+function formatMillimeterValue(value) {
+    const numericValue = Number(value);
+
+    if (!Number.isFinite(numericValue)) {
+        return '-';
+    }
+
+    const roundedValue = Math.round(numericValue);
+
+    return Math.abs(numericValue - roundedValue) < 0.000001
+        ? `${roundedValue}mm`
+        : `${numericValue.toFixed(1)}mm`;
+}
+
+function normalizeCuttingMasterNumericValue(value) {
+    if (value === undefined || value === null || String(value).trim() === '') {
+        return '';
+    }
+
+    const numericValue = Number(value);
+    return Number.isFinite(numericValue) ? numericValue : '';
+}
+
+function normalizeCuttingMasterRow(row) {
+    const stand = String(row && row.stand !== undefined && row.stand !== null ? row.stand : '').trim();
+
+    return {
+        stand,
+        standKey: getStandKey(stand),
+        standardCutMm: normalizeCuttingMasterNumericValue(row && row.standardCutMm),
+        active: row && row.active !== false && String(row && row.active).toLowerCase() !== 'false'
+    };
+}
+
+function setCuttingMasterRows(rows) {
+    const normalizedRows = (Array.isArray(rows) ? rows : [])
+        .map(normalizeCuttingMasterRow)
+        .filter(row => row.standKey !== '')
+        .sort((a, b) => Number(a.standKey) - Number(b.standKey));
+
+    cuttingMasterRows = normalizedRows;
+    cuttingMasterByStand = new Map(normalizedRows.map(row => [row.standKey, row]));
+    return cuttingMasterRows;
+}
+
+function getCuttingMaster(standKey) {
+    const key = getStandKey(standKey);
+    return key ? (cuttingMasterByStand.get(key) || null) : null;
+}
+
+async function fetchCuttingMaster() {
+    if (!isRemoteConfigured()) {
+        return setCuttingMasterRows([]);
+    }
+
+    try {
+        const url = `${SHEETS_ENDPOINT}?action=fetchCuttingMaster&t=${Date.now()}`;
+        const response = await fetch(url, { method: 'GET' });
+        const data = await response.json();
+
+        if (!data || data.success !== true || !Array.isArray(data.cuttingMaster)) {
+            const detail = data && data.error ? `詳細: ${data.error}` : 'cuttingMaster配列が見つかりません。';
+            throw new Error(`改削マスタ取得に失敗しました。${detail}`);
+        }
+
+        return setCuttingMasterRows(data.cuttingMaster);
+    } catch (error) {
+        console.error('fetchCuttingMaster error:', error);
+        return setCuttingMasterRows([]);
+    }
+}
+
+function loadCuttingMaster() {
+    return fetchCuttingMaster();
+}
+
 function getRemainingDiameterInfo(role) {
     const currentDiameter = normalizeCurrentDiameter(role && role.currentDiameter);
 
@@ -491,11 +569,20 @@ function getRemainingDiameterInfo(role) {
     }
 
     const remainingDiameter = currentDiameter - scrapDiameter;
+    const cuttingMaster = getCuttingMaster(getStandKey(role && role.name));
+    const standardCutMm = cuttingMaster && cuttingMaster.active
+        ? normalizeCuttingMasterNumericValue(cuttingMaster.standardCutMm)
+        : '';
+    const remainingCutCount = standardCutMm !== '' && standardCutMm > 0
+        ? Math.floor(remainingDiameter / standardCutMm)
+        : null;
 
     return {
         currentDiameter,
         scrapDiameter,
         remainingDiameter,
+        standardCutMm,
+        remainingCutCount,
         isScrapArea: remainingDiameter <= 0
     };
 }
@@ -507,11 +594,18 @@ function getRemainingDiameterHtml(role) {
         return '';
     }
 
-    const label = info.isScrapArea ? '廃却域' : `${info.remainingDiameter.toFixed(1)}mm`;
+    const label = info.isScrapArea ? '廃却域' : formatMillimeterValue(info.remainingDiameter);
+
+    const remainingCutCountHtml = Number.isFinite(info.remainingCutCount)
+        ? `<span class="remaining-cut-count-value ${info.remainingCutCount <= 0 ? 'is-scrap' : ''}">残り改削回数：${escapeHtml(String(info.remainingCutCount))}回</span>`
+        : '';
 
     return `
-        <span class="remaining-diameter-value ${info.isScrapArea ? 'is-scrap' : ''}">
-            残り径：${escapeHtml(label)}
+        <span class="remaining-diameter-info">
+            <span class="remaining-diameter-value ${info.isScrapArea ? 'is-scrap' : ''}">
+                残り径：${escapeHtml(label)}
+            </span>
+            ${remainingCutCountHtml}
         </span>
     `;
 }

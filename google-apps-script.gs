@@ -152,6 +152,19 @@ function doGet(e) {
         .createTextOutput(JSON.stringify({ success: false, error: error.toString() }))
         .setMimeType(ContentService.MimeType.JSON);
     }
+  } else if (action === 'fetchcuttingmaster') {
+    try {
+      const cuttingMaster = fetchCuttingMaster();
+      Logger.log('doGet fetchCuttingMaster: returning ' + cuttingMaster.length + ' rows');
+      return ContentService
+        .createTextOutput(JSON.stringify({ success: true, cuttingMaster: cuttingMaster }))
+        .setMimeType(ContentService.MimeType.JSON);
+    } catch (error) {
+      Logger.log('doGet fetchCuttingMaster error: ' + error.toString());
+      return ContentService
+        .createTextOutput(JSON.stringify({ success: false, error: error.toString() }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
   } else if (action === 'save') {
     try {
       const rolesParam = params.roles;
@@ -419,6 +432,34 @@ function fetchStandMaster() {
   return result;
 }
 
+function fetchCuttingMaster() {
+  const definition = getRollMasterDefinitionByLegacyName('CuttingMaster');
+  const sheet = getRollMasterSheetForRead(definition);
+  const values = sheet.getDataRange().getValues();
+  Logger.log('fetchCuttingMaster: sheet has ' + values.length + ' rows');
+
+  if (values.length <= 1) {
+    return [];
+  }
+
+  const standIndex = getRollMasterColumnIndexByKey(definition, 'stand') - 1;
+  const standardCutMmIndex = getRollMasterColumnIndexByKey(definition, 'standardCutMm') - 1;
+  const activeIndex = getRollMasterColumnIndexByKey(definition, 'active') - 1;
+  const rows = values.slice(1);
+  const result = rows.map(function(row) {
+    return {
+      stand: normalizeStandMasterStandValue(row[standIndex]),
+      standardCutMm: normalizeStandMasterNumericValue(row[standardCutMmIndex]),
+      active: normalizeRollMasterBooleanValue(row[activeIndex])
+    };
+  }).filter(function(row) {
+    return row.stand && String(row.stand).trim() !== '';
+  });
+
+  Logger.log('fetchCuttingMaster: returning ' + result.length + ' rows');
+  return result;
+}
+
 function initializeStandMaster() {
   const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
   let sheet = ss.getSheetByName(STAND_MASTER_SHEET_NAME);
@@ -605,6 +646,14 @@ function getRollMasterColumnLabels(definition) {
   });
 }
 
+function getRollMasterColumnIndexByKey(definition, key) {
+  const index = definition.columns.findIndex(function(column) {
+    return column.key === key;
+  });
+
+  return index >= 0 ? index + 1 : 0;
+}
+
 function getRollMasterColumnIndexesByType(definition, type) {
   return definition.columns.map(function(column, index) {
     return column.type === type ? index + 1 : 0;
@@ -640,6 +689,42 @@ function applyRollMasterTextFormats(sheet, definition, maxRows) {
       .setNumberFormat('@')
       .setHorizontalAlignment('left');
   });
+}
+
+function getRollMasterDefinitionByLegacyName(legacyName) {
+  const definition = ROLL_MASTER_SHEET_DEFINITIONS.find(function(item) {
+    return item.legacyName === legacyName;
+  });
+
+  if (!definition) {
+    throw new Error('Roll master definition not found: ' + legacyName);
+  }
+
+  return definition;
+}
+
+function getRollMasterSheetForRead(definition) {
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const sheet = ss.getSheetByName(definition.name)
+    || (definition.legacyName ? ss.getSheetByName(definition.legacyName) : null);
+
+  if (!sheet) {
+    throw new Error('Roll master sheet not found: ' + definition.name);
+  }
+
+  return sheet;
+}
+
+function normalizeRollMasterBooleanValue(value) {
+  if (value === true || String(value).trim().toLowerCase() === 'true') {
+    return true;
+  }
+
+  if (value === false || String(value).trim().toLowerCase() === 'false') {
+    return false;
+  }
+
+  return true;
 }
 
 function getStandMasterDataRows(sheet) {
