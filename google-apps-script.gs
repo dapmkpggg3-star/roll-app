@@ -14,7 +14,8 @@ const ROLL_MASTER_HEADER_BACKGROUND = '#334155';
 const ROLL_MASTER_HEADER_FONT_COLOR = '#ffffff';
 const ROLL_MASTER_SHEET_DEFINITIONS = [
   {
-    name: 'CuttingMaster',
+    name: '改削マスタ',
+    legacyName: 'CuttingMaster',
     columns: [
       { key: 'stand', label: 'スタンド', type: 'text' },
       { key: 'standardCutMm', label: '標準改削量(mm)', type: 'number' },
@@ -46,16 +47,17 @@ const ROLL_MASTER_SHEET_DEFINITIONS = [
     ]
   },
   {
-    name: 'StatusMaster',
+    name: 'ステータスマスタ',
+    legacyName: 'StatusMaster',
     columns: [
       { key: 'status', label: 'ステータス', type: 'text' },
       { key: 'category', label: '分類', type: 'text' },
       { key: 'sortOrder', label: '表示順', type: 'number' },
       { key: 'visibleDefault', label: '標準表示', type: 'boolean' },
-      { key: 'countsAsUsableStock', label: '使用可能在庫に含める', type: 'boolean' },
-      { key: 'countsAsRework', label: '改削対象に含める', type: 'boolean' },
-      { key: 'countsAsScrapWaiting', label: '廃却待ちに含める', type: 'boolean' },
-      { key: 'countsAsScrap', label: '廃棄に含める', type: 'boolean' },
+      { key: 'countsAsUsableStock', label: '使用可能在庫', type: 'boolean' },
+      { key: 'countsAsRework', label: '改削対象', type: 'boolean' },
+      { key: 'countsAsScrapWaiting', label: '廃却待ち対象', type: 'boolean' },
+      { key: 'countsAsScrap', label: '廃棄対象', type: 'boolean' },
       { key: 'active', label: '有効', type: 'boolean' },
       { key: 'color', label: '色', type: 'text' },
       { key: 'note', label: '備考', type: 'text' }
@@ -63,7 +65,8 @@ const ROLL_MASTER_SHEET_DEFINITIONS = [
     rows: []
   },
   {
-    name: 'NotificationMaster',
+    name: '通知マスタ',
+    legacyName: 'NotificationMaster',
     columns: [
       { key: 'notificationId', label: '通知ID', type: 'text' },
       { key: 'name', label: '通知名', type: 'text' },
@@ -84,7 +87,8 @@ const ROLL_MASTER_SHEET_DEFINITIONS = [
     ]
   },
   {
-    name: 'WorkHistory',
+    name: '作業履歴',
+    legacyName: 'WorkHistory',
     columns: [
       { key: 'eventId', label: '履歴ID', type: 'text' },
       { key: 'roleId', label: 'ロールID', type: 'text' },
@@ -483,15 +487,13 @@ function initializeRollMasterSheets() {
 }
 
 function initializeRollMasterSheet(ss, definition) {
-  let sheet = ss.getSheetByName(definition.name);
-  const createdSheet = !sheet;
+  const sheetResult = getOrCreateRollMasterSheet(ss, definition);
+  const sheet = sheetResult.sheet;
   const rows = getRollMasterInitialRows(definition);
   const columnCount = getRollMasterColumnCount(definition);
   const labels = getRollMasterColumnLabels(definition);
 
-  if (!sheet) {
-    sheet = ss.insertSheet(definition.name);
-
+  if (sheetResult.createdSheet) {
     if (rows.length > 0) {
       sheet.getRange(2, 1, rows.length, columnCount).setValues(rows);
     }
@@ -502,14 +504,46 @@ function initializeRollMasterSheet(ss, definition) {
 
   return {
     name: definition.name,
-    createdSheet: createdSheet,
-    insertedRows: createdSheet ? rows.length : 0,
+    legacyName: definition.legacyName || '',
+    createdSheet: sheetResult.createdSheet,
+    renamedSheet: sheetResult.renamedSheet,
+    insertedRows: sheetResult.createdSheet ? rows.length : 0,
     formatted: true
   };
 }
 
+function getOrCreateRollMasterSheet(ss, definition) {
+  let sheet = ss.getSheetByName(definition.name);
+
+  if (sheet) {
+    return {
+      sheet: sheet,
+      createdSheet: false,
+      renamedSheet: false
+    };
+  }
+
+  if (definition.legacyName) {
+    sheet = ss.getSheetByName(definition.legacyName);
+    if (sheet) {
+      sheet.setName(definition.name);
+      return {
+        sheet: sheet,
+        createdSheet: false,
+        renamedSheet: true
+      };
+    }
+  }
+
+  return {
+    sheet: ss.insertSheet(definition.name),
+    createdSheet: true,
+    renamedSheet: false
+  };
+}
+
 function getRollMasterInitialRows(definition) {
-  if (definition.name === 'StatusMaster') {
+  if (definition.legacyName === 'StatusMaster') {
     return STATUS_OPTIONS.map(function(status, index) {
       return [
         status,
