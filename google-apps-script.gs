@@ -196,6 +196,19 @@ function doGet(e) {
         .createTextOutput(JSON.stringify({ success: false, error: error.toString() }))
         .setMimeType(ContentService.MimeType.JSON);
     }
+  } else if (action === 'updatecuttingmasterfromhistory') {
+    try {
+      const result = updateCuttingMasterFromHistory();
+      Logger.log('doGet updateCuttingMasterFromHistory: ' + JSON.stringify(result));
+      return ContentService
+        .createTextOutput(JSON.stringify({ success: true, result: result }))
+        .setMimeType(ContentService.MimeType.JSON);
+    } catch (error) {
+      Logger.log('doGet updateCuttingMasterFromHistory error: ' + error.toString());
+      return ContentService
+        .createTextOutput(JSON.stringify({ success: false, error: error.toString() }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
   } else if (action === 'save') {
     try {
       const rolesParam = params.roles;
@@ -341,6 +354,15 @@ function doPost(e) {
         .createTextOutput(JSON.stringify({
           success: true,
           event: event
+        }))
+        .setMimeType(ContentService.MimeType.JSON);
+    } else if (action === 'updatecuttingmasterfromhistory') {
+      const result = updateCuttingMasterFromHistory();
+
+      return ContentService
+        .createTextOutput(JSON.stringify({
+          success: true,
+          result: result
         }))
         .setMimeType(ContentService.MimeType.JSON);
     }
@@ -534,6 +556,95 @@ function analyzeCuttingHistory() {
       minCutMm: roundCuttingHistoryNumber(Math.min.apply(null, cutValues))
     };
   });
+}
+
+function updateCuttingMasterFromHistory() {
+  const definition = getRollMasterDefinitionByLegacyName('CuttingMaster');
+  const sheet = getRollMasterSheetForRead(definition);
+  const values = sheet.getDataRange().getValues();
+  const analysisByStand = {};
+  const now = new Date().toISOString();
+  const columnIndexes = getCuttingMasterHistoryUpdateColumnIndexes(definition);
+  let updatedCount = 0;
+  const skippedStands = [];
+
+  if (values.length <= 1) {
+    return {
+      updatedCount: 0,
+      skippedStands: [],
+      updatedAt: now
+    };
+  }
+
+  analyzeCuttingHistory().forEach(function(item) {
+    analysisByStand[normalizeCuttingHistoryStandValue(item.stand)] = item;
+  });
+
+  values.slice(1).forEach(function(row, index) {
+    const rowNumber = index + 2;
+    const stand = normalizeCuttingHistoryStandValue(row[columnIndexes.stand - 1]);
+    const analysis = analysisByStand[stand];
+
+    if (!stand || !analysis) {
+      if (stand) {
+        skippedStands.push(stand);
+      }
+      return;
+    }
+
+    const standardCutMm = normalizeStandMasterNumericValue(row[columnIndexes.standardCutMm - 1]);
+    const diffSourceCutMm = analysis.recentAverageCutMm !== ''
+      ? analysis.recentAverageCutMm
+      : analysis.actualAverageCutMm;
+    const standardDiffMm = standardCutMm !== '' && diffSourceCutMm !== ''
+      ? roundCuttingHistoryNumber(diffSourceCutMm - standardCutMm)
+      : '';
+    const standardDiffRate = standardCutMm !== '' && standardCutMm !== 0 && standardDiffMm !== ''
+      ? roundCuttingHistoryNumber(standardDiffMm / standardCutMm)
+      : '';
+
+    sheet.getRange(rowNumber, columnIndexes.actualAverageCutMm).setValue(analysis.actualAverageCutMm);
+    sheet.getRange(rowNumber, columnIndexes.recentAverageCutMm).setValue(analysis.recentAverageCutMm);
+    sheet.getRange(rowNumber, columnIndexes.actualSampleCount).setValue(analysis.sampleCount);
+    sheet.getRange(rowNumber, columnIndexes.standardDiffMm).setValue(standardDiffMm);
+    sheet.getRange(rowNumber, columnIndexes.standardDiffRate).setValue(standardDiffRate);
+    sheet.getRange(rowNumber, columnIndexes.updatedAt).setValue(now);
+    updatedCount += 1;
+  });
+
+  applyRollMasterSheetFormatting(sheet, definition);
+
+  return {
+    updatedCount: updatedCount,
+    skippedStands: skippedStands,
+    updatedAt: now
+  };
+}
+
+function getCuttingMasterHistoryUpdateColumnIndexes(definition) {
+  const keys = [
+    'stand',
+    'standardCutMm',
+    'actualAverageCutMm',
+    'recentAverageCutMm',
+    'actualSampleCount',
+    'standardDiffMm',
+    'standardDiffRate',
+    'updatedAt'
+  ];
+  const indexes = {};
+
+  keys.forEach(function(key) {
+    const index = getRollMasterColumnIndexByKey(definition, key);
+
+    if (index <= 0) {
+      throw new Error('CuttingMaster column not found: ' + key);
+    }
+
+    indexes[key] = index;
+  });
+
+  return indexes;
 }
 
 function getCuttingMasterRecentSampleCountsByStand(definition) {
