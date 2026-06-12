@@ -183,6 +183,19 @@ function doGet(e) {
         .createTextOutput(JSON.stringify({ success: false, error: error.toString() }))
         .setMimeType(ContentService.MimeType.JSON);
     }
+  } else if (action === 'analyzecuttinghistory') {
+    try {
+      const analysis = analyzeCuttingHistory();
+      Logger.log('doGet analyzeCuttingHistory: returning ' + analysis.length + ' rows');
+      return ContentService
+        .createTextOutput(JSON.stringify({ success: true, cuttingHistoryAnalysis: analysis }))
+        .setMimeType(ContentService.MimeType.JSON);
+    } catch (error) {
+      Logger.log('doGet analyzeCuttingHistory error: ' + error.toString());
+      return ContentService
+        .createTextOutput(JSON.stringify({ success: false, error: error.toString() }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
   } else if (action === 'save') {
     try {
       const rolesParam = params.roles;
@@ -490,6 +503,147 @@ function fetchCuttingMaster() {
 
   Logger.log('fetchCuttingMaster: returning ' + result.length + ' rows');
   return result;
+}
+
+function analyzeCuttingHistory() {
+  const cuttingMasterDefinition = getRollMasterDefinitionByLegacyName('CuttingMaster');
+  const workHistoryDefinition = getRollMasterDefinitionByLegacyName('WorkHistory');
+  const recentSampleCountsByStand = getCuttingMasterRecentSampleCountsByStand(cuttingMasterDefinition);
+  const eventsByStand = getCuttingHistoryEventsByStand(workHistoryDefinition);
+  const stands = Object.keys(eventsByStand).sort(compareNormalizedStandValues);
+
+  return stands.map(function(stand) {
+    const events = eventsByStand[stand].slice().sort(compareCuttingHistoryEventsByDateDesc);
+    const recentSampleCount = recentSampleCountsByStand[stand] || 5;
+    const recentEvents = events.slice(0, recentSampleCount);
+    const cutValues = events.map(function(event) {
+      return event.cutMm;
+    });
+    const recentCutValues = recentEvents.map(function(event) {
+      return event.cutMm;
+    });
+
+    return {
+      stand: stand,
+      sampleCount: cutValues.length,
+      actualAverageCutMm: roundCuttingHistoryNumber(averageCuttingHistoryValues(cutValues)),
+      recentAverageCutMm: roundCuttingHistoryNumber(averageCuttingHistoryValues(recentCutValues)),
+      recentSampleCount: recentCutValues.length,
+      recentSampleLimit: recentSampleCount,
+      maxCutMm: roundCuttingHistoryNumber(Math.max.apply(null, cutValues)),
+      minCutMm: roundCuttingHistoryNumber(Math.min.apply(null, cutValues))
+    };
+  });
+}
+
+function getCuttingMasterRecentSampleCountsByStand(definition) {
+  const sheet = getRollMasterSheetForRead(definition);
+  const values = sheet.getDataRange().getValues();
+  const standIndex = getRollMasterColumnIndexByKey(definition, 'stand') - 1;
+  const recentSampleCountIndex = getRollMasterColumnIndexByKey(definition, 'recentSampleCount') - 1;
+  const result = {};
+
+  if (values.length <= 1 || standIndex < 0 || recentSampleCountIndex < 0) {
+    return result;
+  }
+
+  values.slice(1).forEach(function(row) {
+    const stand = normalizeCuttingHistoryStandValue(row[standIndex]);
+    const recentSampleCount = normalizeStandMasterNumericValue(row[recentSampleCountIndex]);
+
+    if (!stand) {
+      return;
+    }
+
+    result[stand] = recentSampleCount !== '' && recentSampleCount > 0
+      ? Math.floor(recentSampleCount)
+      : 5;
+  });
+
+  return result;
+}
+
+function getCuttingHistoryEventsByStand(definition) {
+  const sheet = getRollMasterSheetForRead(definition);
+  const values = sheet.getDataRange().getValues();
+  const standIndex = getRollMasterColumnIndexByKey(definition, 'stand') - 1;
+  const eventTypeIndex = getRollMasterColumnIndexByKey(definition, 'eventType') - 1;
+  const eventAtIndex = getRollMasterColumnIndexByKey(definition, 'eventAt') - 1;
+  const cutMmIndex = getRollMasterColumnIndexByKey(definition, 'cutMm') - 1;
+  const result = {};
+
+  if (values.length <= 1 || standIndex < 0 || eventTypeIndex < 0 || cutMmIndex < 0) {
+    return result;
+  }
+
+  values.slice(1).forEach(function(row) {
+    const eventType = String(row[eventTypeIndex] || '').trim();
+    const cutMm = normalizeStandMasterNumericValue(row[cutMmIndex]);
+    const stand = normalizeCuttingHistoryStandValue(row[standIndex]);
+
+    if (eventType !== '\u6539\u524a' || cutMm === '' || cutMm <= 0 || cutMm >= 30 || !stand) {
+      return;
+    }
+
+    if (!result[stand]) {
+      result[stand] = [];
+    }
+
+    result[stand].push({
+      stand: stand,
+      eventAt: eventAtIndex >= 0 ? row[eventAtIndex] : '',
+      cutMm: cutMm
+    });
+  });
+
+  return result;
+}
+
+function normalizeCuttingHistoryStandValue(value) {
+  const text = String(value === undefined || value === null ? '' : value).trim();
+  const match = text.match(/#?\s*(\d+)/);
+
+  return match ? '#' + Number(match[1]) : '';
+}
+
+function compareNormalizedStandValues(a, b) {
+  const aNumber = Number(String(a || '').replace('#', '')) || 999999;
+  const bNumber = Number(String(b || '').replace('#', '')) || 999999;
+
+  if (aNumber !== bNumber) {
+    return aNumber - bNumber;
+  }
+
+  return String(a || '').localeCompare(String(b || ''));
+}
+
+function compareCuttingHistoryEventsByDateDesc(a, b) {
+  const aTime = new Date(a && a.eventAt ? a.eventAt : '').getTime();
+  const bTime = new Date(b && b.eventAt ? b.eventAt : '').getTime();
+  const safeATime = isFinite(aTime) ? aTime : 0;
+  const safeBTime = isFinite(bTime) ? bTime : 0;
+
+  return safeBTime - safeATime;
+}
+
+function averageCuttingHistoryValues(values) {
+  if (!Array.isArray(values) || values.length === 0) {
+    return '';
+  }
+
+  const total = values.reduce(function(sum, value) {
+    return sum + value;
+  }, 0);
+
+  return total / values.length;
+}
+
+function roundCuttingHistoryNumber(value) {
+  if (value === '' || !isFinite(value)) {
+    return '';
+  }
+
+  return Math.round(Number(value) * 1000) / 1000;
 }
 
 function initializeStandMaster() {
