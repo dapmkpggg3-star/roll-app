@@ -591,6 +591,9 @@ function updateCuttingMasterFromHistory() {
     if (!stand || !analysis) {
       if (stand) {
         skippedStands.push(stand);
+        sheet.getRange(rowNumber, columnIndexes.anomalyJudgment).setValue('判定保留');
+        sheet.getRange(rowNumber, columnIndexes.anomalyReason).setValue('履歴なし');
+        sheet.getRange(rowNumber, columnIndexes.updatedAt).setValue(now);
       }
       return;
     }
