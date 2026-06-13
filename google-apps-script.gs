@@ -1086,7 +1086,7 @@ function applyRollMasterSheetFormatting(sheet, definition) {
   applyRollMasterNumberFormats(sheet, definition, maxRows);
   applyRollMasterTextFormats(sheet, definition, maxRows);
   applyCuttingMasterAnomalyFormatting(sheet, definition, maxRows);
-  sheet.autoResizeColumns(1, columnCount);
+  applyRollMasterColumnWidths(sheet, definition);
 }
 
 function ensureRollMasterSheetColumns(sheet, definition) {
@@ -1154,6 +1154,81 @@ function applyRollMasterTextFormats(sheet, definition, maxRows) {
     sheet.getRange(2, columnIndex, maxRows - 1, 1)
       .setNumberFormat('@')
       .setHorizontalAlignment('left');
+  });
+}
+
+function applyRollMasterColumnWidths(sheet, definition) {
+  const widthsByLegacyName = {
+    CuttingMaster: {
+      stand: 80,
+      standardCutMm: 120,
+      actualAverageCutMm: 130,
+      recentAverageCutMm: 130,
+      calculationCutMm: 130,
+      actualSampleCount: 100,
+      recentSampleCount: 100,
+      standardDiffMm: 120,
+      standardDiffRate: 120,
+      warningRemainingCuts: 100,
+      dangerRemainingCuts: 100,
+      effectiveFrom: 130,
+      updatedAt: 160,
+      autoUpdate: 90,
+      active: 80,
+      note: 260,
+      anomalyJudgment: 100,
+      anomalyReason: 220
+    },
+    WorkHistory: {
+      eventId: 220,
+      roleId: 90,
+      standRollName: 100,
+      stand: 80,
+      eventType: 100,
+      eventAt: 160,
+      beforeValue: 100,
+      afterValue: 100,
+      currentDiameter: 100,
+      cutMm: 100,
+      operator: 100,
+      source: 120,
+      note: 260
+    },
+    StatusMaster: {
+      status: 150,
+      category: 130,
+      sortOrder: 80,
+      visibleDefault: 90,
+      countsAsUsableStock: 110,
+      countsAsRework: 100,
+      countsAsScrapWaiting: 120,
+      countsAsScrap: 100,
+      active: 80,
+      color: 100,
+      note: 260
+    },
+    NotificationMaster: {
+      notificationId: 180,
+      name: 180,
+      enabled: 90,
+      triggerType: 130,
+      thresholdValue: 90,
+      thresholdUnit: 80,
+      targetStatusCategory: 130,
+      recipients: 220,
+      leadDays: 100,
+      messageTemplate: 300,
+      active: 80
+    }
+  };
+  const widthsByKey = widthsByLegacyName[definition.legacyName] || {};
+
+  definition.columns.forEach(function(column, index) {
+    const width = widthsByKey[column.key];
+
+    if (width) {
+      sheet.setColumnWidth(index + 1, width);
+    }
   });
 }
 
