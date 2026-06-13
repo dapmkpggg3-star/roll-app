@@ -351,11 +351,15 @@ function doPost(e) {
         .setMimeType(ContentService.MimeType.JSON);
     } else if (action === 'appendworkhistory') {
       const event = appendWorkHistoryEvent(payload.event || {});
+      const cuttingMasterUpdate = event.eventType === '\u6539\u524a'
+        ? updateCuttingMasterFromHistoryAfterWorkHistoryAppend()
+        : null;
 
       return ContentService
         .createTextOutput(JSON.stringify({
           success: true,
-          event: event
+          event: event,
+          cuttingMasterUpdate: cuttingMasterUpdate
         }))
         .setMimeType(ContentService.MimeType.JSON);
     } else if (action === 'updatecuttingmasterfromhistory') {
@@ -384,6 +388,23 @@ function doPost(e) {
         error: error.toString()
       }))
       .setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+function updateCuttingMasterFromHistoryAfterWorkHistoryAppend() {
+  try {
+    const result = updateCuttingMasterFromHistory();
+    Logger.log('updateCuttingMasterFromHistoryAfterWorkHistoryAppend: ' + JSON.stringify(result));
+    return {
+      success: true,
+      result: result
+    };
+  } catch (error) {
+    Logger.log('updateCuttingMasterFromHistoryAfterWorkHistoryAppend error: ' + error.toString());
+    return {
+      success: false,
+      error: error.toString()
+    };
   }
 }
 
