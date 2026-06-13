@@ -32,7 +32,9 @@ const ROLL_MASTER_SHEET_DEFINITIONS = [
       { key: 'updatedAt', label: '最終更新日', type: 'text' },
       { key: 'autoUpdate', label: '自動更新', type: 'boolean' },
       { key: 'active', label: '有効', type: 'boolean' },
-      { key: 'note', label: '備考', type: 'text' }
+      { key: 'note', label: '備考', type: 'text' },
+      { key: 'anomalyJudgment', label: '異常判定', type: 'text' },
+      { key: 'anomalyReason', label: '判定理由', type: 'text' }
     ],
     legacyKeys: [
       'stand',
@@ -46,22 +48,22 @@ const ROLL_MASTER_SHEET_DEFINITIONS = [
       'note'
     ],
     rows: [
-      ['#2', '', '', '', '', '', 5, '', '', 2, 1, '', '', true, true, ''],
-      ['#3', '', '', '', '', '', 5, '', '', 2, 1, '', '', true, true, ''],
-      ['#4', '', '', '', '', '', 5, '', '', 2, 1, '', '', true, true, ''],
-      ['#5', '', '', '', '', '', 5, '', '', 2, 1, '', '', true, true, ''],
-      ['#6', '', '', '', '', '', 5, '', '', 2, 1, '', '', true, true, ''],
-      ['#7', '', '', '', '', '', 5, '', '', 2, 1, '', '', true, true, ''],
-      ['#8', '', '', '', '', '', 5, '', '', 2, 1, '', '', true, true, ''],
-      ['#9', '', '', '', '', '', 5, '', '', 2, 1, '', '', true, true, ''],
-      ['#10', '', '', '', '', '', 5, '', '', 2, 1, '', '', true, true, ''],
-      ['#11', '', '', '', '', '', 5, '', '', 2, 1, '', '', true, true, ''],
-      ['#12', '', '', '', '', '', 5, '', '', 2, 1, '', '', true, true, ''],
-      ['#13', '', '', '', '', '', 5, '', '', 2, 1, '', '', true, true, ''],
-      ['#14', '', '', '', '', '', 5, '', '', 2, 1, '', '', true, true, ''],
-      ['#15', '', '', '', '', '', 5, '', '', 2, 1, '', '', true, true, ''],
-      ['#16', '', '', '', '', '', 5, '', '', 2, 1, '', '', true, true, ''],
-      ['#17', '', '', '', '', '', 5, '', '', 2, 1, '', '', true, true, '']
+      ['#2', '', '', '', '', '', 5, '', '', 2, 1, '', '', true, true, '', '', ''],
+      ['#3', '', '', '', '', '', 5, '', '', 2, 1, '', '', true, true, '', '', ''],
+      ['#4', '', '', '', '', '', 5, '', '', 2, 1, '', '', true, true, '', '', ''],
+      ['#5', '', '', '', '', '', 5, '', '', 2, 1, '', '', true, true, '', '', ''],
+      ['#6', '', '', '', '', '', 5, '', '', 2, 1, '', '', true, true, '', '', ''],
+      ['#7', '', '', '', '', '', 5, '', '', 2, 1, '', '', true, true, '', '', ''],
+      ['#8', '', '', '', '', '', 5, '', '', 2, 1, '', '', true, true, '', '', ''],
+      ['#9', '', '', '', '', '', 5, '', '', 2, 1, '', '', true, true, '', '', ''],
+      ['#10', '', '', '', '', '', 5, '', '', 2, 1, '', '', true, true, '', '', ''],
+      ['#11', '', '', '', '', '', 5, '', '', 2, 1, '', '', true, true, '', '', ''],
+      ['#12', '', '', '', '', '', 5, '', '', 2, 1, '', '', true, true, '', '', ''],
+      ['#13', '', '', '', '', '', 5, '', '', 2, 1, '', '', true, true, '', '', ''],
+      ['#14', '', '', '', '', '', 5, '', '', 2, 1, '', '', true, true, '', '', ''],
+      ['#15', '', '', '', '', '', 5, '', '', 2, 1, '', '', true, true, '', '', ''],
+      ['#16', '', '', '', '', '', 5, '', '', 2, 1, '', '', true, true, '', '', ''],
+      ['#17', '', '', '', '', '', 5, '', '', 2, 1, '', '', true, true, '', '', '']
     ]
   },
   {
@@ -561,6 +563,7 @@ function analyzeCuttingHistory() {
 function updateCuttingMasterFromHistory() {
   const definition = getRollMasterDefinitionByLegacyName('CuttingMaster');
   const sheet = getRollMasterSheetForRead(definition);
+  ensureRollMasterSheetColumns(sheet, definition);
   const values = sheet.getDataRange().getValues();
   const analysisByStand = {};
   const now = new Date().toISOString();
@@ -602,6 +605,7 @@ function updateCuttingMasterFromHistory() {
     const standardDiffRate = standardCutMm !== '' && standardCutMm !== 0 && standardDiffMm !== ''
       ? roundCuttingHistoryNumber(standardDiffMm / standardCutMm)
       : '';
+    const anomaly = getCuttingMasterAnomalyJudgment(analysis.sampleCount, standardDiffRate);
 
     sheet.getRange(rowNumber, columnIndexes.actualAverageCutMm).setValue(analysis.actualAverageCutMm);
     sheet.getRange(rowNumber, columnIndexes.recentAverageCutMm).setValue(analysis.recentAverageCutMm);
@@ -609,6 +613,8 @@ function updateCuttingMasterFromHistory() {
     sheet.getRange(rowNumber, columnIndexes.standardDiffMm).setValue(standardDiffMm);
     sheet.getRange(rowNumber, columnIndexes.standardDiffRate).setValue(standardDiffRate);
     sheet.getRange(rowNumber, columnIndexes.updatedAt).setValue(now);
+    sheet.getRange(rowNumber, columnIndexes.anomalyJudgment).setValue(anomaly.judgment);
+    sheet.getRange(rowNumber, columnIndexes.anomalyReason).setValue(anomaly.reason);
     updatedCount += 1;
   });
 
@@ -630,7 +636,9 @@ function getCuttingMasterHistoryUpdateColumnIndexes(definition) {
     'actualSampleCount',
     'standardDiffMm',
     'standardDiffRate',
-    'updatedAt'
+    'updatedAt',
+    'anomalyJudgment',
+    'anomalyReason'
   ];
   const indexes = {};
 
@@ -645,6 +653,49 @@ function getCuttingMasterHistoryUpdateColumnIndexes(definition) {
   });
 
   return indexes;
+}
+
+function getCuttingMasterAnomalyJudgment(sampleCount, standardDiffRate) {
+  const normalizedSampleCount = Number(sampleCount) || 0;
+  const normalizedDiffRate = normalizeStandMasterNumericValue(standardDiffRate);
+
+  if (normalizedSampleCount < 3) {
+    return {
+      judgment: '判定保留',
+      reason: 'サンプル不足'
+    };
+  }
+
+  if (normalizedDiffRate !== '' && Math.abs(normalizedDiffRate) >= 0.25) {
+    return {
+      judgment: '異常',
+      reason: '標準との差率 ' + formatCuttingMasterDiffRateForReason(normalizedDiffRate)
+    };
+  }
+
+  if (normalizedDiffRate !== '' && Math.abs(normalizedDiffRate) >= 0.15) {
+    return {
+      judgment: '注意',
+      reason: '標準との差率 ' + formatCuttingMasterDiffRateForReason(normalizedDiffRate)
+    };
+  }
+
+  return {
+    judgment: '正常',
+    reason: '標準範囲内'
+  };
+}
+
+function formatCuttingMasterDiffRateForReason(value) {
+  const rate = Number(value);
+
+  if (!isFinite(rate)) {
+    return '';
+  }
+
+  const percent = Math.round(rate * 1000) / 10;
+  const sign = percent > 0 ? '+' : '';
+  return sign + percent.toFixed(1) + '%';
 }
 
 function getCuttingMasterRecentSampleCountsByStand(definition) {
@@ -982,6 +1033,8 @@ function normalizeCuttingMasterRecord(record) {
   normalized.autoUpdate = normalizeRollMasterBooleanValue(record.autoUpdate);
   normalized.active = normalizeRollMasterBooleanValue(record.active);
   normalized.note = record.note || '';
+  normalized.anomalyJudgment = record.anomalyJudgment || '';
+  normalized.anomalyReason = record.anomalyReason || '';
 
   if (normalized.calculationCutMm === '' && normalized.standardCutMm !== '') {
     normalized.calculationCutMm = normalized.standardCutMm;
@@ -1007,6 +1060,7 @@ function applyRollMasterSheetFormatting(sheet, definition) {
   const totalRows = Math.max(sheet.getLastRow(), 1);
   const maxRows = Math.max(sheet.getMaxRows(), 2);
 
+  ensureRollMasterSheetColumns(sheet, definition);
   sheet.setFrozenRows(1);
 
   sheet.getRange(1, 1, 1, columnCount)
@@ -1028,7 +1082,13 @@ function applyRollMasterSheetFormatting(sheet, definition) {
   applyRollMasterBooleanValidation(sheet, definition, maxRows);
   applyRollMasterNumberFormats(sheet, definition, maxRows);
   applyRollMasterTextFormats(sheet, definition, maxRows);
+  applyCuttingMasterAnomalyFormatting(sheet, definition, maxRows);
   sheet.autoResizeColumns(1, columnCount);
+}
+
+function ensureRollMasterSheetColumns(sheet, definition) {
+  const labels = getRollMasterColumnLabels(definition);
+  sheet.getRange(1, 1, 1, labels.length).setValues([labels]);
 }
 
 function getRollMasterColumnCount(definition) {
@@ -1092,6 +1152,49 @@ function applyRollMasterTextFormats(sheet, definition, maxRows) {
       .setNumberFormat('@')
       .setHorizontalAlignment('left');
   });
+}
+
+function applyCuttingMasterAnomalyFormatting(sheet, definition, maxRows) {
+  if (definition.legacyName !== 'CuttingMaster') {
+    return;
+  }
+
+  const anomalyJudgmentColumn = getRollMasterColumnIndexByKey(definition, 'anomalyJudgment');
+  const anomalyReasonColumn = getRollMasterColumnIndexByKey(definition, 'anomalyReason');
+
+  if (anomalyJudgmentColumn <= 0) {
+    return;
+  }
+
+  const rowCount = maxRows - 1;
+  const range = sheet.getRange(2, anomalyJudgmentColumn, rowCount, 1);
+  const colorsByJudgment = {
+    '判定保留': { background: '#e5e7eb', font: '#374151' },
+    '正常': { background: '#dcfce7', font: '#166534' },
+    '注意': { background: '#fef3c7', font: '#92400e' },
+    '異常': { background: '#fee2e2', font: '#991b1b' }
+  };
+  const values = range.getValues();
+  const backgrounds = values.map(function(row) {
+    const colors = colorsByJudgment[String(row[0] || '')];
+    return [colors ? colors.background : '#ffffff'];
+  });
+  const fontColors = values.map(function(row) {
+    const colors = colorsByJudgment[String(row[0] || '')];
+    return [colors ? colors.font : '#111827'];
+  });
+
+  range
+    .setBackgrounds(backgrounds)
+    .setFontColors(fontColors)
+    .setHorizontalAlignment('center')
+    .setFontWeight('bold');
+
+  if (anomalyReasonColumn > 0) {
+    sheet.getRange(2, anomalyReasonColumn, rowCount, 1)
+      .setHorizontalAlignment('left')
+      .setWrap(true);
+  }
 }
 
 function getRollMasterDefinitionByLegacyName(legacyName) {
