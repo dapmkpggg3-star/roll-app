@@ -585,6 +585,25 @@ function buildWorkHistoryDiameterEvent(role, beforeDiameter, afterDiameter, even
     };
 }
 
+function buildCuttingHistoryInputCorrectionInvalidationEvent(role, beforeDiameter, afterDiameter, eventAt) {
+    const beforeValue = normalizeCurrentDiameter(beforeDiameter);
+    const afterValue = normalizeCurrentDiameter(afterDiameter);
+    const operator = getCurrentOperator();
+
+    return {
+        roleId: role.id || '',
+        standRollName: role.name || '',
+        stand: getStandKey(role.name) ? `#${getStandKey(role.name)}` : '',
+        eventAt: eventAt || new Date().toISOString(),
+        beforeValue: beforeValue,
+        afterValue: afterValue,
+        currentDiameter: afterValue,
+        operator: operator ? operator.name : '',
+        source: 'web-app',
+        note: '径変更理由: 入力ミス修正'
+    };
+}
+
 async function appendWorkHistoryEvent(event) {
     if (!isRemoteConfigured()) {
         return false;
@@ -602,6 +621,27 @@ async function appendWorkHistoryEvent(event) {
         return true;
     } catch (error) {
         console.error('appendWorkHistoryEvent error:', error);
+        return false;
+    }
+}
+
+async function invalidateLatestCuttingHistoryForInputCorrection(event) {
+    if (!isRemoteConfigured()) {
+        return false;
+    }
+
+    try {
+        await fetch(SHEETS_ENDPOINT, {
+            method: 'POST',
+            mode: 'no-cors',
+            body: JSON.stringify({
+                action: 'invalidateLatestCuttingHistoryForInputCorrection',
+                event
+            })
+        });
+        return true;
+    } catch (error) {
+        console.error('invalidateLatestCuttingHistoryForInputCorrection error:', error);
         return false;
     }
 }
@@ -2655,6 +2695,10 @@ function updateRole() {
     const workHistoryEvent = shouldAppendWorkHistory
         ? buildWorkHistoryDiameterEvent(role, beforeCurrentDiameter, roleCurrentDiameter, role.updatedAt)
         : null;
+    const shouldInvalidateCuttingHistory = beforeCurrentDiameter !== roleCurrentDiameter && diameterChangeReason === '入力ミス修正';
+    const cuttingHistoryInvalidationEvent = shouldInvalidateCuttingHistory
+        ? buildCuttingHistoryInputCorrectionInvalidationEvent(role, beforeCurrentDiameter, roleCurrentDiameter, role.updatedAt)
+        : null;
 
     updatedRoleId = role.id;
     const debugRoleIndex = findDebugRoleIndex(roles);
@@ -2670,6 +2714,13 @@ function updateRole() {
         appendWorkHistoryEvent(workHistoryEvent).then(success => {
             if (!success) {
                 showToast('作業履歴への記録に失敗しました');
+            }
+        });
+    }
+    if (cuttingHistoryInvalidationEvent) {
+        invalidateLatestCuttingHistoryForInputCorrection(cuttingHistoryInvalidationEvent).then(success => {
+            if (!success) {
+                showToast('改削履歴の無効化に失敗しました');
             }
         });
     }

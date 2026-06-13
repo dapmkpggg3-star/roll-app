@@ -122,7 +122,11 @@ const ROLL_MASTER_SHEET_DEFINITIONS = [
       { key: 'cutMm', label: '改削量', type: 'number' },
       { key: 'operator', label: '担当者', type: 'text' },
       { key: 'source', label: '登録元', type: 'text' },
-      { key: 'note', label: '備考', type: 'text' }
+      { key: 'note', label: '備考', type: 'text' },
+      { key: 'active', label: '有効', type: 'boolean' },
+      { key: 'invalidatedAt', label: '無効化日時', type: 'text' },
+      { key: 'invalidationReason', label: '無効化理由', type: 'text' },
+      { key: 'invalidatedBy', label: '無効化元', type: 'text' }
     ],
     rows: []
   }
@@ -362,6 +366,19 @@ function doPost(e) {
           cuttingMasterUpdate: cuttingMasterUpdate
         }))
         .setMimeType(ContentService.MimeType.JSON);
+    } else if (action === 'invalidatelatestcuttinghistoryforinputcorrection') {
+      const result = invalidateLatestCuttingHistoryForInputCorrection(payload.event || {});
+      const cuttingMasterUpdate = result.invalidated
+        ? updateCuttingMasterFromHistoryAfterWorkHistoryInvalidation()
+        : null;
+
+      return ContentService
+        .createTextOutput(JSON.stringify({
+          success: true,
+          result: result,
+          cuttingMasterUpdate: cuttingMasterUpdate
+        }))
+        .setMimeType(ContentService.MimeType.JSON);
     } else if (action === 'updatecuttingmasterfromhistory') {
       const result = updateCuttingMasterFromHistory();
 
@@ -392,15 +409,23 @@ function doPost(e) {
 }
 
 function updateCuttingMasterFromHistoryAfterWorkHistoryAppend() {
+  return updateCuttingMasterFromHistorySafely('updateCuttingMasterFromHistoryAfterWorkHistoryAppend');
+}
+
+function updateCuttingMasterFromHistoryAfterWorkHistoryInvalidation() {
+  return updateCuttingMasterFromHistorySafely('updateCuttingMasterFromHistoryAfterWorkHistoryInvalidation');
+}
+
+function updateCuttingMasterFromHistorySafely(source) {
   try {
     const result = updateCuttingMasterFromHistory();
-    Logger.log('updateCuttingMasterFromHistoryAfterWorkHistoryAppend: ' + JSON.stringify(result));
+    Logger.log(source + ': ' + JSON.stringify(result));
     return {
       success: true,
       result: result
     };
   } catch (error) {
-    Logger.log('updateCuttingMasterFromHistoryAfterWorkHistoryAppend error: ' + error.toString());
+    Logger.log(source + ' error: ' + error.toString());
     return {
       success: false,
       error: error.toString()
@@ -756,6 +781,7 @@ function getCuttingHistoryEventsByStand(definition) {
   const eventTypeIndex = getRollMasterColumnIndexByKey(definition, 'eventType') - 1;
   const eventAtIndex = getRollMasterColumnIndexByKey(definition, 'eventAt') - 1;
   const cutMmIndex = getRollMasterColumnIndexByKey(definition, 'cutMm') - 1;
+  const activeIndex = getRollMasterColumnIndexByKey(definition, 'active') - 1;
   const result = {};
 
   if (values.length <= 1 || standIndex < 0 || eventTypeIndex < 0 || cutMmIndex < 0) {
@@ -766,8 +792,9 @@ function getCuttingHistoryEventsByStand(definition) {
     const eventType = String(row[eventTypeIndex] || '').trim();
     const cutMm = normalizeStandMasterNumericValue(row[cutMmIndex]);
     const stand = normalizeCuttingHistoryStandValue(row[standIndex]);
+    const active = activeIndex >= 0 ? normalizeRollMasterBooleanValue(row[activeIndex]) : true;
 
-    if (eventType !== '\u6539\u524a' || cutMm === '' || cutMm <= 0 || cutMm >= 30 || !stand) {
+    if (!active || eventType !== '\u6539\u524a' || cutMm === '' || cutMm <= 0 || cutMm >= 30 || !stand) {
       return;
     }
 
@@ -1213,7 +1240,11 @@ function applyRollMasterColumnWidths(sheet, definition) {
       cutMm: 100,
       operator: 100,
       source: 120,
-      note: 260
+      note: 260,
+      active: 80,
+      invalidatedAt: 160,
+      invalidationReason: 160,
+      invalidatedBy: 120
     },
     StatusMaster: {
       status: 150,
@@ -1342,6 +1373,7 @@ function appendWorkHistoryEvent(event) {
   const normalizedEvent = normalizeWorkHistoryEventForSheet(event);
   const row = getRollMasterRowFromRecord(normalizedEvent, definition);
 
+  ensureRollMasterSheetColumns(sheet, definition);
   if (sheet.getLastRow() < 1) {
     sheet.getRange(1, 1, 1, columnCount).setValues([labels]);
   }
@@ -1375,8 +1407,134 @@ function normalizeWorkHistoryEventForSheet(event) {
     cutMm: cutMm,
     operator: event.operator || '',
     source: event.source || '',
-    note: event.note || ''
+    note: event.note || '',
+    active: event.active === false || String(event.active).trim().toLowerCase() === 'false' ? false : true,
+    invalidatedAt: event.invalidatedAt || '',
+    invalidationReason: event.invalidationReason || '',
+    invalidatedBy: event.invalidatedBy || ''
   };
+}
+
+function invalidateLatestCuttingHistoryForInputCorrection(event) {
+  try {
+    return invalidateLatestCuttingHistoryForInputCorrectionCore(event);
+  } catch (error) {
+    Logger.log('invalidateLatestCuttingHistoryForInputCorrection error: ' + error.toString());
+    return {
+      success: false,
+      invalidated: false,
+      reason: error.toString()
+    };
+  }
+}
+
+function invalidateLatestCuttingHistoryForInputCorrectionCore(event) {
+  const definition = getRollMasterDefinitionByLegacyName('WorkHistory');
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const sheetResult = getOrCreateRollMasterSheet(ss, definition);
+  const sheet = sheetResult.sheet;
+  ensureRollMasterSheetColumns(sheet, definition);
+
+  const values = sheet.getDataRange().getValues();
+  const indexes = getWorkHistoryInvalidationColumnIndexes(definition);
+  const targetRoleId = String(event && event.roleId || '').trim();
+  const targetBeforeValue = normalizeStandMasterNumericValue(event && event.beforeValue);
+
+  if (!targetRoleId) {
+    return {
+      success: true,
+      invalidated: false,
+      reason: 'roleId is empty'
+    };
+  }
+
+  if (targetBeforeValue === '') {
+    return {
+      success: true,
+      invalidated: false,
+      reason: 'beforeValue is empty'
+    };
+  }
+
+  if (values.length <= 1) {
+    return {
+      success: true,
+      invalidated: false,
+      reason: 'work history is empty'
+    };
+  }
+
+  for (var index = values.length - 1; index >= 1; index--) {
+    const row = values[index];
+    const roleId = String(row[indexes.roleId - 1] || '').trim();
+    const eventType = String(row[indexes.eventType - 1] || '').trim();
+    const active = normalizeRollMasterBooleanValue(row[indexes.active - 1]);
+
+    if (roleId !== targetRoleId || eventType !== '\u6539\u524a' || !active) {
+      continue;
+    }
+
+    const afterValue = normalizeStandMasterNumericValue(row[indexes.afterValue - 1]);
+
+    if (afterValue !== targetBeforeValue) {
+      return {
+        success: true,
+        invalidated: false,
+        reason: 'latest active cutting history afterValue does not match correction beforeValue',
+        latestEventId: row[indexes.eventId - 1] || '',
+        latestAfterValue: afterValue,
+        correctionBeforeValue: targetBeforeValue
+      };
+    }
+
+    const rowNumber = index + 1;
+    const invalidatedAt = new Date().toISOString();
+    sheet.getRange(rowNumber, indexes.active).setValue(false);
+    sheet.getRange(rowNumber, indexes.invalidatedAt).setValue(invalidatedAt);
+    sheet.getRange(rowNumber, indexes.invalidationReason).setValue('入力ミス修正');
+    sheet.getRange(rowNumber, indexes.invalidatedBy).setValue('web-app');
+    applyRollMasterSheetFormatting(sheet, definition);
+
+    return {
+      success: true,
+      invalidated: true,
+      eventId: row[indexes.eventId - 1] || '',
+      rowNumber: rowNumber,
+      invalidatedAt: invalidatedAt
+    };
+  }
+
+  return {
+    success: true,
+    invalidated: false,
+    reason: 'matching active cutting history not found'
+  };
+}
+
+function getWorkHistoryInvalidationColumnIndexes(definition) {
+  const keys = [
+    'eventId',
+    'roleId',
+    'eventType',
+    'afterValue',
+    'active',
+    'invalidatedAt',
+    'invalidationReason',
+    'invalidatedBy'
+  ];
+  const indexes = {};
+
+  keys.forEach(function(key) {
+    const index = getRollMasterColumnIndexByKey(definition, key);
+
+    if (index <= 0) {
+      throw new Error('WorkHistory column not found: ' + key);
+    }
+
+    indexes[key] = index;
+  });
+
+  return indexes;
 }
 
 function createWorkHistoryEventId(roleId, eventAt) {
