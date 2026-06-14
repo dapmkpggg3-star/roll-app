@@ -11,7 +11,7 @@
     <link rel="manifest" href="manifest.json">
     <link rel="icon" type="image/png" sizes="192x192" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect fill='%23667eea' width='192' height='192'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' font-size='96' fill='white' font-family='Arial'>📋</text></svg>">
     <title>ロール管理アプリ</title>
-    <link rel="stylesheet" href="css/styles.css?v=20260614-danger-rolls">
+    <link rel="stylesheet" href="css/styles.css?v=20260614-action-dashboard-grid">
 </head>
 <body>
     <div id="app-update-notice" class="app-update-notice" hidden>
@@ -121,26 +121,28 @@
                     </div>
                     <div id="incomplete-work-list" class="incomplete-work-list"></div>
                 </div>
-                <div id="danger-roll-dashboard" class="danger-roll-dashboard is-empty is-collapsed" aria-live="polite">
-                    <div class="danger-roll-header">
-                        <button type="button" id="danger-roll-toggle" class="dashboard-toggle-btn danger-roll-title" onclick="toggleDangerRollDashboard()" aria-expanded="false" aria-controls="danger-roll-list">危険ロール一覧（0件） ▼</button>
-                        <span id="danger-roll-count" class="danger-roll-count">0件</span>
+                <div class="action-dashboard-grid" aria-label="優先確認ダッシュボード">
+                    <div id="danger-roll-dashboard" class="danger-roll-dashboard is-empty is-collapsed" aria-live="polite">
+                        <div class="danger-roll-header">
+                            <button type="button" id="danger-roll-toggle" class="dashboard-toggle-btn danger-roll-title" onclick="toggleDangerRollDashboard()" aria-expanded="false" aria-controls="danger-roll-list">危険ロール一覧（0件） ▼</button>
+                            <span id="danger-roll-count" class="danger-roll-count">0件</span>
+                        </div>
+                        <div id="danger-roll-list" class="danger-roll-list"></div>
                     </div>
-                    <div id="danger-roll-list" class="danger-roll-list"></div>
-                </div>
-                <div id="today-task-dashboard" class="today-task-dashboard is-collapsed" aria-live="polite">
-                    <div class="today-task-header">
-                        <button type="button" id="today-task-toggle" class="dashboard-toggle-btn today-task-title" onclick="toggleTodayTaskDashboard()" aria-expanded="false" aria-controls="today-task-list">本日のタスク（0件） ▼</button>
-                        <span id="today-task-count" class="today-task-count">0件</span>
+                    <div id="today-task-dashboard" class="today-task-dashboard is-collapsed" aria-live="polite">
+                        <div class="today-task-header">
+                            <button type="button" id="today-task-toggle" class="dashboard-toggle-btn today-task-title" onclick="toggleTodayTaskDashboard()" aria-expanded="false" aria-controls="today-task-list">本日のタスク（0件） ▼</button>
+                            <span id="today-task-count" class="today-task-count">0件</span>
+                        </div>
+                        <div id="today-task-list" class="today-task-list"></div>
                     </div>
-                    <div id="today-task-list" class="today-task-list"></div>
-                </div>
-                <div id="cutting-anomaly-dashboard" class="cutting-anomaly-dashboard is-empty is-collapsed" aria-live="polite">
-                    <div class="cutting-anomaly-header">
-                        <button type="button" id="cutting-anomaly-toggle" class="dashboard-toggle-btn cutting-anomaly-title" onclick="toggleCuttingAnomalyDashboard()" aria-expanded="false" aria-controls="cutting-anomaly-list">改削異常チェック（0件） ▼</button>
-                        <span id="cutting-anomaly-count" class="cutting-anomaly-count">0件</span>
+                    <div id="cutting-anomaly-dashboard" class="cutting-anomaly-dashboard is-empty is-collapsed" aria-live="polite">
+                        <div class="cutting-anomaly-header">
+                            <button type="button" id="cutting-anomaly-toggle" class="dashboard-toggle-btn cutting-anomaly-title" onclick="toggleCuttingAnomalyDashboard()" aria-expanded="false" aria-controls="cutting-anomaly-list">改削異常チェック（0件） ▼</button>
+                            <span id="cutting-anomaly-count" class="cutting-anomaly-count">0件</span>
+                        </div>
+                        <div id="cutting-anomaly-list" class="cutting-anomaly-list"></div>
                     </div>
-                    <div id="cutting-anomaly-list" class="cutting-anomaly-list"></div>
                 </div>
                 <section id="workshop-board" class="workshop-board" aria-live="polite">
                     <div class="workshop-board-header">
@@ -326,7 +328,7 @@
 
     <script src="js/sync.js?v=20260608-normalize-use-start-date"></script>
 <script src="js/csv.js?v=20260607-summary-groups"></script>
-<script src="js/app.js?v=20260614-danger-rolls"></script>
+<script src="js/app.js?v=20260614-action-dashboard-grid"></script>
 
         // ログイン状態チェック
 </body>

@@ -686,6 +686,58 @@ body {
     font-weight: 700;
 }
 
+.action-dashboard-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    align-items: start;
+    gap: 12px;
+    width: 100%;
+    margin: 0 0 18px;
+}
+
+.action-dashboard-grid > .danger-roll-dashboard,
+.action-dashboard-grid > .today-task-dashboard,
+.action-dashboard-grid > .cutting-anomaly-dashboard {
+    min-width: 0;
+    height: auto;
+    margin: 0;
+}
+
+.action-dashboard-grid > .danger-roll-dashboard:not(.is-collapsed),
+.action-dashboard-grid > .today-task-dashboard:not(.is-collapsed),
+.action-dashboard-grid > .cutting-anomaly-dashboard:not(.is-collapsed) {
+    max-height: 520px;
+}
+
+.action-dashboard-grid .danger-roll-list,
+.action-dashboard-grid .today-task-list,
+.action-dashboard-grid .cutting-anomaly-list {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+.action-dashboard-grid > .danger-roll-dashboard:not(.is-collapsed) .danger-roll-list,
+.action-dashboard-grid > .today-task-dashboard:not(.is-collapsed) .today-task-list,
+.action-dashboard-grid > .cutting-anomaly-dashboard:not(.is-collapsed) .cutting-anomaly-list {
+    max-height: 430px;
+}
+
+@media (max-width: 767px) {
+    .action-dashboard-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .action-dashboard-grid > .danger-roll-dashboard:not(.is-collapsed),
+    .action-dashboard-grid > .today-task-dashboard:not(.is-collapsed),
+    .action-dashboard-grid > .cutting-anomaly-dashboard:not(.is-collapsed),
+    .action-dashboard-grid > .danger-roll-dashboard:not(.is-collapsed) .danger-roll-list,
+    .action-dashboard-grid > .today-task-dashboard:not(.is-collapsed) .today-task-list,
+    .action-dashboard-grid > .cutting-anomaly-dashboard:not(.is-collapsed) .cutting-anomaly-list {
+        max-height: none;
+    }
+}
+
 .danger-roll-dashboard {
     display: grid;
     gap: 12px;
@@ -926,7 +978,7 @@ body {
 
 .today-task-items {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
     gap: 7px;
     padding: 0;
     margin: 0;
@@ -1255,9 +1307,7 @@ body.workshop-board-mode .workshop-board {
 body.workshop-board-mode #count-summary,
 body.workshop-board-mode #sync-diagnostic-panel,
 body.workshop-board-mode #incomplete-work-dashboard,
-body.workshop-board-mode #danger-roll-dashboard,
-body.workshop-board-mode #today-task-dashboard,
-body.workshop-board-mode #cutting-anomaly-dashboard,
+body.workshop-board-mode .action-dashboard-grid,
 body.workshop-board-mode .search-bar,
 body.workshop-board-mode #role-count,
 body.workshop-board-mode #sync-message,
