@@ -29,6 +29,8 @@ const WORKSHOP_BOARD_PRIORITY_ORDER = {
     medium: 2,
     low: 3
 };
+const TODAY_TASK_DASHBOARD_OPEN_KEY = 'todayTaskDashboardOpen';
+const CUTTING_ANOMALY_DASHBOARD_OPEN_KEY = 'cuttingAnomalyDashboardOpen';
 
 function getEffectiveViewportWidth() {
     const widths = [
@@ -384,6 +386,77 @@ function toggleRoleForm() {
     setRoleFormOpen(!isOpen);
 }
 
+function getStoredDashboardOpen(storageKey) {
+    try {
+        return localStorage.getItem(storageKey) === 'true';
+    } catch (error) {
+        console.error('getStoredDashboardOpen error:', error);
+        return false;
+    }
+}
+
+function saveDashboardOpen(storageKey, isOpen) {
+    try {
+        localStorage.setItem(storageKey, isOpen ? 'true' : 'false');
+    } catch (error) {
+        console.error('saveDashboardOpen error:', error);
+    }
+}
+
+function setCollapsibleDashboardOpen(config, isOpen, options = {}) {
+    const dashboard = document.getElementById(config.dashboardId);
+    const toggleBtn = document.getElementById(config.toggleId);
+    const countEl = document.getElementById(config.countId);
+    const countText = countEl ? countEl.textContent || '0件' : '0件';
+
+    if (dashboard) {
+        dashboard.classList.toggle('is-collapsed', !isOpen);
+    }
+
+    if (toggleBtn) {
+        toggleBtn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+        toggleBtn.textContent = `${config.label}（${countText}） ${isOpen ? '▲' : '▼'}`;
+    }
+
+    if (options.save !== false) {
+        saveDashboardOpen(config.storageKey, isOpen);
+    }
+}
+
+function syncCollapsibleDashboardState(config) {
+    setCollapsibleDashboardOpen(config, getStoredDashboardOpen(config.storageKey), { save: false });
+}
+
+function toggleCollapsibleDashboard(config) {
+    const dashboard = document.getElementById(config.dashboardId);
+    const isOpen = dashboard ? dashboard.classList.contains('is-collapsed') : false;
+    setCollapsibleDashboardOpen(config, isOpen);
+}
+
+const TODAY_TASK_DASHBOARD_CONFIG = {
+    dashboardId: 'today-task-dashboard',
+    toggleId: 'today-task-toggle',
+    countId: 'today-task-count',
+    storageKey: TODAY_TASK_DASHBOARD_OPEN_KEY,
+    label: '本日のタスク'
+};
+
+const CUTTING_ANOMALY_DASHBOARD_CONFIG = {
+    dashboardId: 'cutting-anomaly-dashboard',
+    toggleId: 'cutting-anomaly-toggle',
+    countId: 'cutting-anomaly-count',
+    storageKey: CUTTING_ANOMALY_DASHBOARD_OPEN_KEY,
+    label: '改削異常チェック'
+};
+
+function toggleTodayTaskDashboard() {
+    toggleCollapsibleDashboard(TODAY_TASK_DASHBOARD_CONFIG);
+}
+
+function toggleCuttingAnomalyDashboard() {
+    toggleCollapsibleDashboard(CUTTING_ANOMALY_DASHBOARD_CONFIG);
+}
+
 function setEditModeUi(role = null) {
     const isEditing = Boolean(role);
     const addRoleBtn = document.getElementById('addRoleBtn');
@@ -571,10 +644,14 @@ function normalizeCuttingAnomalyJudgment(value) {
 }
 
 function formatCuttingMasterRate(value) {
+    if (value === undefined || value === null || String(value).trim() === '') {
+        return '';
+    }
+
     const numericValue = Number(value);
 
     if (!Number.isFinite(numericValue)) {
-        return '-';
+        return '';
     }
 
     const percent = Math.round(numericValue * 1000) / 10;
@@ -618,6 +695,7 @@ function updateCuttingAnomalyDashboard() {
     const items = getCuttingAnomalyItems();
     countEl.textContent = `${items.length}件`;
     dashboard.classList.toggle('is-empty', items.length === 0);
+    syncCollapsibleDashboardState(CUTTING_ANOMALY_DASHBOARD_CONFIG);
 
     if (items.length === 0) {
         listEl.innerHTML = '<div class="cutting-anomaly-empty">改削異常はありません</div>';
@@ -646,13 +724,16 @@ function updateCuttingAnomalyDashboard() {
                 <div class="cutting-anomaly-items">
                     ${groupItems.map(item => {
                         const diffRate = formatCuttingMasterRate(item.standardDiffRate);
+                        const diffRateHtml = diffRate
+                            ? `<span class="cutting-anomaly-rate">標準との差率 ${escapeHtml(diffRate)}</span>`
+                            : '';
                         const reason = item.anomalyReason || '理由未設定';
 
                         return `
                             <div class="cutting-anomaly-item">
                                 <div class="cutting-anomaly-main">
                                     <span class="cutting-anomaly-stand">${escapeHtml(item.stand || '-')}</span>
-                                    <span class="cutting-anomaly-rate">標準との差率 ${escapeHtml(diffRate)}</span>
+                                    ${diffRateHtml}
                                 </div>
                                 <div class="cutting-anomaly-reason">理由：${escapeHtml(reason)}</div>
                             </div>
@@ -1995,6 +2076,7 @@ function updateTodayTaskDashboard(allRoles) {
     const tasks = getTodayTaskItems(allRoles);
     countEl.textContent = `${tasks.length}件`;
     dashboard.classList.toggle('is-empty', tasks.length === 0);
+    syncCollapsibleDashboardState(TODAY_TASK_DASHBOARD_CONFIG);
 
     if (tasks.length === 0) {
         listEl.innerHTML = '<div class="today-task-empty">本日のタスクはありません</div>';

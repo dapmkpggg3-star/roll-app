@@ -655,6 +655,28 @@ body {
     gap: 12px;
 }
 
+.dashboard-toggle-btn {
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.dashboard-toggle-btn:hover,
+.dashboard-toggle-btn:focus-visible {
+    color: #1d4ed8;
+    outline: none;
+}
+
+.dashboard-toggle-btn:focus-visible {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+
 .today-task-title {
     font-size: 1.08rem;
     font-weight: 900;
@@ -678,6 +700,11 @@ body {
 .today-task-list {
     display: grid;
     gap: 12px;
+}
+
+.today-task-dashboard.is-collapsed .today-task-list,
+.cutting-anomaly-dashboard.is-collapsed .cutting-anomaly-list {
+    display: none;
 }
 
 .today-task-group {

@@ -120,16 +120,16 @@
                     </div>
                     <div id="incomplete-work-list" class="incomplete-work-list"></div>
                 </div>
-                <div id="today-task-dashboard" class="today-task-dashboard" aria-live="polite">
+                <div id="today-task-dashboard" class="today-task-dashboard is-collapsed" aria-live="polite">
                     <div class="today-task-header">
-                        <span class="today-task-title">本日のタスク</span>
+                        <button type="button" id="today-task-toggle" class="dashboard-toggle-btn today-task-title" onclick="toggleTodayTaskDashboard()" aria-expanded="false" aria-controls="today-task-list">本日のタスク（0件） ▼</button>
                         <span id="today-task-count" class="today-task-count">0件</span>
                     </div>
                     <div id="today-task-list" class="today-task-list"></div>
                 </div>
-                <div id="cutting-anomaly-dashboard" class="cutting-anomaly-dashboard is-empty" aria-live="polite">
+                <div id="cutting-anomaly-dashboard" class="cutting-anomaly-dashboard is-empty is-collapsed" aria-live="polite">
                     <div class="cutting-anomaly-header">
-                        <span class="cutting-anomaly-title">改削異常チェック</span>
+                        <button type="button" id="cutting-anomaly-toggle" class="dashboard-toggle-btn cutting-anomaly-title" onclick="toggleCuttingAnomalyDashboard()" aria-expanded="false" aria-controls="cutting-anomaly-list">改削異常チェック（0件） ▼</button>
                         <span id="cutting-anomaly-count" class="cutting-anomaly-count">0件</span>
                     </div>
                     <div id="cutting-anomaly-list" class="cutting-anomaly-list"></div>
