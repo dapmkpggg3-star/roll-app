@@ -33,6 +33,45 @@ const TODAY_TASK_DASHBOARD_OPEN_KEY = 'todayTaskDashboardOpen';
 const CUTTING_ANOMALY_DASHBOARD_OPEN_KEY = 'cuttingAnomalyDashboardOpen';
 const DANGER_ROLL_DASHBOARD_OPEN_KEY = 'dangerRollDashboardOpen';
 const FUTURE_WORK_DASHBOARD_OPEN_KEY = 'futureWorkDashboardOpen';
+const DASHBOARD_DISPLAY_SETTINGS_OPEN_KEY = 'dashboardDisplaySettingsOpen';
+const DASHBOARD_VISIBILITY_STORAGE_PREFIX = 'dashboardVisibility.';
+const DASHBOARD_VISIBILITY_OPTIONS = [
+    {
+        key: 'priorityStand',
+        label: '最優先確認',
+        targetId: 'priority-stand-panel',
+        inputId: 'dashboard-visibility-priority-stand',
+        defaultVisible: false
+    },
+    {
+        key: 'standRisk',
+        label: 'スタンド別リスク',
+        targetId: 'stand-risk-panel',
+        inputId: 'dashboard-visibility-stand-risk',
+        defaultVisible: true
+    },
+    {
+        key: 'dangerRoll',
+        label: '危険ロール一覧',
+        targetId: 'danger-roll-dashboard',
+        inputId: 'dashboard-visibility-danger-roll',
+        defaultVisible: false
+    },
+    {
+        key: 'futureWork',
+        label: '未来作業依頼',
+        targetId: 'incomplete-work-dashboard',
+        inputId: 'dashboard-visibility-future-work',
+        defaultVisible: false
+    },
+    {
+        key: 'cuttingAnomaly',
+        label: '改削異常チェック',
+        targetId: 'cutting-anomaly-dashboard',
+        inputId: 'dashboard-visibility-cutting-anomaly',
+        defaultVisible: true
+    }
+];
 
 function getEffectiveViewportWidth() {
     const widths = [
@@ -105,6 +144,7 @@ document.addEventListener('DOMContentLoaded', function() {
     installSyncDiagnosticHeaderIntegration();
     updateSyncStatusBadge();
     setupOperatorSelect();
+    setupDashboardDisplaySettings();
     loadRemoteRoles();
     Promise.all([loadStandMaster(), loadCuttingMaster()]).then(() => renderRoles());
     document.getElementById('password-input').addEventListener('keypress', function(e) {
@@ -120,6 +160,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     setRoleFormOpen(false);
+    applyDashboardVisibilitySettings();
     document.addEventListener('keydown', function(e) {
         if (e.key === 'Escape') {
             closeDetailModal();
@@ -408,6 +449,137 @@ function saveDashboardOpen(storageKey, isOpen) {
     } catch (error) {
         console.error('saveDashboardOpen error:', error);
     }
+}
+
+function getDashboardVisibilityStorageKey(key) {
+    return `${DASHBOARD_VISIBILITY_STORAGE_PREFIX}${key}`;
+}
+
+function getDashboardVisibilityOption(key) {
+    return DASHBOARD_VISIBILITY_OPTIONS.find(option => option.key === key) || null;
+}
+
+function getStoredDashboardVisibility(option) {
+    try {
+        const value = localStorage.getItem(getDashboardVisibilityStorageKey(option.key));
+
+        if (value === null) {
+            return option.defaultVisible === true;
+        }
+
+        return value === 'true';
+    } catch (error) {
+        console.error('getStoredDashboardVisibility error:', error);
+        return option.defaultVisible === true;
+    }
+}
+
+function saveDashboardVisibility(option, isVisible) {
+    try {
+        localStorage.setItem(getDashboardVisibilityStorageKey(option.key), isVisible ? 'true' : 'false');
+    } catch (error) {
+        console.error('saveDashboardVisibility error:', error);
+    }
+}
+
+function getDashboardVisibilityState() {
+    return DASHBOARD_VISIBILITY_OPTIONS.reduce((state, option) => {
+        state[option.key] = getStoredDashboardVisibility(option);
+        return state;
+    }, {});
+}
+
+function updatePriorityRiskOverviewVisibility(state) {
+    const overview = document.getElementById('priority-risk-overview');
+
+    if (!overview) {
+        return;
+    }
+
+    const priorityVisible = state.priorityStand === true;
+    const standRiskVisible = state.standRisk === true;
+    const visibleCount = [priorityVisible, standRiskVisible].filter(Boolean).length;
+
+    overview.hidden = visibleCount === 0;
+    overview.classList.toggle('is-single-panel', visibleCount === 1);
+    overview.classList.toggle('is-priority-hidden', !priorityVisible);
+    overview.classList.toggle('is-stand-risk-hidden', !standRiskVisible);
+}
+
+function applyDashboardVisibilitySettings() {
+    const state = getDashboardVisibilityState();
+
+    DASHBOARD_VISIBILITY_OPTIONS.forEach(option => {
+        const target = document.getElementById(option.targetId);
+        const input = document.getElementById(option.inputId);
+        const isVisible = state[option.key] === true;
+
+        if (target) {
+            target.hidden = !isVisible;
+        }
+
+        if (input) {
+            input.checked = isVisible;
+        }
+    });
+
+    updatePriorityRiskOverviewVisibility(state);
+}
+
+function setDashboardVisibility(key, isVisible) {
+    const option = getDashboardVisibilityOption(key);
+
+    if (!option) {
+        return;
+    }
+
+    saveDashboardVisibility(option, isVisible);
+    applyDashboardVisibilitySettings();
+}
+
+function toggleDashboardDisplaySettings() {
+    const panel = document.getElementById('dashboard-display-settings-options');
+    const toggle = document.getElementById('dashboard-display-settings-toggle');
+
+    if (!panel || !toggle) {
+        return;
+    }
+
+    const isOpen = panel.hidden;
+    panel.hidden = !isOpen;
+    toggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+    toggle.textContent = `表示設定 ${isOpen ? '▲' : '▼'}`;
+    saveDashboardOpen(DASHBOARD_DISPLAY_SETTINGS_OPEN_KEY, isOpen);
+}
+
+function setupDashboardDisplaySettings() {
+    const panel = document.getElementById('dashboard-display-settings-options');
+    const toggle = document.getElementById('dashboard-display-settings-toggle');
+    const isOpen = getStoredDashboardOpen(DASHBOARD_DISPLAY_SETTINGS_OPEN_KEY);
+
+    if (panel) {
+        panel.hidden = !isOpen;
+    }
+
+    if (toggle) {
+        toggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+        toggle.textContent = `表示設定 ${isOpen ? '▲' : '▼'}`;
+    }
+
+    DASHBOARD_VISIBILITY_OPTIONS.forEach(option => {
+        const input = document.getElementById(option.inputId);
+
+        if (!input) {
+            return;
+        }
+
+        input.checked = getStoredDashboardVisibility(option);
+        input.addEventListener('change', event => {
+            setDashboardVisibility(option.key, event.target.checked);
+        });
+    });
+
+    applyDashboardVisibilitySettings();
 }
 
 function setCollapsibleDashboardOpen(config, isOpen, options = {}) {

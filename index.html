@@ -11,7 +11,7 @@
     <link rel="manifest" href="manifest.json">
     <link rel="icon" type="image/png" sizes="192x192" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect fill='%23667eea' width='192' height='192'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' font-size='96' fill='white' font-family='Arial'>📋</text></svg>">
     <title>ロール管理アプリ</title>
-    <link rel="stylesheet" href="css/styles.css?v=20260614-priority-risk-overview">
+    <link rel="stylesheet" href="css/styles.css?v=20260614-dashboard-visibility">
 </head>
 <body>
     <div id="app-update-notice" class="app-update-notice" hidden>
@@ -101,15 +101,40 @@
                         </div>
                     </div>
                 </div>
+                <section id="dashboard-display-settings" class="dashboard-display-settings" aria-label="表示設定">
+                    <button type="button" id="dashboard-display-settings-toggle" class="dashboard-display-settings-toggle" onclick="toggleDashboardDisplaySettings()" aria-expanded="false" aria-controls="dashboard-display-settings-options">表示設定 ▼</button>
+                    <div id="dashboard-display-settings-options" class="dashboard-display-settings-options" hidden>
+                        <label class="dashboard-display-option" for="dashboard-visibility-priority-stand">
+                            <input type="checkbox" id="dashboard-visibility-priority-stand">
+                            <span>最優先確認</span>
+                        </label>
+                        <label class="dashboard-display-option" for="dashboard-visibility-stand-risk">
+                            <input type="checkbox" id="dashboard-visibility-stand-risk">
+                            <span>スタンド別リスク</span>
+                        </label>
+                        <label class="dashboard-display-option" for="dashboard-visibility-danger-roll">
+                            <input type="checkbox" id="dashboard-visibility-danger-roll">
+                            <span>危険ロール一覧</span>
+                        </label>
+                        <label class="dashboard-display-option" for="dashboard-visibility-future-work">
+                            <input type="checkbox" id="dashboard-visibility-future-work">
+                            <span>未来作業依頼</span>
+                        </label>
+                        <label class="dashboard-display-option" for="dashboard-visibility-cutting-anomaly">
+                            <input type="checkbox" id="dashboard-visibility-cutting-anomaly">
+                            <span>改削異常チェック</span>
+                        </label>
+                    </div>
+                </section>
                 <section id="priority-risk-overview" class="priority-risk-overview" aria-label="最優先確認とスタンド別リスク">
                     <div class="priority-risk-overview-grid">
-                        <div class="priority-risk-overview-panel priority-risk-overview-left" aria-label="最優先確認">
+                        <div id="priority-stand-panel" class="priority-risk-overview-panel priority-risk-overview-left" aria-label="最優先確認">
                             <div class="priority-stand-panel-header">
                                 <h2>最優先確認</h2>
                             </div>
                             <div id="priority-stand-card" class="priority-stand-card"></div>
                         </div>
-                        <div class="priority-risk-overview-panel priority-risk-overview-right" aria-label="スタンド別リスク">
+                        <div id="stand-risk-panel" class="priority-risk-overview-panel priority-risk-overview-right" aria-label="スタンド別リスク">
                             <div class="stand-risk-map-header">
                                 <h2>スタンド別リスク</h2>
                             </div>
@@ -344,7 +369,7 @@
 
     <script src="js/sync.js?v=20260608-normalize-use-start-date"></script>
 <script src="js/csv.js?v=20260607-summary-groups"></script>
-<script src="js/app.js?v=20260614-stand-supply-risk"></script>
+<script src="js/app.js?v=20260614-dashboard-visibility"></script>
 
         // ログイン状態チェック
 </body>
