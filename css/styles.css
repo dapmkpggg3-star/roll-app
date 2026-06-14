@@ -411,9 +411,31 @@ body {
 
 .summary-heading {
     grid-column: 1 / -1;
+    width: fit-content;
+    min-height: 36px;
+    padding: 0 12px;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    background: #f8fafc;
     color: #334155;
     font-size: 1rem;
-    font-weight: 800;
+    font-weight: 900;
+    cursor: pointer;
+}
+
+.summary-heading:hover,
+.summary-heading:focus-visible {
+    outline: 3px solid rgba(37, 99, 235, 0.18);
+    outline-offset: 2px;
+    background: #eef2ff;
+}
+
+.count-summary.is-collapsed {
+    min-height: 0;
+}
+
+.count-summary.is-collapsed .summary-group {
+    display: none;
 }
 
 .summary-group {

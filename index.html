@@ -52,8 +52,8 @@
 
         <div class="container">
             <div class="content">
-                <div id="count-summary" class="count-summary" aria-label="スタンド件数サマリー">
-                    <div class="summary-heading">件数サマリー</div>
+                <div id="count-summary" class="count-summary is-collapsed" aria-label="スタンド件数サマリー">
+                    <button type="button" id="count-summary-toggle" class="summary-heading" onclick="toggleCountSummary()" aria-expanded="false">件数サマリー ▼</button>
                     <div class="summary-group summary-group-active">
                         <div class="summary-group-title">運用ロール</div>
                         <div class="summary-card summary-total" onclick="setSummaryFilter('all')">

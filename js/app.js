@@ -33,6 +33,7 @@ const TODAY_TASK_DASHBOARD_OPEN_KEY = 'todayTaskDashboardOpen';
 const CUTTING_ANOMALY_DASHBOARD_OPEN_KEY = 'cuttingAnomalyDashboardOpen';
 const DANGER_ROLL_DASHBOARD_OPEN_KEY = 'dangerRollDashboardOpen';
 const FUTURE_WORK_DASHBOARD_OPEN_KEY = 'futureWorkDashboardOpen';
+const COUNT_SUMMARY_OPEN_KEY = 'countSummaryOpen';
 const DASHBOARD_DISPLAY_SETTINGS_OPEN_KEY = 'dashboardDisplaySettingsOpen';
 const DASHBOARD_VISIBILITY_STORAGE_PREFIX = 'dashboardVisibility.';
 const DASHBOARD_VISIBILITY_OPTIONS = [
@@ -144,6 +145,7 @@ document.addEventListener('DOMContentLoaded', function() {
     installSyncDiagnosticHeaderIntegration();
     updateSyncStatusBadge();
     setupOperatorSelect();
+    setupCountSummaryToggle();
     setupDashboardDisplaySettings();
     loadRemoteRoles();
     Promise.all([loadStandMaster(), loadCuttingMaster()]).then(() => renderRoles());
@@ -449,6 +451,34 @@ function saveDashboardOpen(storageKey, isOpen) {
     } catch (error) {
         console.error('saveDashboardOpen error:', error);
     }
+}
+
+function setCountSummaryOpen(isOpen, options = {}) {
+    const summary = document.getElementById('count-summary');
+    const toggle = document.getElementById('count-summary-toggle');
+
+    if (summary) {
+        summary.classList.toggle('is-collapsed', !isOpen);
+    }
+
+    if (toggle) {
+        toggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+        toggle.textContent = `件数サマリー ${isOpen ? '▲' : '▼'}`;
+    }
+
+    if (options.save !== false) {
+        saveDashboardOpen(COUNT_SUMMARY_OPEN_KEY, isOpen);
+    }
+}
+
+function toggleCountSummary() {
+    const summary = document.getElementById('count-summary');
+    const isOpen = summary ? summary.classList.contains('is-collapsed') : false;
+    setCountSummaryOpen(isOpen);
+}
+
+function setupCountSummaryToggle() {
+    setCountSummaryOpen(getStoredDashboardOpen(COUNT_SUMMARY_OPEN_KEY), { save: false });
 }
 
 function getDashboardVisibilityStorageKey(key) {
