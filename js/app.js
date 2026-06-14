@@ -34,6 +34,8 @@ const CUTTING_ANOMALY_DASHBOARD_OPEN_KEY = 'cuttingAnomalyDashboardOpen';
 const DANGER_ROLL_DASHBOARD_OPEN_KEY = 'dangerRollDashboardOpen';
 const FUTURE_WORK_DASHBOARD_OPEN_KEY = 'futureWorkDashboardOpen';
 const COUNT_SUMMARY_OPEN_KEY = 'countSummaryOpen';
+const DEFAULT_PURCHASE_LEAD_TIME_MONTHS = 6;
+const PURCHASE_CONFIRMATION_WINDOW_MONTHS = 3;
 const DASHBOARD_DISPLAY_SETTINGS_OPEN_KEY = 'dashboardDisplaySettingsOpen';
 const DASHBOARD_VISIBILITY_STORAGE_PREFIX = 'dashboardVisibility.';
 const DASHBOARD_VISIBILITY_OPTIONS = [
@@ -1291,6 +1293,186 @@ function getRemainingDiameterHtml(role) {
     `;
 }
 
+function getStandOnlineUseMonths(standKey) {
+    const standNumber = Number(getStandKey(standKey));
+
+    if (standNumber >= 2 && standNumber <= 5) {
+        return 1;
+    }
+
+    if (standNumber >= 6 && standNumber <= 17) {
+        return 3;
+    }
+
+    return 3;
+}
+
+function getPurchasePlanningInfo(role) {
+    const standKey = getStandKey(role && role.name);
+    const currentDiameter = normalizeCurrentDiameter(role && role.currentDiameter);
+
+    if (!standKey || currentDiameter === '' || role.status === DISCARDED_STATUS) {
+        return null;
+    }
+
+    const standMaster = typeof getStandMaster === 'function' ? getStandMaster(standKey) : null;
+    const scrapDiameter = standMaster && standMaster.scrapDiameter !== ''
+        ? Number(standMaster.scrapDiameter)
+        : Number.NaN;
+
+    if (!Number.isFinite(scrapDiameter)) {
+        return null;
+    }
+
+    const cuttingMaster = getCuttingMaster(standKey);
+    const calculationCutMm = cuttingMaster && cuttingMaster.active
+        ? normalizeCuttingMasterNumericValue(cuttingMaster.calculationCutMm)
+        : '';
+    const standardCutMm = cuttingMaster && cuttingMaster.active
+        ? normalizeCuttingMasterNumericValue(cuttingMaster.standardCutMm)
+        : '';
+    const adoptedCutMm = calculationCutMm !== '' ? calculationCutMm : standardCutMm;
+
+    if (adoptedCutMm === '' || adoptedCutMm <= 0) {
+        return null;
+    }
+
+    const onlineUseMonths = getStandOnlineUseMonths(standKey);
+    const leadTimeMonths = standMaster && standMaster.leadTimeMonths !== ''
+        ? Number(standMaster.leadTimeMonths)
+        : DEFAULT_PURCHASE_LEAD_TIME_MONTHS;
+    const usableOnlineCount = currentDiameter < scrapDiameter
+        ? 0
+        : Math.floor((currentDiameter - scrapDiameter) / adoptedCutMm) + 1;
+    const useStartDate = normalizeUseStartDate(role && role.useStartDate);
+    const useEndDate = useStartDate ? addMonthsToDateString(useStartDate, onlineUseMonths) : '';
+    const forecastStartDate = useStartDate || getTodayDateString();
+    const disposalForecastDate = usableOnlineCount <= 0
+        ? getTodayDateString()
+        : addMonthsToDateString(forecastStartDate, usableOnlineCount * onlineUseMonths);
+    const purchaseDecisionDate = addMonthsToDateString(disposalForecastDate, -leadTimeMonths);
+    const predictedAfterCutDiameter = currentDiameter - adoptedCutMm;
+
+    return {
+        standKey,
+        roleName: role.name || '',
+        status: role.status || '',
+        currentDiameter,
+        scrapDiameter,
+        adoptedCutMm,
+        usableOnlineCount,
+        useStartDate,
+        useEndDate,
+        predictedAfterCutDiameter,
+        disposalForecastDate,
+        leadTimeMonths,
+        purchaseDecisionDate
+    };
+}
+
+function getPurchaseConfirmationLevel(info) {
+    const today = getTodayDateString();
+    const warningLimit = addMonthsToDateString(today, PURCHASE_CONFIRMATION_WINDOW_MONTHS);
+    const decisionDate = normalizeDateInputValue(info && info.purchaseDecisionDate);
+
+    if (!decisionDate) {
+        return null;
+    }
+
+    if (decisionDate <= today) {
+        return {
+            key: 'urgent',
+            label: '要確認',
+            memo: '購入判断期限を過ぎています'
+        };
+    }
+
+    if (warningLimit && decisionDate <= warningLimit) {
+        return {
+            key: 'soon',
+            label: '早期確認',
+            memo: '3か月以内に購入判断期限です'
+        };
+    }
+
+    return null;
+}
+
+function getPurchaseConfirmationItems(allRoles = roles) {
+    return (Array.isArray(allRoles) ? allRoles : [])
+        .map(role => {
+            const info = getPurchasePlanningInfo(role);
+            const level = getPurchaseConfirmationLevel(info);
+
+            if (!info || !level) {
+                return null;
+            }
+
+            return {
+                ...info,
+                level
+            };
+        })
+        .filter(Boolean)
+        .sort((a, b) => {
+            if (a.purchaseDecisionDate !== b.purchaseDecisionDate) {
+                return String(a.purchaseDecisionDate).localeCompare(String(b.purchaseDecisionDate));
+            }
+
+            return compareStandRoleNames(a.roleName, b.roleName);
+        });
+}
+
+function formatPurchaseDiameter(value) {
+    const numericValue = Number(value);
+    return Number.isFinite(numericValue) ? `φ${numericValue.toFixed(1)}` : '-';
+}
+
+function updatePurchaseConfirmationBoard(allRoles = roles) {
+    const board = document.getElementById('purchase-confirmation-board');
+    const countEl = document.getElementById('purchase-confirmation-count');
+    const listEl = document.getElementById('purchase-confirmation-list');
+
+    if (!board || !countEl || !listEl) {
+        return;
+    }
+
+    const items = getPurchaseConfirmationItems(allRoles);
+    countEl.textContent = `${items.length}件`;
+    board.classList.toggle('is-empty', items.length === 0);
+
+    if (items.length === 0) {
+        listEl.innerHTML = '<div class="purchase-confirmation-empty">購入確認候補はありません</div>';
+        return;
+    }
+
+    listEl.innerHTML = items.map(item => `
+        <article class="purchase-confirmation-card purchase-confirmation-${escapeHtml(item.level.key)}">
+            <div class="purchase-confirmation-card-header">
+                <div>
+                    <span class="purchase-confirmation-stand">#${escapeHtml(item.standKey)}</span>
+                    <strong class="purchase-confirmation-role">${escapeHtml(item.roleName || '-')}</strong>
+                </div>
+                <span class="purchase-confirmation-level">${escapeHtml(item.level.label)}</span>
+            </div>
+            <div class="purchase-confirmation-grid">
+                <span>現在ステータス</span><strong>${escapeHtml(item.status || '-')}</strong>
+                <span>現在径</span><strong>${escapeHtml(formatPurchaseDiameter(item.currentDiameter))}</strong>
+                <span>廃却径</span><strong>${escapeHtml(formatPurchaseDiameter(item.scrapDiameter))}</strong>
+                <span>採用改削量</span><strong>${escapeHtml(formatMillimeterValue(item.adoptedCutMm))}</strong>
+                <span>残りオンライン使用可能回数</span><strong>${escapeHtml(String(item.usableOnlineCount))}回</strong>
+                <span>使用開始日</span><strong>${escapeHtml(formatDateForDisplay(item.useStartDate))}</strong>
+                <span>使用終了予定日</span><strong>${escapeHtml(formatDateForDisplay(item.useEndDate))}</strong>
+                <span>改削後予想径</span><strong>${escapeHtml(formatPurchaseDiameter(item.predictedAfterCutDiameter))}</strong>
+                <span>廃却予測日</span><strong>${escapeHtml(formatDateForDisplay(item.disposalForecastDate))}</strong>
+                <span>購入LT月数</span><strong>${escapeHtml(String(item.leadTimeMonths))}か月</strong>
+                <span>購入判断期限</span><strong>${escapeHtml(formatDateForDisplay(item.purchaseDecisionDate))}</strong>
+                <span>判定メモ</span><strong>${escapeHtml(item.level.memo)}</strong>
+            </div>
+        </article>
+    `).join('');
+}
+
 function isDangerRollTargetStatus(status) {
     const normalizedStatus = String(status || '').trim();
     const targetStatuses = new Set([
@@ -1841,6 +2023,26 @@ function formatDateForDisplay(value) {
 
 function getInboundPlanDate(dispatchDate) {
     return addDaysToDateString(dispatchDate, REWORKING_CONFIRM_THRESHOLD_DAYS);
+}
+
+function addMonthsToDateString(dateValue, months) {
+    const normalized = normalizeDateInputValue(dateValue);
+    const monthCount = Number(months);
+
+    if (!normalized || !Number.isFinite(monthCount)) {
+        return '';
+    }
+
+    const [year, month, day] = normalized.split('-').map(Number);
+    const date = new Date(year, month - 1, day);
+    const originalDay = date.getDate();
+    date.setMonth(date.getMonth() + monthCount);
+
+    if (date.getDate() !== originalDay) {
+        date.setDate(0);
+    }
+
+    return normalizeDateInputValue(date.toISOString());
 }
 
 function isDispatchDateAllowedStatus(status) {
@@ -3512,6 +3714,7 @@ function renderRoles() {
     updateDangerRollDashboard(roles);
     updateTodayTaskDashboard(roles);
     updateCuttingAnomalyDashboard();
+    updatePurchaseConfirmationBoard(roles);
     updateWorkshopBoard(roles);
     if (typeof updateSyncDiagnosticPanel === 'function') {
         updateSyncDiagnosticPanel();
