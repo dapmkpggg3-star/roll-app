@@ -32,6 +32,7 @@ const WORKSHOP_BOARD_PRIORITY_ORDER = {
 const TODAY_TASK_DASHBOARD_OPEN_KEY = 'todayTaskDashboardOpen';
 const CUTTING_ANOMALY_DASHBOARD_OPEN_KEY = 'cuttingAnomalyDashboardOpen';
 const DANGER_ROLL_DASHBOARD_OPEN_KEY = 'dangerRollDashboardOpen';
+const FUTURE_WORK_DASHBOARD_OPEN_KEY = 'futureWorkDashboardOpen';
 
 function getEffectiveViewportWidth() {
     const widths = [
@@ -463,6 +464,14 @@ const DANGER_ROLL_DASHBOARD_CONFIG = {
     label: '危険ロール一覧'
 };
 
+const FUTURE_WORK_DASHBOARD_CONFIG = {
+    dashboardId: 'incomplete-work-dashboard',
+    toggleId: 'future-work-toggle',
+    countId: 'incomplete-work-count',
+    storageKey: FUTURE_WORK_DASHBOARD_OPEN_KEY,
+    label: '未来作業依頼'
+};
+
 function toggleTodayTaskDashboard() {
     toggleCollapsibleDashboard(TODAY_TASK_DASHBOARD_CONFIG);
 }
@@ -473,6 +482,10 @@ function toggleCuttingAnomalyDashboard() {
 
 function toggleDangerRollDashboard() {
     toggleCollapsibleDashboard(DANGER_ROLL_DASHBOARD_CONFIG);
+}
+
+function toggleFutureWorkDashboard() {
+    toggleCollapsibleDashboard(FUTURE_WORK_DASHBOARD_CONFIG);
 }
 
 function getSyncHeaderCounts() {
@@ -2014,9 +2027,10 @@ function updateIncompleteWorkDashboard(allRoles) {
     countEl.textContent = `${incompleteRoles.length}件`;
     dashboard.classList.toggle('has-incomplete-work', incompleteRoles.length > 0);
     dashboard.classList.toggle('is-empty', incompleteRoles.length === 0);
+    syncCollapsibleDashboardState(FUTURE_WORK_DASHBOARD_CONFIG);
 
     if (incompleteRoles.length === 0) {
-        listEl.innerHTML = '<div class="incomplete-work-empty">未完了の作業依頼はありません</div>';
+        listEl.innerHTML = '<div class="incomplete-work-empty">未来作業依頼はありません</div>';
         return;
     }
 

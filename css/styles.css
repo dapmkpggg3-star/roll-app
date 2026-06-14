@@ -652,9 +652,11 @@ body {
 }
 
 .incomplete-work-count {
-    font-size: 1.65rem;
-    font-weight: 900;
-    line-height: 1;
+    display: none;
+}
+
+.incomplete-work-dashboard.is-collapsed .incomplete-work-list {
+    display: none;
 }
 
 .incomplete-work-list {
