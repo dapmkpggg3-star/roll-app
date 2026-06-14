@@ -958,8 +958,7 @@ body {
     gap: 12px;
 }
 
-.purchase-confirmation-header h2 {
-    margin: 0;
+.purchase-confirmation-title {
     color: #9a3412;
     font-size: 1.08rem;
     font-weight: 900;
@@ -979,6 +978,10 @@ body {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
     gap: 10px;
+}
+
+.purchase-confirmation-board.is-collapsed .purchase-confirmation-list {
+    display: none;
 }
 
 .purchase-confirmation-card {

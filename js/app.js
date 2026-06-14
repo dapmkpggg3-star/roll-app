@@ -33,6 +33,7 @@ const TODAY_TASK_DASHBOARD_OPEN_KEY = 'todayTaskDashboardOpen';
 const CUTTING_ANOMALY_DASHBOARD_OPEN_KEY = 'cuttingAnomalyDashboardOpen';
 const DANGER_ROLL_DASHBOARD_OPEN_KEY = 'dangerRollDashboardOpen';
 const FUTURE_WORK_DASHBOARD_OPEN_KEY = 'futureWorkDashboardOpen';
+const PURCHASE_CONFIRMATION_DASHBOARD_OPEN_KEY = 'purchaseConfirmationDashboardOpen';
 const COUNT_SUMMARY_OPEN_KEY = 'countSummaryOpen';
 const DEFAULT_PURCHASE_LEAD_TIME_MONTHS = 6;
 const PURCHASE_CONFIRMATION_WINDOW_MONTHS = 3;
@@ -676,6 +677,14 @@ const FUTURE_WORK_DASHBOARD_CONFIG = {
     label: '未来作業依頼'
 };
 
+const PURCHASE_CONFIRMATION_DASHBOARD_CONFIG = {
+    dashboardId: 'purchase-confirmation-board',
+    toggleId: 'purchase-confirmation-toggle',
+    countId: 'purchase-confirmation-count',
+    storageKey: PURCHASE_CONFIRMATION_DASHBOARD_OPEN_KEY,
+    label: '購入確認候補'
+};
+
 function toggleTodayTaskDashboard() {
     toggleCollapsibleDashboard(TODAY_TASK_DASHBOARD_CONFIG);
 }
@@ -690,6 +699,10 @@ function toggleDangerRollDashboard() {
 
 function toggleFutureWorkDashboard() {
     toggleCollapsibleDashboard(FUTURE_WORK_DASHBOARD_CONFIG);
+}
+
+function togglePurchaseConfirmationDashboard() {
+    toggleCollapsibleDashboard(PURCHASE_CONFIRMATION_DASHBOARD_CONFIG);
 }
 
 function getSyncHeaderCounts() {
@@ -1395,7 +1408,13 @@ function getPurchaseConfirmationLevel(info) {
 }
 
 function getPurchaseConfirmationItems(allRoles = roles) {
+    const excludedStandKeys = new Set((Array.isArray(allRoles) ? allRoles : [])
+        .filter(role => role && role.status === NEW_STORAGE_STATUS)
+        .map(role => getStandKey(role.name))
+        .filter(Boolean));
+
     return (Array.isArray(allRoles) ? allRoles : [])
+        .filter(role => !excludedStandKeys.has(getStandKey(role && role.name)))
         .map(role => {
             const info = getPurchasePlanningInfo(role);
             const level = getPurchaseConfirmationLevel(info);
@@ -1413,6 +1432,12 @@ function getPurchaseConfirmationItems(allRoles = roles) {
         .sort((a, b) => {
             if (a.purchaseDecisionDate !== b.purchaseDecisionDate) {
                 return String(a.purchaseDecisionDate).localeCompare(String(b.purchaseDecisionDate));
+            }
+
+            const standDiff = (Number(a.standKey) || 999999) - (Number(b.standKey) || 999999);
+
+            if (standDiff !== 0) {
+                return standDiff;
             }
 
             return compareStandRoleNames(a.roleName, b.roleName);
@@ -1447,6 +1472,7 @@ function updatePurchaseConfirmationBoard(allRoles = roles) {
     const items = getPurchaseConfirmationItems(allRoles);
     countEl.textContent = `${items.length}件`;
     board.classList.toggle('is-empty', items.length === 0);
+    syncCollapsibleDashboardState(PURCHASE_CONFIRMATION_DASHBOARD_CONFIG);
 
     if (items.length === 0) {
         listEl.innerHTML = '<div class="purchase-confirmation-empty">購入確認候補はありません</div>';
