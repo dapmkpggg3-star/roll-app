@@ -557,12 +557,13 @@ body {
 }
 
 .stand-risk-item {
-    display: inline-flex;
-    align-items: center;
-    justify-content: space-between;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: center;
     gap: 6px;
     min-width: 0;
-    min-height: 38px;
+    min-height: 58px;
     padding: 8px 10px;
     border-radius: 10px;
     border: 1px solid #e2e8f0;
@@ -582,8 +583,17 @@ body {
     outline-offset: 2px;
 }
 
+.stand-risk-main {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    min-width: 0;
+}
+
 .stand-risk-stand,
-.stand-risk-label {
+.stand-risk-label,
+.stand-risk-reason {
     min-width: 0;
     overflow-wrap: anywhere;
 }
@@ -594,6 +604,15 @@ body {
 
 .stand-risk-label {
     font-size: 0.78rem;
+}
+
+.stand-risk-reason {
+    color: inherit;
+    font-size: 0.68rem;
+    font-weight: 800;
+    line-height: 1.25;
+    opacity: 0.82;
+    text-align: left;
 }
 
 .stand-risk-danger {
@@ -837,9 +856,16 @@ body {
     }
 
     .stand-risk-item {
+        min-height: 48px;
+    }
+
+    .stand-risk-main {
         flex-direction: column;
         justify-content: center;
-        min-height: 48px;
+    }
+
+    .stand-risk-reason {
+        display: none;
     }
 
     .action-dashboard-grid {

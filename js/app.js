@@ -1268,6 +1268,22 @@ function getStandRiskFromDangerRollLevel(levelKey) {
     return null;
 }
 
+function getStandRiskReasonFromDangerRollLevel(levelKey) {
+    if (levelKey === 'danger') {
+        return '残り改削回数0回以下';
+    }
+
+    if (levelKey === 'action') {
+        return '残り改削回数1回';
+    }
+
+    if (levelKey === 'warning') {
+        return '残り改削回数2回';
+    }
+
+    return '';
+}
+
 function getStandRiskFromCuttingAnomaly(judgmentKey) {
     if (judgmentKey === 'abnormal') {
         return STAND_RISK_LEVELS.danger;
@@ -1284,35 +1300,228 @@ function getStandRiskFromCuttingAnomaly(judgmentKey) {
     return null;
 }
 
-function applyWorseStandRisk(riskByStand, standKey, risk) {
+function getStandRiskReasonFromCuttingAnomaly(judgmentKey) {
+    if (judgmentKey === 'abnormal') {
+        return '改削異常あり';
+    }
+
+    if (judgmentKey === 'warning') {
+        return '改削注意あり';
+    }
+
+    if (judgmentKey === 'pending') {
+        return '改削異常チェック判定保留';
+    }
+
+    return '';
+}
+
+function createInitialStandRiskState() {
+    return {
+        risk: STAND_RISK_LEVELS.normal,
+        reasons: ['供給リスクなし']
+    };
+}
+
+function applyWorseStandRisk(riskByStand, standKey, risk, reason) {
     if (!standKey || !risk) {
         return;
     }
 
-    const currentRisk = riskByStand.get(standKey) || STAND_RISK_LEVELS.normal;
+    const currentState = riskByStand.get(standKey) || createInitialStandRiskState();
 
-    if (risk.order < currentRisk.order) {
-        riskByStand.set(standKey, risk);
+    if (risk.order < currentState.risk.order) {
+        riskByStand.set(standKey, {
+            risk,
+            reasons: reason ? [reason] : []
+        });
+        return;
+    }
+
+    if (risk.order === currentState.risk.order && reason && !currentState.reasons.includes(reason)) {
+        currentState.reasons.push(reason);
     }
 }
 
-function getStandRiskMapItems() {
-    const riskByStand = new Map(STAND_RISK_STANDS.map(standKey => [standKey, STAND_RISK_LEVELS.normal]));
+function createStandSupplySummary() {
+    return {
+        onlineCount: 0,
+        newSpareCount: 0,
+        usedSpareCount: 0,
+        reworkingCount: 0,
+        reworkWaitingCount: 0,
+        dangerRollCount: 0,
+        actionRollCount: 0,
+        warningRollCount: 0,
+        onlineDangerRollCount: 0,
+        onlineActionRollCount: 0,
+        onlineWarningRollCount: 0
+    };
+}
 
-    getDangerRollItems(roles).forEach(item => {
+function isNewSpareStatus(status) {
+    return status === NEW_READY_STATUS || status === NEW_INSTALLED_STATUS || status === '新品予備（組込可）';
+}
+
+function isUsedSpareStatus(status) {
+    return status === USED_STANDBY_STATUS || status === '中古予備';
+}
+
+function isReworkWaitingStatus(status) {
+    return status === REWORK_READY_STATUS || status === '改削待ち';
+}
+
+function getStandSupplySummaries(allRoles, dangerItems) {
+    const summaryByStand = new Map(STAND_RISK_STANDS.map(standKey => [standKey, createStandSupplySummary()]));
+
+    (Array.isArray(allRoles) ? allRoles : []).forEach(role => {
+        const standKey = getStandKey(role && role.name);
+        const summary = summaryByStand.get(standKey);
+
+        if (!summary) {
+            return;
+        }
+
+        const status = String(role.status || '').trim();
+
+        if (status === ONLINE_STATUS) {
+            summary.onlineCount += 1;
+        } else if (isNewSpareStatus(status)) {
+            summary.newSpareCount += 1;
+        } else if (isUsedSpareStatus(status)) {
+            summary.usedSpareCount += 1;
+        } else if (status === REWORKING_STATUS) {
+            summary.reworkingCount += 1;
+        } else if (isReworkWaitingStatus(status)) {
+            summary.reworkWaitingCount += 1;
+        }
+    });
+
+    (Array.isArray(dangerItems) ? dangerItems : []).forEach(item => {
         const standKey = getStandKey(item.role && item.role.name);
-        applyWorseStandRisk(riskByStand, standKey, getStandRiskFromDangerRollLevel(item.level && item.level.key));
+        const summary = summaryByStand.get(standKey);
+
+        if (!summary) {
+            return;
+        }
+
+        const levelKey = item.level && item.level.key;
+        const isOnline = item.role && item.role.status === ONLINE_STATUS;
+
+        if (levelKey === 'danger') {
+            summary.dangerRollCount += 1;
+            if (isOnline) {
+                summary.onlineDangerRollCount += 1;
+            }
+        } else if (levelKey === 'action') {
+            summary.actionRollCount += 1;
+            if (isOnline) {
+                summary.onlineActionRollCount += 1;
+            }
+        } else if (levelKey === 'warning') {
+            summary.warningRollCount += 1;
+            if (isOnline) {
+                summary.onlineWarningRollCount += 1;
+            }
+        }
+    });
+
+    return summaryByStand;
+}
+
+function getStandSupplyRisk(summary) {
+    const usableSpareCount = summary.newSpareCount + summary.usedSpareCount;
+    const pendingSpareCount = summary.reworkingCount + summary.reworkWaitingCount;
+
+    if (summary.onlineDangerRollCount > 0 && usableSpareCount === 0) {
+        return {
+            risk: STAND_RISK_LEVELS.danger,
+            reason: 'オンライン危険ロールあり、使用可能予備なし'
+        };
+    }
+
+    if (summary.onlineCount === 0) {
+        return {
+            risk: STAND_RISK_LEVELS.danger,
+            reason: 'オンラインロールなし'
+        };
+    }
+
+    if (summary.onlineActionRollCount > 0 && usableSpareCount === 0) {
+        return {
+            risk: STAND_RISK_LEVELS.action,
+            reason: 'オンライン残り1回、使用可能予備なし'
+        };
+    }
+
+    if (usableSpareCount === 0 && pendingSpareCount > 0) {
+        return {
+            risk: STAND_RISK_LEVELS.warning,
+            reason: '予備はあるが即使用可能予備なし'
+        };
+    }
+
+    if (summary.onlineCount > 0 && usableSpareCount <= 1) {
+        return {
+            risk: STAND_RISK_LEVELS.action,
+            reason: usableSpareCount === 0 ? 'オンラインあり、使用可能予備なし' : 'オンラインあり、予備1本のみ'
+        };
+    }
+
+    if (summary.onlineWarningRollCount > 0) {
+        return {
+            risk: STAND_RISK_LEVELS.warning,
+            reason: 'オンライン残り2回'
+        };
+    }
+
+    return null;
+}
+
+function getStandRiskMapItems() {
+    const riskByStand = new Map(STAND_RISK_STANDS.map(standKey => [standKey, createInitialStandRiskState()]));
+    const dangerItems = getDangerRollItems(roles);
+    const supplySummaries = getStandSupplySummaries(roles, dangerItems);
+
+    dangerItems.forEach(item => {
+        const standKey = getStandKey(item.role && item.role.name);
+        const levelKey = item.level && item.level.key;
+        applyWorseStandRisk(
+            riskByStand,
+            standKey,
+            getStandRiskFromDangerRollLevel(levelKey),
+            getStandRiskReasonFromDangerRollLevel(levelKey)
+        );
     });
 
     getCuttingAnomalyItems().forEach(item => {
         const standKey = getStandKey(item.stand);
-        applyWorseStandRisk(riskByStand, standKey, getStandRiskFromCuttingAnomaly(item.judgmentKey));
+        applyWorseStandRisk(
+            riskByStand,
+            standKey,
+            getStandRiskFromCuttingAnomaly(item.judgmentKey),
+            getStandRiskReasonFromCuttingAnomaly(item.judgmentKey)
+        );
     });
 
-    return STAND_RISK_STANDS.map(standKey => ({
-        standKey,
-        risk: riskByStand.get(standKey) || STAND_RISK_LEVELS.normal
-    }));
+    supplySummaries.forEach((summary, standKey) => {
+        const supplyRisk = getStandSupplyRisk(summary);
+        if (supplyRisk) {
+            applyWorseStandRisk(riskByStand, standKey, supplyRisk.risk, supplyRisk.reason);
+        }
+    });
+
+    return STAND_RISK_STANDS.map(standKey => {
+        const state = riskByStand.get(standKey) || createInitialStandRiskState();
+        const summary = supplySummaries.get(standKey) || createStandSupplySummary();
+
+        return {
+            standKey,
+            risk: state.risk,
+            reasons: state.reasons.length > 0 ? state.reasons : ['供給リスクなし'],
+            summary
+        };
+    });
 }
 
 function updateStandRiskMap() {
@@ -1324,8 +1533,11 @@ function updateStandRiskMap() {
 
     listEl.innerHTML = getStandRiskMapItems().map(item => `
         <button type="button" class="stand-risk-item stand-risk-${escapeHtml(item.risk.key)}" onclick="filterWatchStand('${escapeHtml(item.standKey)}')">
-            <span class="stand-risk-stand">#${escapeHtml(item.standKey)}</span>
-            <span class="stand-risk-label">${escapeHtml(item.risk.label)}</span>
+            <span class="stand-risk-main">
+                <span class="stand-risk-stand">#${escapeHtml(item.standKey)}</span>
+                <span class="stand-risk-label">${escapeHtml(item.risk.label)}</span>
+            </span>
+            <span class="stand-risk-reason">理由：${escapeHtml(item.reasons.join('・'))}</span>
         </button>
     `).join('');
 }
