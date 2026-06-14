@@ -1542,7 +1542,7 @@ function updateStandRiskMap() {
     `).join('');
 }
 
-function getTopPriorityStandRiskItem() {
+function getTopPriorityStandRiskGroup() {
     const items = getStandRiskMapItems()
         .filter(item => item.risk && item.risk.key !== 'normal')
         .slice()
@@ -1554,7 +1554,18 @@ function getTopPriorityStandRiskItem() {
             return Number(a.standKey) - Number(b.standKey);
         });
 
-    return items.length > 0 ? items[0] : null;
+    if (items.length === 0) {
+        return null;
+    }
+
+    const topOrder = items[0].risk.order;
+    const topItems = items.filter(item => item.risk.order === topOrder);
+
+    return {
+        risk: topItems[0].risk,
+        items: topItems,
+        firstItem: topItems[0]
+    };
 }
 
 function updatePriorityStandCard() {
@@ -1564,9 +1575,9 @@ function updatePriorityStandCard() {
         return;
     }
 
-    const item = getTopPriorityStandRiskItem();
+    const group = getTopPriorityStandRiskGroup();
 
-    if (!item) {
+    if (!group) {
         cardEl.innerHTML = `
             <div class="priority-stand-empty">現在、優先対応スタンドはありません</div>
         `;
@@ -1575,11 +1586,14 @@ function updatePriorityStandCard() {
     }
 
     cardEl.classList.remove('is-empty');
+    const standListText = group.items.map(item => `#${escapeHtml(item.standKey)}`).join(' / ');
+    const countText = `${escapeHtml(group.risk.label)} ${group.items.length}件`;
     cardEl.innerHTML = `
-        <div class="priority-stand-level">${escapeHtml(item.risk.label)}</div>
-        <div class="priority-stand-name">#${escapeHtml(item.standKey)}</div>
-        <div class="priority-stand-reason">理由：${escapeHtml(item.reasons.join('・'))}</div>
-        <button type="button" class="priority-stand-button" onclick="filterWatchStand('${escapeHtml(item.standKey)}')">このスタンドを見る</button>
+        <div class="priority-stand-level">${countText}</div>
+        <div class="priority-stand-stands">${standListText}</div>
+        <div class="priority-stand-name">まず見る：#${escapeHtml(group.firstItem.standKey)}</div>
+        <div class="priority-stand-reason">理由：${escapeHtml(group.firstItem.reasons.join('・'))}</div>
+        <button type="button" class="priority-stand-button" onclick="filterWatchStand('${escapeHtml(group.firstItem.standKey)}')">このスタンドを見る</button>
     `;
 }
 

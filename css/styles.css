@@ -573,6 +573,13 @@ body {
     letter-spacing: 0;
 }
 
+.priority-stand-stands {
+    color: #1e3a8a;
+    font-size: 0.92rem;
+    font-weight: 900;
+    line-height: 1.4;
+}
+
 .priority-stand-name {
     color: #0f172a;
     font-size: 1.6rem;
@@ -948,6 +955,10 @@ body {
 @media (max-width: 767px) {
     .priority-stand-panel {
         padding: 12px 12px 13px;
+    }
+
+    .priority-stand-stands {
+        font-size: 0.88rem;
     }
 
     .priority-stand-name {
