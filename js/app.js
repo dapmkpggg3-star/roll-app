@@ -522,6 +522,32 @@ function getDashboardVisibilityState() {
     }, {});
 }
 
+function setDashboardDisplaySettingsOpen(isOpen, options = {}) {
+    const panel = document.getElementById('dashboard-display-settings-options');
+    const toggle = document.getElementById('dashboard-display-settings-toggle');
+
+    if (panel) {
+        panel.hidden = !isOpen;
+
+        if (isOpen) {
+            panel.removeAttribute('hidden');
+        } else {
+            panel.setAttribute('hidden', '');
+        }
+
+        panel.classList.toggle('is-open', isOpen);
+    }
+
+    if (toggle) {
+        toggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+        toggle.textContent = `表示設定 ${isOpen ? '▲' : '▼'}`;
+    }
+
+    if (options.save !== false) {
+        saveDashboardOpen(DASHBOARD_DISPLAY_SETTINGS_OPEN_KEY, isOpen);
+    }
+}
+
 function updatePriorityRiskOverviewVisibility(state) {
     const overview = document.getElementById('priority-risk-overview');
 
@@ -572,32 +598,13 @@ function setDashboardVisibility(key, isVisible) {
 
 function toggleDashboardDisplaySettings() {
     const panel = document.getElementById('dashboard-display-settings-options');
-    const toggle = document.getElementById('dashboard-display-settings-toggle');
-
-    if (!panel || !toggle) {
-        return;
-    }
-
-    const isOpen = panel.hidden;
-    panel.hidden = !isOpen;
-    toggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
-    toggle.textContent = `表示設定 ${isOpen ? '▲' : '▼'}`;
-    saveDashboardOpen(DASHBOARD_DISPLAY_SETTINGS_OPEN_KEY, isOpen);
+    const isOpen = panel ? panel.hidden : false;
+    setDashboardDisplaySettingsOpen(isOpen);
 }
 
 function setupDashboardDisplaySettings() {
-    const panel = document.getElementById('dashboard-display-settings-options');
-    const toggle = document.getElementById('dashboard-display-settings-toggle');
     const isOpen = getStoredDashboardOpen(DASHBOARD_DISPLAY_SETTINGS_OPEN_KEY);
-
-    if (panel) {
-        panel.hidden = !isOpen;
-    }
-
-    if (toggle) {
-        toggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
-        toggle.textContent = `表示設定 ${isOpen ? '▲' : '▼'}`;
-    }
+    setDashboardDisplaySettingsOpen(isOpen, { save: false });
 
     DASHBOARD_VISIBILITY_OPTIONS.forEach(option => {
         const input = document.getElementById(option.inputId);
