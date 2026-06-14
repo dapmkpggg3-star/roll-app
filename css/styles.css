@@ -524,11 +524,11 @@ body {
     line-height: 1;
 }
 
-.priority-stand-panel {
+.priority-risk-overview {
     display: grid;
     gap: 10px;
     width: 100%;
-    margin: 0 0 12px;
+    margin: 0 0 18px;
     padding: 14px 16px;
     border-radius: 16px;
     border: 1px solid #dbeafe;
@@ -537,14 +537,34 @@ body {
     box-shadow: 0 10px 24px rgba(37, 99, 235, 0.08);
 }
 
-.priority-stand-panel-header {
+.priority-risk-overview-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.05fr) minmax(0, 1.95fr);
+    gap: 14px;
+    align-items: start;
+}
+
+.priority-risk-overview-panel {
+    display: grid;
+    gap: 10px;
+    min-width: 0;
+    padding: 0;
+    margin: 0;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+}
+
+.priority-stand-panel-header,
+.stand-risk-map-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 12px;
 }
 
-.priority-stand-panel-header h2 {
+.priority-stand-panel-header h2,
+.stand-risk-map-header h2 {
     margin: 0;
     color: #1e3a8a;
     font-size: 1rem;
@@ -630,31 +650,16 @@ body {
     display: grid;
     gap: 10px;
     width: 100%;
-    margin: -6px 0 18px;
-    padding: 12px;
-    border-radius: 14px;
-    border: 1px solid #e2e8f0;
-    background: #ffffff;
-    box-shadow: 0 6px 18px rgba(15, 23, 42, 0.06);
-}
-
-.stand-risk-map-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-}
-
-.stand-risk-map-header h2 {
     margin: 0;
-    color: #334155;
-    font-size: 1rem;
-    font-weight: 900;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
 }
 
 .stand-risk-map-list {
     display: grid;
-    grid-template-columns: repeat(8, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 8px;
 }
 
@@ -953,8 +958,16 @@ body {
 }
 
 @media (max-width: 767px) {
-    .priority-stand-panel {
+    .priority-risk-overview {
         padding: 12px 12px 13px;
+    }
+
+    .priority-risk-overview-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .priority-risk-overview-panel {
+        gap: 8px;
     }
 
     .priority-stand-stands {
@@ -1570,7 +1583,7 @@ body.workshop-board-mode .workshop-board {
 }
 
 body.workshop-board-mode #count-summary,
-body.workshop-board-mode #stand-risk-map,
+body.workshop-board-mode #priority-risk-overview,
 body.workshop-board-mode #sync-diagnostic-panel,
 body.workshop-board-mode #incomplete-work-dashboard,
 body.workshop-board-mode .action-dashboard-grid,

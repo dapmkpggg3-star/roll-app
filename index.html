@@ -11,7 +11,7 @@
     <link rel="manifest" href="manifest.json">
     <link rel="icon" type="image/png" sizes="192x192" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect fill='%23667eea' width='192' height='192'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' font-size='96' fill='white' font-family='Arial'>📋</text></svg>">
     <title>ロール管理アプリ</title>
-    <link rel="stylesheet" href="css/styles.css?v=20260614-stand-supply-risk">
+    <link rel="stylesheet" href="css/styles.css?v=20260614-priority-risk-overview">
 </head>
 <body>
     <div id="app-update-notice" class="app-update-notice" hidden>
@@ -101,17 +101,21 @@
                         </div>
                     </div>
                 </div>
-                <section id="priority-stand-panel" class="priority-stand-panel" aria-label="最優先確認">
-                    <div class="priority-stand-panel-header">
-                        <h2>最優先確認</h2>
+                <section id="priority-risk-overview" class="priority-risk-overview" aria-label="最優先確認とスタンド別リスク">
+                    <div class="priority-risk-overview-grid">
+                        <div class="priority-risk-overview-panel priority-risk-overview-left" aria-label="最優先確認">
+                            <div class="priority-stand-panel-header">
+                                <h2>最優先確認</h2>
+                            </div>
+                            <div id="priority-stand-card" class="priority-stand-card"></div>
+                        </div>
+                        <div class="priority-risk-overview-panel priority-risk-overview-right" aria-label="スタンド別リスク">
+                            <div class="stand-risk-map-header">
+                                <h2>スタンド別リスク</h2>
+                            </div>
+                            <div id="stand-risk-map-list" class="stand-risk-map-list"></div>
+                        </div>
                     </div>
-                    <div id="priority-stand-card" class="priority-stand-card"></div>
-                </section>
-                <section id="stand-risk-map" class="stand-risk-map" aria-label="スタンド別リスク">
-                    <div class="stand-risk-map-header">
-                        <h2>スタンド別リスク</h2>
-                    </div>
-                    <div id="stand-risk-map-list" class="stand-risk-map-list"></div>
                 </section>
                 <div id="sync-diagnostic-panel" class="sync-diagnostic-panel sync-diagnostic-warning" aria-live="polite">
                     <div class="sync-diagnostic-header">
