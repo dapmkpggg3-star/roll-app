@@ -1542,6 +1542,47 @@ function updateStandRiskMap() {
     `).join('');
 }
 
+function getTopPriorityStandRiskItem() {
+    const items = getStandRiskMapItems()
+        .filter(item => item.risk && item.risk.key !== 'normal')
+        .slice()
+        .sort((a, b) => {
+            if (a.risk.order !== b.risk.order) {
+                return a.risk.order - b.risk.order;
+            }
+
+            return Number(a.standKey) - Number(b.standKey);
+        });
+
+    return items.length > 0 ? items[0] : null;
+}
+
+function updatePriorityStandCard() {
+    const cardEl = document.getElementById('priority-stand-card');
+
+    if (!cardEl) {
+        return;
+    }
+
+    const item = getTopPriorityStandRiskItem();
+
+    if (!item) {
+        cardEl.innerHTML = `
+            <div class="priority-stand-empty">現在、優先対応スタンドはありません</div>
+        `;
+        cardEl.classList.add('is-empty');
+        return;
+    }
+
+    cardEl.classList.remove('is-empty');
+    cardEl.innerHTML = `
+        <div class="priority-stand-level">${escapeHtml(item.risk.label)}</div>
+        <div class="priority-stand-name">#${escapeHtml(item.standKey)}</div>
+        <div class="priority-stand-reason">理由：${escapeHtml(item.reasons.join('・'))}</div>
+        <button type="button" class="priority-stand-button" onclick="filterWatchStand('${escapeHtml(item.standKey)}')">このスタンドを見る</button>
+    `;
+}
+
 function normalizeDateInputValue(value) {
     const normalized = value === undefined || value === null ? '' : String(value).trim();
 
@@ -3249,6 +3290,7 @@ function renderRoles() {
     
     const filteredRoles = getFilteredRoles();
     updateCountSummary(roles);
+    updatePriorityStandCard();
     updateStandRiskMap();
     updateIncompleteWorkDashboard(roles);
     updateDangerRollDashboard(roles);

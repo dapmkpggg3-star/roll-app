@@ -524,6 +524,101 @@ body {
     line-height: 1;
 }
 
+.priority-stand-panel {
+    display: grid;
+    gap: 10px;
+    width: 100%;
+    margin: 0 0 12px;
+    padding: 14px 16px;
+    border-radius: 16px;
+    border: 1px solid #dbeafe;
+    background:
+        linear-gradient(135deg, #eff6ff 0%, #ffffff 72%);
+    box-shadow: 0 10px 24px rgba(37, 99, 235, 0.08);
+}
+
+.priority-stand-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.priority-stand-panel-header h2 {
+    margin: 0;
+    color: #1e3a8a;
+    font-size: 1rem;
+    font-weight: 900;
+}
+
+.priority-stand-card {
+    display: grid;
+    gap: 8px;
+    min-height: 96px;
+}
+
+.priority-stand-card.is-empty {
+    min-height: auto;
+}
+
+.priority-stand-level {
+    display: inline-flex;
+    width: fit-content;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: #1d4ed8;
+    color: #ffffff;
+    font-size: 0.8rem;
+    font-weight: 900;
+    letter-spacing: 0;
+}
+
+.priority-stand-name {
+    color: #0f172a;
+    font-size: 1.6rem;
+    font-weight: 900;
+    line-height: 1.1;
+}
+
+.priority-stand-reason {
+    color: #334155;
+    font-size: 0.92rem;
+    font-weight: 700;
+    line-height: 1.5;
+}
+
+.priority-stand-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: fit-content;
+    min-height: 42px;
+    padding: 0 16px;
+    border-radius: 999px;
+    border: 1px solid #1d4ed8;
+    background: #2563eb;
+    color: #ffffff;
+    font-size: 0.9rem;
+    font-weight: 900;
+    cursor: pointer;
+    transition: transform 0.16s ease, box-shadow 0.16s ease, filter 0.16s ease;
+}
+
+.priority-stand-button:hover,
+.priority-stand-button:focus-visible {
+    transform: translateY(-1px);
+    filter: brightness(1.03);
+    outline: 3px solid rgba(37, 99, 235, 0.22);
+    outline-offset: 2px;
+}
+
+.priority-stand-empty {
+    color: #475569;
+    font-size: 0.98rem;
+    font-weight: 700;
+    line-height: 1.5;
+}
+
 .stand-risk-map {
     display: grid;
     gap: 10px;
@@ -851,6 +946,18 @@ body {
 }
 
 @media (max-width: 767px) {
+    .priority-stand-panel {
+        padding: 12px 12px 13px;
+    }
+
+    .priority-stand-name {
+        font-size: 1.35rem;
+    }
+
+    .priority-stand-button {
+        width: 100%;
+    }
+
     .stand-risk-map-list {
         grid-template-columns: repeat(4, minmax(0, 1fr));
     }
