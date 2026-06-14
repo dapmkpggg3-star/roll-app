@@ -107,6 +107,21 @@ const ROLL_MASTER_SHEET_DEFINITIONS = [
     ]
   },
   {
+    name: 'RotationMaster',
+    columns: [
+      { key: 'roleId', label: 'roleId', type: 'text' },
+      { key: 'rollName', label: 'rollName', type: 'text' },
+      { key: 'stand', label: 'stand', type: 'text' },
+      { key: 'rotationOrder', label: 'rotationOrder', type: 'number' },
+      { key: 'isCoreSet', label: 'isCoreSet', type: 'boolean' },
+      { key: 'rotationActive', label: 'rotationActive', type: 'boolean' },
+      { key: 'forecastAnchorDate', label: 'forecastAnchorDate', type: 'text' },
+      { key: 'forecastNote', label: 'forecastNote', type: 'text' },
+      { key: 'updatedAt', label: 'updatedAt', type: 'text' }
+    ],
+    rows: []
+  },
+  {
     name: '作業履歴',
     legacyName: 'WorkHistory',
     columns: [
