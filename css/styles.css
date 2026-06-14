@@ -983,7 +983,7 @@ body {
 
 .purchase-confirmation-card {
     display: grid;
-    gap: 10px;
+    gap: 12px;
     min-width: 0;
     padding: 12px;
     border-radius: 10px;
@@ -1029,6 +1029,45 @@ body {
 
 .purchase-confirmation-urgent .purchase-confirmation-level {
     background: #dc2626;
+}
+
+.purchase-confirmation-focus {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.purchase-confirmation-focus div {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: #fff7ed;
+    border: 1px solid #fed7aa;
+}
+
+.purchase-confirmation-urgent .purchase-confirmation-focus div {
+    background: #fef2f2;
+    border-color: #fecaca;
+}
+
+.purchase-confirmation-focus span {
+    color: #9a3412;
+    font-size: 0.82rem;
+    font-weight: 900;
+}
+
+.purchase-confirmation-urgent .purchase-confirmation-focus span {
+    color: #991b1b;
+}
+
+.purchase-confirmation-focus strong {
+    color: #0f172a;
+    font-size: 1.32rem;
+    font-weight: 900;
+    line-height: 1.1;
+    overflow-wrap: anywhere;
 }
 
 .purchase-confirmation-grid {

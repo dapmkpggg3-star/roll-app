@@ -1324,6 +1324,10 @@ function getPurchasePlanningInfo(role) {
         return null;
     }
 
+    if (currentDiameter < scrapDiameter) {
+        return null;
+    }
+
     const cuttingMaster = getCuttingMaster(standKey);
     const calculationCutMm = cuttingMaster && cuttingMaster.active
         ? normalizeCuttingMasterNumericValue(cuttingMaster.calculationCutMm)
@@ -1341,17 +1345,11 @@ function getPurchasePlanningInfo(role) {
     const leadTimeMonths = standMaster && standMaster.leadTimeMonths !== ''
         ? Number(standMaster.leadTimeMonths)
         : DEFAULT_PURCHASE_LEAD_TIME_MONTHS;
-    const usableOnlineCount = currentDiameter < scrapDiameter
-        ? 0
-        : Math.floor((currentDiameter - scrapDiameter) / adoptedCutMm) + 1;
+    const usableOnlineCount = Math.floor((currentDiameter - scrapDiameter) / adoptedCutMm) + 1;
     const useStartDate = normalizeUseStartDate(role && role.useStartDate);
-    const useEndDate = useStartDate ? addMonthsToDateString(useStartDate, onlineUseMonths) : '';
     const forecastStartDate = useStartDate || getTodayDateString();
-    const disposalForecastDate = usableOnlineCount <= 0
-        ? getTodayDateString()
-        : addMonthsToDateString(forecastStartDate, usableOnlineCount * onlineUseMonths);
+    const disposalForecastDate = addMonthsToDateString(forecastStartDate, usableOnlineCount * onlineUseMonths);
     const purchaseDecisionDate = addMonthsToDateString(disposalForecastDate, -leadTimeMonths);
-    const predictedAfterCutDiameter = currentDiameter - adoptedCutMm;
 
     return {
         standKey,
@@ -1362,8 +1360,6 @@ function getPurchasePlanningInfo(role) {
         adoptedCutMm,
         usableOnlineCount,
         useStartDate,
-        useEndDate,
-        predictedAfterCutDiameter,
         disposalForecastDate,
         leadTimeMonths,
         purchaseDecisionDate
@@ -1428,6 +1424,17 @@ function formatPurchaseDiameter(value) {
     return Number.isFinite(numericValue) ? `φ${numericValue.toFixed(1)}` : '-';
 }
 
+function formatPurchaseMonth(value) {
+    const normalized = normalizeDateInputValue(value);
+
+    if (!normalized) {
+        return '-';
+    }
+
+    const [year, month] = normalized.split('-');
+    return `${year}年${Number(month)}月`;
+}
+
 function updatePurchaseConfirmationBoard(allRoles = roles) {
     const board = document.getElementById('purchase-confirmation-board');
     const countEl = document.getElementById('purchase-confirmation-count');
@@ -1455,19 +1462,24 @@ function updatePurchaseConfirmationBoard(allRoles = roles) {
                 </div>
                 <span class="purchase-confirmation-level">${escapeHtml(item.level.label)}</span>
             </div>
+            <div class="purchase-confirmation-focus">
+                <div>
+                    <span>廃却予想</span>
+                    <strong>${escapeHtml(formatPurchaseMonth(item.disposalForecastDate))}</strong>
+                </div>
+                <div>
+                    <span>購入判断期限</span>
+                    <strong>${escapeHtml(formatPurchaseMonth(item.purchaseDecisionDate))}</strong>
+                </div>
+            </div>
             <div class="purchase-confirmation-grid">
-                <span>現在ステータス</span><strong>${escapeHtml(item.status || '-')}</strong>
+                <span>スタンド</span><strong>#${escapeHtml(item.standKey)}</strong>
+                <span>ロール名</span><strong>${escapeHtml(item.roleName || '-')}</strong>
                 <span>現在径</span><strong>${escapeHtml(formatPurchaseDiameter(item.currentDiameter))}</strong>
                 <span>廃却径</span><strong>${escapeHtml(formatPurchaseDiameter(item.scrapDiameter))}</strong>
-                <span>採用改削量</span><strong>${escapeHtml(formatMillimeterValue(item.adoptedCutMm))}</strong>
-                <span>残りオンライン使用可能回数</span><strong>${escapeHtml(String(item.usableOnlineCount))}回</strong>
-                <span>使用開始日</span><strong>${escapeHtml(formatDateForDisplay(item.useStartDate))}</strong>
-                <span>使用終了予定日</span><strong>${escapeHtml(formatDateForDisplay(item.useEndDate))}</strong>
-                <span>改削後予想径</span><strong>${escapeHtml(formatPurchaseDiameter(item.predictedAfterCutDiameter))}</strong>
-                <span>廃却予測日</span><strong>${escapeHtml(formatDateForDisplay(item.disposalForecastDate))}</strong>
-                <span>購入LT月数</span><strong>${escapeHtml(String(item.leadTimeMonths))}か月</strong>
-                <span>購入判断期限</span><strong>${escapeHtml(formatDateForDisplay(item.purchaseDecisionDate))}</strong>
-                <span>判定メモ</span><strong>${escapeHtml(item.level.memo)}</strong>
+                <span>廃却予想</span><strong>${escapeHtml(formatPurchaseMonth(item.disposalForecastDate))}</strong>
+                <span>購入判断期限</span><strong>${escapeHtml(formatPurchaseMonth(item.purchaseDecisionDate))}</strong>
+                <span>理由</span><strong>購入LT${escapeHtml(String(item.leadTimeMonths))}か月</strong>
             </div>
         </article>
     `).join('');
