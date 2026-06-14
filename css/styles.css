@@ -690,13 +690,14 @@ body {
 
 .action-dashboard-grid {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     align-items: start;
     gap: 12px;
     width: 100%;
     margin: 0 0 18px;
 }
 
+.action-dashboard-grid > .incomplete-work-dashboard,
 .action-dashboard-grid > .danger-roll-dashboard,
 .action-dashboard-grid > .today-task-dashboard,
 .action-dashboard-grid > .cutting-anomaly-dashboard {
@@ -705,12 +706,14 @@ body {
     margin: 0;
 }
 
+.action-dashboard-grid > .incomplete-work-dashboard:not(.is-collapsed),
 .action-dashboard-grid > .danger-roll-dashboard:not(.is-collapsed),
 .action-dashboard-grid > .today-task-dashboard:not(.is-collapsed),
 .action-dashboard-grid > .cutting-anomaly-dashboard:not(.is-collapsed) {
     max-height: 520px;
 }
 
+.action-dashboard-grid .incomplete-work-list,
 .action-dashboard-grid .danger-roll-list,
 .action-dashboard-grid .today-task-list,
 .action-dashboard-grid .cutting-anomaly-list {
@@ -719,6 +722,7 @@ body {
     overscroll-behavior: contain;
 }
 
+.action-dashboard-grid > .incomplete-work-dashboard:not(.is-collapsed) .incomplete-work-list,
 .action-dashboard-grid > .danger-roll-dashboard:not(.is-collapsed) .danger-roll-list,
 .action-dashboard-grid > .today-task-dashboard:not(.is-collapsed) .today-task-list,
 .action-dashboard-grid > .cutting-anomaly-dashboard:not(.is-collapsed) .cutting-anomaly-list {
@@ -727,12 +731,14 @@ body {
 
 @media (max-width: 767px) {
     .action-dashboard-grid {
-        grid-template-columns: 1fr;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
+    .action-dashboard-grid > .incomplete-work-dashboard:not(.is-collapsed),
     .action-dashboard-grid > .danger-roll-dashboard:not(.is-collapsed),
     .action-dashboard-grid > .today-task-dashboard:not(.is-collapsed),
     .action-dashboard-grid > .cutting-anomaly-dashboard:not(.is-collapsed),
+    .action-dashboard-grid > .incomplete-work-dashboard:not(.is-collapsed) .incomplete-work-list,
     .action-dashboard-grid > .danger-roll-dashboard:not(.is-collapsed) .danger-roll-list,
     .action-dashboard-grid > .today-task-dashboard:not(.is-collapsed) .today-task-list,
     .action-dashboard-grid > .cutting-anomaly-dashboard:not(.is-collapsed) .cutting-anomaly-list {
@@ -918,6 +924,7 @@ body {
     font: inherit;
     text-align: left;
     cursor: pointer;
+    overflow-wrap: anywhere;
 }
 
 .dashboard-toggle-btn:hover,

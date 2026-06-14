@@ -11,7 +11,7 @@
     <link rel="manifest" href="manifest.json">
     <link rel="icon" type="image/png" sizes="192x192" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect fill='%23667eea' width='192' height='192'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' font-size='96' fill='white' font-family='Arial'>📋</text></svg>">
     <title>ロール管理アプリ</title>
-    <link rel="stylesheet" href="css/styles.css?v=20260614-future-work-collapse">
+    <link rel="stylesheet" href="css/styles.css?v=20260614-four-dashboard-grid">
 </head>
 <body>
     <div id="app-update-notice" class="app-update-notice" hidden>
@@ -114,14 +114,14 @@
                     </div>
                     <div id="sync-diagnostic-detail" class="sync-diagnostic-detail">Remote件数を取得中です</div>
                 </div>
-                <div id="incomplete-work-dashboard" class="incomplete-work-dashboard is-collapsed" aria-live="polite">
-                    <div class="incomplete-work-header">
-                        <button type="button" id="future-work-toggle" class="dashboard-toggle-btn incomplete-work-title" onclick="toggleFutureWorkDashboard()" aria-expanded="false" aria-controls="incomplete-work-list">未来作業依頼（0件） ▼</button>
-                        <span id="incomplete-work-count" class="incomplete-work-count">0件</span>
-                    </div>
-                    <div id="incomplete-work-list" class="incomplete-work-list"></div>
-                </div>
                 <div class="action-dashboard-grid" aria-label="優先確認ダッシュボード">
+                    <div id="incomplete-work-dashboard" class="incomplete-work-dashboard is-collapsed" aria-live="polite">
+                        <div class="incomplete-work-header">
+                            <button type="button" id="future-work-toggle" class="dashboard-toggle-btn incomplete-work-title" onclick="toggleFutureWorkDashboard()" aria-expanded="false" aria-controls="incomplete-work-list">未来作業依頼（0件） ▼</button>
+                            <span id="incomplete-work-count" class="incomplete-work-count">0件</span>
+                        </div>
+                        <div id="incomplete-work-list" class="incomplete-work-list"></div>
+                    </div>
                     <div id="danger-roll-dashboard" class="danger-roll-dashboard is-empty is-collapsed" aria-live="polite">
                         <div class="danger-roll-header">
                             <button type="button" id="danger-roll-toggle" class="dashboard-toggle-btn danger-roll-title" onclick="toggleDangerRollDashboard()" aria-expanded="false" aria-controls="danger-roll-list">危険ロール一覧（0件） ▼</button>
@@ -328,7 +328,7 @@
 
     <script src="js/sync.js?v=20260608-normalize-use-start-date"></script>
 <script src="js/csv.js?v=20260607-summary-groups"></script>
-<script src="js/app.js?v=20260614-future-work-collapse"></script>
+<script src="js/app.js?v=20260614-four-dashboard-grid"></script>
 
         // ログイン状態チェック
 </body>
