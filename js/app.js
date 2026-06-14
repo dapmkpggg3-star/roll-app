@@ -1243,6 +1243,93 @@ function focusDangerRollRole(encodedRoleId) {
     });
 }
 
+const STAND_RISK_STANDS = Array.from({ length: 16 }, (_, index) => String(index + 2));
+const STAND_RISK_LEVELS = {
+    danger: { key: 'danger', label: '危険', order: 1 },
+    action: { key: 'action', label: '要対応', order: 2 },
+    warning: { key: 'warning', label: '注意', order: 3 },
+    pending: { key: 'pending', label: '保留', order: 4 },
+    normal: { key: 'normal', label: '正常', order: 5 }
+};
+
+function getStandRiskFromDangerRollLevel(levelKey) {
+    if (levelKey === 'danger') {
+        return STAND_RISK_LEVELS.danger;
+    }
+
+    if (levelKey === 'action') {
+        return STAND_RISK_LEVELS.action;
+    }
+
+    if (levelKey === 'warning') {
+        return STAND_RISK_LEVELS.warning;
+    }
+
+    return null;
+}
+
+function getStandRiskFromCuttingAnomaly(judgmentKey) {
+    if (judgmentKey === 'abnormal') {
+        return STAND_RISK_LEVELS.danger;
+    }
+
+    if (judgmentKey === 'warning') {
+        return STAND_RISK_LEVELS.warning;
+    }
+
+    if (judgmentKey === 'pending') {
+        return STAND_RISK_LEVELS.pending;
+    }
+
+    return null;
+}
+
+function applyWorseStandRisk(riskByStand, standKey, risk) {
+    if (!standKey || !risk) {
+        return;
+    }
+
+    const currentRisk = riskByStand.get(standKey) || STAND_RISK_LEVELS.normal;
+
+    if (risk.order < currentRisk.order) {
+        riskByStand.set(standKey, risk);
+    }
+}
+
+function getStandRiskMapItems() {
+    const riskByStand = new Map(STAND_RISK_STANDS.map(standKey => [standKey, STAND_RISK_LEVELS.normal]));
+
+    getDangerRollItems(roles).forEach(item => {
+        const standKey = getStandKey(item.role && item.role.name);
+        applyWorseStandRisk(riskByStand, standKey, getStandRiskFromDangerRollLevel(item.level && item.level.key));
+    });
+
+    getCuttingAnomalyItems().forEach(item => {
+        const standKey = getStandKey(item.stand);
+        applyWorseStandRisk(riskByStand, standKey, getStandRiskFromCuttingAnomaly(item.judgmentKey));
+    });
+
+    return STAND_RISK_STANDS.map(standKey => ({
+        standKey,
+        risk: riskByStand.get(standKey) || STAND_RISK_LEVELS.normal
+    }));
+}
+
+function updateStandRiskMap() {
+    const listEl = document.getElementById('stand-risk-map-list');
+
+    if (!listEl) {
+        return;
+    }
+
+    listEl.innerHTML = getStandRiskMapItems().map(item => `
+        <button type="button" class="stand-risk-item stand-risk-${escapeHtml(item.risk.key)}" onclick="filterWatchStand('${escapeHtml(item.standKey)}')">
+            <span class="stand-risk-stand">#${escapeHtml(item.standKey)}</span>
+            <span class="stand-risk-label">${escapeHtml(item.risk.label)}</span>
+        </button>
+    `).join('');
+}
+
 function normalizeDateInputValue(value) {
     const normalized = value === undefined || value === null ? '' : String(value).trim();
 
@@ -2950,6 +3037,7 @@ function renderRoles() {
     
     const filteredRoles = getFilteredRoles();
     updateCountSummary(roles);
+    updateStandRiskMap();
     updateIncompleteWorkDashboard(roles);
     updateDangerRollDashboard(roles);
     updateTodayTaskDashboard(roles);

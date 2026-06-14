@@ -11,7 +11,7 @@
     <link rel="manifest" href="manifest.json">
     <link rel="icon" type="image/png" sizes="192x192" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect fill='%23667eea' width='192' height='192'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' font-size='96' fill='white' font-family='Arial'>📋</text></svg>">
     <title>ロール管理アプリ</title>
-    <link rel="stylesheet" href="css/styles.css?v=20260614-four-dashboard-grid">
+    <link rel="stylesheet" href="css/styles.css?v=20260614-stand-risk-map">
 </head>
 <body>
     <div id="app-update-notice" class="app-update-notice" hidden>
@@ -101,6 +101,12 @@
                         </div>
                     </div>
                 </div>
+                <section id="stand-risk-map" class="stand-risk-map" aria-label="スタンド別リスク">
+                    <div class="stand-risk-map-header">
+                        <h2>スタンド別リスク</h2>
+                    </div>
+                    <div id="stand-risk-map-list" class="stand-risk-map-list"></div>
+                </section>
                 <div id="sync-diagnostic-panel" class="sync-diagnostic-panel sync-diagnostic-warning" aria-live="polite">
                     <div class="sync-diagnostic-header">
                         <span class="sync-diagnostic-title">同期診断</span>
@@ -328,7 +334,7 @@
 
     <script src="js/sync.js?v=20260608-normalize-use-start-date"></script>
 <script src="js/csv.js?v=20260607-summary-groups"></script>
-<script src="js/app.js?v=20260614-four-dashboard-grid"></script>
+<script src="js/app.js?v=20260614-stand-risk-map"></script>
 
         // ログイン状態チェック
 </body>

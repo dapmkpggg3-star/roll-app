@@ -524,6 +524,108 @@ body {
     line-height: 1;
 }
 
+.stand-risk-map {
+    display: grid;
+    gap: 10px;
+    width: 100%;
+    margin: -6px 0 18px;
+    padding: 12px;
+    border-radius: 14px;
+    border: 1px solid #e2e8f0;
+    background: #ffffff;
+    box-shadow: 0 6px 18px rgba(15, 23, 42, 0.06);
+}
+
+.stand-risk-map-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.stand-risk-map-header h2 {
+    margin: 0;
+    color: #334155;
+    font-size: 1rem;
+    font-weight: 900;
+}
+
+.stand-risk-map-list {
+    display: grid;
+    grid-template-columns: repeat(8, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.stand-risk-item {
+    display: inline-flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    min-width: 0;
+    min-height: 38px;
+    padding: 8px 10px;
+    border-radius: 10px;
+    border: 1px solid #e2e8f0;
+    background: #ffffff;
+    color: #334155;
+    cursor: pointer;
+    font-weight: 900;
+    line-height: 1;
+    transition: transform 0.16s ease, box-shadow 0.16s ease, filter 0.16s ease;
+}
+
+.stand-risk-item:hover,
+.stand-risk-item:focus-visible {
+    transform: translateY(-1px);
+    filter: brightness(0.99);
+    outline: 3px solid rgba(37, 99, 235, 0.22);
+    outline-offset: 2px;
+}
+
+.stand-risk-stand,
+.stand-risk-label {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.stand-risk-stand {
+    font-size: 0.98rem;
+}
+
+.stand-risk-label {
+    font-size: 0.78rem;
+}
+
+.stand-risk-danger {
+    background: #fee2e2;
+    color: #991b1b;
+    border-color: #fca5a5;
+}
+
+.stand-risk-action {
+    background: #ffedd5;
+    color: #9a3412;
+    border-color: #fdba74;
+}
+
+.stand-risk-warning {
+    background: #fef3c7;
+    color: #92400e;
+    border-color: #fde68a;
+}
+
+.stand-risk-pending {
+    background: #f1f5f9;
+    color: #475569;
+    border-color: #cbd5e1;
+}
+
+.stand-risk-normal {
+    background: #f0fdf4;
+    color: #166534;
+    border-color: #bbf7d0;
+}
+
 .sync-diagnostic-panel {
     display: none;
     gap: 10px;
@@ -730,6 +832,16 @@ body {
 }
 
 @media (max-width: 767px) {
+    .stand-risk-map-list {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .stand-risk-item {
+        flex-direction: column;
+        justify-content: center;
+        min-height: 48px;
+    }
+
     .action-dashboard-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
@@ -1314,6 +1426,7 @@ body.workshop-board-mode .workshop-board {
 }
 
 body.workshop-board-mode #count-summary,
+body.workshop-board-mode #stand-risk-map,
 body.workshop-board-mode #sync-diagnostic-panel,
 body.workshop-board-mode #incomplete-work-dashboard,
 body.workshop-board-mode .action-dashboard-grid,
