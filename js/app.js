@@ -31,6 +31,7 @@ const WORKSHOP_BOARD_PRIORITY_ORDER = {
 };
 const TODAY_TASK_DASHBOARD_OPEN_KEY = 'todayTaskDashboardOpen';
 const CUTTING_ANOMALY_DASHBOARD_OPEN_KEY = 'cuttingAnomalyDashboardOpen';
+const DANGER_ROLL_DASHBOARD_OPEN_KEY = 'dangerRollDashboardOpen';
 
 function getEffectiveViewportWidth() {
     const widths = [
@@ -454,12 +455,24 @@ const CUTTING_ANOMALY_DASHBOARD_CONFIG = {
     label: '改削異常チェック'
 };
 
+const DANGER_ROLL_DASHBOARD_CONFIG = {
+    dashboardId: 'danger-roll-dashboard',
+    toggleId: 'danger-roll-toggle',
+    countId: 'danger-roll-count',
+    storageKey: DANGER_ROLL_DASHBOARD_OPEN_KEY,
+    label: '危険ロール一覧'
+};
+
 function toggleTodayTaskDashboard() {
     toggleCollapsibleDashboard(TODAY_TASK_DASHBOARD_CONFIG);
 }
 
 function toggleCuttingAnomalyDashboard() {
     toggleCollapsibleDashboard(CUTTING_ANOMALY_DASHBOARD_CONFIG);
+}
+
+function toggleDangerRollDashboard() {
+    toggleCollapsibleDashboard(DANGER_ROLL_DASHBOARD_CONFIG);
 }
 
 function getSyncHeaderCounts() {
@@ -1061,6 +1074,160 @@ function getRemainingDiameterHtml(role) {
             <span class="remaining-cut-count-value ${levelClass}">残り改削回数：${escapeHtml(String(info.remainingCutCount))}回</span>
         </span>
     `;
+}
+
+function isDangerRollTargetStatus(status) {
+    const normalizedStatus = String(status || '').trim();
+    const targetStatuses = new Set([
+        ONLINE_STATUS,
+        USED_STANDBY_STATUS,
+        '中古予備',
+        REWORK_READY_STATUS,
+        '改削待ち',
+        NEW_READY_STATUS,
+        '新品予備（組込可）',
+        NEW_INSTALLED_STATUS
+    ]);
+
+    return targetStatuses.has(normalizedStatus);
+}
+
+function getDangerRollLevel(remainingCutCount) {
+    if (!Number.isFinite(remainingCutCount)) {
+        return null;
+    }
+
+    if (remainingCutCount <= 0) {
+        return {
+            key: 'danger',
+            label: '危険',
+            reason: '廃却径まで余裕なし',
+            order: 1
+        };
+    }
+
+    if (remainingCutCount === 1) {
+        return {
+            key: 'action',
+            label: '要対応',
+            reason: '次回改削後に廃却候補',
+            order: 2
+        };
+    }
+
+    if (remainingCutCount === 2) {
+        return {
+            key: 'warning',
+            label: '注意',
+            reason: '早めに予備状況確認',
+            order: 3
+        };
+    }
+
+    return null;
+}
+
+function getDangerRollItems(allRoles = roles) {
+    return (Array.isArray(allRoles) ? allRoles : [])
+        .filter(role => role && isDangerRollTargetStatus(role.status))
+        .map(role => {
+            const remainingInfo = getRemainingDiameterInfo(role);
+            const remainingCutCount = remainingInfo && Number.isFinite(remainingInfo.remainingCutCount)
+                ? remainingInfo.remainingCutCount
+                : null;
+            const level = getDangerRollLevel(remainingCutCount);
+
+            return level ? {
+                role,
+                level,
+                remainingInfo,
+                remainingCutCount
+            } : null;
+        })
+        .filter(Boolean)
+        .sort((a, b) => {
+            if (a.level.order !== b.level.order) {
+                return a.level.order - b.level.order;
+            }
+
+            if (a.remainingCutCount !== b.remainingCutCount) {
+                return a.remainingCutCount - b.remainingCutCount;
+            }
+
+            return compareRolesByStandRole(a.role, b.role);
+        });
+}
+
+function updateDangerRollDashboard(allRoles = roles) {
+    const dashboard = document.getElementById('danger-roll-dashboard');
+    const countEl = document.getElementById('danger-roll-count');
+    const listEl = document.getElementById('danger-roll-list');
+
+    if (!dashboard || !countEl || !listEl) {
+        return;
+    }
+
+    const items = getDangerRollItems(allRoles);
+    countEl.textContent = `${items.length}件`;
+    dashboard.classList.toggle('is-empty', items.length === 0);
+    syncCollapsibleDashboardState(DANGER_ROLL_DASHBOARD_CONFIG);
+
+    if (items.length === 0) {
+        listEl.innerHTML = '<div class="danger-roll-empty">危険ロールはありません</div>';
+        return;
+    }
+
+    const groups = [
+        { key: 'danger', label: '危険' },
+        { key: 'action', label: '要対応' },
+        { key: 'warning', label: '注意' }
+    ];
+
+    listEl.innerHTML = groups.map(group => {
+        const groupItems = items.filter(item => item.level.key === group.key);
+
+        if (groupItems.length === 0) {
+            return '';
+        }
+
+        return `
+            <section class="danger-roll-group danger-roll-${group.key}">
+                <div class="danger-roll-group-title">
+                    <span>${escapeHtml(group.label)}</span>
+                    <span>${groupItems.length}件</span>
+                </div>
+                <div class="danger-roll-items">
+                    ${groupItems.map(item => {
+                        const roleId = encodeURIComponent(String(item.role.id || ''));
+
+                        return `
+                            <button type="button" class="danger-roll-item" onclick="focusDangerRollRole('${roleId}')">
+                                <span class="danger-roll-name">${escapeHtml(item.role.name || '-')}</span>
+                                <span class="danger-roll-count-text">残り改削回数：${escapeHtml(String(item.remainingCutCount))}回</span>
+                                <span class="danger-roll-reason">理由：${escapeHtml(item.level.reason)}</span>
+                            </button>
+                        `;
+                    }).join('')}
+                </div>
+            </section>
+        `;
+    }).join('');
+}
+
+function focusDangerRollRole(encodedRoleId) {
+    const roleId = decodeURIComponent(String(encodedRoleId || ''));
+    const role = roles.find(item => String(item.id) === String(roleId));
+
+    if (!role) {
+        showToast('対象ロールが見つかりません');
+        return;
+    }
+
+    scrollToRoleCard(role.id, null, {
+        highlight: true,
+        notifyMissing: true,
+        priority: 'high'
+    });
 }
 
 function normalizeDateInputValue(value) {
@@ -2770,6 +2937,7 @@ function renderRoles() {
     const filteredRoles = getFilteredRoles();
     updateCountSummary(roles);
     updateIncompleteWorkDashboard(roles);
+    updateDangerRollDashboard(roles);
     updateTodayTaskDashboard(roles);
     updateCuttingAnomalyDashboard();
     updateWorkshopBoard(roles);

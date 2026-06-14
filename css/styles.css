@@ -686,6 +686,147 @@ body {
     font-weight: 700;
 }
 
+.danger-roll-dashboard {
+    display: grid;
+    gap: 12px;
+    width: 100%;
+    margin: 0 0 18px;
+    padding: 16px;
+    border-radius: 12px;
+    border: 1px solid #fecaca;
+    background: #fff7f7;
+    color: #0f172a;
+    box-shadow: 0 8px 22px rgba(15, 23, 42, 0.08);
+}
+
+.danger-roll-dashboard.is-empty {
+    border-color: #e2e8f0;
+    background: #ffffff;
+    color: #64748b;
+    box-shadow: none;
+}
+
+.danger-roll-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.danger-roll-title {
+    font-size: 1.08rem;
+    font-weight: 900;
+}
+
+.danger-roll-count {
+    display: none;
+}
+
+.danger-roll-list {
+    display: grid;
+    gap: 10px;
+}
+
+.danger-roll-group {
+    display: grid;
+    gap: 8px;
+    padding: 10px;
+    border-radius: 10px;
+    border: 1px solid #e2e8f0;
+    background: #ffffff;
+}
+
+.danger-roll-danger {
+    border-color: #fca5a5;
+    background: #fff1f2;
+}
+
+.danger-roll-action {
+    border-color: #fdba74;
+    background: #fff7ed;
+}
+
+.danger-roll-warning {
+    border-color: #fde68a;
+    background: #fffbeb;
+}
+
+.danger-roll-group-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding-bottom: 7px;
+    border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+    font-weight: 900;
+}
+
+.danger-roll-danger .danger-roll-group-title {
+    color: #991b1b;
+}
+
+.danger-roll-action .danger-roll-group-title {
+    color: #9a3412;
+}
+
+.danger-roll-warning .danger-roll-group-title {
+    color: #92400e;
+}
+
+.danger-roll-items {
+    display: grid;
+    gap: 8px;
+}
+
+.danger-roll-item {
+    display: grid;
+    gap: 5px;
+    width: 100%;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    background: rgba(255, 255, 255, 0.82);
+    color: #334155;
+    text-align: left;
+    cursor: pointer;
+    transition: transform 0.16s ease, box-shadow 0.16s ease, filter 0.16s ease;
+}
+
+.danger-roll-item:hover,
+.danger-roll-item:focus-visible {
+    transform: translateY(-1px);
+    filter: brightness(0.99);
+    outline: 3px solid rgba(37, 99, 235, 0.22);
+    outline-offset: 2px;
+}
+
+.danger-roll-name {
+    color: #0f172a;
+    font-size: 1rem;
+    font-weight: 900;
+    line-height: 1.2;
+}
+
+.danger-roll-count-text,
+.danger-roll-reason {
+    font-size: 0.9rem;
+    font-weight: 800;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+}
+
+.danger-roll-empty {
+    min-height: 52px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 10px;
+    border: 1px dashed #cbd5e1;
+    background: #ffffff;
+    color: #64748b;
+    font-weight: 800;
+}
+
 .today-task-dashboard {
     display: grid;
     gap: 14px;
@@ -761,6 +902,7 @@ body {
     gap: 12px;
 }
 
+.danger-roll-dashboard.is-collapsed .danger-roll-list,
 .today-task-dashboard.is-collapsed .today-task-list,
 .cutting-anomaly-dashboard.is-collapsed .cutting-anomaly-list {
     display: none;
@@ -1113,6 +1255,7 @@ body.workshop-board-mode .workshop-board {
 body.workshop-board-mode #count-summary,
 body.workshop-board-mode #sync-diagnostic-panel,
 body.workshop-board-mode #incomplete-work-dashboard,
+body.workshop-board-mode #danger-roll-dashboard,
 body.workshop-board-mode #today-task-dashboard,
 body.workshop-board-mode #cutting-anomaly-dashboard,
 body.workshop-board-mode .search-bar,
