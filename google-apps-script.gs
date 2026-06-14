@@ -109,15 +109,15 @@ const ROLL_MASTER_SHEET_DEFINITIONS = [
   {
     name: 'RotationMaster',
     columns: [
-      { key: 'roleId', label: 'roleId', type: 'text' },
-      { key: 'rollName', label: 'rollName', type: 'text' },
-      { key: 'stand', label: 'stand', type: 'text' },
-      { key: 'rotationOrder', label: 'rotationOrder', type: 'number' },
-      { key: 'isCoreSet', label: 'isCoreSet', type: 'boolean' },
-      { key: 'rotationActive', label: 'rotationActive', type: 'boolean' },
-      { key: 'forecastAnchorDate', label: 'forecastAnchorDate', type: 'text' },
-      { key: 'forecastNote', label: 'forecastNote', type: 'text' },
-      { key: 'updatedAt', label: 'updatedAt', type: 'text' }
+      { key: 'roleId', label: 'ロールID', type: 'text' },
+      { key: 'rollName', label: 'ロール名', type: 'text' },
+      { key: 'stand', label: 'スタンド', type: 'text' },
+      { key: 'rotationOrder', label: '使用順', type: 'number' },
+      { key: 'isCoreSet', label: '3セット内', type: 'boolean' },
+      { key: 'rotationActive', label: '予測対象', type: 'boolean' },
+      { key: 'forecastAnchorDate', label: '予測基準日', type: 'text' },
+      { key: 'forecastNote', label: '備考', type: 'text' },
+      { key: 'updatedAt', label: '更新日時', type: 'text' }
     ],
     rows: []
   },
@@ -1300,9 +1300,20 @@ function applyRollMasterColumnWidths(sheet, definition) {
       leadDays: 100,
       messageTemplate: 300,
       active: 80
+    },
+    RotationMaster: {
+      roleId: 120,
+      rollName: 120,
+      stand: 80,
+      rotationOrder: 80,
+      isCoreSet: 90,
+      rotationActive: 90,
+      forecastAnchorDate: 130,
+      forecastNote: 250,
+      updatedAt: 150
     }
   };
-  const widthsByKey = widthsByLegacyName[definition.legacyName] || {};
+  const widthsByKey = widthsByLegacyName[definition.legacyName] || widthsByLegacyName[definition.name] || {};
 
   definition.columns.forEach(function(column, index) {
     const width = widthsByKey[column.key];
