@@ -554,8 +554,15 @@ function fetchCuttingMaster() {
 
   const standIndex = getRollMasterColumnIndexByKey(definition, 'stand') - 1;
   const standardCutMmIndex = getRollMasterColumnIndexByKey(definition, 'standardCutMm') - 1;
+  const actualAverageCutMmIndex = getRollMasterColumnIndexByKey(definition, 'actualAverageCutMm') - 1;
+  const recentAverageCutMmIndex = getRollMasterColumnIndexByKey(definition, 'recentAverageCutMm') - 1;
   const calculationCutMmIndex = getRollMasterColumnIndexByKey(definition, 'calculationCutMm') - 1;
+  const actualSampleCountIndex = getRollMasterColumnIndexByKey(definition, 'actualSampleCount') - 1;
+  const standardDiffMmIndex = getRollMasterColumnIndexByKey(definition, 'standardDiffMm') - 1;
+  const standardDiffRateIndex = getRollMasterColumnIndexByKey(definition, 'standardDiffRate') - 1;
   const activeIndex = getRollMasterColumnIndexByKey(definition, 'active') - 1;
+  const anomalyJudgmentIndex = getRollMasterColumnIndexByKey(definition, 'anomalyJudgment') - 1;
+  const anomalyReasonIndex = getRollMasterColumnIndexByKey(definition, 'anomalyReason') - 1;
   const rows = values.slice(1);
   const result = rows.map(function(row) {
     const standardCutMm = normalizeStandMasterNumericValue(row[standardCutMmIndex]);
@@ -565,6 +572,13 @@ function fetchCuttingMaster() {
       stand: normalizeStandMasterStandValue(row[standIndex]),
       standardCutMm: standardCutMm,
       calculationCutMm: calculationCutMm,
+      actualAverageCutMm: normalizeStandMasterNumericValue(row[actualAverageCutMmIndex]),
+      recentAverageCutMm: normalizeStandMasterNumericValue(row[recentAverageCutMmIndex]),
+      actualSampleCount: normalizeStandMasterNumericValue(row[actualSampleCountIndex]),
+      standardDiffMm: normalizeStandMasterNumericValue(row[standardDiffMmIndex]),
+      standardDiffRate: normalizeStandMasterNumericValue(row[standardDiffRateIndex]),
+      anomalyJudgment: row[anomalyJudgmentIndex] || '',
+      anomalyReason: row[anomalyReasonIndex] || '',
       active: normalizeRollMasterBooleanValue(row[activeIndex])
     };
   }).filter(function(row) {

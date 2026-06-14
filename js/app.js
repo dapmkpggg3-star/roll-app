@@ -506,6 +506,13 @@ function normalizeCuttingMasterRow(row) {
         standKey: getStandKey(stand),
         standardCutMm: normalizeCuttingMasterNumericValue(row && row.standardCutMm),
         calculationCutMm: normalizeCuttingMasterNumericValue(row && row.calculationCutMm),
+        actualAverageCutMm: normalizeCuttingMasterNumericValue(row && row.actualAverageCutMm),
+        recentAverageCutMm: normalizeCuttingMasterNumericValue(row && row.recentAverageCutMm),
+        actualSampleCount: normalizeCuttingMasterNumericValue(row && row.actualSampleCount),
+        standardDiffMm: normalizeCuttingMasterNumericValue(row && row.standardDiffMm),
+        standardDiffRate: normalizeCuttingMasterNumericValue(row && row.standardDiffRate),
+        anomalyJudgment: String(row && row.anomalyJudgment !== undefined && row.anomalyJudgment !== null ? row.anomalyJudgment : '').trim(),
+        anomalyReason: String(row && row.anomalyReason !== undefined && row.anomalyReason !== null ? row.anomalyReason : '').trim(),
         active: row && row.active !== false && String(row && row.active).toLowerCase() !== 'false'
     };
 }
@@ -550,6 +557,111 @@ async function fetchCuttingMaster() {
 
 function loadCuttingMaster() {
     return fetchCuttingMaster();
+}
+
+function normalizeCuttingAnomalyJudgment(value) {
+    const normalized = String(value || '').trim();
+    const judgmentMap = {
+        '異常': 'abnormal',
+        '注意': 'warning',
+        '判定保留': 'pending'
+    };
+
+    return judgmentMap[normalized] || '';
+}
+
+function formatCuttingMasterRate(value) {
+    const numericValue = Number(value);
+
+    if (!Number.isFinite(numericValue)) {
+        return '-';
+    }
+
+    const percent = Math.round(numericValue * 1000) / 10;
+    const sign = percent > 0 ? '+' : '';
+    return `${sign}${percent.toFixed(1)}%`;
+}
+
+function getCuttingAnomalyItems() {
+    const displayOrder = {
+        abnormal: 1,
+        warning: 2,
+        pending: 3
+    };
+
+    return cuttingMasterRows
+        .map(row => ({
+            ...row,
+            judgmentKey: normalizeCuttingAnomalyJudgment(row.anomalyJudgment)
+        }))
+        .filter(row => row.judgmentKey)
+        .sort((a, b) => {
+            const orderDiff = displayOrder[a.judgmentKey] - displayOrder[b.judgmentKey];
+
+            if (orderDiff !== 0) {
+                return orderDiff;
+            }
+
+            return Number(a.standKey) - Number(b.standKey);
+        });
+}
+
+function updateCuttingAnomalyDashboard() {
+    const dashboard = document.getElementById('cutting-anomaly-dashboard');
+    const countEl = document.getElementById('cutting-anomaly-count');
+    const listEl = document.getElementById('cutting-anomaly-list');
+
+    if (!dashboard || !countEl || !listEl) {
+        return;
+    }
+
+    const items = getCuttingAnomalyItems();
+    countEl.textContent = `${items.length}件`;
+    dashboard.classList.toggle('is-empty', items.length === 0);
+
+    if (items.length === 0) {
+        listEl.innerHTML = '<div class="cutting-anomaly-empty">改削異常はありません</div>';
+        return;
+    }
+
+    const groups = [
+        { key: 'abnormal', label: '異常' },
+        { key: 'warning', label: '注意' },
+        { key: 'pending', label: '判定保留' }
+    ];
+
+    listEl.innerHTML = groups.map(group => {
+        const groupItems = items.filter(item => item.judgmentKey === group.key);
+
+        if (groupItems.length === 0) {
+            return '';
+        }
+
+        return `
+            <section class="cutting-anomaly-group cutting-anomaly-${group.key}">
+                <div class="cutting-anomaly-group-title">
+                    <span>${escapeHtml(group.label)}</span>
+                    <span>${groupItems.length}件</span>
+                </div>
+                <div class="cutting-anomaly-items">
+                    ${groupItems.map(item => {
+                        const diffRate = formatCuttingMasterRate(item.standardDiffRate);
+                        const reason = item.anomalyReason || '理由未設定';
+
+                        return `
+                            <div class="cutting-anomaly-item">
+                                <div class="cutting-anomaly-main">
+                                    <span class="cutting-anomaly-stand">${escapeHtml(item.stand || '-')}</span>
+                                    <span class="cutting-anomaly-rate">標準との差率 ${escapeHtml(diffRate)}</span>
+                                </div>
+                                <div class="cutting-anomaly-reason">理由：${escapeHtml(reason)}</div>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            </section>
+        `;
+    }).join('');
 }
 
 function getDiameterChangeReason() {
@@ -2415,6 +2527,7 @@ function renderRoles() {
     updateCountSummary(roles);
     updateIncompleteWorkDashboard(roles);
     updateTodayTaskDashboard(roles);
+    updateCuttingAnomalyDashboard();
     updateWorkshopBoard(roles);
     if (typeof updateSyncDiagnosticPanel === 'function') {
         updateSyncDiagnosticPanel();

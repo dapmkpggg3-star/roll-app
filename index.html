@@ -127,6 +127,13 @@
                     </div>
                     <div id="today-task-list" class="today-task-list"></div>
                 </div>
+                <div id="cutting-anomaly-dashboard" class="cutting-anomaly-dashboard is-empty" aria-live="polite">
+                    <div class="cutting-anomaly-header">
+                        <span class="cutting-anomaly-title">改削異常チェック</span>
+                        <span id="cutting-anomaly-count" class="cutting-anomaly-count">0件</span>
+                    </div>
+                    <div id="cutting-anomaly-list" class="cutting-anomaly-list"></div>
+                </div>
                 <section id="workshop-board" class="workshop-board" aria-live="polite">
                     <div class="workshop-board-header">
                         <div>
@@ -299,7 +306,7 @@
 
     <script src="js/sync.js?v=20260608-normalize-use-start-date"></script>
 <script src="js/csv.js?v=20260607-summary-groups"></script>
-<script src="js/app.js?v=20260611-work-history-diameter"></script>
+<script src="js/app.js?v=20260614-cut-history-invalidation"></script>
 
         // ログイン状態チェック
 </body>
