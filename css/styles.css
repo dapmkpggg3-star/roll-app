@@ -175,6 +175,37 @@ body {
     box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.28);
 }
 
+.header-actions .sync-status-badge {
+    min-width: 104px;
+    border-color: rgba(255, 255, 255, 0.42);
+    font-weight: 900;
+    white-space: nowrap;
+}
+
+.header-actions .sync-status-normal {
+    background: #dcfce7;
+    color: #166534;
+    border-color: #86efac;
+}
+
+.header-actions .sync-status-warning {
+    background: #fef3c7;
+    color: #92400e;
+    border-color: #fde68a;
+}
+
+.header-actions .sync-status-danger {
+    background: #fee2e2;
+    color: #991b1b;
+    border-color: #fecaca;
+}
+
+.header-actions .sync-status-offline {
+    background: #111827;
+    color: #ffffff;
+    border-color: #374151;
+}
+
 .container {
     max-width: 900px;
     margin: 0 auto;
@@ -494,7 +525,7 @@ body {
 }
 
 .sync-diagnostic-panel {
-    display: grid;
+    display: none;
     gap: 10px;
     width: 100%;
     margin: 0 0 18px;
@@ -553,6 +584,34 @@ body {
     background: #fef2f2;
     border-color: #fecaca;
     color: #991b1b;
+}
+
+.sync-status-card {
+    max-width: 420px;
+}
+
+.sync-status-popup-list {
+    display: grid;
+    gap: 10px;
+}
+
+.sync-status-popup-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid #e2e8f0;
+    background: #f8fafc;
+    color: #334155;
+    font-weight: 800;
+}
+
+.sync-status-popup-row strong {
+    color: #0f172a;
+    text-align: right;
+    overflow-wrap: anywhere;
 }
 
 .incomplete-work-dashboard {

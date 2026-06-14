@@ -100,6 +100,8 @@ function logout() {
 document.addEventListener('DOMContentLoaded', function() {
     applyResponsiveLayoutMode();
     applyTabletModePreference();
+    installSyncDiagnosticHeaderIntegration();
+    updateSyncStatusBadge();
     setupOperatorSelect();
     loadRemoteRoles();
     Promise.all([loadStandMaster(), loadCuttingMaster()]).then(() => renderRoles());
@@ -119,12 +121,15 @@ document.addEventListener('DOMContentLoaded', function() {
     document.addEventListener('keydown', function(e) {
         if (e.key === 'Escape') {
             closeDetailModal();
+            closeSyncStatusPopup();
         }
     });
     applyAdminMode(false);
     updatePageScrollButton();
 });
 
+window.addEventListener('online', updateSyncStatusBadge);
+window.addEventListener('offline', updateSyncStatusBadge);
 window.addEventListener('load', applyResponsiveLayoutMode);
 window.addEventListener('load', updatePageScrollButton);
 window.addEventListener('scroll', updatePageScrollButton, { passive: true });
@@ -455,6 +460,163 @@ function toggleTodayTaskDashboard() {
 
 function toggleCuttingAnomalyDashboard() {
     toggleCollapsibleDashboard(CUTTING_ANOMALY_DASHBOARD_CONFIG);
+}
+
+function getSyncHeaderCounts() {
+    if (typeof getSyncDiagnosticCounts === 'function') {
+        return getSyncDiagnosticCounts();
+    }
+
+    return {
+        lastSuccessful: 0,
+        local: Array.isArray(roles) ? roles.length : 0,
+        remote: null,
+        merged: null,
+        hasRemote: false
+    };
+}
+
+function getSyncHeaderStatus(counts) {
+    if (typeof getSyncDiagnosticStatus === 'function') {
+        return getSyncDiagnosticStatus(counts);
+    }
+
+    return {
+        level: 'warning',
+        statusText: '状態: 要確認',
+        detail: '同期診断を準備中です'
+    };
+}
+
+function getSyncPendingCount(counts) {
+    const comparableCounts = [
+        counts && Number.isFinite(counts.local) ? counts.local : null,
+        counts && Number.isFinite(counts.remote) ? counts.remote : null,
+        counts && Number.isFinite(counts.merged) ? counts.merged : null
+    ].filter(value => Number.isFinite(value));
+
+    if (comparableCounts.length <= 1) {
+        return 0;
+    }
+
+    return Math.max(...comparableCounts) - Math.min(...comparableCounts);
+}
+
+function formatSyncHeaderCount(value) {
+    return Number.isFinite(value) ? `${value}件` : '未取得';
+}
+
+function getLastSyncAtLabel() {
+    const value = localStorage.getItem('lastSyncAt');
+
+    if (typeof formatLastSyncAt === 'function') {
+        return formatLastSyncAt(value);
+    }
+
+    return value || '未同期';
+}
+
+function setSyncStatusBadgeState(label, stateClass) {
+    const badge = document.getElementById('sync-status-badge');
+
+    if (!badge) {
+        return;
+    }
+
+    badge.textContent = label;
+    badge.classList.remove('sync-status-normal', 'sync-status-warning', 'sync-status-danger', 'sync-status-offline');
+    badge.classList.add(stateClass);
+}
+
+function updateSyncStatusBadge() {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        setSyncStatusBadgeState('⚫オフライン', 'sync-status-offline');
+        return;
+    }
+
+    const counts = getSyncHeaderCounts();
+    const status = getSyncHeaderStatus(counts);
+
+    if (status.level === 'normal') {
+        setSyncStatusBadgeState('同期正常', 'sync-status-normal');
+        return;
+    }
+
+    if (status.level === 'danger') {
+        setSyncStatusBadgeState('同期エラー', 'sync-status-danger');
+        return;
+    }
+
+    const pendingCount = getSyncPendingCount(counts);
+    setSyncStatusBadgeState(pendingCount > 0 ? `未同期 ${pendingCount}件` : '未同期あり', 'sync-status-warning');
+}
+
+function getSyncStatusPopupRows() {
+    const counts = getSyncHeaderCounts();
+    const pendingCount = getSyncPendingCount(counts);
+
+    return [
+        ['Local', formatSyncHeaderCount(counts.local)],
+        ['Remote', formatSyncHeaderCount(counts.remote)],
+        ['Merged', formatSyncHeaderCount(counts.merged)],
+        ['未同期件数', `${pendingCount}件`],
+        ['最終同期日時', getLastSyncAtLabel()]
+    ];
+}
+
+function updateSyncStatusPopup() {
+    const listEl = document.getElementById('sync-status-popup-list');
+
+    if (!listEl) {
+        return;
+    }
+
+    listEl.innerHTML = getSyncStatusPopupRows().map(([label, value]) => `
+        <div class="sync-status-popup-row">
+            <span>${escapeHtml(label)}</span>
+            <strong>${escapeHtml(value)}</strong>
+        </div>
+    `).join('');
+}
+
+function openSyncStatusPopup() {
+    const popup = document.getElementById('sync-status-popup');
+
+    if (!popup) {
+        return;
+    }
+
+    updateSyncStatusBadge();
+    updateSyncStatusPopup();
+    popup.classList.add('is-open');
+    popup.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('modal-open');
+}
+
+function closeSyncStatusPopup() {
+    const popup = document.getElementById('sync-status-popup');
+
+    if (!popup) {
+        return;
+    }
+
+    popup.classList.remove('is-open');
+    popup.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('modal-open');
+}
+
+function installSyncDiagnosticHeaderIntegration() {
+    if (typeof updateSyncDiagnosticPanel !== 'function' || updateSyncDiagnosticPanel.__headerIntegrated) {
+        return;
+    }
+
+    const originalUpdateSyncDiagnosticPanel = updateSyncDiagnosticPanel;
+    updateSyncDiagnosticPanel = function(options = {}) {
+        const result = originalUpdateSyncDiagnosticPanel(options);
+        updateSyncStatusBadge();
+        return result;
+    };
+    updateSyncDiagnosticPanel.__headerIntegrated = true;
 }
 
 function setEditModeUi(role = null) {

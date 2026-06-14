@@ -11,7 +11,7 @@
     <link rel="manifest" href="manifest.json">
     <link rel="icon" type="image/png" sizes="192x192" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect fill='%23667eea' width='192' height='192'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' font-size='96' fill='white' font-family='Arial'>📋</text></svg>">
     <title>ロール管理アプリ</title>
-    <link rel="stylesheet" href="css/styles.css?v=20260610-workshop-standby-date">
+    <link rel="stylesheet" href="css/styles.css?v=20260614-sync-status-header">
 </head>
 <body>
     <div id="app-update-notice" class="app-update-notice" hidden>
@@ -45,6 +45,7 @@
                 </label>
                 <button type="button" id="tabletModeBtn" onclick="toggleTabletMode()" class="tablet-mode-btn" aria-pressed="false">タブレットモード OFF</button>
                 <button type="button" id="workshopBoardBtn" onclick="toggleWorkshopBoard()" class="workshop-board-btn" aria-pressed="false">工作課ボード</button>
+                <button type="button" id="sync-status-badge" class="sync-status-badge sync-status-warning" onclick="openSyncStatusPopup()" aria-haspopup="dialog">同期状態確認中</button>
                 <button type="button" id="logout-btn" onclick="logout()" class="logout-btn">ログアウト</button>
             </div>
         </div>
@@ -300,13 +301,25 @@
         </div>
     </div>
 
+    <div id="sync-status-popup" class="detail-modal sync-status-popup" aria-hidden="true">
+        <div class="detail-modal-backdrop" onclick="closeSyncStatusPopup()"></div>
+        <div class="detail-card sync-status-card" role="dialog" aria-modal="true" aria-labelledby="sync-status-popup-title">
+            <button type="button" class="detail-close-btn" onclick="closeSyncStatusPopup()" aria-label="同期状態を閉じる">×</button>
+            <div class="detail-header">
+                <p class="detail-label">同期状態</p>
+                <h2 id="sync-status-popup-title">同期診断</h2>
+            </div>
+            <div id="sync-status-popup-list" class="sync-status-popup-list"></div>
+        </div>
+    </div>
+
     <div class="page-scroll-controls" aria-label="画面スクロール操作">
         <button type="button" id="pageScrollToggleBtn" class="page-scroll-btn" onclick="scrollPageByCurrentPosition()" aria-label="ページ下部へ移動">↓ 下へ</button>
     </div>
 
     <script src="js/sync.js?v=20260608-normalize-use-start-date"></script>
 <script src="js/csv.js?v=20260607-summary-groups"></script>
-<script src="js/app.js?v=20260614-cut-history-invalidation"></script>
+<script src="js/app.js?v=20260614-sync-status-header"></script>
 
         // ログイン状態チェック
 </body>
