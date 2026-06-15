@@ -47,6 +47,8 @@ const THREE_SET_FORECAST_MIN_STAND = 2;
 const THREE_SET_FORECAST_MAX_STAND = 17;
 const DASHBOARD_DISPLAY_SETTINGS_OPEN_KEY = 'dashboardDisplaySettingsOpen';
 const DASHBOARD_VISIBILITY_STORAGE_PREFIX = 'dashboardVisibility.';
+const THREE_SET_MANAGEMENT_ACTIVE_TAB_KEY = 'threeSetManagementActiveTab';
+const THREE_SET_MANAGEMENT_DEFAULT_TAB = 'assembly';
 const DASHBOARD_VISIBILITY_OPTIONS = [
     {
         key: 'priorityStand',
@@ -3228,6 +3230,252 @@ function getThreeSetForecastSupplement(item) {
     return '-';
 }
 
+function normalizeThreeSetManagementTab(value) {
+    const normalized = String(value || '').trim();
+    return ['assembly', 'rework', 'purchase'].includes(normalized)
+        ? normalized
+        : THREE_SET_MANAGEMENT_DEFAULT_TAB;
+}
+
+function getStoredThreeSetManagementTab() {
+    try {
+        return normalizeThreeSetManagementTab(localStorage.getItem(THREE_SET_MANAGEMENT_ACTIVE_TAB_KEY));
+    } catch (error) {
+        console.error('getStoredThreeSetManagementTab error:', error);
+        return THREE_SET_MANAGEMENT_DEFAULT_TAB;
+    }
+}
+
+function saveThreeSetManagementTab(tabKey) {
+    const normalized = normalizeThreeSetManagementTab(tabKey);
+
+    try {
+        localStorage.setItem(THREE_SET_MANAGEMENT_ACTIVE_TAB_KEY, normalized);
+    } catch (error) {
+        console.error('saveThreeSetManagementTab error:', error);
+    }
+
+    return normalized;
+}
+
+function getThreeSetManagementEmptySummary(label) {
+    return {
+        count: 0,
+        status: '対応なし',
+        nextAction: `${label}タスクはありません`
+    };
+}
+
+function getThreeSetManagementAssemblyItems(allRoles = roles) {
+    return getAssemblyCandidateItems(allRoles)
+        .map(candidate => ({
+            ...candidate,
+            details: getWorkshopBoardCandidateDetails(candidate)
+        }))
+        .sort(compareWorkshopBoardCandidates)
+        .map(candidate => ({
+            key: `assembly-${candidate.standKey}`,
+            standKey: candidate.standKey,
+            title: `#${candidate.standKey}`,
+            target: [
+                `外す側: ${candidate.usedRoles.map(role => role.name || '-').join(' / ') || '-'}`,
+                `組む側: ${candidate.newReadyRoles.map(role => role.name || '-').join(' / ') || '-'}`
+            ].join('\n'),
+            deadline: candidate.details.estimatedReplacementDate,
+            status: candidate.details.priority === 'high'
+                ? '段取り必要'
+                : (candidate.details.priority === 'medium' ? '早めに確認' : '候補あり'),
+            action: `#${candidate.standKey} 組替依頼`,
+            meta: candidate.details.remainingDaysLabel
+        }));
+}
+
+function getThreeSetManagementReworkItems(allRoles = roles) {
+    return getReworkSetupPlanItems(allRoles)
+        .map(item => ({
+            key: `rework-${item.role && item.role.id ? item.role.id : item.standKey}`,
+            standKey: item.standKey,
+            title: item.roleName || `#${item.standKey}`,
+            target: `現在状態: ${item.role && item.role.status ? item.role.status : ONLINE_STATUS}`,
+            deadline: item.workshopTaskDueDate,
+            status: item.workshopTaskDueDate <= getTodayDateString() ? '段取り必要' : '期限接近',
+            action: `#${item.standKey} 引取依頼`,
+            meta: `搬出可能 ${formatDateForDisplay(item.dispatchReadyDate)} / 引取希望 ${formatDateForDisplay(item.vendorPickupDate)} / 戻り ${formatDateForDisplay(item.reworkReturnDate)}`
+        }));
+}
+
+function getThreeSetManagementPurchaseItems(allRoles = roles) {
+    return getPurchaseConfirmationItems(allRoles)
+        .map(item => ({
+            key: `purchase-${item.roleName || item.standKey}`,
+            standKey: item.standKey,
+            title: item.roleName || `#${item.standKey}`,
+            target: `廃却予想: ${formatPurchaseMonth(item.disposalForecastDate)}`,
+            deadline: item.purchaseDecisionDate,
+            status: item.level && item.level.key === 'urgent' ? '判断期限あり' : '早期確認',
+            action: `#${item.standKey} 購入確認`,
+            meta: item.level && item.level.memo ? item.level.memo : `購入LT${item.leadTimeMonths}か月`
+        }));
+}
+
+function getThreeSetManagementSummary(label, items) {
+    if (!Array.isArray(items) || items.length === 0) {
+        return getThreeSetManagementEmptySummary(label);
+    }
+
+    const first = items[0];
+    return {
+        count: items.length,
+        status: first.status || '確認あり',
+        nextAction: first.action || `${label}を確認`
+    };
+}
+
+function getThreeSetManagementData(allRoles = roles) {
+    const assemblyItems = getThreeSetManagementAssemblyItems(allRoles);
+    const reworkItems = getThreeSetManagementReworkItems(allRoles);
+    const purchaseItems = getThreeSetManagementPurchaseItems(allRoles);
+
+    return [
+        {
+            key: 'assembly',
+            label: '組替',
+            summary: getThreeSetManagementSummary('組替', assemblyItems),
+            items: assemblyItems
+        },
+        {
+            key: 'rework',
+            label: '搬入出・改削',
+            summary: getThreeSetManagementSummary('搬入出・改削', reworkItems),
+            items: reworkItems
+        },
+        {
+            key: 'purchase',
+            label: '購入',
+            summary: getThreeSetManagementSummary('購入', purchaseItems),
+            items: purchaseItems
+        }
+    ];
+}
+
+function getThreeSetManagementDeadlineLabel(item, activeTab) {
+    if (!item || !item.deadline) {
+        return '-';
+    }
+
+    if (activeTab === 'purchase') {
+        return formatPurchaseMonth(item.deadline);
+    }
+
+    return formatDateForDisplay(item.deadline);
+}
+
+function getThreeSetManagementItemTitle(activeTab) {
+    if (activeTab === 'assembly') {
+        return '組替タスク一覧';
+    }
+
+    if (activeTab === 'rework') {
+        return '搬入出・改削タスク一覧';
+    }
+
+    return '購入タスク一覧';
+}
+
+function getThreeSetManagementItemHtml(item, activeTab) {
+    const deadlineLabel = activeTab === 'purchase'
+        ? '購入判断期限'
+        : (activeTab === 'assembly' ? '期限' : '工作課期限');
+
+    return `
+        <article class="three-set-management-task">
+            <div class="three-set-management-task-head">
+                <span class="three-set-management-task-stand">#${escapeHtml(item.standKey || '-')}</span>
+                <span class="three-set-management-task-status">${escapeHtml(item.status || '-')}</span>
+            </div>
+            <div class="three-set-management-task-main">
+                <div>
+                    <span>${activeTab === 'assembly' ? '対象' : '対象ロール'}</span>
+                    <strong>${escapeHtml(item.title || '-')}</strong>
+                </div>
+                <div>
+                    <span>${escapeHtml(deadlineLabel)}</span>
+                    <strong>${escapeHtml(getThreeSetManagementDeadlineLabel(item, activeTab))}</strong>
+                </div>
+            </div>
+            <div class="three-set-management-task-meta">${escapeHtml(item.target || '-')}</div>
+            <div class="three-set-management-task-action">
+                <span>次にやること</span>
+                <strong>${escapeHtml(item.action || '-')}</strong>
+            </div>
+            <div class="three-set-management-task-meta">${escapeHtml(item.meta || '-')}</div>
+        </article>
+    `;
+}
+
+function updateThreeSetManagementDashboard(allRoles = roles) {
+    const root = document.getElementById('three-set-management');
+    const cardsEl = document.getElementById('three-set-management-cards');
+    const detailEl = document.getElementById('three-set-management-detail');
+
+    if (!root || !cardsEl || !detailEl) {
+        return;
+    }
+
+    const data = getThreeSetManagementData(allRoles);
+    const activeTab = normalizeThreeSetManagementTab(getStoredThreeSetManagementTab());
+    const activeGroup = data.find(group => group.key === activeTab) || data[0];
+
+    cardsEl.innerHTML = data.map(group => {
+        const isActive = group.key === activeGroup.key;
+        return `
+            <button
+                type="button"
+                class="three-set-management-card ${isActive ? 'is-active' : ''}"
+                onclick="changeThreeSetManagementTab('${escapeHtml(group.key)}')"
+                role="tab"
+                aria-selected="${isActive ? 'true' : 'false'}"
+                aria-controls="three-set-management-detail"
+            >
+                <span class="three-set-management-card-label">${escapeHtml(group.label)}</span>
+                <strong class="three-set-management-card-count">${escapeHtml(String(group.summary.count))}件</strong>
+                <span class="three-set-management-card-status">${escapeHtml(group.summary.status)}</span>
+                <span class="three-set-management-card-action">次にやること：${escapeHtml(group.summary.nextAction)}</span>
+            </button>
+        `;
+    }).join('');
+
+    if (!activeGroup || activeGroup.items.length === 0) {
+        detailEl.innerHTML = `
+            <section class="three-set-management-panel">
+                <div class="three-set-management-panel-header">
+                    <h3>${escapeHtml(activeGroup ? getThreeSetManagementItemTitle(activeGroup.key) : 'タスク一覧')}</h3>
+                    <span>0件</span>
+                </div>
+                <div class="three-set-management-empty">現在、${escapeHtml(activeGroup ? activeGroup.label : '対象')}タスクはありません</div>
+            </section>
+        `;
+        return;
+    }
+
+    detailEl.innerHTML = `
+        <section class="three-set-management-panel">
+            <div class="three-set-management-panel-header">
+                <h3>${escapeHtml(getThreeSetManagementItemTitle(activeGroup.key))}</h3>
+                <span>${escapeHtml(String(activeGroup.items.length))}件</span>
+            </div>
+            <div class="three-set-management-task-list">
+                ${activeGroup.items.map(item => getThreeSetManagementItemHtml(item, activeGroup.key)).join('')}
+            </div>
+        </section>
+    `;
+}
+
+function changeThreeSetManagementTab(tabKey) {
+    saveThreeSetManagementTab(tabKey);
+    updateThreeSetManagementDashboard(roles);
+}
+
 function updateThreeSetForecastDashboard(allRoles = roles) {
     const dashboard = document.getElementById('three-set-forecast-dashboard');
     const countEl = document.getElementById('three-set-forecast-count');
@@ -4438,6 +4686,7 @@ function renderRoles() {
     updateCountSummary(roles);
     updatePriorityStandCard();
     updateStandRiskMap();
+    updateThreeSetManagementDashboard(roles);
     updateThreeSetForecastDashboard(roles);
     updateIncompleteWorkDashboard(roles);
     updateDangerRollDashboard(roles);

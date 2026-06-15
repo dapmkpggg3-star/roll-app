@@ -155,21 +155,17 @@
                     </div>
                     <div id="sync-diagnostic-detail" class="sync-diagnostic-detail">Remote件数を取得中です</div>
                 </div>
-                <section id="purchase-confirmation-board" class="purchase-confirmation-board is-empty" aria-live="polite">
-                    <div class="purchase-confirmation-header">
-                        <button type="button" id="purchase-confirmation-toggle" class="dashboard-toggle-btn purchase-confirmation-title" onclick="togglePurchaseConfirmationDashboard()" aria-expanded="false" aria-controls="purchase-confirmation-list">購入確認候補（0件） ▼</button>
-                        <span id="purchase-confirmation-count" class="purchase-confirmation-count">0件</span>
+                <section id="three-set-management" class="three-set-management" aria-live="polite">
+                    <div class="three-set-management-header">
+                        <div>
+                            <h2>3セット維持管理</h2>
+                            <p>組替・搬入出/改削・購入をまとめて確認</p>
+                        </div>
                     </div>
-                    <div id="purchase-confirmation-list" class="purchase-confirmation-list"></div>
+                    <div id="three-set-management-cards" class="three-set-management-cards" role="tablist" aria-label="3セット維持管理分類"></div>
+                    <div id="three-set-management-detail" class="three-set-management-detail"></div>
                 </section>
                 <div class="action-dashboard-grid" aria-label="優先確認ダッシュボード">
-                    <div id="three-set-forecast-dashboard" class="three-set-forecast-dashboard is-empty is-collapsed" aria-live="polite">
-                        <div class="three-set-forecast-header">
-                            <button type="button" id="three-set-forecast-toggle" class="dashboard-toggle-btn three-set-forecast-title" onclick="toggleThreeSetForecastDashboard()" aria-expanded="false" aria-controls="three-set-forecast-list">3セット維持予測（0件） ▼</button>
-                            <span id="three-set-forecast-count" class="three-set-forecast-count">0件</span>
-                        </div>
-                        <div id="three-set-forecast-list" class="three-set-forecast-list"></div>
-                    </div>
                     <div id="incomplete-work-dashboard" class="incomplete-work-dashboard is-collapsed" aria-live="polite">
                         <div class="incomplete-work-header">
                             <button type="button" id="future-work-toggle" class="dashboard-toggle-btn incomplete-work-title" onclick="toggleFutureWorkDashboard()" aria-expanded="false" aria-controls="incomplete-work-list">未来作業依頼（0件） ▼</button>

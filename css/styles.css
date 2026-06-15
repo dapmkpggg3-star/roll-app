@@ -1105,6 +1105,258 @@ body {
     font-weight: 800;
 }
 
+.three-set-management {
+    display: grid;
+    gap: 14px;
+    width: 100%;
+    margin: 0 0 18px;
+    padding: 16px;
+    border-radius: 12px;
+    border: 1px solid #cbd5e1;
+    background: #ffffff;
+    color: #0f172a;
+    box-shadow: 0 8px 22px rgba(15, 23, 42, 0.08);
+}
+
+.three-set-management-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.three-set-management-header h2 {
+    margin: 0;
+    color: #0f172a;
+    font-size: 1.22rem;
+    line-height: 1.2;
+    font-weight: 900;
+}
+
+.three-set-management-header p {
+    margin: 4px 0 0;
+    color: #64748b;
+    font-weight: 800;
+    line-height: 1.25;
+}
+
+.three-set-management-cards {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.three-set-management-card {
+    display: grid;
+    gap: 6px;
+    min-height: 136px;
+    padding: 12px;
+    border-radius: 10px;
+    border: 1px solid #cbd5e1;
+    background: #f8fafc;
+    color: #0f172a;
+    text-align: left;
+    cursor: pointer;
+    transition: border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease, background 0.16s ease;
+}
+
+.three-set-management-card:hover,
+.three-set-management-card:focus-visible {
+    transform: translateY(-1px);
+    border-color: #2563eb;
+    box-shadow: 0 8px 18px rgba(37, 99, 235, 0.14);
+    outline: none;
+}
+
+.three-set-management-card.is-active {
+    border-color: #2563eb;
+    background: #eff6ff;
+    box-shadow: inset 0 0 0 1px rgba(37, 99, 235, 0.28), 0 8px 18px rgba(37, 99, 235, 0.10);
+}
+
+.three-set-management-card-label {
+    color: #1e40af;
+    font-size: 0.96rem;
+    font-weight: 900;
+    line-height: 1.15;
+}
+
+.three-set-management-card-count {
+    color: #0f172a;
+    font-size: 2rem;
+    font-weight: 900;
+    line-height: 1;
+}
+
+.three-set-management-card-status {
+    color: #334155;
+    font-size: 0.9rem;
+    font-weight: 900;
+    line-height: 1.2;
+}
+
+.three-set-management-card-action {
+    color: #475569;
+    font-size: 0.84rem;
+    font-weight: 800;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+}
+
+.three-set-management-detail {
+    display: grid;
+    gap: 10px;
+}
+
+.three-set-management-panel {
+    display: grid;
+    gap: 10px;
+    padding: 12px;
+    border-radius: 10px;
+    border: 1px solid #dbeafe;
+    background: #f8fafc;
+}
+
+.three-set-management-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+.three-set-management-panel-header h3 {
+    margin: 0;
+    color: #0f172a;
+    font-size: 1.02rem;
+    font-weight: 900;
+    line-height: 1.2;
+}
+
+.three-set-management-panel-header span {
+    color: #1e40af;
+    font-weight: 900;
+}
+
+.three-set-management-task-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+    gap: 10px;
+}
+
+.three-set-management-task {
+    display: grid;
+    gap: 8px;
+    padding: 10px;
+    border-radius: 9px;
+    border: 1px solid #e2e8f0;
+    background: #ffffff;
+}
+
+.three-set-management-task-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.three-set-management-task-stand {
+    color: #0f172a;
+    font-size: 1.12rem;
+    font-weight: 900;
+    line-height: 1.15;
+}
+
+.three-set-management-task-status {
+    flex: 0 0 auto;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: #e0f2fe;
+    color: #075985;
+    font-size: 0.8rem;
+    font-weight: 900;
+    line-height: 1.15;
+}
+
+.three-set-management-task-main {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.three-set-management-task-main div,
+.three-set-management-task-action {
+    display: grid;
+    gap: 3px;
+    padding: 8px;
+    border-radius: 8px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+}
+
+.three-set-management-task-main span,
+.three-set-management-task-action span {
+    color: #64748b;
+    font-size: 0.76rem;
+    font-weight: 900;
+    line-height: 1.15;
+}
+
+.three-set-management-task-main strong,
+.three-set-management-task-action strong {
+    color: #0f172a;
+    font-size: 0.92rem;
+    font-weight: 900;
+    line-height: 1.2;
+    overflow-wrap: anywhere;
+}
+
+.three-set-management-task-action {
+    background: #eff6ff;
+    border-color: #bfdbfe;
+}
+
+.three-set-management-task-action span,
+.three-set-management-task-action strong {
+    color: #1e40af;
+}
+
+.three-set-management-task-meta {
+    color: #475569;
+    font-size: 0.82rem;
+    font-weight: 800;
+    line-height: 1.25;
+    white-space: pre-line;
+    overflow-wrap: anywhere;
+}
+
+.three-set-management-empty {
+    min-height: 54px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 10px;
+    border: 1px dashed #cbd5e1;
+    background: #ffffff;
+    color: #64748b;
+    font-weight: 800;
+}
+
+@media (max-width: 767px) {
+    .three-set-management-cards {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .three-set-management-card {
+        min-height: 112px;
+    }
+
+    .three-set-management-task-main {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
 .three-set-forecast-dashboard {
     display: grid;
     gap: 12px;
@@ -2263,6 +2515,7 @@ body.workshop-board-mode #count-summary,
 body.workshop-board-mode #priority-risk-overview,
 body.workshop-board-mode #sync-diagnostic-panel,
 body.workshop-board-mode #purchase-confirmation-board,
+body.workshop-board-mode #three-set-management,
 body.workshop-board-mode #incomplete-work-dashboard,
 body.workshop-board-mode .action-dashboard-grid,
 body.workshop-board-mode .search-bar,
