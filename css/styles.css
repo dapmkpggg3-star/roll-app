@@ -2260,6 +2260,39 @@ body.workshop-board-mode .table-container {
 
 .workshop-board-list {
     display: grid;
+    gap: 12px;
+}
+
+.workshop-board-section {
+    display: grid;
+    gap: 10px;
+}
+
+.workshop-board-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 0 2px 8px;
+    border-bottom: 1px solid rgba(146, 64, 14, 0.18);
+}
+
+.workshop-board-section-header h3 {
+    margin: 0;
+    color: #78350f;
+    font-size: 1.08rem;
+    font-weight: 900;
+    line-height: 1.2;
+}
+
+.workshop-board-section-header span {
+    color: #92400e;
+    font-size: 0.92rem;
+    font-weight: 900;
+}
+
+.workshop-board-section-list {
+    display: grid;
     grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
     gap: 12px;
 }
@@ -2273,6 +2306,40 @@ body.workshop-board-mode .table-container {
     border-left: 6px solid #f59e0b;
     background: #ffffff;
     box-shadow: 0 6px 16px rgba(146, 64, 14, 0.10);
+}
+
+.workshop-rework-setup-card {
+    border-color: #bfdbfe;
+    border-left-color: #2563eb;
+    box-shadow: 0 6px 16px rgba(37, 99, 235, 0.10);
+}
+
+.workshop-rework-setup-card .workshop-card-title {
+    color: #1d4ed8;
+}
+
+.workshop-rework-setup-card .workshop-card-title-text {
+    color: #1e40af;
+}
+
+.workshop-rework-setup-card .workshop-card-summary {
+    background: #eff6ff;
+    border-color: #bfdbfe;
+}
+
+.workshop-rework-setup-card .workshop-card-summary-label {
+    color: #1d4ed8;
+}
+
+.workshop-rework-deadline {
+    flex: 0 0 auto;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: #dbeafe;
+    color: #1e40af;
+    font-size: 0.9rem;
+    font-weight: 900;
+    line-height: 1.15;
 }
 
 .workshop-card-title {

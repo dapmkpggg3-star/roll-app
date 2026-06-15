@@ -3812,6 +3812,140 @@ function getWorkshopRoleLines(roleList) {
         .join('');
 }
 
+function getWorkshopReworkSetupAction(item) {
+    if (!item) {
+        return '-';
+    }
+
+    return `${item.roleName || `#${item.standKey}`}のバラシ・搬出・業者引取確認`;
+}
+
+function getWorkshopReworkSetupHtml(items) {
+    if (!Array.isArray(items) || items.length === 0) {
+        return `
+            <section class="workshop-board-section">
+                <div class="workshop-board-section-header">
+                    <h3>改削段取り予定</h3>
+                    <span>0件</span>
+                </div>
+                <div class="workshop-board-empty">改削段取り予定はありません</div>
+            </section>
+        `;
+    }
+
+    return `
+        <section class="workshop-board-section">
+            <div class="workshop-board-section-header">
+                <h3>改削段取り予定</h3>
+                <span>${items.length}件</span>
+            </div>
+            <div class="workshop-board-section-list workshop-rework-setup-list">
+                ${items.map(item => `
+                    <article class="workshop-card workshop-rework-setup-card">
+                        <div class="workshop-card-title">
+                            <div class="workshop-card-title-main">
+                                <span class="workshop-stand">#${escapeHtml(item.standKey)}</span>
+                                <span class="workshop-card-title-text">改削段取り予定</span>
+                            </div>
+                            <span class="workshop-rework-deadline">${escapeHtml(formatDateForDisplay(item.workshopTaskDueDate))}</span>
+                        </div>
+                        <div class="workshop-card-summary">
+                            <div class="workshop-card-summary-item">
+                                <span class="workshop-card-summary-label">工作課タスク化期限</span>
+                                <span class="workshop-card-summary-value">${escapeHtml(formatDateForDisplay(item.workshopTaskDueDate))}</span>
+                            </div>
+                            <div class="workshop-card-summary-item">
+                                <span class="workshop-card-summary-label">ロール名</span>
+                                <span class="workshop-card-summary-value">${escapeHtml(item.roleName || '-')}</span>
+                            </div>
+                            <div class="workshop-card-summary-item">
+                                <span class="workshop-card-summary-label">搬出可能予定日</span>
+                                <span class="workshop-card-summary-value">${escapeHtml(formatDateForDisplay(item.dispatchReadyDate))}</span>
+                            </div>
+                            <div class="workshop-card-summary-item">
+                                <span class="workshop-card-summary-label">業者引取希望日</span>
+                                <span class="workshop-card-summary-value">${escapeHtml(formatDateForDisplay(item.vendorPickupDate))}</span>
+                            </div>
+                            <div class="workshop-card-summary-item">
+                                <span class="workshop-card-summary-label">改削戻り予定日</span>
+                                <span class="workshop-card-summary-value">${escapeHtml(formatDateForDisplay(item.reworkReturnDate))}</span>
+                            </div>
+                        </div>
+                        <div class="workshop-card-section">
+                            <span class="workshop-card-label">必要アクション</span>
+                            <div class="workshop-role-line">
+                                <span class="workshop-role-name">${escapeHtml(getWorkshopReworkSetupAction(item))}</span>
+                            </div>
+                        </div>
+                    </article>
+                `).join('')}
+            </div>
+        </section>
+    `;
+}
+
+function getWorkshopAssemblyCandidatesHtml(candidates) {
+    if (!Array.isArray(candidates) || candidates.length === 0) {
+        return `
+            <section class="workshop-board-section">
+                <div class="workshop-board-section-header">
+                    <h3>組替候補</h3>
+                    <span>0件</span>
+                </div>
+                <div class="workshop-board-empty">組替候補はありません</div>
+            </section>
+        `;
+    }
+
+    return `
+        <section class="workshop-board-section">
+            <div class="workshop-board-section-header">
+                <h3>組替候補</h3>
+                <span>${candidates.length}件</span>
+            </div>
+            <div class="workshop-board-section-list">
+                ${candidates.map(candidate => `
+                    <article class="workshop-card">
+                        <div class="workshop-card-title">
+                            <div class="workshop-card-title-main">
+                                <span class="workshop-stand">${escapeHtml(candidate.standLabel)}</span>
+                                <span class="workshop-card-title-text">組替候補</span>
+                            </div>
+                            <span class="workshop-priority-badge workshop-priority-${escapeHtml(candidate.details.priority)}">${escapeHtml(candidate.details.priorityLabel)}</span>
+                        </div>
+                        <div class="workshop-card-summary">
+                            <div class="workshop-card-summary-item">
+                                <span class="workshop-card-summary-label">優先度</span>
+                                <span class="workshop-card-summary-value">${escapeHtml(candidate.details.priorityLabel)}</span>
+                            </div>
+                            <div class="workshop-card-summary-item">
+                                <span class="workshop-card-summary-label">中古予備になった日</span>
+                                <span class="workshop-card-summary-value">${escapeHtml(candidate.details.standbyDateLabel)}</span>
+                            </div>
+                            <div class="workshop-card-summary-item">
+                                <span class="workshop-card-summary-label">暫定ロール替目安</span>
+                                <span class="workshop-card-summary-value">${escapeHtml(candidate.details.estimatedReplacementLabel)}</span>
+                            </div>
+                            <div class="workshop-card-summary-item">
+                                <span class="workshop-card-summary-label">残日数</span>
+                                <span class="workshop-card-summary-value">${escapeHtml(candidate.details.remainingDaysLabel)}</span>
+                            </div>
+                        </div>
+                        <div class="workshop-card-section">
+                            <span class="workshop-card-label">中古予備（バラシ前）</span>
+                            <div class="workshop-role-list">${getWorkshopRoleLines(candidate.usedRoles)}</div>
+                        </div>
+                        <div class="workshop-card-section">
+                            <span class="workshop-card-label">新品予備（組替可能）</span>
+                            <div class="workshop-role-list">${getWorkshopRoleLines(candidate.newReadyRoles)}</div>
+                        </div>
+                    </article>
+                `).join('')}
+            </div>
+        </section>
+    `;
+}
+
 function updateWorkshopBoard(allRoles) {
     const board = document.getElementById('workshop-board');
     const countEl = document.getElementById('workshop-board-count');
@@ -3832,51 +3966,20 @@ function updateWorkshopBoard(allRoles) {
             details: getWorkshopBoardCandidateDetails(candidate)
         }))
         .sort(compareWorkshopBoardCandidates);
+    const reworkSetupItems = getReworkSetupPlanItems(allRoles);
+    const totalCount = candidates.length + reworkSetupItems.length;
 
-    countEl.textContent = `${candidates.length}件`;
+    countEl.textContent = `${totalCount}件`;
 
-    if (candidates.length === 0) {
-        listEl.innerHTML = '<div class="workshop-board-empty">組替候補はありません</div>';
+    if (totalCount === 0) {
+        listEl.innerHTML = '<div class="workshop-board-empty">改削段取り予定・組替候補はありません</div>';
         return;
     }
 
-    listEl.innerHTML = candidates.map(candidate => `
-        <article class="workshop-card">
-            <div class="workshop-card-title">
-                <div class="workshop-card-title-main">
-                    <span class="workshop-stand">${escapeHtml(candidate.standLabel)}</span>
-                    <span class="workshop-card-title-text">組替候補</span>
-                </div>
-                <span class="workshop-priority-badge workshop-priority-${escapeHtml(candidate.details.priority)}">${escapeHtml(candidate.details.priorityLabel)}</span>
-            </div>
-            <div class="workshop-card-summary">
-                <div class="workshop-card-summary-item">
-                    <span class="workshop-card-summary-label">優先度</span>
-                    <span class="workshop-card-summary-value">${escapeHtml(candidate.details.priorityLabel)}</span>
-                </div>
-                <div class="workshop-card-summary-item">
-                    <span class="workshop-card-summary-label">中古予備になった日</span>
-                    <span class="workshop-card-summary-value">${escapeHtml(candidate.details.standbyDateLabel)}</span>
-                </div>
-                <div class="workshop-card-summary-item">
-                    <span class="workshop-card-summary-label">暫定ロール替目安</span>
-                    <span class="workshop-card-summary-value">${escapeHtml(candidate.details.estimatedReplacementLabel)}</span>
-                </div>
-                <div class="workshop-card-summary-item">
-                    <span class="workshop-card-summary-label">残日数</span>
-                    <span class="workshop-card-summary-value">${escapeHtml(candidate.details.remainingDaysLabel)}</span>
-                </div>
-            </div>
-            <div class="workshop-card-section">
-                <span class="workshop-card-label">中古予備（バラシ前）</span>
-                <div class="workshop-role-list">${getWorkshopRoleLines(candidate.usedRoles)}</div>
-            </div>
-            <div class="workshop-card-section">
-                <span class="workshop-card-label">新品予備（組替可能）</span>
-                <div class="workshop-role-list">${getWorkshopRoleLines(candidate.newReadyRoles)}</div>
-            </div>
-        </article>
-    `).join('');
+    listEl.innerHTML = [
+        getWorkshopReworkSetupHtml(reworkSetupItems),
+        getWorkshopAssemblyCandidatesHtml(candidates)
+    ].join('');
 }
 
 function setWorkshopBoardOpen(isOpen) {
@@ -4285,7 +4388,6 @@ function renderRoles() {
     updatePriorityStandCard();
     updateStandRiskMap();
     updateThreeSetForecastDashboard(roles);
-    updateReworkSetupDashboard(roles);
     updateIncompleteWorkDashboard(roles);
     updateDangerRollDashboard(roles);
     updateTodayTaskDashboard(roles);
