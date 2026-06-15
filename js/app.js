@@ -3165,16 +3165,67 @@ function getThreeSetForecastItem(standKey, allRoles = roles) {
 
 function getThreeSetForecastItems(allRoles = roles) {
     return getThreeSetForecastStandKeys()
-        .map(standKey => getThreeSetForecastItem(standKey, allRoles));
+        .map(standKey => getThreeSetForecastItem(standKey, allRoles))
+        .sort(compareThreeSetForecastItems);
 }
 
-function getThreeSetForecastFieldHtml(label, value) {
+function getThreeSetForecastPriorityRank(judgment) {
+    const priority = {
+        '不足見込み': 1,
+        '要段取り': 2,
+        '要確認': 3,
+        'データ不足': 4,
+        '維持可能': 5
+    };
+
+    return priority[judgment] || 99;
+}
+
+function compareThreeSetForecastItems(a, b) {
+    const priorityDiff = getThreeSetForecastPriorityRank(a && a.judgment) - getThreeSetForecastPriorityRank(b && b.judgment);
+
+    if (priorityDiff !== 0) {
+        return priorityDiff;
+    }
+
+    return (Number(a && a.standKey) || 999999) - (Number(b && b.standKey) || 999999);
+}
+
+function getThreeSetForecastSummaryFieldHtml(label, value) {
     return `
-        <div class="three-set-forecast-field">
+        <div class="three-set-forecast-summary-field">
             <span>${escapeHtml(label)}</span>
             <strong>${escapeHtml(value || '-')}</strong>
         </div>
     `;
+}
+
+function getThreeSetForecastSupplement(item) {
+    if (!item) {
+        return '-';
+    }
+
+    if (item.judgment === '維持可能') {
+        return '次回オンライン候補を確保済み';
+    }
+
+    if (item.judgment === '要段取り') {
+        return '期限までに段取り状況を確認';
+    }
+
+    if (item.judgment === '要確認') {
+        return '判断に必要な情報を確認';
+    }
+
+    if (item.judgment === 'データ不足') {
+        return '予測に必要な登録情報を確認';
+    }
+
+    if (item.judgment === '不足見込み') {
+        return '3セット維持が崩れる前に代替手段を確認';
+    }
+
+    return '-';
 }
 
 function updateThreeSetForecastDashboard(allRoles = roles) {
@@ -3202,18 +3253,18 @@ function updateThreeSetForecastDashboard(allRoles = roles) {
                 <span class="three-set-forecast-stand">#${escapeHtml(item.standKey)}</span>
                 <span class="three-set-forecast-judgment">${escapeHtml(item.judgment)}</span>
             </div>
-            <div class="three-set-forecast-grid">
-                ${getThreeSetForecastFieldHtml('次回オンライン終了予定日', formatDateForDisplay(item.useEndDate))}
-                ${getThreeSetForecastFieldHtml('現在オンラインロール', item.onlineRoleName)}
-                ${getThreeSetForecastFieldHtml('次の候補ロール', item.nextCandidateName)}
+            <div class="three-set-forecast-summary">
+                ${getThreeSetForecastSummaryFieldHtml('次回終了', formatDateForDisplay(item.useEndDate))}
+                ${getThreeSetForecastSummaryFieldHtml('オンライン', item.onlineRoleName)}
             </div>
-            <div class="three-set-forecast-note">
-                <span>不足理由</span>
-                ${escapeHtml(item.reason || '-')}
-            </div>
-            <div class="three-set-forecast-note">
+            <div class="three-set-forecast-action">
                 <span>必要アクション</span>
-                ${escapeHtml(item.action || '-')}
+                <strong>${escapeHtml(item.action || '-')}</strong>
+            </div>
+            <div class="three-set-forecast-details">
+                <div><span>次候補</span><strong>${escapeHtml(item.nextCandidateName || '-')}</strong></div>
+                <div><span>理由</span><strong>${escapeHtml(item.reason || '-')}</strong></div>
+                <div><span>補足</span><strong>${escapeHtml(getThreeSetForecastSupplement(item))}</strong></div>
             </div>
         </article>
     `).join('');
