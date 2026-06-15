@@ -30,6 +30,7 @@ const WORKSHOP_BOARD_PRIORITY_ORDER = {
     low: 3
 };
 const TODAY_TASK_DASHBOARD_OPEN_KEY = 'todayTaskDashboardOpen';
+const THREE_SET_FORECAST_DASHBOARD_OPEN_KEY = 'threeSetForecastDashboardOpen';
 const REWORK_SETUP_DASHBOARD_OPEN_KEY = 'reworkSetupDashboardOpen';
 const CUTTING_ANOMALY_DASHBOARD_OPEN_KEY = 'cuttingAnomalyDashboardOpen';
 const DANGER_ROLL_DASHBOARD_OPEN_KEY = 'dangerRollDashboardOpen';
@@ -42,6 +43,8 @@ const REWORK_SETUP_TASK_LEAD_DAYS = 21;
 const REWORK_SETUP_DISPATCH_READY_DAYS = 2;
 const REWORK_SETUP_REWORK_DAYS = 30;
 const REWORK_SETUP_DISPLAY_WINDOW_DAYS = 30;
+const THREE_SET_FORECAST_MIN_STAND = 2;
+const THREE_SET_FORECAST_MAX_STAND = 17;
 const DASHBOARD_DISPLAY_SETTINGS_OPEN_KEY = 'dashboardDisplaySettingsOpen';
 const DASHBOARD_VISIBILITY_STORAGE_PREFIX = 'dashboardVisibility.';
 const DASHBOARD_VISIBILITY_OPTIONS = [
@@ -665,6 +668,14 @@ const TODAY_TASK_DASHBOARD_CONFIG = {
     label: '本日のタスク'
 };
 
+const THREE_SET_FORECAST_DASHBOARD_CONFIG = {
+    dashboardId: 'three-set-forecast-dashboard',
+    toggleId: 'three-set-forecast-toggle',
+    countId: 'three-set-forecast-count',
+    storageKey: THREE_SET_FORECAST_DASHBOARD_OPEN_KEY,
+    label: '3セット維持予測'
+};
+
 const REWORK_SETUP_DASHBOARD_CONFIG = {
     dashboardId: 'rework-setup-dashboard',
     toggleId: 'rework-setup-toggle',
@@ -707,6 +718,10 @@ const PURCHASE_CONFIRMATION_DASHBOARD_CONFIG = {
 
 function toggleTodayTaskDashboard() {
     toggleCollapsibleDashboard(TODAY_TASK_DASHBOARD_CONFIG);
+}
+
+function toggleThreeSetForecastDashboard() {
+    toggleCollapsibleDashboard(THREE_SET_FORECAST_DASHBOARD_CONFIG);
 }
 
 function toggleReworkSetupDashboard() {
@@ -2831,6 +2846,379 @@ function isWatchStandMatched(role) {
     return getStandKey(role.name) === watchStandFilter;
 }
 
+function isThreeSetForecastStandKey(standKey) {
+    const standNumber = Number(getStandKey(standKey));
+    return standNumber >= THREE_SET_FORECAST_MIN_STAND && standNumber <= THREE_SET_FORECAST_MAX_STAND;
+}
+
+function getThreeSetForecastStandKeys() {
+    const standKeys = [];
+
+    for (let standNumber = THREE_SET_FORECAST_MIN_STAND; standNumber <= THREE_SET_FORECAST_MAX_STAND; standNumber += 1) {
+        standKeys.push(String(standNumber));
+    }
+
+    return standKeys;
+}
+
+function getThreeSetForecastRoleLabel(role) {
+    if (!role) {
+        return '-';
+    }
+
+    return role.name || `#${getStandKey(role.name) || '-'}`;
+}
+
+function getThreeSetForecastCutInfo(role) {
+    const info = getRemainingDiameterInfo(role);
+
+    if (!info || info.adoptedCutMm === '' || !Number.isFinite(info.adoptedCutMm)) {
+        return {
+            isKnown: false,
+            isReworkableAfterNextCut: null
+        };
+    }
+
+    return {
+        isKnown: true,
+        isReworkableAfterNextCut: (info.currentDiameter - info.adoptedCutMm) > info.scrapDiameter
+    };
+}
+
+function getThreeSetForecastReworkReturnDate(role, today = getTodayDateString()) {
+    if (!role) {
+        return '';
+    }
+
+    const dispatchDate = normalizeDateInputValue(role.dispatchDate);
+
+    if (role.status === REWORKING_STATUS) {
+        if (dispatchDate) {
+            return addDaysToDateString(dispatchDate, REWORK_SETUP_REWORK_DAYS);
+        }
+
+        const startedAt = normalizeDateInputValue(getRoleStatusChangedAt(role, REWORKING_STATUS));
+        return startedAt ? addDaysToDateString(startedAt, REWORK_SETUP_REWORK_DAYS) : '';
+    }
+
+    if (role.status === REWORK_READY_STATUS) {
+        const pickupDate = dispatchDate || addDaysToDateString(today, REWORK_SETUP_DISPATCH_READY_DAYS);
+        return pickupDate ? addDaysToDateString(pickupDate, REWORK_SETUP_REWORK_DAYS) : '';
+    }
+
+    if (role.status === USED_STANDBY_STATUS) {
+        const pickupDate = addDaysToDateString(today, REWORK_SETUP_DISPATCH_READY_DAYS);
+        return pickupDate ? addDaysToDateString(pickupDate, REWORK_SETUP_REWORK_DAYS) : '';
+    }
+
+    return '';
+}
+
+function sortThreeSetForecastRoleCandidates(a, b) {
+    const aDate = a.readyDate || '9999-12-31';
+    const bDate = b.readyDate || '9999-12-31';
+
+    if (aDate !== bDate) {
+        return aDate.localeCompare(bDate);
+    }
+
+    return compareUpdatedAt(a.role, b.role, 'desc');
+}
+
+function getThreeSetForecastCandidate(standRoles, useEndDate, today = getTodayDateString()) {
+    const availableStatuses = [
+        {
+            status: NEW_INSTALLED_STATUS,
+            judgment: '維持可能',
+            className: 'is-maintainable',
+            reason: '',
+            action: '次回オンライン候補を確認'
+        },
+        {
+            status: NEW_READY_STATUS,
+            judgment: '要段取り',
+            className: 'is-action',
+            reason: '新品予備（組替可能）あり',
+            action: '組替予定を確認'
+        }
+    ];
+
+    for (const candidateStatus of availableStatuses) {
+        const role = standRoles
+            .filter(item => item.status === candidateStatus.status)
+            .sort(compareRolesByStandRole)[0];
+
+        if (role) {
+            return {
+                role,
+                readyDate: useEndDate,
+                judgment: candidateStatus.judgment,
+                className: candidateStatus.className,
+                reason: candidateStatus.reason,
+                action: `${getThreeSetForecastRoleLabel(role)}の${candidateStatus.action}`
+            };
+        }
+    }
+
+    const reworkCandidates = standRoles
+        .filter(role => role.status === REWORKING_STATUS || role.status === REWORK_READY_STATUS)
+        .map(role => ({
+            role,
+            readyDate: getThreeSetForecastReworkReturnDate(role, today),
+            cutInfo: getThreeSetForecastCutInfo(role)
+        }))
+        .sort(sortThreeSetForecastRoleCandidates);
+    const reworkCandidate = reworkCandidates[0];
+
+    if (reworkCandidate) {
+        if (!reworkCandidate.cutInfo.isKnown) {
+            return {
+                role: reworkCandidate.role,
+                readyDate: reworkCandidate.readyDate,
+                judgment: '要確認',
+                className: 'is-check',
+                reason: '改削可否データ不足',
+                action: `${getThreeSetForecastRoleLabel(reworkCandidate.role)}の現在径・廃却径・改削量を確認`
+            };
+        }
+
+        if (reworkCandidate.cutInfo.isReworkableAfterNextCut === false) {
+            return {
+                role: reworkCandidate.role,
+                readyDate: reworkCandidate.readyDate,
+                judgment: '不足見込み',
+                className: 'is-shortage',
+                reason: '改削後に廃却径以下となる見込み',
+                action: '購入確認または4セット目確認'
+            };
+        }
+
+        if (!reworkCandidate.readyDate) {
+            return {
+                role: reworkCandidate.role,
+                readyDate: '',
+                judgment: '要確認',
+                className: 'is-check',
+                reason: '改削戻り予定を算出できません',
+                action: `${getThreeSetForecastRoleLabel(reworkCandidate.role)}の搬出日・改削状況を確認`
+            };
+        }
+
+        if (reworkCandidate.readyDate <= useEndDate) {
+            return {
+                role: reworkCandidate.role,
+                readyDate: reworkCandidate.readyDate,
+                judgment: '要段取り',
+                className: 'is-action',
+                reason: `改削戻り見込み ${formatDateForDisplay(reworkCandidate.readyDate)}`,
+                action: `${getThreeSetForecastRoleLabel(reworkCandidate.role)}の改削戻り・組替確認`
+            };
+        }
+
+        return {
+            role: reworkCandidate.role,
+            readyDate: reworkCandidate.readyDate,
+            judgment: '不足見込み',
+            className: 'is-shortage',
+            reason: `改削戻りが次回終了予定を超過（${formatDateForDisplay(reworkCandidate.readyDate)}戻り見込み）`,
+            action: '購入確認または4セット目確認'
+        };
+    }
+
+    const storageRole = standRoles
+        .filter(role => role.status === NEW_STORAGE_STATUS)
+        .sort(compareRolesByStandRole)[0];
+
+    if (storageRole) {
+        return {
+            role: storageRole,
+            readyDate: useEndDate,
+            judgment: '要確認',
+            className: 'is-check',
+            reason: '新品予備保管あり',
+            action: `${getThreeSetForecastRoleLabel(storageRole)}を組替候補にできるか確認`
+        };
+    }
+
+    const usedCandidates = standRoles
+        .filter(role => role.status === USED_STANDBY_STATUS)
+        .map(role => ({
+            role,
+            readyDate: getThreeSetForecastReworkReturnDate(role, today),
+            cutInfo: getThreeSetForecastCutInfo(role)
+        }))
+        .sort(sortThreeSetForecastRoleCandidates);
+    const usedCandidate = usedCandidates[0];
+
+    if (usedCandidate) {
+        if (!usedCandidate.cutInfo.isKnown) {
+            return {
+                role: usedCandidate.role,
+                readyDate: usedCandidate.readyDate,
+                judgment: '要確認',
+                className: 'is-check',
+                reason: '中古予備の改削可否データ不足',
+                action: `${getThreeSetForecastRoleLabel(usedCandidate.role)}の現在径・廃却径・改削量を確認`
+            };
+        }
+
+        if (usedCandidate.cutInfo.isReworkableAfterNextCut === false) {
+            return {
+                role: usedCandidate.role,
+                readyDate: usedCandidate.readyDate,
+                judgment: '不足見込み',
+                className: 'is-shortage',
+                reason: '中古予備が改削後に廃却径以下となる見込み',
+                action: '購入確認または4セット目確認'
+            };
+        }
+
+        if (usedCandidate.readyDate && usedCandidate.readyDate <= useEndDate) {
+            return {
+                role: usedCandidate.role,
+                readyDate: usedCandidate.readyDate,
+                judgment: '要段取り',
+                className: 'is-action',
+                reason: `中古予備を改削すれば間に合う見込み（${formatDateForDisplay(usedCandidate.readyDate)}戻り）`,
+                action: `${getThreeSetForecastRoleLabel(usedCandidate.role)}のバラシ・搬出・改削手配`
+            };
+        }
+    }
+
+    return null;
+}
+
+function getThreeSetForecastPurchaseAction(standKey) {
+    const standMaster = typeof getStandMaster === 'function' ? getStandMaster(standKey) : null;
+    const leadTimeMonths = standMaster && standMaster.leadTimeMonths !== ''
+        ? Number(standMaster.leadTimeMonths)
+        : null;
+
+    return Number.isFinite(leadTimeMonths)
+        ? `購入確認または4セット目確認（購入LT${leadTimeMonths}か月）`
+        : '購入確認または4セット目確認';
+}
+
+function getThreeSetForecastItem(standKey, allRoles = roles) {
+    const standRoles = (Array.isArray(allRoles) ? allRoles : [])
+        .filter(role => getStandKey(role && role.name) === String(standKey))
+        .filter(role => role.status !== DISCARDED_STATUS)
+        .sort(compareRolesByStandRole);
+    const onlineRoles = standRoles
+        .filter(role => role.status === ONLINE_STATUS)
+        .sort((a, b) => compareUpdatedAt(a, b, 'desc'));
+    const onlineRole = onlineRoles[0] || null;
+    const useEndDate = getOnlineUseEndDate(onlineRole);
+
+    if (!onlineRole) {
+        return {
+            standKey,
+            judgment: 'データ不足',
+            className: 'is-missing',
+            useEndDate: '',
+            onlineRoleName: '-',
+            nextCandidateName: '-',
+            reason: 'オンラインロールがありません',
+            action: 'オンラインロールを確認'
+        };
+    }
+
+    if (!normalizeUseStartDate(onlineRole.useStartDate) || !useEndDate) {
+        return {
+            standKey,
+            judgment: 'データ不足',
+            className: 'is-missing',
+            useEndDate: '',
+            onlineRoleName: getThreeSetForecastRoleLabel(onlineRole),
+            nextCandidateName: '-',
+            reason: 'オンラインロールの使用開始日がありません',
+            action: `${getThreeSetForecastRoleLabel(onlineRole)}の使用開始日を確認`
+        };
+    }
+
+    const candidate = getThreeSetForecastCandidate(standRoles.filter(role => role !== onlineRole), useEndDate);
+
+    if (candidate) {
+        return {
+            standKey,
+            judgment: candidate.judgment,
+            className: candidate.className,
+            useEndDate,
+            onlineRoleName: getThreeSetForecastRoleLabel(onlineRole),
+            nextCandidateName: getThreeSetForecastRoleLabel(candidate.role),
+            reason: candidate.reason || '次回オンライン候補あり',
+            action: candidate.action
+        };
+    }
+
+    return {
+        standKey,
+        judgment: '不足見込み',
+        className: 'is-shortage',
+        useEndDate,
+        onlineRoleName: getThreeSetForecastRoleLabel(onlineRole),
+        nextCandidateName: '-',
+        reason: '次回オンライン候補が見つかりません',
+        action: getThreeSetForecastPurchaseAction(standKey)
+    };
+}
+
+function getThreeSetForecastItems(allRoles = roles) {
+    return getThreeSetForecastStandKeys()
+        .map(standKey => getThreeSetForecastItem(standKey, allRoles));
+}
+
+function getThreeSetForecastFieldHtml(label, value) {
+    return `
+        <div class="three-set-forecast-field">
+            <span>${escapeHtml(label)}</span>
+            <strong>${escapeHtml(value || '-')}</strong>
+        </div>
+    `;
+}
+
+function updateThreeSetForecastDashboard(allRoles = roles) {
+    const dashboard = document.getElementById('three-set-forecast-dashboard');
+    const countEl = document.getElementById('three-set-forecast-count');
+    const listEl = document.getElementById('three-set-forecast-list');
+
+    if (!dashboard || !countEl || !listEl) {
+        return;
+    }
+
+    const items = getThreeSetForecastItems(allRoles);
+    countEl.textContent = `${items.length}件`;
+    dashboard.classList.toggle('is-empty', items.length === 0);
+    syncCollapsibleDashboardState(THREE_SET_FORECAST_DASHBOARD_CONFIG);
+
+    if (items.length === 0) {
+        listEl.innerHTML = '<div class="three-set-forecast-empty">3セット維持予測はありません</div>';
+        return;
+    }
+
+    listEl.innerHTML = items.map(item => `
+        <article class="three-set-forecast-card ${escapeHtml(item.className)}">
+            <div class="three-set-forecast-card-header">
+                <span class="three-set-forecast-stand">#${escapeHtml(item.standKey)}</span>
+                <span class="three-set-forecast-judgment">${escapeHtml(item.judgment)}</span>
+            </div>
+            <div class="three-set-forecast-grid">
+                ${getThreeSetForecastFieldHtml('次回オンライン終了予定日', formatDateForDisplay(item.useEndDate))}
+                ${getThreeSetForecastFieldHtml('現在オンラインロール', item.onlineRoleName)}
+                ${getThreeSetForecastFieldHtml('次の候補ロール', item.nextCandidateName)}
+            </div>
+            <div class="three-set-forecast-note">
+                <span>不足理由</span>
+                ${escapeHtml(item.reason || '-')}
+            </div>
+            <div class="three-set-forecast-note">
+                <span>必要アクション</span>
+                ${escapeHtml(item.action || '-')}
+            </div>
+        </article>
+    `).join('');
+}
+
 function getOnlineUseEndDate(role) {
     if (!role || role.status !== ONLINE_STATUS) {
         return '';
@@ -3896,6 +4284,7 @@ function renderRoles() {
     updateCountSummary(roles);
     updatePriorityStandCard();
     updateStandRiskMap();
+    updateThreeSetForecastDashboard(roles);
     updateReworkSetupDashboard(roles);
     updateIncompleteWorkDashboard(roles);
     updateDangerRollDashboard(roles);

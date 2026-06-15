@@ -1105,6 +1105,172 @@ body {
     font-weight: 800;
 }
 
+.three-set-forecast-dashboard {
+    display: grid;
+    gap: 12px;
+    width: 100%;
+    margin: 0 0 18px;
+    padding: 14px;
+    border-radius: 12px;
+    border: 1px solid #bbf7d0;
+    background: #f0fdf4;
+    color: #0f172a;
+    box-shadow: 0 8px 22px rgba(15, 23, 42, 0.08);
+}
+
+.three-set-forecast-dashboard.is-empty {
+    border-color: #e2e8f0;
+    background: #ffffff;
+    color: #64748b;
+    box-shadow: none;
+}
+
+.three-set-forecast-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.three-set-forecast-title {
+    font-size: 1.05rem;
+    font-weight: 900;
+}
+
+.three-set-forecast-count {
+    display: none;
+}
+
+.three-set-forecast-dashboard.is-collapsed .three-set-forecast-list {
+    display: none;
+}
+
+.three-set-forecast-list {
+    display: grid;
+    gap: 10px;
+}
+
+.three-set-forecast-card {
+    display: grid;
+    gap: 9px;
+    padding: 10px;
+    border-radius: 10px;
+    border: 1px solid #dbeafe;
+    background: rgba(255, 255, 255, 0.88);
+}
+
+.three-set-forecast-card.is-maintainable {
+    border-color: #86efac;
+    background: #f0fdf4;
+}
+
+.three-set-forecast-card.is-action {
+    border-color: #fcd34d;
+    background: #fffbeb;
+}
+
+.three-set-forecast-card.is-check {
+    border-color: #bfdbfe;
+    background: #eff6ff;
+}
+
+.three-set-forecast-card.is-shortage {
+    border-color: #fca5a5;
+    background: #fff1f2;
+}
+
+.three-set-forecast-card.is-missing {
+    border-color: #cbd5e1;
+    background: #f8fafc;
+}
+
+.three-set-forecast-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.three-set-forecast-stand {
+    color: #0f172a;
+    font-size: 1.15rem;
+    font-weight: 900;
+    line-height: 1.15;
+}
+
+.three-set-forecast-judgment {
+    flex: 0 0 auto;
+    padding: 4px 8px;
+    border-radius: 999px;
+    background: rgba(15, 23, 42, 0.08);
+    color: #0f172a;
+    font-size: 0.82rem;
+    font-weight: 900;
+    line-height: 1.15;
+}
+
+.three-set-forecast-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr));
+    gap: 8px;
+}
+
+.three-set-forecast-field {
+    display: grid;
+    gap: 3px;
+    min-height: 48px;
+    padding: 8px 9px;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.74);
+    border: 1px solid rgba(148, 163, 184, 0.34);
+}
+
+.three-set-forecast-field span {
+    color: #64748b;
+    font-size: 0.78rem;
+    font-weight: 800;
+    line-height: 1.15;
+}
+
+.three-set-forecast-field strong {
+    color: #0f172a;
+    font-size: 0.94rem;
+    font-weight: 900;
+    line-height: 1.2;
+    overflow-wrap: anywhere;
+}
+
+.three-set-forecast-note {
+    display: grid;
+    gap: 4px;
+    padding: 8px 9px;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.72);
+    color: #334155;
+    font-size: 0.88rem;
+    font-weight: 800;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+}
+
+.three-set-forecast-note span {
+    color: #64748b;
+    font-size: 0.78rem;
+    font-weight: 900;
+}
+
+.three-set-forecast-empty {
+    min-height: 52px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 10px;
+    border: 1px dashed #cbd5e1;
+    background: #ffffff;
+    color: #64748b;
+    font-weight: 800;
+}
+
 .rework-setup-dashboard {
     display: grid;
     gap: 12px;
@@ -1322,6 +1488,7 @@ body {
     margin: 0 0 18px;
 }
 
+.action-dashboard-grid > .three-set-forecast-dashboard,
 .action-dashboard-grid > .rework-setup-dashboard,
 .action-dashboard-grid > .incomplete-work-dashboard,
 .action-dashboard-grid > .danger-roll-dashboard,
@@ -1332,6 +1499,7 @@ body {
     margin: 0;
 }
 
+.action-dashboard-grid > .three-set-forecast-dashboard:not(.is-collapsed),
 .action-dashboard-grid > .rework-setup-dashboard:not(.is-collapsed),
 .action-dashboard-grid > .incomplete-work-dashboard:not(.is-collapsed),
 .action-dashboard-grid > .danger-roll-dashboard:not(.is-collapsed),
@@ -1340,6 +1508,7 @@ body {
     max-height: 520px;
 }
 
+.action-dashboard-grid .three-set-forecast-list,
 .action-dashboard-grid .rework-setup-list,
 .action-dashboard-grid .incomplete-work-list,
 .action-dashboard-grid .danger-roll-list,
@@ -1350,6 +1519,7 @@ body {
     overscroll-behavior: contain;
 }
 
+.action-dashboard-grid > .three-set-forecast-dashboard:not(.is-collapsed) .three-set-forecast-list,
 .action-dashboard-grid > .rework-setup-dashboard:not(.is-collapsed) .rework-setup-list,
 .action-dashboard-grid > .incomplete-work-dashboard:not(.is-collapsed) .incomplete-work-list,
 .action-dashboard-grid > .danger-roll-dashboard:not(.is-collapsed) .danger-roll-list,
@@ -1405,10 +1575,12 @@ body {
     }
 
     .action-dashboard-grid > .incomplete-work-dashboard:not(.is-collapsed),
+    .action-dashboard-grid > .three-set-forecast-dashboard:not(.is-collapsed),
     .action-dashboard-grid > .rework-setup-dashboard:not(.is-collapsed),
     .action-dashboard-grid > .danger-roll-dashboard:not(.is-collapsed),
     .action-dashboard-grid > .today-task-dashboard:not(.is-collapsed),
     .action-dashboard-grid > .cutting-anomaly-dashboard:not(.is-collapsed),
+    .action-dashboard-grid > .three-set-forecast-dashboard:not(.is-collapsed) .three-set-forecast-list,
     .action-dashboard-grid > .rework-setup-dashboard:not(.is-collapsed) .rework-setup-list,
     .action-dashboard-grid > .incomplete-work-dashboard:not(.is-collapsed) .incomplete-work-list,
     .action-dashboard-grid > .danger-roll-dashboard:not(.is-collapsed) .danger-roll-list,
