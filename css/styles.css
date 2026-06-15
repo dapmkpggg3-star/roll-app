@@ -1105,6 +1105,140 @@ body {
     font-weight: 800;
 }
 
+.rework-setup-dashboard {
+    display: grid;
+    gap: 12px;
+    width: 100%;
+    margin: 0 0 18px;
+    padding: 14px;
+    border-radius: 12px;
+    border: 1px solid #bfdbfe;
+    background: #eff6ff;
+    color: #0f172a;
+    box-shadow: 0 8px 22px rgba(15, 23, 42, 0.08);
+}
+
+.rework-setup-dashboard.is-empty {
+    border-color: #e2e8f0;
+    background: #ffffff;
+    color: #64748b;
+    box-shadow: none;
+}
+
+.rework-setup-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.rework-setup-title {
+    font-size: 1.05rem;
+    font-weight: 900;
+}
+
+.rework-setup-count {
+    display: none;
+}
+
+.rework-setup-dashboard.is-collapsed .rework-setup-list {
+    display: none;
+}
+
+.rework-setup-list {
+    display: grid;
+    gap: 10px;
+}
+
+.rework-setup-card {
+    display: grid;
+    gap: 10px;
+    padding: 10px;
+    border-radius: 10px;
+    border: 1px solid #bfdbfe;
+    background: rgba(255, 255, 255, 0.86);
+}
+
+.rework-setup-card-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+.rework-setup-role {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+}
+
+.rework-setup-stand {
+    color: #1d4ed8;
+    font-size: 1.05rem;
+    font-weight: 900;
+    line-height: 1.15;
+}
+
+.rework-setup-name {
+    color: #334155;
+    font-size: 0.88rem;
+    font-weight: 800;
+    overflow-wrap: anywhere;
+}
+
+.rework-setup-deadline {
+    flex: 0 0 auto;
+    color: #1e40af;
+    font-size: 0.86rem;
+    font-weight: 900;
+    line-height: 1.2;
+    text-align: right;
+}
+
+.rework-setup-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr));
+    gap: 8px;
+}
+
+.rework-setup-field {
+    display: grid;
+    gap: 3px;
+    min-height: 48px;
+    padding: 8px 9px;
+    border-radius: 8px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+}
+
+.rework-setup-field span {
+    color: #64748b;
+    font-size: 0.78rem;
+    font-weight: 800;
+    line-height: 1.15;
+}
+
+.rework-setup-field strong {
+    color: #0f172a;
+    font-size: 0.94rem;
+    font-weight: 900;
+    line-height: 1.2;
+}
+
+.rework-setup-empty {
+    min-height: 52px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 10px;
+    border: 1px dashed #cbd5e1;
+    background: #ffffff;
+    color: #64748b;
+    font-weight: 800;
+}
+
 .incomplete-work-dashboard {
     display: grid;
     gap: 10px;
@@ -1188,6 +1322,7 @@ body {
     margin: 0 0 18px;
 }
 
+.action-dashboard-grid > .rework-setup-dashboard,
 .action-dashboard-grid > .incomplete-work-dashboard,
 .action-dashboard-grid > .danger-roll-dashboard,
 .action-dashboard-grid > .today-task-dashboard,
@@ -1197,6 +1332,7 @@ body {
     margin: 0;
 }
 
+.action-dashboard-grid > .rework-setup-dashboard:not(.is-collapsed),
 .action-dashboard-grid > .incomplete-work-dashboard:not(.is-collapsed),
 .action-dashboard-grid > .danger-roll-dashboard:not(.is-collapsed),
 .action-dashboard-grid > .today-task-dashboard:not(.is-collapsed),
@@ -1204,6 +1340,7 @@ body {
     max-height: 520px;
 }
 
+.action-dashboard-grid .rework-setup-list,
 .action-dashboard-grid .incomplete-work-list,
 .action-dashboard-grid .danger-roll-list,
 .action-dashboard-grid .today-task-list,
@@ -1213,6 +1350,7 @@ body {
     overscroll-behavior: contain;
 }
 
+.action-dashboard-grid > .rework-setup-dashboard:not(.is-collapsed) .rework-setup-list,
 .action-dashboard-grid > .incomplete-work-dashboard:not(.is-collapsed) .incomplete-work-list,
 .action-dashboard-grid > .danger-roll-dashboard:not(.is-collapsed) .danger-roll-list,
 .action-dashboard-grid > .today-task-dashboard:not(.is-collapsed) .today-task-list,
@@ -1267,9 +1405,11 @@ body {
     }
 
     .action-dashboard-grid > .incomplete-work-dashboard:not(.is-collapsed),
+    .action-dashboard-grid > .rework-setup-dashboard:not(.is-collapsed),
     .action-dashboard-grid > .danger-roll-dashboard:not(.is-collapsed),
     .action-dashboard-grid > .today-task-dashboard:not(.is-collapsed),
     .action-dashboard-grid > .cutting-anomaly-dashboard:not(.is-collapsed),
+    .action-dashboard-grid > .rework-setup-dashboard:not(.is-collapsed) .rework-setup-list,
     .action-dashboard-grid > .incomplete-work-dashboard:not(.is-collapsed) .incomplete-work-list,
     .action-dashboard-grid > .danger-roll-dashboard:not(.is-collapsed) .danger-roll-list,
     .action-dashboard-grid > .today-task-dashboard:not(.is-collapsed) .today-task-list,

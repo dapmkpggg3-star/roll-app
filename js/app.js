@@ -30,6 +30,7 @@ const WORKSHOP_BOARD_PRIORITY_ORDER = {
     low: 3
 };
 const TODAY_TASK_DASHBOARD_OPEN_KEY = 'todayTaskDashboardOpen';
+const REWORK_SETUP_DASHBOARD_OPEN_KEY = 'reworkSetupDashboardOpen';
 const CUTTING_ANOMALY_DASHBOARD_OPEN_KEY = 'cuttingAnomalyDashboardOpen';
 const DANGER_ROLL_DASHBOARD_OPEN_KEY = 'dangerRollDashboardOpen';
 const FUTURE_WORK_DASHBOARD_OPEN_KEY = 'futureWorkDashboardOpen';
@@ -37,6 +38,10 @@ const PURCHASE_CONFIRMATION_DASHBOARD_OPEN_KEY = 'purchaseConfirmationDashboardO
 const COUNT_SUMMARY_OPEN_KEY = 'countSummaryOpen';
 const DEFAULT_PURCHASE_LEAD_TIME_MONTHS = 6;
 const PURCHASE_CONFIRMATION_WINDOW_MONTHS = 3;
+const REWORK_SETUP_TASK_LEAD_DAYS = 21;
+const REWORK_SETUP_DISPATCH_READY_DAYS = 2;
+const REWORK_SETUP_REWORK_DAYS = 30;
+const REWORK_SETUP_DISPLAY_WINDOW_DAYS = 30;
 const DASHBOARD_DISPLAY_SETTINGS_OPEN_KEY = 'dashboardDisplaySettingsOpen';
 const DASHBOARD_VISIBILITY_STORAGE_PREFIX = 'dashboardVisibility.';
 const DASHBOARD_VISIBILITY_OPTIONS = [
@@ -660,6 +665,14 @@ const TODAY_TASK_DASHBOARD_CONFIG = {
     label: '本日のタスク'
 };
 
+const REWORK_SETUP_DASHBOARD_CONFIG = {
+    dashboardId: 'rework-setup-dashboard',
+    toggleId: 'rework-setup-toggle',
+    countId: 'rework-setup-count',
+    storageKey: REWORK_SETUP_DASHBOARD_OPEN_KEY,
+    label: '改削段取り予定'
+};
+
 const CUTTING_ANOMALY_DASHBOARD_CONFIG = {
     dashboardId: 'cutting-anomaly-dashboard',
     toggleId: 'cutting-anomaly-toggle',
@@ -694,6 +707,10 @@ const PURCHASE_CONFIRMATION_DASHBOARD_CONFIG = {
 
 function toggleTodayTaskDashboard() {
     toggleCollapsibleDashboard(TODAY_TASK_DASHBOARD_CONFIG);
+}
+
+function toggleReworkSetupDashboard() {
+    toggleCollapsibleDashboard(REWORK_SETUP_DASHBOARD_CONFIG);
 }
 
 function toggleCuttingAnomalyDashboard() {
@@ -2814,6 +2831,130 @@ function isWatchStandMatched(role) {
     return getStandKey(role.name) === watchStandFilter;
 }
 
+function getOnlineUseEndDate(role) {
+    if (!role || role.status !== ONLINE_STATUS) {
+        return '';
+    }
+
+    const useStartDate = normalizeUseStartDate(role.useStartDate);
+    if (!useStartDate) {
+        return '';
+    }
+
+    return addMonthsToDateString(useStartDate, getStandOnlineUseMonths(getStandKey(role.name)));
+}
+
+function getReworkSetupPlanItem(role) {
+    const standKey = getStandKey(role && role.name);
+    const useStartDate = normalizeUseStartDate(role && role.useStartDate);
+    const useEndDate = getOnlineUseEndDate(role);
+
+    if (!standKey || !useStartDate || !useEndDate) {
+        return null;
+    }
+
+    const workshopTaskDueDate = addDaysToDateString(useEndDate, -REWORK_SETUP_TASK_LEAD_DAYS);
+    const dispatchReadyDate = addDaysToDateString(useEndDate, REWORK_SETUP_DISPATCH_READY_DAYS);
+    const vendorPickupDate = dispatchReadyDate;
+    const reworkReturnDate = addDaysToDateString(vendorPickupDate, REWORK_SETUP_REWORK_DAYS);
+    const newReadyDate = reworkReturnDate;
+
+    if (!workshopTaskDueDate || !dispatchReadyDate || !vendorPickupDate || !reworkReturnDate || !newReadyDate) {
+        return null;
+    }
+
+    return {
+        role,
+        standKey,
+        standNumber: Number(standKey) || 999999,
+        roleName: role.name || '',
+        useStartDate,
+        useEndDate,
+        workshopTaskDueDate,
+        dispatchReadyDate,
+        vendorPickupDate,
+        reworkReturnDate,
+        newReadyDate
+    };
+}
+
+function isReworkSetupPlanDisplayTarget(item, today = getTodayDateString()) {
+    if (!item || !item.workshopTaskDueDate) {
+        return false;
+    }
+
+    const displayLimitDate = addDaysToDateString(today, REWORK_SETUP_DISPLAY_WINDOW_DAYS);
+    return item.workshopTaskDueDate <= today || item.workshopTaskDueDate <= displayLimitDate;
+}
+
+function getReworkSetupPlanItems(allRoles = roles) {
+    return (Array.isArray(allRoles) ? allRoles : [])
+        .filter(role => role && role.status === ONLINE_STATUS)
+        .map(getReworkSetupPlanItem)
+        .filter(item => isReworkSetupPlanDisplayTarget(item))
+        .sort((a, b) => {
+            if (a.workshopTaskDueDate !== b.workshopTaskDueDate) {
+                return String(a.workshopTaskDueDate).localeCompare(String(b.workshopTaskDueDate));
+            }
+
+            if (a.standNumber !== b.standNumber) {
+                return a.standNumber - b.standNumber;
+            }
+
+            return compareStandRoleNames(a.roleName, b.roleName);
+        });
+}
+
+function getReworkSetupFieldHtml(label, value) {
+    return `
+        <div class="rework-setup-field">
+            <span>${escapeHtml(label)}</span>
+            <strong>${escapeHtml(formatDateForDisplay(value))}</strong>
+        </div>
+    `;
+}
+
+function updateReworkSetupDashboard(allRoles = roles) {
+    const dashboard = document.getElementById('rework-setup-dashboard');
+    const countEl = document.getElementById('rework-setup-count');
+    const listEl = document.getElementById('rework-setup-list');
+
+    if (!dashboard || !countEl || !listEl) {
+        return;
+    }
+
+    const items = getReworkSetupPlanItems(allRoles);
+    countEl.textContent = `${items.length}件`;
+    dashboard.classList.toggle('is-empty', items.length === 0);
+    syncCollapsibleDashboardState(REWORK_SETUP_DASHBOARD_CONFIG);
+
+    if (items.length === 0) {
+        listEl.innerHTML = '<div class="rework-setup-empty">改削段取り予定はありません</div>';
+        return;
+    }
+
+    listEl.innerHTML = items.map(item => `
+        <article class="rework-setup-card">
+            <div class="rework-setup-card-header">
+                <div class="rework-setup-role">
+                    <span class="rework-setup-stand">#${escapeHtml(item.standKey)}</span>
+                    <span class="rework-setup-name">${escapeHtml(item.roleName || '-')}</span>
+                </div>
+                <div class="rework-setup-deadline">工作課期限 ${escapeHtml(formatDateForDisplay(item.workshopTaskDueDate))}</div>
+            </div>
+            <div class="rework-setup-grid">
+                ${getReworkSetupFieldHtml('使用開始日', item.useStartDate)}
+                ${getReworkSetupFieldHtml('使用終了予定日', item.useEndDate)}
+                ${getReworkSetupFieldHtml('工作課タスク化期限', item.workshopTaskDueDate)}
+                ${getReworkSetupFieldHtml('搬出可能予定日', item.dispatchReadyDate)}
+                ${getReworkSetupFieldHtml('業者引取希望日', item.vendorPickupDate)}
+                ${getReworkSetupFieldHtml('改削戻り予定日', item.reworkReturnDate)}
+                ${getReworkSetupFieldHtml('新品予備化予定日', item.newReadyDate)}
+            </div>
+        </article>
+    `).join('');
+}
+
 function updateIncompleteWorkDashboard(allRoles) {
     const dashboard = document.getElementById('incomplete-work-dashboard');
     const countEl = document.getElementById('incomplete-work-count');
@@ -3755,6 +3896,7 @@ function renderRoles() {
     updateCountSummary(roles);
     updatePriorityStandCard();
     updateStandRiskMap();
+    updateReworkSetupDashboard(roles);
     updateIncompleteWorkDashboard(roles);
     updateDangerRollDashboard(roles);
     updateTodayTaskDashboard(roles);
