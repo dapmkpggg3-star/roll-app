@@ -3276,16 +3276,16 @@ function getThreeSetManagementAssemblyItems(allRoles = roles) {
         .map(candidate => ({
             key: `assembly-${candidate.standKey}`,
             standKey: candidate.standKey,
-            title: `#${candidate.standKey}`,
-            target: [
-                `外す側: ${candidate.usedRoles.map(role => role.name || '-').join(' / ') || '-'}`,
-                `組む側: ${candidate.newReadyRoles.map(role => role.name || '-').join(' / ') || '-'}`
-            ].join('\n'),
+            title: `#${candidate.standKey} 組替`,
+            removeSide: candidate.usedRoles
+                .map(role => `${role.name || '-'} ${USED_STANDBY_STATUS}`)
+                .join('\n') || '-',
+            installSide: candidate.newReadyRoles
+                .map(role => `${role.name || '-'} ${NEW_READY_STATUS}`)
+                .join('\n') || '-',
             deadline: candidate.details.estimatedReplacementDate,
-            status: candidate.details.priority === 'high'
-                ? '段取り必要'
-                : (candidate.details.priority === 'medium' ? '早めに確認' : '候補あり'),
-            action: `#${candidate.standKey} 組替依頼`,
+            status: '依頼前',
+            action: '工作課へ組替依頼',
             meta: candidate.details.remainingDaysLabel
         }));
 }
@@ -3383,9 +3383,35 @@ function getThreeSetManagementItemTitle(activeTab) {
 }
 
 function getThreeSetManagementItemHtml(item, activeTab) {
+    if (activeTab === 'assembly') {
+        return `
+            <article class="three-set-management-task">
+                <div class="three-set-management-task-head">
+                    <span class="three-set-management-task-stand">#${escapeHtml(item.standKey || '-')} 組替</span>
+                    <span class="three-set-management-task-status">${escapeHtml(item.status || '-')}</span>
+                </div>
+                <div class="three-set-management-task-main">
+                    <div>
+                        <span>外す側</span>
+                        <strong>${escapeHtml(item.removeSide || '-')}</strong>
+                    </div>
+                    <div>
+                        <span>組む側</span>
+                        <strong>${escapeHtml(item.installSide || '-')}</strong>
+                    </div>
+                </div>
+                <div class="three-set-management-task-action">
+                    <span>次にやること</span>
+                    <strong>${escapeHtml(item.action || '-')}</strong>
+                </div>
+                <div class="three-set-management-task-meta">${escapeHtml(item.meta || '-')}</div>
+            </article>
+        `;
+    }
+
     const deadlineLabel = activeTab === 'purchase'
         ? '購入判断期限'
-        : (activeTab === 'assembly' ? '期限' : '工作課期限');
+        : '工作課期限';
 
     return `
         <article class="three-set-management-task">

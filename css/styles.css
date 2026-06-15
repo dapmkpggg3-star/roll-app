@@ -1310,6 +1310,7 @@ body {
     font-weight: 900;
     line-height: 1.2;
     overflow-wrap: anywhere;
+    white-space: pre-line;
 }
 
 .three-set-management-task-action {
