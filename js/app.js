@@ -4690,7 +4690,6 @@ function renderRoles() {
     updateThreeSetForecastDashboard(roles);
     updateIncompleteWorkDashboard(roles);
     updateDangerRollDashboard(roles);
-    updateTodayTaskDashboard(roles);
     updateCuttingAnomalyDashboard();
     updatePurchaseConfirmationBoard(roles);
     updateWorkshopBoard(roles);

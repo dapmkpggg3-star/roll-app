@@ -1846,7 +1846,6 @@ body {
 .action-dashboard-grid > .rework-setup-dashboard,
 .action-dashboard-grid > .incomplete-work-dashboard,
 .action-dashboard-grid > .danger-roll-dashboard,
-.action-dashboard-grid > .today-task-dashboard,
 .action-dashboard-grid > .cutting-anomaly-dashboard {
     min-width: 0;
     height: auto;
@@ -1857,7 +1856,6 @@ body {
 .action-dashboard-grid > .rework-setup-dashboard:not(.is-collapsed),
 .action-dashboard-grid > .incomplete-work-dashboard:not(.is-collapsed),
 .action-dashboard-grid > .danger-roll-dashboard:not(.is-collapsed),
-.action-dashboard-grid > .today-task-dashboard:not(.is-collapsed),
 .action-dashboard-grid > .cutting-anomaly-dashboard:not(.is-collapsed) {
     max-height: 520px;
 }
@@ -1866,7 +1864,6 @@ body {
 .action-dashboard-grid .rework-setup-list,
 .action-dashboard-grid .incomplete-work-list,
 .action-dashboard-grid .danger-roll-list,
-.action-dashboard-grid .today-task-list,
 .action-dashboard-grid .cutting-anomaly-list {
     min-height: 0;
     overflow-y: auto;
@@ -1877,7 +1874,6 @@ body {
 .action-dashboard-grid > .rework-setup-dashboard:not(.is-collapsed) .rework-setup-list,
 .action-dashboard-grid > .incomplete-work-dashboard:not(.is-collapsed) .incomplete-work-list,
 .action-dashboard-grid > .danger-roll-dashboard:not(.is-collapsed) .danger-roll-list,
-.action-dashboard-grid > .today-task-dashboard:not(.is-collapsed) .today-task-list,
 .action-dashboard-grid > .cutting-anomaly-dashboard:not(.is-collapsed) .cutting-anomaly-list {
     max-height: 430px;
 }
@@ -1932,13 +1928,11 @@ body {
     .action-dashboard-grid > .three-set-forecast-dashboard:not(.is-collapsed),
     .action-dashboard-grid > .rework-setup-dashboard:not(.is-collapsed),
     .action-dashboard-grid > .danger-roll-dashboard:not(.is-collapsed),
-    .action-dashboard-grid > .today-task-dashboard:not(.is-collapsed),
     .action-dashboard-grid > .cutting-anomaly-dashboard:not(.is-collapsed),
     .action-dashboard-grid > .three-set-forecast-dashboard:not(.is-collapsed) .three-set-forecast-list,
     .action-dashboard-grid > .rework-setup-dashboard:not(.is-collapsed) .rework-setup-list,
     .action-dashboard-grid > .incomplete-work-dashboard:not(.is-collapsed) .incomplete-work-list,
     .action-dashboard-grid > .danger-roll-dashboard:not(.is-collapsed) .danger-roll-list,
-    .action-dashboard-grid > .today-task-dashboard:not(.is-collapsed) .today-task-list,
     .action-dashboard-grid > .cutting-anomaly-dashboard:not(.is-collapsed) .cutting-anomaly-list {
         max-height: none;
     }
