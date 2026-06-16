@@ -49,6 +49,8 @@ const DASHBOARD_DISPLAY_SETTINGS_OPEN_KEY = 'dashboardDisplaySettingsOpen';
 const DASHBOARD_VISIBILITY_STORAGE_PREFIX = 'dashboardVisibility.';
 const THREE_SET_MANAGEMENT_ACTIVE_TAB_KEY = 'threeSetManagementActiveTab';
 const THREE_SET_MANAGEMENT_REWORK_FILTER_KEY = 'threeSetManagementReworkFilter';
+const THREE_SET_MANAGEMENT_REWORK_CHECKLIST_KEY = 'threeSetManagementReworkChecklist';
+const ROLL_APP_OPERATOR_NAME_KEY = 'rollAppOperatorName';
 const THREE_SET_MANAGEMENT_DEFAULT_TAB = 'assembly';
 const THREE_SET_MANAGEMENT_REWORK_DEFAULT_FILTER = 'action';
 const DASHBOARD_VISIBILITY_OPTIONS = [
@@ -368,6 +370,15 @@ const WORK_PROGRESS_STEPS = [
     { key: 'sealConfirmedAt', label: '押印確認' },
     { key: 'pdfCreatedAt', label: 'PDF化' },
     { key: 'vendorSentAt', label: '業者送信' }
+];
+const THREE_SET_MANAGEMENT_REWORK_CHECKLIST_STEPS = [
+    { key: 'requestForm', label: '改削依頼書作成' },
+    { key: 'sealConfirmed', label: '押印確認' },
+    { key: 'pdfCreated', label: 'PDF化' },
+    { key: 'vendorSent', label: '業者へ送信' },
+    { key: 'vendorContacted', label: '業者連絡' },
+    { key: 'pickupAdjusted', label: '引き取り日調整' },
+    { key: 'dispatchUpdated', label: '搬出 / 改削中へ更新' }
 ];
 
 function normalizeRoleStatusValue(status) {
@@ -3288,6 +3299,106 @@ function saveThreeSetManagementReworkFilter(filterKey) {
     return normalized;
 }
 
+function getStoredRollAppOperatorName() {
+    try {
+        return String(localStorage.getItem(ROLL_APP_OPERATOR_NAME_KEY) || '').trim();
+    } catch (error) {
+        console.error('getStoredRollAppOperatorName error:', error);
+        return '';
+    }
+}
+
+function getThreeSetManagementChecklistOperatorName() {
+    const operator = getCurrentOperator();
+
+    if (operator && operator.name) {
+        return operator.name;
+    }
+
+    return getStoredRollAppOperatorName() || 'ローカルユーザー';
+}
+
+function setThreeSetManagementChecklistOperatorName() {
+    const currentName = getStoredRollAppOperatorName() || (getCurrentOperator() && getCurrentOperator().name) || '';
+    const nextName = prompt('作業者名を入力してください', currentName);
+
+    if (nextName === null) {
+        return;
+    }
+
+    try {
+        localStorage.setItem(ROLL_APP_OPERATOR_NAME_KEY, nextName.trim());
+        updateThreeSetManagementDashboard(roles);
+    } catch (error) {
+        console.error('setThreeSetManagementChecklistOperatorName error:', error);
+        showToast('作業者名の保存に失敗しました');
+    }
+}
+
+function getStoredThreeSetManagementReworkChecklist() {
+    try {
+        const value = JSON.parse(localStorage.getItem(THREE_SET_MANAGEMENT_REWORK_CHECKLIST_KEY) || '{}');
+        return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+    } catch (error) {
+        console.error('getStoredThreeSetManagementReworkChecklist error:', error);
+        return {};
+    }
+}
+
+function saveThreeSetManagementReworkChecklist(checklist) {
+    try {
+        localStorage.setItem(THREE_SET_MANAGEMENT_REWORK_CHECKLIST_KEY, JSON.stringify(checklist || {}));
+    } catch (error) {
+        console.error('saveThreeSetManagementReworkChecklist error:', error);
+        showToast('チェックリストの保存に失敗しました');
+    }
+}
+
+function getThreeSetManagementReworkRoleKey(role) {
+    if (!role) {
+        return '';
+    }
+
+    return String(role.id || role.name || '').trim();
+}
+
+function normalizeThreeSetManagementReworkChecklistEntry(entry) {
+    const source = entry && typeof entry === 'object' ? entry : {};
+    const normalized = {};
+
+    THREE_SET_MANAGEMENT_REWORK_CHECKLIST_STEPS.forEach(step => {
+        const value = source[step.key];
+        normalized[step.key] = value && typeof value === 'object'
+            ? {
+                done: value.done === true,
+                updatedAt: value.updatedAt || '',
+                updatedBy: value.updatedBy || ''
+            }
+            : {
+                done: false,
+                updatedAt: '',
+                updatedBy: ''
+            };
+    });
+
+    return normalized;
+}
+
+function getThreeSetManagementReworkChecklistEntry(roleKey) {
+    const checklist = getStoredThreeSetManagementReworkChecklist();
+    return normalizeThreeSetManagementReworkChecklistEntry(checklist[roleKey]);
+}
+
+function getThreeSetManagementReworkChecklistCompletedCount(entry) {
+    const normalized = normalizeThreeSetManagementReworkChecklistEntry(entry);
+    return THREE_SET_MANAGEMENT_REWORK_CHECKLIST_STEPS.filter(step => normalized[step.key].done).length;
+}
+
+function getThreeSetManagementReworkNextChecklistStep(entry) {
+    const normalized = normalizeThreeSetManagementReworkChecklistEntry(entry);
+    return THREE_SET_MANAGEMENT_REWORK_CHECKLIST_STEPS.find(step => !normalized[step.key].done) || null;
+}
+
 function getThreeSetManagementEmptySummary(label) {
     return {
         count: 0,
@@ -3321,16 +3432,12 @@ function getThreeSetManagementAssemblyItems(allRoles = roles) {
 }
 
 function getThreeSetManagementReworkAction(status) {
-    if (status === USED_STANDBY_STATUS) {
-        return 'チョック外し・搬出準備';
-    }
-
     if (status === REWORK_READY_STATUS) {
         return '業者へ引取依頼';
     }
 
-    if (status === REWORKING_STATUS) {
-        return '納品予定確認';
+    if (status === USED_STANDBY_STATUS) {
+        return 'チョック外し・搬出準備';
     }
 
     if (status === NEW_READY_STATUS) {
@@ -3415,14 +3522,27 @@ function getThreeSetManagementReworkItems(allRoles = roles) {
             const status = normalizeRoleStatusValue(role.status);
             const standKey = getStandKey(role.name);
             const dates = getThreeSetManagementReworkDates(role, today);
+            const roleKey = getThreeSetManagementReworkRoleKey(role);
+            const checklist = getThreeSetManagementReworkChecklistEntry(roleKey);
+            const nextChecklistStep = status === REWORK_READY_STATUS
+                ? getThreeSetManagementReworkNextChecklistStep(checklist)
+                : null;
+            const checklistAction = status === REWORK_READY_STATUS
+                ? (nextChecklistStep ? nextChecklistStep.label : '搬出 / 改削中へ更新済み')
+                : getThreeSetManagementReworkAction(status);
+            const checklistCompletedCount = getThreeSetManagementReworkChecklistCompletedCount(checklist);
 
             return {
                 key: `rework-${role.id || role.name || standKey}`,
+                roleKey,
                 standKey,
                 title: role.name || `#${standKey || '-'}`,
                 currentStatus: status,
                 status,
-                action: getThreeSetManagementReworkAction(status),
+                action: checklistAction,
+                checklist,
+                checklistCompletedCount,
+                checklistTotalCount: THREE_SET_MANAGEMENT_REWORK_CHECKLIST_STEPS.length,
                 dispatchReadyDate: dates.dispatchReadyDate,
                 vendorPickupDate: dates.vendorPickupDate,
                 reworkReturnDate: dates.reworkReturnDate,
@@ -3573,12 +3693,71 @@ function getThreeSetManagementPanelHeaderMetaHtml(activeGroup) {
         return `
             <div class="three-set-management-panel-actions">
                 ${getThreeSetManagementReworkFilterHtml()}
+                <button
+                    type="button"
+                    class="three-set-management-operator-btn"
+                    onclick="setThreeSetManagementChecklistOperatorName()"
+                    title="チェックリスト更新者: ${escapeHtml(getThreeSetManagementChecklistOperatorName())}"
+                >作業者名を設定</button>
                 <span>${escapeHtml(String(count))}件</span>
             </div>
         `;
     }
 
     return `<span>${escapeHtml(String(count))}件</span>`;
+}
+
+function isThreeSetManagementReworkChecklistStepEnabled(entry, index) {
+    if (index === 0) {
+        return true;
+    }
+
+    const previousStep = THREE_SET_MANAGEMENT_REWORK_CHECKLIST_STEPS[index - 1];
+    return Boolean(entry && entry[previousStep.key] && entry[previousStep.key].done);
+}
+
+function getThreeSetManagementReworkChecklistHtml(item) {
+    if (!item || item.currentStatus !== REWORK_READY_STATUS) {
+        return '';
+    }
+
+    const entry = normalizeThreeSetManagementReworkChecklistEntry(item.checklist);
+    const roleKey = encodeURIComponent(item.roleKey || item.title || '');
+    const completedCount = getThreeSetManagementReworkChecklistCompletedCount(entry);
+
+    return `
+        <div class="three-set-management-checklist" aria-label="チェックリスト進捗">
+            <div class="three-set-management-checklist-head">
+                <span>チェックリスト進捗</span>
+                <strong>${escapeHtml(String(completedCount))}/${escapeHtml(String(THREE_SET_MANAGEMENT_REWORK_CHECKLIST_STEPS.length))}</strong>
+            </div>
+            <div class="three-set-management-checklist-steps">
+                ${THREE_SET_MANAGEMENT_REWORK_CHECKLIST_STEPS.map((step, index) => {
+                    const state = entry[step.key];
+                    const isDone = Boolean(state && state.done);
+                    const isEnabled = isDone || isThreeSetManagementReworkChecklistStepEnabled(entry, index);
+                    return `
+                        <button
+                            type="button"
+                            class="three-set-management-check-step ${isDone ? 'is-done' : ''}"
+                            onclick="toggleThreeSetManagementReworkChecklistStep('${roleKey}', '${escapeHtml(step.key)}')"
+                            ${isEnabled ? '' : 'disabled'}
+                            aria-pressed="${isDone ? 'true' : 'false'}"
+                        >
+                            <span class="three-set-management-check-index">${escapeHtml(String(index + 1))}</span>
+                            <span class="three-set-management-check-body">
+                                <strong>${escapeHtml(step.label)}</strong>
+                                ${isDone ? `
+                                    <span>完了：${escapeHtml(formatUpdatedAt(state.updatedAt))}</span>
+                                    <span>更新者：${escapeHtml(state.updatedBy || '未設定')}</span>
+                                ` : ''}
+                            </span>
+                        </button>
+                    `;
+                }).join('')}
+            </div>
+        </div>
+    `;
 }
 
 function getThreeSetManagementItemHtml(item, activeTab) {
@@ -3612,23 +3791,18 @@ function getThreeSetManagementItemHtml(item, activeTab) {
         return `
             <article class="three-set-management-task">
                 <div class="three-set-management-task-head">
-                    <span class="three-set-management-task-stand">#${escapeHtml(item.standKey || '-')} 搬入出・改削</span>
+                    <span class="three-set-management-task-stand">${escapeHtml(item.title || '-')}</span>
                     <span class="three-set-management-task-status">${escapeHtml(item.currentStatus || '-')}</span>
                 </div>
                 <div class="three-set-management-task-main">
-                    ${getThreeSetManagementReworkFieldHtml('対象ロール', item.title)}
                     ${getThreeSetManagementReworkFieldHtml('現在状態', item.currentStatus)}
+                    ${getThreeSetManagementReworkFieldHtml('搬出可能予定日', formatDateForDisplay(item.dispatchReadyDate))}
                 </div>
                 <div class="three-set-management-task-action">
                     <span>次にやること</span>
                     <strong>${escapeHtml(item.action || '-')}</strong>
                 </div>
-                <div class="three-set-management-task-main three-set-management-task-dates">
-                    ${getThreeSetManagementReworkFieldHtml('搬出可能予定日', formatDateForDisplay(item.dispatchReadyDate))}
-                    ${getThreeSetManagementReworkFieldHtml('業者引取希望日', formatDateForDisplay(item.vendorPickupDate))}
-                    ${getThreeSetManagementReworkFieldHtml('改削戻り予定日', formatDateForDisplay(item.reworkReturnDate))}
-                    ${getThreeSetManagementReworkFieldHtml('戻った後の状態', item.afterStatus)}
-                </div>
+                ${getThreeSetManagementReworkChecklistHtml(item)}
             </article>
         `;
     }
@@ -3728,6 +3902,55 @@ function changeThreeSetManagementTab(tabKey) {
 
 function changeThreeSetManagementReworkFilter(filterKey) {
     saveThreeSetManagementReworkFilter(filterKey);
+    updateThreeSetManagementDashboard(roles);
+}
+
+function toggleThreeSetManagementReworkChecklistStep(encodedRoleKey, stepKey) {
+    const roleKey = decodeURIComponent(String(encodedRoleKey || ''));
+    const stepIndex = THREE_SET_MANAGEMENT_REWORK_CHECKLIST_STEPS.findIndex(step => step.key === stepKey);
+    const step = THREE_SET_MANAGEMENT_REWORK_CHECKLIST_STEPS[stepIndex];
+
+    if (!roleKey || !step) {
+        return;
+    }
+
+    const checklist = getStoredThreeSetManagementReworkChecklist();
+    const entry = normalizeThreeSetManagementReworkChecklistEntry(checklist[roleKey]);
+    const state = entry[step.key];
+
+    if (state.done) {
+        const affectedSteps = THREE_SET_MANAGEMENT_REWORK_CHECKLIST_STEPS
+            .slice(stepIndex)
+            .filter(item => entry[item.key] && entry[item.key].done)
+            .map(item => item.label);
+        const confirmed = confirm(`${step.label}以降を未完了に戻しますか？\n\n対象工程：${affectedSteps.join('、')}`);
+
+        if (!confirmed) {
+            return;
+        }
+
+        THREE_SET_MANAGEMENT_REWORK_CHECKLIST_STEPS.slice(stepIndex).forEach(item => {
+            entry[item.key] = {
+                done: false,
+                updatedAt: '',
+                updatedBy: ''
+            };
+        });
+    } else {
+        if (!isThreeSetManagementReworkChecklistStepEnabled(entry, stepIndex)) {
+            alert('前工程が完了していないため、この工程は完了できません');
+            return;
+        }
+
+        entry[step.key] = {
+            done: true,
+            updatedAt: new Date().toISOString(),
+            updatedBy: getThreeSetManagementChecklistOperatorName()
+        };
+    }
+
+    checklist[roleKey] = entry;
+    saveThreeSetManagementReworkChecklist(checklist);
     updateThreeSetManagementDashboard(roles);
 }
 

@@ -1280,6 +1280,27 @@ body {
     color: #ffffff;
 }
 
+.three-set-management-operator-btn {
+    min-height: 32px;
+    padding: 5px 10px;
+    border-radius: 8px;
+    border: 1px solid #cbd5e1;
+    background: #ffffff;
+    color: #334155;
+    font-size: 0.78rem;
+    font-weight: 900;
+    line-height: 1.15;
+    cursor: pointer;
+}
+
+.three-set-management-operator-btn:hover,
+.three-set-management-operator-btn:focus-visible {
+    border-color: #93c5fd;
+    background: #eff6ff;
+    color: #1d4ed8;
+    outline: none;
+}
+
 .three-set-management-task-list {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
@@ -1374,6 +1395,109 @@ body {
     font-weight: 800;
     line-height: 1.25;
     white-space: pre-line;
+    overflow-wrap: anywhere;
+}
+
+.three-set-management-checklist {
+    display: grid;
+    gap: 8px;
+}
+
+.three-set-management-checklist-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    color: #334155;
+    font-size: 0.82rem;
+    font-weight: 900;
+    line-height: 1.2;
+}
+
+.three-set-management-checklist-head strong {
+    color: #1d4ed8;
+}
+
+.three-set-management-checklist-steps {
+    display: grid;
+    gap: 6px;
+}
+
+.three-set-management-check-step {
+    display: grid;
+    grid-template-columns: 26px minmax(0, 1fr);
+    gap: 8px;
+    width: 100%;
+    padding: 8px;
+    border-radius: 8px;
+    border: 1px solid #dbeafe;
+    background: #ffffff;
+    color: #0f172a;
+    text-align: left;
+    cursor: pointer;
+}
+
+.three-set-management-check-step:hover,
+.three-set-management-check-step:focus-visible {
+    border-color: #60a5fa;
+    background: #eff6ff;
+    outline: none;
+}
+
+.three-set-management-check-step:disabled {
+    border-color: #e2e8f0;
+    background: #f8fafc;
+    color: #94a3b8;
+    cursor: not-allowed;
+}
+
+.three-set-management-check-step.is-done {
+    border-color: #86efac;
+    background: #f0fdf4;
+}
+
+.three-set-management-check-index {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border-radius: 999px;
+    background: #dbeafe;
+    color: #1e40af;
+    font-size: 0.82rem;
+    font-weight: 900;
+    line-height: 1;
+}
+
+.three-set-management-check-step.is-done .three-set-management-check-index {
+    background: #16a34a;
+    color: #ffffff;
+}
+
+.three-set-management-check-step:disabled .three-set-management-check-index {
+    background: #e2e8f0;
+    color: #94a3b8;
+}
+
+.three-set-management-check-body {
+    display: grid;
+    gap: 3px;
+    min-width: 0;
+}
+
+.three-set-management-check-body strong {
+    font-size: 0.88rem;
+    font-weight: 900;
+    line-height: 1.2;
+    overflow-wrap: anywhere;
+}
+
+.three-set-management-check-body span {
+    color: #475569;
+    font-size: 0.76rem;
+    font-weight: 800;
+    line-height: 1.2;
     overflow-wrap: anywhere;
 }
 
