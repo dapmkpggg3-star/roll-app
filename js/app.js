@@ -48,7 +48,9 @@ const THREE_SET_FORECAST_MAX_STAND = 17;
 const DASHBOARD_DISPLAY_SETTINGS_OPEN_KEY = 'dashboardDisplaySettingsOpen';
 const DASHBOARD_VISIBILITY_STORAGE_PREFIX = 'dashboardVisibility.';
 const THREE_SET_MANAGEMENT_ACTIVE_TAB_KEY = 'threeSetManagementActiveTab';
+const THREE_SET_MANAGEMENT_REWORK_FILTER_KEY = 'threeSetManagementReworkFilter';
 const THREE_SET_MANAGEMENT_DEFAULT_TAB = 'assembly';
+const THREE_SET_MANAGEMENT_REWORK_DEFAULT_FILTER = 'action';
 const DASHBOARD_VISIBILITY_OPTIONS = [
     {
         key: 'priorityStand',
@@ -3258,6 +3260,34 @@ function saveThreeSetManagementTab(tabKey) {
     return normalized;
 }
 
+function normalizeThreeSetManagementReworkFilter(value) {
+    const normalized = String(value || '').trim();
+    return ['action', 'all'].includes(normalized)
+        ? normalized
+        : THREE_SET_MANAGEMENT_REWORK_DEFAULT_FILTER;
+}
+
+function getStoredThreeSetManagementReworkFilter() {
+    try {
+        return normalizeThreeSetManagementReworkFilter(localStorage.getItem(THREE_SET_MANAGEMENT_REWORK_FILTER_KEY));
+    } catch (error) {
+        console.error('getStoredThreeSetManagementReworkFilter error:', error);
+        return THREE_SET_MANAGEMENT_REWORK_DEFAULT_FILTER;
+    }
+}
+
+function saveThreeSetManagementReworkFilter(filterKey) {
+    const normalized = normalizeThreeSetManagementReworkFilter(filterKey);
+
+    try {
+        localStorage.setItem(THREE_SET_MANAGEMENT_REWORK_FILTER_KEY, normalized);
+    } catch (error) {
+        console.error('saveThreeSetManagementReworkFilter error:', error);
+    }
+
+    return normalized;
+}
+
 function getThreeSetManagementEmptySummary(label) {
     return {
         count: 0,
@@ -3312,13 +3342,17 @@ function getThreeSetManagementReworkAction(status) {
 
 function getThreeSetManagementReworkStatusRank(status) {
     const ranks = {
-        [USED_STANDBY_STATUS]: 1,
-        [REWORK_READY_STATUS]: 2,
-        [REWORKING_STATUS]: 3,
+        [REWORK_READY_STATUS]: 1,
+        [REWORKING_STATUS]: 2,
+        [USED_STANDBY_STATUS]: 3,
         [NEW_READY_STATUS]: 4
     };
 
     return ranks[status] || 99;
+}
+
+function isThreeSetManagementReworkActionRequired(item) {
+    return item && item.currentStatus !== NEW_READY_STATUS;
 }
 
 function getThreeSetManagementReworkDates(role, today = getTodayDateString()) {
@@ -3419,6 +3453,16 @@ function getThreeSetManagementReworkItems(allRoles = roles) {
         });
 }
 
+function getThreeSetManagementReworkDisplayItems(items, filterKey = getStoredThreeSetManagementReworkFilter()) {
+    const normalizedFilter = normalizeThreeSetManagementReworkFilter(filterKey);
+
+    if (normalizedFilter === 'all') {
+        return Array.isArray(items) ? items : [];
+    }
+
+    return (Array.isArray(items) ? items : []).filter(isThreeSetManagementReworkActionRequired);
+}
+
 function getThreeSetManagementPurchaseItems(allRoles = roles) {
     return getPurchaseConfirmationItems(allRoles)
         .map(item => ({
@@ -3449,6 +3493,8 @@ function getThreeSetManagementSummary(label, items) {
 function getThreeSetManagementData(allRoles = roles) {
     const assemblyItems = getThreeSetManagementAssemblyItems(allRoles);
     const reworkItems = getThreeSetManagementReworkItems(allRoles);
+    const reworkDisplayItems = getThreeSetManagementReworkDisplayItems(reworkItems);
+    const reworkActionItems = reworkItems.filter(isThreeSetManagementReworkActionRequired);
     const purchaseItems = getThreeSetManagementPurchaseItems(allRoles);
 
     return [
@@ -3461,8 +3507,10 @@ function getThreeSetManagementData(allRoles = roles) {
         {
             key: 'rework',
             label: '搬入出・改削',
-            summary: getThreeSetManagementSummary('搬入出・改削', reworkItems),
-            items: reworkItems
+            summary: getThreeSetManagementSummary('搬入出・改削', reworkActionItems),
+            items: reworkDisplayItems,
+            totalCount: reworkItems.length,
+            actionCount: reworkActionItems.length
         },
         {
             key: 'purchase',
@@ -3495,6 +3543,42 @@ function getThreeSetManagementItemTitle(activeTab) {
     }
 
     return '購入タスク一覧';
+}
+
+function getThreeSetManagementReworkFilterHtml() {
+    const activeFilter = getStoredThreeSetManagementReworkFilter();
+    const options = [
+        { key: 'action', label: '要対応のみ' },
+        { key: 'all', label: 'すべて' }
+    ];
+
+    return `
+        <div class="three-set-management-filter" role="group" aria-label="搬入出・改削 表示切替">
+            ${options.map(option => `
+                <button
+                    type="button"
+                    class="three-set-management-filter-btn ${activeFilter === option.key ? 'is-active' : ''}"
+                    onclick="changeThreeSetManagementReworkFilter('${escapeHtml(option.key)}')"
+                    aria-pressed="${activeFilter === option.key ? 'true' : 'false'}"
+                >${escapeHtml(option.label)}</button>
+            `).join('')}
+        </div>
+    `;
+}
+
+function getThreeSetManagementPanelHeaderMetaHtml(activeGroup) {
+    const count = activeGroup && Array.isArray(activeGroup.items) ? activeGroup.items.length : 0;
+
+    if (activeGroup && activeGroup.key === 'rework') {
+        return `
+            <div class="three-set-management-panel-actions">
+                ${getThreeSetManagementReworkFilterHtml()}
+                <span>${escapeHtml(String(count))}件</span>
+            </div>
+        `;
+    }
+
+    return `<span>${escapeHtml(String(count))}件</span>`;
 }
 
 function getThreeSetManagementItemHtml(item, activeTab) {
@@ -3616,7 +3700,7 @@ function updateThreeSetManagementDashboard(allRoles = roles) {
             <section class="three-set-management-panel">
                 <div class="three-set-management-panel-header">
                     <h3>${escapeHtml(activeGroup ? getThreeSetManagementItemTitle(activeGroup.key) : 'タスク一覧')}</h3>
-                    <span>0件</span>
+                    ${getThreeSetManagementPanelHeaderMetaHtml(activeGroup)}
                 </div>
                 <div class="three-set-management-empty">現在、${escapeHtml(activeGroup ? activeGroup.label : '対象')}タスクはありません</div>
             </section>
@@ -3628,7 +3712,7 @@ function updateThreeSetManagementDashboard(allRoles = roles) {
         <section class="three-set-management-panel">
             <div class="three-set-management-panel-header">
                 <h3>${escapeHtml(getThreeSetManagementItemTitle(activeGroup.key))}</h3>
-                <span>${escapeHtml(String(activeGroup.items.length))}件</span>
+                ${getThreeSetManagementPanelHeaderMetaHtml(activeGroup)}
             </div>
             <div class="three-set-management-task-list">
                 ${activeGroup.items.map(item => getThreeSetManagementItemHtml(item, activeGroup.key)).join('')}
@@ -3639,6 +3723,11 @@ function updateThreeSetManagementDashboard(allRoles = roles) {
 
 function changeThreeSetManagementTab(tabKey) {
     saveThreeSetManagementTab(tabKey);
+    updateThreeSetManagementDashboard(roles);
+}
+
+function changeThreeSetManagementReworkFilter(filterKey) {
+    saveThreeSetManagementReworkFilter(filterKey);
     updateThreeSetManagementDashboard(roles);
 }
 
