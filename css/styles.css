@@ -1285,6 +1285,10 @@ body {
     gap: 8px;
 }
 
+.three-set-management-task-dates {
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+}
+
 .three-set-management-task-main div,
 .three-set-management-task-action {
     display: grid;

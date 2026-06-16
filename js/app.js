@@ -3290,18 +3290,133 @@ function getThreeSetManagementAssemblyItems(allRoles = roles) {
         }));
 }
 
+function getThreeSetManagementReworkAction(status) {
+    if (status === USED_STANDBY_STATUS) {
+        return 'チョック外し・搬出準備';
+    }
+
+    if (status === REWORK_READY_STATUS) {
+        return '業者へ引取依頼';
+    }
+
+    if (status === REWORKING_STATUS) {
+        return '納品予定確認';
+    }
+
+    if (status === NEW_READY_STATUS) {
+        return '組替候補として確認';
+    }
+
+    return '搬入出・改削状況を確認';
+}
+
+function getThreeSetManagementReworkStatusRank(status) {
+    const ranks = {
+        [USED_STANDBY_STATUS]: 1,
+        [REWORK_READY_STATUS]: 2,
+        [REWORKING_STATUS]: 3,
+        [NEW_READY_STATUS]: 4
+    };
+
+    return ranks[status] || 99;
+}
+
+function getThreeSetManagementReworkDates(role, today = getTodayDateString()) {
+    const status = normalizeRoleStatusValue(role && role.status);
+    const dispatchDate = normalizeDateInputValue(role && role.dispatchDate);
+    const statusChangedAt = normalizeDateInputValue(getRoleStatusChangedAt(role, status));
+
+    if (status === USED_STANDBY_STATUS) {
+        const dispatchReadyDate = addDaysToDateString(today, REWORK_SETUP_DISPATCH_READY_DAYS);
+        const vendorPickupDate = dispatchReadyDate;
+        return {
+            dispatchReadyDate,
+            vendorPickupDate,
+            reworkReturnDate: addDaysToDateString(vendorPickupDate, REWORK_SETUP_REWORK_DAYS)
+        };
+    }
+
+    if (status === REWORK_READY_STATUS) {
+        const dispatchReadyDate = dispatchDate || statusChangedAt || today;
+        const vendorPickupDate = dispatchReadyDate;
+        return {
+            dispatchReadyDate,
+            vendorPickupDate,
+            reworkReturnDate: addDaysToDateString(vendorPickupDate, REWORK_SETUP_REWORK_DAYS)
+        };
+    }
+
+    if (status === REWORKING_STATUS) {
+        const vendorPickupDate = dispatchDate || statusChangedAt || '';
+        return {
+            dispatchReadyDate: dispatchDate || '',
+            vendorPickupDate,
+            reworkReturnDate: addDaysToDateString(vendorPickupDate, REWORK_SETUP_REWORK_DAYS)
+        };
+    }
+
+    return {
+        dispatchReadyDate: '',
+        vendorPickupDate: '',
+        reworkReturnDate: ''
+    };
+}
+
+function getThreeSetManagementReworkFieldHtml(label, value) {
+    return `
+        <div>
+            <span>${escapeHtml(label)}</span>
+            <strong>${escapeHtml(value || '-')}</strong>
+        </div>
+    `;
+}
+
 function getThreeSetManagementReworkItems(allRoles = roles) {
-    return getReworkSetupPlanItems(allRoles)
-        .map(item => ({
-            key: `rework-${item.role && item.role.id ? item.role.id : item.standKey}`,
-            standKey: item.standKey,
-            title: item.roleName || `#${item.standKey}`,
-            target: `現在状態: ${item.role && item.role.status ? item.role.status : ONLINE_STATUS}`,
-            deadline: item.workshopTaskDueDate,
-            status: item.workshopTaskDueDate <= getTodayDateString() ? '段取り必要' : '期限接近',
-            action: `#${item.standKey} 引取依頼`,
-            meta: `搬出可能 ${formatDateForDisplay(item.dispatchReadyDate)} / 引取希望 ${formatDateForDisplay(item.vendorPickupDate)} / 戻り ${formatDateForDisplay(item.reworkReturnDate)}`
-        }));
+    const targetStatuses = [USED_STANDBY_STATUS, REWORK_READY_STATUS, REWORKING_STATUS, NEW_READY_STATUS];
+    const today = getTodayDateString();
+
+    return (Array.isArray(allRoles) ? allRoles : [])
+        .filter(role => role && targetStatuses.includes(normalizeRoleStatusValue(role.status)))
+        .map(role => {
+            const status = normalizeRoleStatusValue(role.status);
+            const standKey = getStandKey(role.name);
+            const dates = getThreeSetManagementReworkDates(role, today);
+
+            return {
+                key: `rework-${role.id || role.name || standKey}`,
+                standKey,
+                title: role.name || `#${standKey || '-'}`,
+                currentStatus: status,
+                status,
+                action: getThreeSetManagementReworkAction(status),
+                dispatchReadyDate: dates.dispatchReadyDate,
+                vendorPickupDate: dates.vendorPickupDate,
+                reworkReturnDate: dates.reworkReturnDate,
+                afterStatus: NEW_READY_STATUS,
+                deadline: dates.vendorPickupDate || dates.reworkReturnDate || '',
+                sortDate: dates.vendorPickupDate || dates.reworkReturnDate || '9999-12-31',
+                updatedAt: role.updatedAt
+            };
+        })
+        .sort((a, b) => {
+            const statusDiff = getThreeSetManagementReworkStatusRank(a.currentStatus) - getThreeSetManagementReworkStatusRank(b.currentStatus);
+
+            if (statusDiff !== 0) {
+                return statusDiff;
+            }
+
+            if (a.sortDate !== b.sortDate) {
+                return String(a.sortDate).localeCompare(String(b.sortDate));
+            }
+
+            const standDiff = (Number(a.standKey) || 999999) - (Number(b.standKey) || 999999);
+
+            if (standDiff !== 0) {
+                return standDiff;
+            }
+
+            return compareStandRoleNames(a.title, b.title);
+        });
 }
 
 function getThreeSetManagementPurchaseItems(allRoles = roles) {
@@ -3405,6 +3520,31 @@ function getThreeSetManagementItemHtml(item, activeTab) {
                     <strong>${escapeHtml(item.action || '-')}</strong>
                 </div>
                 <div class="three-set-management-task-meta">${escapeHtml(item.meta || '-')}</div>
+            </article>
+        `;
+    }
+
+    if (activeTab === 'rework') {
+        return `
+            <article class="three-set-management-task">
+                <div class="three-set-management-task-head">
+                    <span class="three-set-management-task-stand">#${escapeHtml(item.standKey || '-')} 搬入出・改削</span>
+                    <span class="three-set-management-task-status">${escapeHtml(item.currentStatus || '-')}</span>
+                </div>
+                <div class="three-set-management-task-main">
+                    ${getThreeSetManagementReworkFieldHtml('対象ロール', item.title)}
+                    ${getThreeSetManagementReworkFieldHtml('現在状態', item.currentStatus)}
+                </div>
+                <div class="three-set-management-task-action">
+                    <span>次にやること</span>
+                    <strong>${escapeHtml(item.action || '-')}</strong>
+                </div>
+                <div class="three-set-management-task-main three-set-management-task-dates">
+                    ${getThreeSetManagementReworkFieldHtml('搬出可能予定日', formatDateForDisplay(item.dispatchReadyDate))}
+                    ${getThreeSetManagementReworkFieldHtml('業者引取希望日', formatDateForDisplay(item.vendorPickupDate))}
+                    ${getThreeSetManagementReworkFieldHtml('改削戻り予定日', formatDateForDisplay(item.reworkReturnDate))}
+                    ${getThreeSetManagementReworkFieldHtml('戻った後の状態', item.afterStatus)}
+                </div>
             </article>
         `;
     }
