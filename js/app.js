@@ -64,13 +64,34 @@ const DASHBOARD_VISIBILITY_OPTIONS = [
         label: 'スタンド別リスク',
         targetId: 'stand-risk-panel',
         inputId: 'dashboard-visibility-stand-risk',
-        defaultVisible: true
+        defaultVisible: false
     },
     {
         key: 'dangerRoll',
         label: '危険ロール一覧',
         targetId: 'danger-roll-dashboard',
         inputId: 'dashboard-visibility-danger-roll',
+        defaultVisible: false
+    },
+    {
+        key: 'threeSetForecast',
+        label: '3セット維持予測',
+        targetId: 'three-set-forecast-dashboard',
+        inputId: 'dashboard-visibility-three-set-forecast',
+        defaultVisible: false
+    },
+    {
+        key: 'reworkSetup',
+        label: '改削段取り予定',
+        targetId: 'rework-setup-dashboard',
+        inputId: 'dashboard-visibility-rework-setup',
+        defaultVisible: false
+    },
+    {
+        key: 'purchaseConfirmation',
+        label: '購入確認候補',
+        targetId: 'purchase-confirmation-board',
+        inputId: 'dashboard-visibility-purchase-confirmation',
         defaultVisible: false
     },
     {
