@@ -1340,6 +1340,126 @@ body {
     overflow-wrap: anywhere;
 }
 
+.three-set-management-purchase-task .three-set-management-task-meta {
+    display: grid;
+    gap: 3px;
+    padding: 8px;
+    border-radius: 8px;
+    border: 1px solid #e2e8f0;
+    background: #f8fafc;
+}
+
+.three-set-management-purchase-task .three-set-management-task-meta span,
+.three-set-management-purchase-section > span {
+    color: #64748b;
+    font-size: 0.76rem;
+    font-weight: 900;
+    line-height: 1.15;
+}
+
+.three-set-management-purchase-task .three-set-management-task-meta strong {
+    color: #0f172a;
+    font-size: 0.92rem;
+    font-weight: 900;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+}
+
+.three-set-management-purchase-section {
+    display: grid;
+    gap: 6px;
+}
+
+.three-set-management-purchase-rolls {
+    display: grid;
+    gap: 6px;
+}
+
+.three-set-management-purchase-roll {
+    display: grid;
+    grid-template-columns: minmax(76px, 1fr) minmax(110px, 1.2fr) minmax(58px, auto) minmax(0, 1.4fr);
+    align-items: center;
+    gap: 7px;
+    padding: 7px 8px;
+    border-radius: 8px;
+    border: 1px solid #e2e8f0;
+    background: #ffffff;
+}
+
+.three-set-management-purchase-roll.is-alert {
+    border-color: #fed7aa;
+    background: #fff7ed;
+}
+
+.three-set-management-purchase-roll-name,
+.three-set-management-purchase-roll-status,
+.three-set-management-purchase-roll-diameter {
+    color: #0f172a;
+    font-size: 0.84rem;
+    font-weight: 900;
+    line-height: 1.2;
+    overflow-wrap: anywhere;
+}
+
+.three-set-management-purchase-roll-status {
+    color: #475569;
+}
+
+.three-set-management-purchase-roll-diameter {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+.three-set-management-purchase-roll-alerts {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 4px;
+    flex-wrap: wrap;
+    min-width: 0;
+}
+
+.three-set-management-purchase-alert {
+    display: inline-flex;
+    align-items: center;
+    min-height: 22px;
+    padding: 3px 7px;
+    border-radius: 999px;
+    background: #ffedd5;
+    color: #9a3412;
+    font-size: 0.72rem;
+    font-weight: 900;
+    line-height: 1.1;
+    white-space: nowrap;
+}
+
+.three-set-management-purchase-alert.is-scrap,
+.three-set-management-purchase-alert.is-scrap-waiting,
+.three-set-management-purchase-alert.is-out-of-service {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+.three-set-management-purchase-alert.is-remaining-one,
+.three-set-management-purchase-alert.is-purchase-attention {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.three-set-management-purchase-alert.is-new-storage {
+    background: #dcfce7;
+    color: #166534;
+}
+
+.three-set-management-purchase-empty {
+    padding: 8px;
+    border-radius: 8px;
+    border: 1px dashed #cbd5e1;
+    color: #64748b;
+    font-size: 0.82rem;
+    font-weight: 800;
+}
+
 .three-set-management-checklist {
     display: grid;
     gap: 8px;
@@ -1466,6 +1586,18 @@ body {
 
     .three-set-management-task-main {
         grid-template-columns: minmax(0, 1fr);
+    }
+
+    .three-set-management-purchase-roll {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .three-set-management-purchase-roll-diameter {
+        text-align: left;
+    }
+
+    .three-set-management-purchase-roll-alerts {
+        justify-content: flex-start;
     }
 }
 

@@ -39,6 +39,7 @@ const PURCHASE_CONFIRMATION_DASHBOARD_OPEN_KEY = 'purchaseConfirmationDashboardO
 const COUNT_SUMMARY_OPEN_KEY = 'countSummaryOpen';
 const DEFAULT_PURCHASE_LEAD_TIME_MONTHS = 6;
 const PURCHASE_CONFIRMATION_WINDOW_MONTHS = 3;
+const THREE_SET_MANAGEMENT_PURCHASE_DECISION_MONTHS = 8;
 const REWORK_SETUP_TASK_LEAD_DAYS = 21;
 const REWORK_SETUP_DISPATCH_READY_DAYS = 2;
 const REWORK_SETUP_REWORK_DAYS = 30;
@@ -3409,18 +3410,213 @@ function getThreeSetManagementReworkItems(allRoles = roles) {
         });
 }
 
+function getThreeSetManagementPurchasePlanningInfo(role) {
+    const standKey = getStandKey(role && role.name);
+    const currentDiameter = normalizeCurrentDiameter(role && role.currentDiameter);
+
+    if (!standKey || currentDiameter === '' || role.status === DISCARDED_STATUS) {
+        return null;
+    }
+
+    const remainingInfo = getRemainingDiameterInfo(role);
+
+    if (!remainingInfo || remainingInfo.adoptedCutMm === '' || !Number.isFinite(remainingInfo.adoptedCutMm) || remainingInfo.adoptedCutMm <= 0) {
+        return null;
+    }
+
+    const onlineUseMonths = getStandOnlineUseMonths(standKey);
+    const usableOnlineCount = Math.max(0, Math.floor((remainingInfo.currentDiameter - remainingInfo.scrapDiameter) / remainingInfo.adoptedCutMm) + 1);
+    const useStartDate = normalizeUseStartDate(role && role.useStartDate);
+    const forecastStartDate = useStartDate || getTodayDateString();
+    const disposalForecastDate = usableOnlineCount <= 0
+        ? getTodayDateString()
+        : addMonthsToDateString(forecastStartDate, usableOnlineCount * onlineUseMonths);
+    const purchaseDecisionDate = addMonthsToDateString(disposalForecastDate, -THREE_SET_MANAGEMENT_PURCHASE_DECISION_MONTHS);
+
+    if (!disposalForecastDate || !purchaseDecisionDate) {
+        return null;
+    }
+
+    return {
+        standKey,
+        role,
+        roleName: role.name || '',
+        currentDiameter,
+        scrapDiameter: remainingInfo.scrapDiameter,
+        remainingCutCount: remainingInfo.remainingCutCount,
+        usableOnlineCount,
+        disposalForecastDate,
+        purchaseDecisionDate
+    };
+}
+
+function getThreeSetManagementPurchaseDecisionLevel(purchaseDecisionDate, today = getTodayDateString()) {
+    const decisionDate = normalizeDateInputValue(purchaseDecisionDate);
+    const warningLimit = addMonthsToDateString(today, THREE_SET_MANAGEMENT_PURCHASE_DECISION_MONTHS);
+
+    if (!decisionDate) {
+        return null;
+    }
+
+    if (decisionDate <= today) {
+        return {
+            key: 'urgent',
+            label: '判断期限超過',
+            memo: '購入判断期限を過ぎています'
+        };
+    }
+
+    if (warningLimit && decisionDate <= warningLimit) {
+        return {
+            key: 'soon',
+            label: '判断期限8か月以内',
+            memo: '8か月以内に購入判断期限です'
+        };
+    }
+
+    return null;
+}
+
+function groupRolesByStand(allRoles = roles) {
+    const groups = new Map();
+
+    (Array.isArray(allRoles) ? allRoles : []).forEach(role => {
+        const standKey = getStandKey(role && role.name);
+
+        if (!standKey) {
+            return;
+        }
+
+        if (!groups.has(standKey)) {
+            groups.set(standKey, []);
+        }
+
+        groups.get(standKey).push(role);
+    });
+
+    return groups;
+}
+
+function getPurchaseRoleAlert(role, basisRole) {
+    const alerts = [];
+    const status = normalizeRoleStatusValue(role && role.status);
+    const info = getRemainingDiameterInfo(role);
+    const isBasisRole = basisRole && role && (
+        (basisRole.id && role.id && basisRole.id === role.id)
+        || (basisRole.name && role.name && basisRole.name === role.name)
+    );
+
+    if (status === SCRAP_WAITING_STATUS) {
+        alerts.push({ key: 'scrap-waiting', label: '廃却待ち' });
+        alerts.push({ key: 'out-of-service', label: '戦力外' });
+    }
+
+    if (status === NEW_STORAGE_STATUS) {
+        alerts.push({ key: 'new-storage', label: '新品予備保管あり' });
+    }
+
+    if (info) {
+        if (info.currentDiameter < info.scrapDiameter) {
+            alerts.push({ key: 'scrap', label: '廃却径以下' });
+        } else if (Math.abs(info.currentDiameter - info.scrapDiameter) < 0.0001) {
+            alerts.push({ key: 'scrap', label: '廃却径' });
+        } else if (info.remainingCutCount === 1) {
+            alerts.push({ key: 'remaining-one', label: '残1回' });
+        }
+    }
+
+    if (isBasisRole) {
+        alerts.push({ key: 'purchase-attention', label: '購入注意' });
+    }
+
+    return alerts;
+}
+
+function getThreeSetManagementPurchaseRoleRows(standRoles, basisRole) {
+    return (Array.isArray(standRoles) ? standRoles : [])
+        .filter(role => role && normalizeRoleStatusValue(role.status) !== DISCARDED_STATUS)
+        .sort(compareRolesByStandRole)
+        .map(role => {
+            const alerts = getPurchaseRoleAlert(role, basisRole);
+            return {
+                name: role.name || '-',
+                status: normalizeRoleStatusValue(role.status),
+                currentDiameter: normalizeCurrentDiameter(role.currentDiameter),
+                diameterLabel: formatPurchaseDiameter(role.currentDiameter),
+                alerts,
+                isAlert: alerts.length > 0
+            };
+        });
+}
+
+function getThreeSetManagementPurchaseStandItems(allRoles = roles) {
+    const today = getTodayDateString();
+    const groups = groupRolesByStand(allRoles);
+    const items = [];
+
+    groups.forEach((standRoles, standKey) => {
+        const activeStandRoles = standRoles.filter(role => normalizeRoleStatusValue(role.status) !== DISCARDED_STATUS);
+        const purchasePlans = activeStandRoles
+            .map(role => getThreeSetManagementPurchasePlanningInfo(role))
+            .filter(Boolean)
+            .sort((a, b) => {
+                if (a.disposalForecastDate !== b.disposalForecastDate) {
+                    return String(a.disposalForecastDate).localeCompare(String(b.disposalForecastDate));
+                }
+
+                return compareStandRoleNames(a.roleName, b.roleName);
+            });
+        const basisPlan = purchasePlans[0] || null;
+
+        if (!basisPlan) {
+            return;
+        }
+
+        const level = getThreeSetManagementPurchaseDecisionLevel(basisPlan.purchaseDecisionDate, today);
+
+        if (!level) {
+            return;
+        }
+
+        const hasNewStorage = activeStandRoles.some(role => normalizeRoleStatusValue(role.status) === NEW_STORAGE_STATUS);
+        const roleRows = getThreeSetManagementPurchaseRoleRows(activeStandRoles, basisPlan.role);
+
+        items.push({
+            key: `purchase-stand-${standKey}`,
+            standKey,
+            title: `#${standKey} 購入判断`,
+            deadline: basisPlan.purchaseDecisionDate,
+            disposalForecastDate: basisPlan.disposalForecastDate,
+            status: level.label,
+            action: hasNewStorage
+                ? '新品予備保管を含めて購入要否を確認'
+                : '3セット維持可否と購入要否を確認',
+            reason: [
+                level.memo,
+                `${basisPlan.roleName || `#${standKey}`} が廃却見込みです`,
+                hasNewStorage
+                    ? '新品予備保管を含めて3セット維持確認が必要です'
+                    : '3セット維持確認が必要です'
+            ].join('\n'),
+            meta: level.memo,
+            basisRoleName: basisPlan.roleName || '',
+            hasNewStorage,
+            storageLabel: hasNewStorage ? '新品予備保管あり' : '新品予備保管なし',
+            roleRows
+        });
+    });
+
+    return items.sort((a, b) => {
+        if (a.deadline !== b.deadline) {
+            return String(a.deadline).localeCompare(String(b.deadline));
+        }
+
+        return (Number(a.standKey) || 999999) - (Number(b.standKey) || 999999);
+    });
+}
+
 function getThreeSetManagementPurchaseItems(allRoles = roles) {
-    return getPurchaseConfirmationItems(allRoles)
-        .map(item => ({
-            key: `purchase-${item.roleName || item.standKey}`,
-            standKey: item.standKey,
-            title: item.roleName || `#${item.standKey}`,
-            target: `廃却予想: ${formatPurchaseMonth(item.disposalForecastDate)}`,
-            deadline: item.purchaseDecisionDate,
-            status: item.level && item.level.key === 'urgent' ? '判断期限あり' : '早期確認',
-            action: `#${item.standKey} 購入確認`,
-            meta: item.level && item.level.memo ? item.level.memo : `購入LT${item.leadTimeMonths}か月`
-        }));
+    return getThreeSetManagementPurchaseStandItems(allRoles);
 }
 
 function getThreeSetManagementSummary(label, items) {
@@ -3547,6 +3743,31 @@ function getThreeSetManagementReworkChecklistHtml(item) {
     `;
 }
 
+function getThreeSetManagementPurchaseRowsHtml(item) {
+    const rows = item && Array.isArray(item.roleRows) ? item.roleRows : [];
+
+    if (rows.length === 0) {
+        return '<div class="three-set-management-purchase-empty">ロール状況がありません</div>';
+    }
+
+    return `
+        <div class="three-set-management-purchase-rolls">
+            ${rows.map(row => `
+                <div class="three-set-management-purchase-roll ${row.isAlert ? 'is-alert' : ''}">
+                    <span class="three-set-management-purchase-roll-name">${escapeHtml(row.name || '-')}</span>
+                    <span class="three-set-management-purchase-roll-status">${escapeHtml(row.status || '-')}</span>
+                    <span class="three-set-management-purchase-roll-diameter">${escapeHtml(row.diameterLabel || '-')}</span>
+                    <span class="three-set-management-purchase-roll-alerts">
+                        ${row.alerts.map(alert => `
+                            <span class="three-set-management-purchase-alert is-${escapeHtml(alert.key)}">${escapeHtml(alert.label)}</span>
+                        `).join('')}
+                    </span>
+                </div>
+            `).join('')}
+        </div>
+    `;
+}
+
 function getThreeSetManagementItemHtml(item, activeTab) {
     if (activeTab === 'assembly') {
         return `
@@ -3592,9 +3813,38 @@ function getThreeSetManagementItemHtml(item, activeTab) {
         `;
     }
 
-    const deadlineLabel = activeTab === 'purchase'
-        ? '購入判断期限'
-        : '工作課期限';
+    if (activeTab === 'purchase') {
+        return `
+            <article class="three-set-management-task three-set-management-purchase-task">
+                <div class="three-set-management-task-head">
+                    <span class="three-set-management-task-stand">${escapeHtml(item.title || `#${item.standKey || '-'}`)}</span>
+                    <span class="three-set-management-task-status">${escapeHtml(item.status || '-')}</span>
+                </div>
+                <div class="three-set-management-task-main">
+                    <div>
+                        <span>購入判断期限</span>
+                        <strong>${escapeHtml(formatPurchaseMonth(item.deadline))}</strong>
+                    </div>
+                    <div>
+                        <span>新品予備保管</span>
+                        <strong>${escapeHtml(item.storageLabel || '-')}</strong>
+                    </div>
+                </div>
+                <div class="three-set-management-task-meta">
+                    <span>理由</span>
+                    <strong>${escapeHtml(item.reason || '-')}</strong>
+                </div>
+                <div class="three-set-management-task-action">
+                    <span>次にやること</span>
+                    <strong>${escapeHtml(item.action || '-')}</strong>
+                </div>
+                <div class="three-set-management-purchase-section">
+                    <span>ロール状況</span>
+                    ${getThreeSetManagementPurchaseRowsHtml(item)}
+                </div>
+            </article>
+        `;
+    }
 
     return `
         <article class="three-set-management-task">
@@ -3608,7 +3858,7 @@ function getThreeSetManagementItemHtml(item, activeTab) {
                     <strong>${escapeHtml(item.title || '-')}</strong>
                 </div>
                 <div>
-                    <span>${escapeHtml(deadlineLabel)}</span>
+                    <span>工作課期限</span>
                     <strong>${escapeHtml(getThreeSetManagementDeadlineLabel(item, activeTab))}</strong>
                 </div>
             </div>
