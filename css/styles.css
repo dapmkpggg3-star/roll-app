@@ -1239,68 +1239,6 @@ body {
     font-weight: 900;
 }
 
-.three-set-management-panel-actions {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 8px;
-    flex-wrap: wrap;
-}
-
-.three-set-management-filter {
-    display: inline-flex;
-    align-items: center;
-    padding: 2px;
-    border-radius: 8px;
-    border: 1px solid #bfdbfe;
-    background: #ffffff;
-}
-
-.three-set-management-filter-btn {
-    min-height: 28px;
-    padding: 4px 9px;
-    border: 0;
-    border-radius: 6px;
-    background: transparent;
-    color: #1e40af;
-    font-size: 0.78rem;
-    font-weight: 900;
-    line-height: 1.15;
-    cursor: pointer;
-}
-
-.three-set-management-filter-btn:hover,
-.three-set-management-filter-btn:focus-visible {
-    background: #dbeafe;
-    outline: none;
-}
-
-.three-set-management-filter-btn.is-active {
-    background: #1d4ed8;
-    color: #ffffff;
-}
-
-.three-set-management-operator-btn {
-    min-height: 32px;
-    padding: 5px 10px;
-    border-radius: 8px;
-    border: 1px solid #cbd5e1;
-    background: #ffffff;
-    color: #334155;
-    font-size: 0.78rem;
-    font-weight: 900;
-    line-height: 1.15;
-    cursor: pointer;
-}
-
-.three-set-management-operator-btn:hover,
-.three-set-management-operator-btn:focus-visible {
-    border-color: #93c5fd;
-    background: #eff6ff;
-    color: #1d4ed8;
-    outline: none;
-}
-
 .three-set-management-task-list {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
@@ -1345,6 +1283,10 @@ body {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px;
+}
+
+.three-set-management-task-main-single {
+    grid-template-columns: minmax(0, 1fr);
 }
 
 .three-set-management-task-dates {
