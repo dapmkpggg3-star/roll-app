@@ -3789,6 +3789,19 @@ function getThreeSetManagementPurchaseRowsHtml(item) {
     `;
 }
 
+function hasThreeSetManagementPurchaseRollAttention(item) {
+    const attentionAlertKeys = new Set([
+        'purchase-attention',
+        'scrap',
+        'remaining-one',
+        'scrap-waiting'
+    ]);
+    const rows = item && Array.isArray(item.roleRows) ? item.roleRows : [];
+
+    return rows.some(row => Array.isArray(row.alerts)
+        && row.alerts.some(alert => attentionAlertKeys.has(alert && alert.key)));
+}
+
 function getThreeSetManagementItemHtml(item, activeTab) {
     if (activeTab === 'assembly') {
         return `
@@ -3835,8 +3848,9 @@ function getThreeSetManagementItemHtml(item, activeTab) {
     }
 
     if (activeTab === 'purchase') {
+        const hasRollAttention = hasThreeSetManagementPurchaseRollAttention(item);
         return `
-            <article class="three-set-management-task three-set-management-purchase-task">
+            <article class="three-set-management-task three-set-management-purchase-task ${hasRollAttention ? 'has-roll-attention' : ''}">
                 <div class="three-set-management-task-head">
                     <span class="three-set-management-task-stand">${escapeHtml(item.title || `#${item.standKey || '-'}`)}</span>
                     <span class="three-set-management-task-status">${escapeHtml(item.status || '-')}</span>
@@ -3859,8 +3873,11 @@ function getThreeSetManagementItemHtml(item, activeTab) {
                     <span>次にやること</span>
                     <strong>${escapeHtml(item.action || '-')}</strong>
                 </div>
-                <div class="three-set-management-purchase-section">
-                    <span>ロール状況</span>
+                <div class="three-set-management-purchase-section ${hasRollAttention ? 'has-attention' : ''}">
+                    <span class="three-set-management-purchase-section-title">
+                        <span>ロール状況</span>
+                        <span class="three-set-management-purchase-section-arrow" aria-hidden="true">▼</span>
+                    </span>
                     ${getThreeSetManagementPurchaseRowsHtml(item)}
                 </div>
             </article>

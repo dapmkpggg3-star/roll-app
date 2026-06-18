@@ -1370,6 +1370,32 @@ body {
     gap: 6px;
 }
 
+.three-set-management-purchase-section-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    width: fit-content;
+    padding: 4px 8px;
+    border-radius: 8px;
+}
+
+.three-set-management-purchase-section.has-attention .three-set-management-purchase-section-title {
+    background: #fffbeb;
+    color: #92400e;
+    box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.16), 0 0 12px rgba(245, 158, 11, 0.18);
+    animation: purchaseSectionTitleGlow 2.8s ease-in-out infinite;
+}
+
+.three-set-management-purchase-section-arrow {
+    display: inline-block;
+    line-height: 1;
+    transform: translateY(0);
+}
+
+.three-set-management-purchase-section.has-attention .three-set-management-purchase-section-arrow {
+    animation: purchaseSectionArrowBob 1.8s ease-in-out infinite;
+}
+
 .three-set-management-purchase-rolls {
     display: grid;
     gap: 6px;
@@ -1458,6 +1484,35 @@ body {
     color: #64748b;
     font-size: 0.82rem;
     font-weight: 800;
+}
+
+@keyframes purchaseSectionTitleGlow {
+    0%,
+    100% {
+        box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.14), 0 0 10px rgba(245, 158, 11, 0.12);
+    }
+
+    50% {
+        box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.28), 0 0 16px rgba(245, 158, 11, 0.28);
+    }
+}
+
+@keyframes purchaseSectionArrowBob {
+    0%,
+    100% {
+        transform: translateY(0);
+    }
+
+    50% {
+        transform: translateY(2px);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .three-set-management-purchase-section.has-attention .three-set-management-purchase-section-title,
+    .three-set-management-purchase-section.has-attention .three-set-management-purchase-section-arrow {
+        animation: none;
+    }
 }
 
 .three-set-management-checklist {
