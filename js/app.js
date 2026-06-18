@@ -3888,9 +3888,18 @@ function getThreeSetManagementPurchaseRollSummary(item) {
         });
     });
 
-    return Array.from(alertCounts.entries())
-        .map(([label, count]) => `${label} ${count}件`)
-        .join(' / ');
+    const summaryItems = Array.from(alertCounts.entries()).map(([label, count]) => {
+        const text = label === '新品予備保管あり'
+            ? label
+            : `${label} ${count}件`;
+        return `<span class="three-set-management-purchase-summary-chip">${escapeHtml(text)}</span>`;
+    });
+
+    if (summaryItems.length === 0) {
+        return '';
+    }
+
+    return `<div class="three-set-management-purchase-summary">${summaryItems.join('')}</div>`;
 }
 
 function getThreeSetManagementItemHtml(item, activeTab) {
@@ -3943,7 +3952,6 @@ function getThreeSetManagementItemHtml(item, activeTab) {
         const standKey = normalizeThreeSetManagementPurchaseStandKey(item.standKey);
         const encodedStandKey = encodeURIComponent(standKey);
         const isRollExpanded = isThreeSetManagementPurchaseStandExpanded(standKey);
-        const rollCount = item && Array.isArray(item.roleRows) ? item.roleRows.length : 0;
         const rollSummary = getThreeSetManagementPurchaseRollSummary(item);
         const rollDetailsId = `three-set-management-purchase-rolls-${encodedStandKey || 'unknown'}`;
         return `
@@ -3978,10 +3986,10 @@ function getThreeSetManagementItemHtml(item, activeTab) {
                         aria-expanded="${isRollExpanded ? 'true' : 'false'}"
                         aria-controls="${escapeHtml(rollDetailsId)}"
                     >
-                        <span>${isRollExpanded ? 'ロール状況を閉じる' : `ロール状況 ${rollCount}件`}</span>
+                        <span class="three-set-management-purchase-section-label">${isRollExpanded ? 'ロール状況を閉じる' : 'ロール状況を見る'}</span>
                         <span class="three-set-management-purchase-section-arrow" aria-hidden="true">${isRollExpanded ? '▲' : '▼'}</span>
                     </button>
-                    ${!isRollExpanded && rollSummary ? `<div class="three-set-management-purchase-summary">${escapeHtml(rollSummary)}</div>` : ''}
+                    ${rollSummary}
                     <div id="${escapeHtml(rollDetailsId)}" ${isRollExpanded ? '' : 'hidden'}>
                         ${getThreeSetManagementPurchaseRowsHtml(item)}
                     </div>
