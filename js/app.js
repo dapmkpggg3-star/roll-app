@@ -50,6 +50,7 @@ const DASHBOARD_DISPLAY_SETTINGS_OPEN_KEY = 'dashboardDisplaySettingsOpen';
 const DASHBOARD_VISIBILITY_STORAGE_PREFIX = 'dashboardVisibility.';
 const THREE_SET_MANAGEMENT_ACTIVE_TAB_KEY = 'threeSetManagementActiveTab';
 const THREE_SET_MANAGEMENT_REWORK_CHECKLIST_KEY = 'threeSetManagementReworkChecklist';
+const THREE_SET_MANAGEMENT_PURCHASE_EXPANDED_STANDS_KEY = 'threeSetManagementPurchaseExpandedStands';
 const THREE_SET_MANAGEMENT_DEFAULT_TAB = 'assembly';
 const DASHBOARD_VISIBILITY_OPTIONS = [
     {
@@ -3789,6 +3790,75 @@ function getThreeSetManagementPurchaseRowsHtml(item) {
     `;
 }
 
+function normalizeThreeSetManagementPurchaseStandKey(standKey) {
+    return String(standKey || '').trim();
+}
+
+function getStoredThreeSetManagementPurchaseExpandedStands() {
+    try {
+        const rawValue = localStorage.getItem(THREE_SET_MANAGEMENT_PURCHASE_EXPANDED_STANDS_KEY);
+        const parsedValue = rawValue ? JSON.parse(rawValue) : [];
+
+        if (!Array.isArray(parsedValue)) {
+            return new Set();
+        }
+
+        return new Set(parsedValue.map(normalizeThreeSetManagementPurchaseStandKey).filter(Boolean));
+    } catch (error) {
+        console.error('getStoredThreeSetManagementPurchaseExpandedStands error:', error);
+        return new Set();
+    }
+}
+
+function saveThreeSetManagementPurchaseExpandedStands(expandedStands) {
+    try {
+        const values = Array.from(expandedStands || [])
+            .map(normalizeThreeSetManagementPurchaseStandKey)
+            .filter(Boolean)
+            .sort((a, b) => (Number(a) || 999999) - (Number(b) || 999999) || a.localeCompare(b));
+        localStorage.setItem(THREE_SET_MANAGEMENT_PURCHASE_EXPANDED_STANDS_KEY, JSON.stringify(values));
+    } catch (error) {
+        console.error('saveThreeSetManagementPurchaseExpandedStands error:', error);
+    }
+}
+
+function isThreeSetManagementPurchaseStandExpanded(standKey) {
+    const normalizedStandKey = normalizeThreeSetManagementPurchaseStandKey(standKey);
+
+    if (!normalizedStandKey) {
+        return false;
+    }
+
+    return getStoredThreeSetManagementPurchaseExpandedStands().has(normalizedStandKey);
+}
+
+function toggleThreeSetManagementPurchaseStand(standKey) {
+    let decodedStandKey = String(standKey || '');
+
+    try {
+        decodedStandKey = decodeURIComponent(decodedStandKey);
+    } catch (error) {
+        console.error('toggleThreeSetManagementPurchaseStand decode error:', error);
+    }
+
+    const normalizedStandKey = normalizeThreeSetManagementPurchaseStandKey(decodedStandKey);
+
+    if (!normalizedStandKey) {
+        return;
+    }
+
+    const expandedStands = getStoredThreeSetManagementPurchaseExpandedStands();
+
+    if (expandedStands.has(normalizedStandKey)) {
+        expandedStands.delete(normalizedStandKey);
+    } else {
+        expandedStands.add(normalizedStandKey);
+    }
+
+    saveThreeSetManagementPurchaseExpandedStands(expandedStands);
+    updateThreeSetManagementDashboard(roles);
+}
+
 function hasThreeSetManagementPurchaseRollAttention(item) {
     const attentionAlertKeys = new Set([
         'purchase-attention',
@@ -3800,6 +3870,27 @@ function hasThreeSetManagementPurchaseRollAttention(item) {
 
     return rows.some(row => Array.isArray(row.alerts)
         && row.alerts.some(alert => attentionAlertKeys.has(alert && alert.key)));
+}
+
+function getThreeSetManagementPurchaseRollSummary(item) {
+    const rows = item && Array.isArray(item.roleRows) ? item.roleRows : [];
+    const alertCounts = new Map();
+
+    rows.forEach(row => {
+        (Array.isArray(row.alerts) ? row.alerts : []).forEach(alert => {
+            const label = alert && alert.label;
+
+            if (!label || label === '戦力外') {
+                return;
+            }
+
+            alertCounts.set(label, (alertCounts.get(label) || 0) + 1);
+        });
+    });
+
+    return Array.from(alertCounts.entries())
+        .map(([label, count]) => `${label} ${count}件`)
+        .join(' / ');
 }
 
 function getThreeSetManagementItemHtml(item, activeTab) {
@@ -3849,6 +3940,12 @@ function getThreeSetManagementItemHtml(item, activeTab) {
 
     if (activeTab === 'purchase') {
         const hasRollAttention = hasThreeSetManagementPurchaseRollAttention(item);
+        const standKey = normalizeThreeSetManagementPurchaseStandKey(item.standKey);
+        const encodedStandKey = encodeURIComponent(standKey);
+        const isRollExpanded = isThreeSetManagementPurchaseStandExpanded(standKey);
+        const rollCount = item && Array.isArray(item.roleRows) ? item.roleRows.length : 0;
+        const rollSummary = getThreeSetManagementPurchaseRollSummary(item);
+        const rollDetailsId = `three-set-management-purchase-rolls-${encodedStandKey || 'unknown'}`;
         return `
             <article class="three-set-management-task three-set-management-purchase-task ${hasRollAttention ? 'has-roll-attention' : ''}">
                 <div class="three-set-management-task-head">
@@ -3873,12 +3970,21 @@ function getThreeSetManagementItemHtml(item, activeTab) {
                     <span>次にやること</span>
                     <strong>${escapeHtml(item.action || '-')}</strong>
                 </div>
-                <div class="three-set-management-purchase-section ${hasRollAttention ? 'has-attention' : ''}">
-                    <span class="three-set-management-purchase-section-title">
-                        <span>ロール状況</span>
-                        <span class="three-set-management-purchase-section-arrow" aria-hidden="true">▼</span>
-                    </span>
-                    ${getThreeSetManagementPurchaseRowsHtml(item)}
+                <div class="three-set-management-purchase-section ${hasRollAttention ? 'has-attention' : ''} ${isRollExpanded ? 'is-expanded' : 'is-collapsed'}">
+                    <button
+                        type="button"
+                        class="three-set-management-purchase-section-title"
+                        onclick="toggleThreeSetManagementPurchaseStand('${escapeHtml(encodedStandKey)}')"
+                        aria-expanded="${isRollExpanded ? 'true' : 'false'}"
+                        aria-controls="${escapeHtml(rollDetailsId)}"
+                    >
+                        <span>${isRollExpanded ? 'ロール状況を閉じる' : `ロール状況 ${rollCount}件`}</span>
+                        <span class="three-set-management-purchase-section-arrow" aria-hidden="true">${isRollExpanded ? '▲' : '▼'}</span>
+                    </button>
+                    ${!isRollExpanded && rollSummary ? `<div class="three-set-management-purchase-summary">${escapeHtml(rollSummary)}</div>` : ''}
+                    <div id="${escapeHtml(rollDetailsId)}" ${isRollExpanded ? '' : 'hidden'}>
+                        ${getThreeSetManagementPurchaseRowsHtml(item)}
+                    </div>
                 </div>
             </article>
         `;

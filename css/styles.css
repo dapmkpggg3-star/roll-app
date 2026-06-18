@@ -1373,10 +1373,28 @@ body {
 .three-set-management-purchase-section-title {
     display: inline-flex;
     align-items: center;
+    justify-content: space-between;
     gap: 5px;
-    width: fit-content;
-    padding: 4px 8px;
+    width: 100%;
+    min-height: 34px;
+    padding: 6px 8px;
+    border: 1px solid transparent;
     border-radius: 8px;
+    background: transparent;
+    color: #64748b;
+    font: inherit;
+    font-size: 0.76rem;
+    font-weight: 900;
+    line-height: 1.15;
+    text-align: left;
+    cursor: pointer;
+}
+
+.three-set-management-purchase-section-title:hover,
+.three-set-management-purchase-section-title:focus-visible {
+    outline: 3px solid rgba(245, 158, 11, 0.18);
+    outline-offset: 2px;
+    background: #fffbeb;
 }
 
 .three-set-management-purchase-section.has-attention .three-set-management-purchase-section-title {
@@ -1392,8 +1410,17 @@ body {
     transform: translateY(0);
 }
 
-.three-set-management-purchase-section.has-attention .three-set-management-purchase-section-arrow {
+.three-set-management-purchase-section.has-attention.is-collapsed .three-set-management-purchase-section-arrow {
     animation: purchaseSectionArrowBob 1.8s ease-in-out infinite;
+}
+
+.three-set-management-purchase-summary {
+    padding: 0 8px 2px;
+    color: #92400e;
+    font-size: 0.78rem;
+    font-weight: 900;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
 }
 
 .three-set-management-purchase-rolls {
