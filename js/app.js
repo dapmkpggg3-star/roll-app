@@ -5334,10 +5334,197 @@ function getWorkshopAssemblyCandidatesHtml(candidates) {
     `;
 }
 
+function getWorkshopBoardPrintPriorityForReworkSetup(item, now = new Date()) {
+    if (!item || !item.workshopTaskDueDate) {
+        return 'low';
+    }
+
+    const daysRemaining = getDaysUntilDate(item.workshopTaskDueDate, now);
+
+    if (daysRemaining === null) {
+        return 'low';
+    }
+
+    if (daysRemaining <= WORKSHOP_BOARD_PRIORITY_THRESHOLD_DAYS.high) {
+        return 'high';
+    }
+
+    if (daysRemaining <= WORKSHOP_BOARD_PRIORITY_THRESHOLD_DAYS.medium) {
+        return 'medium';
+    }
+
+    return 'low';
+}
+
+function getWorkshopBoardPrintItemHtml(item) {
+    if (!item) {
+        return '';
+    }
+
+    const priorityClass = `workshop-priority-${escapeHtml(item.priority)}`;
+    const memoText = hasDisplayMemo(item.memo) ? item.memo : '-';
+    const updatedText = item.updatedAt ? formatUpdatedAt(item.updatedAt) : '-';
+    const deadlineText = item.deadline ? formatDateForDisplay(item.deadline) : '-';
+
+    return `
+        <article class="workshop-board-print-card ${priorityClass}">
+            <div class="workshop-board-print-card-head">
+                <div class="workshop-board-print-card-head-main">
+                    <span class="workshop-board-print-stand">${escapeHtml(item.standLabel || '-')}</span>
+                    <span class="workshop-board-print-title">${escapeHtml(item.title || item.content || '-')}</span>
+                </div>
+                <span class="workshop-priority-badge workshop-priority-${escapeHtml(item.priority)}">${escapeHtml(item.priorityLabel || '低')}</span>
+            </div>
+            <div class="workshop-board-print-grid">
+                <div class="workshop-board-print-field">
+                    <span>優先度</span>
+                    <strong>${escapeHtml(item.priorityLabel || '-')}</strong>
+                </div>
+                <div class="workshop-board-print-field">
+                    <span>スタンド番号</span>
+                    <strong>${escapeHtml(item.standLabel || '-')}</strong>
+                </div>
+                <div class="workshop-board-print-field">
+                    <span>ステータス</span>
+                    <strong>${escapeHtml(item.statusLabel || '-')}</strong>
+                </div>
+                <div class="workshop-board-print-field workshop-board-print-field-wide">
+                    <span>内容</span>
+                    <strong>${escapeHtml(item.content || '-')}</strong>
+                </div>
+                <div class="workshop-board-print-field workshop-board-print-field-wide">
+                    <span>次にやること</span>
+                    <strong>${escapeHtml(item.action || '-')}</strong>
+                </div>
+                <div class="workshop-board-print-field workshop-board-print-field-wide">
+                    <span>メモ</span>
+                    <strong>${escapeHtml(memoText)}</strong>
+                </div>
+                <div class="workshop-board-print-field">
+                    <span>更新日</span>
+                    <strong>${escapeHtml(updatedText)}</strong>
+                </div>
+                <div class="workshop-board-print-field">
+                    <span>期限</span>
+                    <strong>${escapeHtml(deadlineText)}</strong>
+                </div>
+            </div>
+        </article>
+    `;
+}
+
+function getWorkshopBoardPrintHtml(allRoles) {
+    const now = new Date();
+    const reworkSetupItems = getReworkSetupPlanItems(allRoles).map(item => ({
+        standNumber: Number(item.standKey) || 999999,
+        priority: getWorkshopBoardPrintPriorityForReworkSetup(item, now),
+        priorityLabel: WORKSHOP_BOARD_PRIORITY_LABELS[getWorkshopBoardPrintPriorityForReworkSetup(item, now)] || '低',
+        standLabel: `#${item.standKey}`,
+        statusLabel: item.role && item.role.status ? item.role.status : '改削段取り予定',
+        title: '改削段取り予定',
+        content: item.roleName || `#${item.standKey}`,
+        action: getWorkshopReworkSetupAction(item),
+        memo: item.role ? item.role.memo : '',
+        updatedAt: item.role ? item.role.updatedAt : '',
+        deadline: item.workshopTaskDueDate
+    }));
+
+    const assemblyItems = getAssemblyCandidateItems(allRoles)
+        .map(candidate => {
+            const details = getWorkshopBoardCandidateDetails(candidate, now);
+            return {
+                standNumber: candidate.standNumber || 999999,
+                priority: details.priority,
+                priorityLabel: details.priorityLabel,
+                standLabel: candidate.standLabel || `#${candidate.standKey}`,
+                statusLabel: '組替候補',
+                title: '組替候補',
+                content: candidate.standLabel || `#${candidate.standKey}`,
+                action: '組替対象を確認する',
+                memo: details.referenceRole ? details.referenceRole.memo : '',
+                updatedAt: details.referenceRole ? details.referenceRole.updatedAt : '',
+                deadline: details.estimatedReplacementDate
+            };
+        });
+
+    const itemsByPriority = {
+        high: [],
+        medium: [],
+        low: []
+    };
+
+    [...reworkSetupItems, ...assemblyItems].forEach(item => {
+        const priority = item.priority === 'high' || item.priority === 'medium' ? item.priority : 'low';
+        itemsByPriority[priority].push(item);
+    });
+
+    Object.values(itemsByPriority).forEach(items => {
+        items.sort((a, b) => {
+            if ((a.standNumber || 999999) !== (b.standNumber || 999999)) {
+                return (a.standNumber || 999999) - (b.standNumber || 999999);
+            }
+
+            return String(a.content || a.title || '').localeCompare(String(b.content || b.title || ''), 'ja');
+        });
+    });
+
+    const groups = ['high', 'medium', 'low'].map(priority => {
+        const items = itemsByPriority[priority];
+
+        if (items.length === 0) {
+            return '';
+        }
+
+        return `
+            <section class="workshop-board-print-group workshop-board-print-${priority}">
+                <div class="workshop-board-print-group-header">
+                    <span>${escapeHtml(TASK_PRIORITY_LABELS[priority] || priority)}</span>
+                    <span>${escapeHtml(items.length)}件</span>
+                </div>
+                <div class="workshop-board-print-group-list">
+                    ${items.map(getWorkshopBoardPrintItemHtml).join('')}
+                </div>
+            </section>
+        `;
+    }).join('');
+
+    return `
+        <div class="workshop-board-print-header">
+            <div>
+                <h3>工作課ボード</h3>
+                <p id="workshop-board-print-datetime">印刷日時：-</p>
+            </div>
+        </div>
+        ${groups || '<div class="workshop-board-print-empty">工作課ボードの対象はありません</div>'}
+    `;
+}
+
+function setWorkshopBoardPrintTimestamp() {
+    const target = document.getElementById('workshop-board-print-datetime');
+
+    if (!target) {
+        return;
+    }
+
+    target.textContent = `印刷日時：${new Date().toLocaleString('ja-JP', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit'
+    })}`;
+}
+
+function printWorkshopBoard() {
+    setWorkshopBoardPrintTimestamp();
+    window.print();
+}
+
 function updateWorkshopBoard(allRoles) {
     const board = document.getElementById('workshop-board');
     const countEl = document.getElementById('workshop-board-count');
     const listEl = document.getElementById('workshop-board-list');
+    const printEl = document.getElementById('workshop-board-print');
 
     if (!board || !countEl || !listEl) {
         return;
@@ -5361,6 +5548,9 @@ function updateWorkshopBoard(allRoles) {
 
     if (totalCount === 0) {
         listEl.innerHTML = '<div class="workshop-board-empty">改削段取り予定・組替候補はありません</div>';
+        if (printEl) {
+            printEl.innerHTML = getWorkshopBoardPrintHtml(allRoles);
+        }
         return;
     }
 
@@ -5368,6 +5558,10 @@ function updateWorkshopBoard(allRoles) {
         getWorkshopReworkSetupHtml(reworkSetupItems),
         getWorkshopAssemblyCandidatesHtml(candidates)
     ].join('');
+
+    if (printEl) {
+        printEl.innerHTML = getWorkshopBoardPrintHtml(allRoles);
+    }
 }
 
 function setWorkshopBoardOpen(isOpen) {
@@ -5390,6 +5584,8 @@ function toggleWorkshopBoard() {
 function closeWorkshopBoard() {
     setWorkshopBoardOpen(false);
 }
+
+window.addEventListener('beforeprint', setWorkshopBoardPrintTimestamp);
 
 function getTodayTaskWarning(task, allRoles = []) {
     if (!task) {
