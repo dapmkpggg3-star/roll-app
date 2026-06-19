@@ -3313,11 +3313,13 @@ body.workshop-board-mode .table-container {
 @media print {
     @page {
         size: A4 portrait;
-        margin: 12mm;
+        margin: 8mm;
     }
 
     html,
     body {
+        margin: 0 !important;
+        padding: 0 !important;
         background: #ffffff !important;
         color: #000000 !important;
     }
@@ -3338,6 +3340,8 @@ body.workshop-board-mode .table-container {
     #workshop-board-print {
         display: grid !important;
         gap: 10px;
+        margin: 0 !important;
+        padding: 0 !important;
     }
 
     #workshop-board-print,
@@ -3350,7 +3354,8 @@ body.workshop-board-mode .table-container {
         align-items: flex-end;
         justify-content: space-between;
         gap: 12px;
-        padding-bottom: 8px;
+        margin: 0;
+        padding: 0 0 6px;
         border-bottom: 2px solid #000000;
     }
 
@@ -3362,7 +3367,7 @@ body.workshop-board-mode .table-container {
     }
 
     .workshop-board-print-header p {
-        margin: 4px 0 0;
+        margin: 2px 0 0;
         color: #000000;
         font-size: 9pt;
         font-weight: 700;
@@ -3371,6 +3376,7 @@ body.workshop-board-mode .table-container {
     .workshop-board-print-group {
         display: grid !important;
         gap: 8px;
+        margin: 0;
         break-inside: avoid;
         page-break-inside: avoid;
     }
@@ -3380,7 +3386,8 @@ body.workshop-board-mode .table-container {
         align-items: center;
         justify-content: space-between;
         gap: 8px;
-        padding: 4px 0 6px;
+        margin: 0;
+        padding: 2px 0 4px;
         border-bottom: 1px solid #000000;
         color: #000000;
         font-size: 11pt;
@@ -3390,6 +3397,7 @@ body.workshop-board-mode .table-container {
     .workshop-board-print-group-list {
         display: grid !important;
         gap: 8px;
+        margin: 0;
     }
 
     .workshop-board-print-card {
