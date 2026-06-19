@@ -3326,24 +3326,12 @@ body.workshop-board-mode .table-container {
         visibility: hidden !important;
     }
 
-    #workshop-board,
-    #workshop-board * {
+    #workshop-board-print,
+    #workshop-board-print * {
         visibility: visible !important;
     }
 
-    #workshop-board {
-        display: block !important;
-        margin: 0 !important;
-        padding: 0 !important;
-        border: none !important;
-        box-shadow: none !important;
-        background: #ffffff !important;
-        color: #000000 !important;
-    }
-
-    .workshop-board-header,
-    .workshop-board-actions,
-    .workshop-board-list {
+    body > *:not(#workshop-board-print) {
         display: none !important;
     }
 

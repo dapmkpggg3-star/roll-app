@@ -5499,7 +5499,15 @@ function getWorkshopBoardPrintHtml(allRoles) {
     `;
 }
 
-function setWorkshopBoardPrintTimestamp() {
+function updateWorkshopBoardPrint(allRoles = roles) {
+    const printEl = document.getElementById('workshop-board-print');
+
+    if (!printEl) {
+        return;
+    }
+
+    printEl.innerHTML = getWorkshopBoardPrintHtml(allRoles);
+
     const target = document.getElementById('workshop-board-print-datetime');
 
     if (!target) {
@@ -5516,7 +5524,7 @@ function setWorkshopBoardPrintTimestamp() {
 }
 
 function printWorkshopBoard() {
-    setWorkshopBoardPrintTimestamp();
+    updateWorkshopBoardPrint(roles);
     window.print();
 }
 
@@ -5524,7 +5532,6 @@ function updateWorkshopBoard(allRoles) {
     const board = document.getElementById('workshop-board');
     const countEl = document.getElementById('workshop-board-count');
     const listEl = document.getElementById('workshop-board-list');
-    const printEl = document.getElementById('workshop-board-print');
 
     if (!board || !countEl || !listEl) {
         return;
@@ -5548,9 +5555,7 @@ function updateWorkshopBoard(allRoles) {
 
     if (totalCount === 0) {
         listEl.innerHTML = '<div class="workshop-board-empty">改削段取り予定・組替候補はありません</div>';
-        if (printEl) {
-            printEl.innerHTML = getWorkshopBoardPrintHtml(allRoles);
-        }
+        updateWorkshopBoardPrint(allRoles);
         return;
     }
 
@@ -5559,9 +5564,7 @@ function updateWorkshopBoard(allRoles) {
         getWorkshopAssemblyCandidatesHtml(candidates)
     ].join('');
 
-    if (printEl) {
-        printEl.innerHTML = getWorkshopBoardPrintHtml(allRoles);
-    }
+    updateWorkshopBoardPrint(allRoles);
 }
 
 function setWorkshopBoardOpen(isOpen) {
@@ -5584,8 +5587,6 @@ function toggleWorkshopBoard() {
 function closeWorkshopBoard() {
     setWorkshopBoardOpen(false);
 }
-
-window.addEventListener('beforeprint', setWorkshopBoardPrintTimestamp);
 
 function getTodayTaskWarning(task, allRoles = []) {
     if (!task) {
