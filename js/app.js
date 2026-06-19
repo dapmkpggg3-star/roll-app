@@ -379,6 +379,8 @@ const COATING_STATUS_OPTIONS = {
 };
 const UNCOATED_STATUS = 'uncoated';
 const REWORKING_CONFIRM_THRESHOLD_DAYS = 25;
+const PICKUP_ADJUSTED_STEP_KEY = 'pickupAdjustedAt';
+const TEMP_INBOUND_PLAN_DAYS = 25;
 const TASK_PRIORITY_LABELS = {
     high: '高優先',
     medium: '中優先',
@@ -1097,11 +1099,31 @@ function normalizeWorkProgress(role) {
         progress[step.key] = normalizeWorkProgressStepState(source[step.key]);
     });
 
+    progress.dispatchDate = normalizeDateInputValue(source.dispatchDate || (role && role.dispatchDate));
+    progress.arrivalDate = normalizeDateInputValue(source.arrivalDate);
+    progress.pickupAdjustedBy = source.pickupAdjustedBy || progress[PICKUP_ADJUSTED_STEP_KEY].updatedBy || '';
+
+    if (progress.pickupAdjustedBy && !progress[PICKUP_ADJUSTED_STEP_KEY].updatedBy) {
+        progress[PICKUP_ADJUSTED_STEP_KEY].updatedBy = progress.pickupAdjustedBy;
+    }
+
+    if (!progress.dispatchDate) {
+        progress[PICKUP_ADJUSTED_STEP_KEY] = {
+            done: false,
+            updatedAt: '',
+            updatedBy: ''
+        };
+        progress.pickupAdjustedBy = '';
+    }
+
     return progress;
 }
 
 function isWorkProgressStepDone(progress, stepKey) {
     const state = progress && progress[stepKey];
+    if (stepKey === PICKUP_ADJUSTED_STEP_KEY && !normalizeDateInputValue(progress && progress.dispatchDate)) {
+        return false;
+    }
     return Boolean(state && typeof state === 'object' ? state.done : state);
 }
 
@@ -1117,7 +1139,81 @@ function getWorkProgressStepUpdatedAt(progress, stepKey) {
 
 function getWorkProgressStepUpdatedBy(progress, stepKey) {
     const state = progress && progress[stepKey];
+    if (stepKey === PICKUP_ADJUSTED_STEP_KEY && progress && progress.pickupAdjustedBy) {
+        return progress.pickupAdjustedBy;
+    }
     return state && typeof state === 'object' ? state.updatedBy || '' : '';
+}
+
+function getReworkPickupDateSummaryHtml(progress) {
+    const dispatchDate = normalizeDateInputValue(progress && progress.dispatchDate);
+    const arrivalDate = normalizeDateInputValue(progress && progress.arrivalDate);
+    const temporaryInboundPlanDate = dispatchDate && !arrivalDate
+        ? getTemporaryInboundPlanDate(dispatchDate)
+        : '';
+
+    if (!dispatchDate) {
+        return '<span class="rework-pickup-help is-required">搬出日を入力してください</span>';
+    }
+
+    return `
+        <span class="rework-pickup-date-line">搬出日：${escapeHtml(formatDateForDisplay(dispatchDate))}</span>
+        <span class="rework-pickup-date-line">搬入日：${escapeHtml(arrivalDate ? formatDateForDisplay(arrivalDate) : '未定')}</span>
+        ${temporaryInboundPlanDate ? `
+            <span class="rework-pickup-date-line">仮搬入予定：${escapeHtml(formatDateForDisplay(temporaryInboundPlanDate))}</span>
+            <span class="rework-pickup-help">目安：搬出日から20〜30日</span>
+        ` : ''}
+    `;
+}
+
+function getReworkPickupChecklistItemHtml(roleKey, step, index, progress, options = {}) {
+    const isDone = isWorkProgressStepDone(progress, step.key);
+    const isEnabled = options.isEnabled === true;
+    const completedAt = getWorkProgressStepUpdatedAt(progress, step.key);
+    const completedBy = getWorkProgressStepUpdatedBy(progress, step.key);
+    const dispatchDate = normalizeDateInputValue(progress.dispatchDate);
+    const arrivalDate = normalizeDateInputValue(progress.arrivalDate);
+    const containerClass = options.containerClass || 'rework-pickup-fields';
+    const itemClass = options.itemClass || 'progress-step-btn';
+    const encodedRoleKey = encodeURIComponent(String(roleKey || ''));
+
+    return `
+        <div class="${escapeHtml(itemClass)} rework-pickup-step ${isDone ? 'is-done' : ''} ${isEnabled ? '' : 'is-disabled'}">
+            <span class="progress-step-index">${escapeHtml(String(index + 1))}</span>
+            <span class="progress-step-label">${escapeHtml(step.label)}</span>
+            ${isDone ? `
+                <span class="progress-step-date">完了：${escapeHtml(formatProgressTimestamp(completedAt))}</span>
+                <span class="progress-step-date">更新者：${escapeHtml(completedBy || '未設定')}</span>
+            ` : ''}
+            <div class="${escapeHtml(containerClass)}" data-role-key="${escapeHtml(encodedRoleKey)}">
+                <label class="rework-pickup-date-field">
+                    <span>搬出日 <strong>必須</strong></span>
+                    <input
+                        type="date"
+                        class="rework-pickup-dispatch-date"
+                        value="${escapeHtml(dispatchDate)}"
+                        onchange="saveReworkPickupDates('${escapeHtml(encodedRoleKey)}', this.closest('.${escapeHtml(containerClass)}'))"
+                        oninput="saveReworkPickupDates('${escapeHtml(encodedRoleKey)}', this.closest('.${escapeHtml(containerClass)}'))"
+                        ${isEnabled ? '' : 'disabled'}
+                    >
+                </label>
+                <label class="rework-pickup-date-field">
+                    <span>搬入日 <small>任意</small></span>
+                    <input
+                        type="date"
+                        class="rework-pickup-arrival-date"
+                        value="${escapeHtml(arrivalDate)}"
+                        onchange="saveReworkPickupDates('${escapeHtml(encodedRoleKey)}', this.closest('.${escapeHtml(containerClass)}'))"
+                        oninput="saveReworkPickupDates('${escapeHtml(encodedRoleKey)}', this.closest('.${escapeHtml(containerClass)}'))"
+                        ${isEnabled ? '' : 'disabled'}
+                    >
+                </label>
+                <div class="rework-pickup-date-summary">
+                    ${getReworkPickupDateSummaryHtml(progress)}
+                </div>
+            </div>
+        </div>
+    `;
 }
 
 function normalizeRoleHistory(role) {
@@ -2250,6 +2346,24 @@ function getInboundPlanDate(dispatchDate) {
     return addDaysToDateString(dispatchDate, REWORKING_CONFIRM_THRESHOLD_DAYS);
 }
 
+function getTemporaryInboundPlanDate(dispatchDate) {
+    return addDaysToDateString(dispatchDate, TEMP_INBOUND_PLAN_DAYS);
+}
+
+function getRoleWorkProgress(role) {
+    return normalizeWorkProgress(role);
+}
+
+function getRoleDispatchDate(role) {
+    const progress = getRoleWorkProgress(role);
+    return progress.dispatchDate || normalizeDateInputValue(role && role.dispatchDate);
+}
+
+function getRoleArrivalDate(role) {
+    const progress = getRoleWorkProgress(role);
+    return progress.arrivalDate || '';
+}
+
 function addMonthsToDateString(dateValue, months) {
     const normalized = normalizeDateInputValue(dateValue);
     const monthCount = Number(months);
@@ -2410,19 +2524,23 @@ function addRoleHistoryEntry(role, type, label, beforeValue, afterValue, at = ne
 
 function loadLocalRoles() {
     roles = JSON.parse(localStorage.getItem('roles')) || [];
-    roles = roles.map(role => ({
-        ...role,
-        updatedAt: role.updatedAt || new Date().toISOString(),
-        memo: role.memo || '',
-        status: normalizeRoleStatusValue(role.status),
-        coatingStatus: normalizeCoatingStatusValue(role.coatingStatus, role.status),
-        useStartDate: normalizeUseStartDate(role.useStartDate),
-        dispatchDate: normalizeDateInputValue(role.dispatchDate),
-        currentDiameter: normalizeCurrentDiameter(role.currentDiameter),
-        workProgress: normalizeWorkProgress(role),
-        history: normalizeRoleHistory(role),
-        requestSent: role.requestSent === true || isWorkProgressStepDone(normalizeWorkProgress(role), 'vendorSentAt')
-    }));
+    roles = roles.map(role => {
+        const workProgress = normalizeWorkProgress(role);
+
+        return {
+            ...role,
+            updatedAt: role.updatedAt || new Date().toISOString(),
+            memo: role.memo || '',
+            status: normalizeRoleStatusValue(role.status),
+            coatingStatus: normalizeCoatingStatusValue(role.coatingStatus, role.status),
+            useStartDate: normalizeUseStartDate(role.useStartDate),
+            dispatchDate: workProgress.dispatchDate || normalizeDateInputValue(role.dispatchDate),
+            currentDiameter: normalizeCurrentDiameter(role.currentDiameter),
+            workProgress,
+            history: normalizeRoleHistory(role),
+            requestSent: role.requestSent === true || isWorkProgressStepDone(workProgress, 'vendorSentAt')
+        };
+    });
     migrateLegacyThreeSetManagementReworkChecklistToRoles();
     fixOnlineDuplicates();
     const ids = roles.map(r => Number(r.id) || 0);
@@ -2539,15 +2657,24 @@ function getWorkProgressHtml(role) {
     }
 
     const progress = normalizeWorkProgress(role);
+    const roleKey = getThreeSetManagementReworkRoleKey(role);
     const completedCount = getWorkProgressCompletedCount(role);
     const stepsHtml = WORK_PROGRESS_STEPS.map((step, index) => {
         const completedAt = getWorkProgressStepUpdatedAt(progress, step.key);
         const completedBy = getWorkProgressStepUpdatedBy(progress, step.key);
         const isDone = isWorkProgressStepDone(progress, step.key);
-        const disabled = isDone || !isWorkProgressStepEnabled(role, index);
+        const isEnabled = isWorkProgressStepEnabled(role, index);
+        const disabled = isDone || !isEnabled;
         const title = isDone
             ? `${step.label}: ${formatProgressTimestamp(completedAt)}`
             : step.label;
+
+        if (step.key === PICKUP_ADJUSTED_STEP_KEY) {
+            return getReworkPickupChecklistItemHtml(roleKey, step, index, progress, {
+                isEnabled,
+                itemClass: 'progress-step-btn'
+            });
+        }
 
         return `
             <button
@@ -2730,7 +2857,8 @@ function getRollSymbol(roleName) {
 
 function getRoleInfoHtml(role, formattedDate) {
     const memo = getMemoPreview(role.memo);
-    const dispatchDate = normalizeDateInputValue(role.dispatchDate);
+    const dispatchDate = getRoleDispatchDate(role);
+    const arrivalDate = getRoleArrivalDate(role);
     const coatingDisplay = getCoatingStatusDisplay(role);
     const rows = [
         ['使用開始日', formatUseStartDate(role.useStartDate)],
@@ -2743,7 +2871,11 @@ function getRoleInfoHtml(role, formattedDate) {
 
     if (dispatchDate) {
         rows.push(['搬出日', formatDateForDisplay(dispatchDate)]);
-        rows.push(['搬入予定日', formatDateForDisplay(getInboundPlanDate(dispatchDate))]);
+        if (arrivalDate) {
+            rows.push(['搬入日', formatDateForDisplay(arrivalDate)]);
+        } else {
+            rows.push(['仮搬入予定', formatDateForDisplay(getTemporaryInboundPlanDate(dispatchDate))]);
+        }
     }
 
     if (hasDisplayMemo(role.memo)) {
@@ -3051,7 +3183,7 @@ function getThreeSetForecastReworkReturnDate(role, today = getTodayDateString())
         return '';
     }
 
-    const dispatchDate = normalizeDateInputValue(role.dispatchDate);
+    const dispatchDate = getRoleDispatchDate(role);
 
     if (role.status === REWORKING_STATUS) {
         if (dispatchDate) {
@@ -3929,7 +4061,8 @@ function getThreeSetManagementReworkChecklistHtml(item) {
     }
 
     const entry = normalizeThreeSetManagementReworkChecklistEntry(item.checklist);
-    const roleKey = encodeURIComponent(item.roleKey || item.title || '');
+    const roleKey = item.roleKey || item.title || '';
+    const encodedRoleKey = encodeURIComponent(roleKey);
     const completedCount = getThreeSetManagementReworkChecklistCompletedCount(entry);
 
     return `
@@ -3942,12 +4075,22 @@ function getThreeSetManagementReworkChecklistHtml(item) {
                 ${THREE_SET_MANAGEMENT_REWORK_CHECKLIST_STEPS.map((step, index) => {
                     const state = entry[step.key];
                     const isDone = Boolean(state && state.done);
-                    const isEnabled = isDone || isThreeSetManagementReworkChecklistStepEnabled(entry, index);
+                    const isEnabled = step.key === PICKUP_ADJUSTED_STEP_KEY
+                        ? isThreeSetManagementReworkChecklistStepEnabled(entry, index)
+                        : isDone || isThreeSetManagementReworkChecklistStepEnabled(entry, index);
+
+                    if (step.key === PICKUP_ADJUSTED_STEP_KEY) {
+                        return getReworkPickupChecklistItemHtml(roleKey, step, index, entry, {
+                            isEnabled,
+                            itemClass: 'three-set-management-check-step'
+                        });
+                    }
+
                     return `
                         <button
                             type="button"
                             class="three-set-management-check-step ${isDone ? 'is-done' : ''}"
-                            onclick="toggleThreeSetManagementReworkChecklistStep('${roleKey}', '${escapeHtml(step.key)}')"
+                            onclick="toggleThreeSetManagementReworkChecklistStep('${encodedRoleKey}', '${escapeHtml(step.key)}')"
                             ${isEnabled ? '' : 'disabled'}
                             aria-pressed="${isDone ? 'true' : 'false'}"
                         >
@@ -4324,6 +4467,9 @@ function toggleThreeSetManagementReworkChecklistStep(encodedRoleKey, stepKey) {
                 updatedBy: ''
             };
         });
+        if (stepIndex <= THREE_SET_MANAGEMENT_REWORK_CHECKLIST_STEPS.findIndex(item => item.key === PICKUP_ADJUSTED_STEP_KEY)) {
+            entry.pickupAdjustedBy = '';
+        }
     } else {
         if (!isThreeSetManagementReworkChecklistStepEnabled(entry, stepIndex)) {
             alert('前工程が完了していないため、この工程は完了できません');
@@ -4348,6 +4494,62 @@ function toggleThreeSetManagementReworkChecklistStep(encodedRoleKey, stepKey) {
     role.workProgress = entry;
     role.requestSent = isWorkProgressStepDone(role.workProgress, 'vendorSentAt');
     role.updatedAt = new Date().toISOString();
+    saveLocalRoles();
+    renderRoles();
+    syncRoles();
+}
+
+function saveReworkPickupDates(encodedRoleKey, container) {
+    const roleKey = decodeURIComponent(String(encodedRoleKey || ''));
+    const role = getThreeSetManagementReworkRoleByKey(roleKey);
+    const stepIndex = THREE_SET_MANAGEMENT_REWORK_CHECKLIST_STEPS.findIndex(step => step.key === PICKUP_ADJUSTED_STEP_KEY);
+
+    if (!role || !container || stepIndex < 0) {
+        return;
+    }
+
+    role.workProgress = normalizeWorkProgress(role);
+
+    if (!isWorkProgressStepEnabled(role, stepIndex)) {
+        renderRoles();
+        return;
+    }
+
+    const dispatchInput = container.querySelector('.rework-pickup-dispatch-date');
+    const arrivalInput = container.querySelector('.rework-pickup-arrival-date');
+    const dispatchDate = normalizeDateInputValue(dispatchInput ? dispatchInput.value : '');
+    const arrivalDate = normalizeDateInputValue(arrivalInput ? arrivalInput.value : '');
+    const completedAt = new Date().toISOString();
+    const operator = dispatchDate ? getSelectedOperator() : null;
+
+    if (dispatchDate && !operator) {
+        focusOperatorSelect();
+        alert('担当者を選択してください');
+        renderRoles();
+        return;
+    }
+
+    role.workProgress.dispatchDate = dispatchDate;
+    role.workProgress.arrivalDate = arrivalDate;
+    role.dispatchDate = dispatchDate;
+
+    if (dispatchDate) {
+        role.workProgress[PICKUP_ADJUSTED_STEP_KEY] = {
+            done: true,
+            updatedAt: completedAt,
+            updatedBy: operator.name
+        };
+        role.workProgress.pickupAdjustedBy = operator.name;
+    } else {
+        role.workProgress[PICKUP_ADJUSTED_STEP_KEY] = {
+            done: false,
+            updatedAt: '',
+            updatedBy: ''
+        };
+        role.workProgress.pickupAdjustedBy = '';
+    }
+
+    role.updatedAt = completedAt;
     saveLocalRoles();
     renderRoles();
     syncRoles();
@@ -4836,7 +5038,7 @@ function getTodayTaskItems(allRoles) {
         }
 
         if (role.status === REWORKING_STATUS) {
-            const dispatchDate = normalizeDateInputValue(role.dispatchDate);
+            const dispatchDate = getRoleDispatchDate(role);
             const inboundPlanDate = getInboundPlanDate(dispatchDate);
             const isInboundPlanOverdue = Boolean(inboundPlanDate) && getTodayDateString() > inboundPlanDate;
 
@@ -5186,7 +5388,7 @@ function getTodayTaskWarning(task, allRoles = []) {
 
     if (String(task.id || '').startsWith('rework-ready-')) {
         const role = allRoles.find(item => String(item.id) === String(task.id).replace('rework-ready-', ''));
-        return role && normalizeDateInputValue(role.dispatchDate) ? '' : '⚠ 搬出日未設定';
+        return role && getRoleDispatchDate(role) ? '' : '⚠ 搬出日未設定';
     }
 
     if (String(task.id || '').startsWith('assembly-')) {
@@ -5723,7 +5925,7 @@ function addRole() {
         alert('このスタンド番号は既に登録されています');
         return;
     }
-    const newRole = { id: nextId++, name: roleName, status: roleStatus, coatingStatus: roleCoatingStatus, memo: roleMemo, currentDiameter: roleCurrentDiameter, dispatchDate: roleDispatchDate, useStartDate: '', updatedAt: new Date().toISOString(), workProgress: normalizeWorkProgress({}), history: [] };
+    const newRole = { id: nextId++, name: roleName, status: roleStatus, coatingStatus: roleCoatingStatus, memo: roleMemo, currentDiameter: roleCurrentDiameter, dispatchDate: roleDispatchDate, useStartDate: '', updatedAt: new Date().toISOString(), workProgress: normalizeWorkProgress({ dispatchDate: roleDispatchDate }), history: [] };
     addRoleHistoryEntry(newRole, 'create', '新規追加', '-', roleStatus, newRole.updatedAt);
     setUseStartDateIfNeeded(newRole, newRole.updatedAt);
     
@@ -5776,7 +5978,7 @@ function editRole(id) {
     document.getElementById('role-current-diameter').value = normalizeCurrentDiameter(role.currentDiameter);
     clearDiameterChangeReason();
     document.getElementById('role-dispatch-date').value = isDispatchDateAllowedStatus(role.status)
-        ? normalizeDateInputValue(role.dispatchDate)
+        ? getRoleDispatchDate(role)
         : '';
     updateInboundPlanPreview();
     document.getElementById('role-memo').value = role.memo || '';
@@ -5820,7 +6022,7 @@ function updateRole() {
     const beforeCoatingStatus = normalizeCoatingStatusValue(role.coatingStatus, role.status);
     const beforeMemo = role.memo || '';
     const beforeCurrentDiameter = normalizeCurrentDiameter(role.currentDiameter);
-    const beforeDispatchDate = normalizeDateInputValue(role.dispatchDate);
+    const beforeDispatchDate = getRoleDispatchDate(role);
     
     if (roleName !== role.name && roles.some(r => r.id !== editingId && r.name === roleName)) {
         alert('このスタンド番号は既に登録されています');
@@ -5846,7 +6048,13 @@ function updateRole() {
     role.dispatchDate = roleDispatchDate;
     role.useStartDate = normalizeUseStartDate(role.useStartDate);
     role.updatedAt = new Date().toISOString();
-    role.workProgress = normalizeWorkProgress(role);
+    role.workProgress = normalizeWorkProgress({
+        ...role,
+        workProgress: {
+            ...(role.workProgress || {}),
+            dispatchDate: roleDispatchDate
+        }
+    });
     if (beforeName !== roleName) {
         role.history = normalizeRoleHistory(role).map(entry => ({
             ...entry,
@@ -6001,6 +6209,11 @@ function completeWorkProgressStep(roleId, stepKey, options = {}) {
         return false;
     }
 
+    if (step.key === PICKUP_ADJUSTED_STEP_KEY && !role.workProgress.dispatchDate) {
+        alert('搬出日を入力してください');
+        return false;
+    }
+
     if (!options.skipConfirm && !confirm(`${step.label}を完了にしますか？`)) {
         return false;
     }
@@ -6013,6 +6226,9 @@ function completeWorkProgressStep(roleId, stepKey, options = {}) {
         updatedAt: completedAt,
         updatedBy: operator ? operator.name : ''
     };
+    if (stepKey === PICKUP_ADJUSTED_STEP_KEY) {
+        role.workProgress.pickupAdjustedBy = operator ? operator.name : '';
+    }
     role.requestSent = isWorkProgressStepDone(role.workProgress, 'vendorSentAt');
     role.updatedAt = completedAt;
     addRoleHistoryEntry(role, 'workProgress', '作業依頼進捗変更', beforeValue, `${step.label}: ${formatUpdatedAt(completedAt)}`, completedAt);

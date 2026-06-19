@@ -1559,6 +1559,64 @@ body {
     font-weight: 800;
 }
 
+.rework-pickup-step {
+    cursor: default;
+}
+
+.rework-pickup-step.is-disabled {
+    opacity: 0.62;
+}
+
+.rework-pickup-fields {
+    display: grid;
+    gap: 8px;
+    width: 100%;
+    margin-top: 8px;
+}
+
+.rework-pickup-date-field {
+    display: grid;
+    gap: 4px;
+    color: inherit;
+    font-size: 0.82rem;
+    font-weight: 900;
+}
+
+.rework-pickup-date-field input {
+    width: 100%;
+    min-height: 36px;
+    padding: 6px 8px;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    background: #ffffff;
+    color: #0f172a;
+    font: inherit;
+}
+
+.rework-pickup-date-field input:disabled {
+    background: #f1f5f9;
+    color: #94a3b8;
+}
+
+.rework-pickup-date-field strong,
+.rework-pickup-help.is-required {
+    color: #b91c1c;
+}
+
+.rework-pickup-date-summary {
+    display: grid;
+    gap: 3px;
+    color: #334155;
+    font-size: 0.78rem;
+    font-weight: 800;
+    line-height: 1.35;
+}
+
+.rework-pickup-date-line,
+.rework-pickup-help {
+    overflow-wrap: anywhere;
+}
+
 @keyframes purchaseSectionArrowBob {
     0%,
     100% {
