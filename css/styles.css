@@ -255,6 +255,7 @@ body {
 }
 
 .search-bar input:focus,
+.search-target-select:focus,
 .status-filter-select:focus,
 .role-form input:focus {
     outline: none;
@@ -421,6 +422,32 @@ body {
     font-size: 1rem;
     font-weight: 900;
     cursor: pointer;
+}
+
+.search-target-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #334155;
+    font-weight: 800;
+    white-space: nowrap;
+}
+
+.search-target-select {
+    min-height: 48px;
+    padding: 10px 12px;
+    border: 2px solid #e0e0e0;
+    border-radius: 6px;
+    background: #ffffff;
+    color: #334155;
+    font-size: 1rem;
+    cursor: pointer;
+}
+
+.search-target-select:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.12);
 }
 
 .summary-heading:hover,
@@ -3988,6 +4015,8 @@ body.modal-open {
 
     .search-bar input,
     .search-bar button,
+    .search-target-wrap,
+    .search-target-select,
     .sort-select,
     .status-filter-select {
         width: 100%;

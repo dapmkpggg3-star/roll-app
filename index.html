@@ -222,6 +222,13 @@
                 </section>
                 <div class="search-bar">
                     <input type="search" id="role-search" placeholder="スタンド番号、ステータス、メモで検索..." aria-label="ロール検索" oninput="searchRoles(event)">
+                    <label class="search-target-wrap" for="search-target">
+                        <span>検索対象</span>
+                        <select id="search-target" class="search-target-select" aria-label="検索対象" onchange="changeSearchTarget(event)">
+                            <option value="all" selected>全体</option>
+                            <option value="memo">メモのみ</option>
+                        </select>
+                    </label>
                     <select id="status-filter" class="status-filter-select" aria-label="ステータス絞り込み" onchange="changeStatusFilter(event)">
                         <option value="all">すべて</option>
 <option value="オンライン">オンライン</option>
