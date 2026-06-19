@@ -11,7 +11,7 @@
     <link rel="manifest" href="manifest.json">
     <link rel="icon" type="image/png" sizes="192x192" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect fill='%23667eea' width='192' height='192'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' font-size='96' fill='white' font-family='Arial'>📋</text></svg>">
     <title>ロール管理アプリ</title>
-    <link rel="stylesheet" href="css/styles.css?v=20260614-dashboard-visibility">
+    <link rel="stylesheet" href="css/styles.css?v=20260619-coating-status">
 </head>
 <body>
     <div id="app-update-notice" class="app-update-notice" hidden>
@@ -274,6 +274,14 @@
                     <div class="status-preview-row" aria-label="現在のステータス色プレビュー">
                         <span id="role-status-preview" class="status-preview status-badge status-empty" aria-live="polite">現在のステータス：未選択</span>
                     </div>
+                    <div class="coating-status-field is-hidden">
+                        <label for="role-coating-status" class="coating-status-label">溶射状態</label>
+                        <select id="role-coating-status">
+                            <option value="">未設定</option>
+                            <option value="coated">溶射有り</option>
+                            <option value="uncoated">溶射無し</option>
+                        </select>
+                    </div>
                     <input type="number" id="role-current-diameter" placeholder="現在径 (例: 450.0)" step="0.1" min="0" style="flex: 1;">
                     <div class="diameter-change-reason-field">
                         <label for="diameter-change-reason" class="diameter-change-reason-label">径変更理由</label>
@@ -382,9 +390,9 @@
         <button type="button" id="pageScrollToggleBtn" class="page-scroll-btn" onclick="scrollPageByCurrentPosition()" aria-label="ページ下部へ移動">↓ 下へ</button>
     </div>
 
-    <script src="js/sync.js?v=20260608-normalize-use-start-date"></script>
+    <script src="js/sync.js?v=20260619-coating-status"></script>
 <script src="js/csv.js?v=20260607-summary-groups"></script>
-<script src="js/app.js?v=20260614-dashboard-visibility"></script>
+<script src="js/app.js?v=20260619-coating-status"></script>
 
         // ログイン状態チェック
 </body>

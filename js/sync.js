@@ -479,6 +479,21 @@ function normalizeCurrentDiameter(value) {
     return Number.isFinite(numericValue) ? numericValue : '';
 }
 
+function normalizeCoatingStatusForSync(value, status) {
+    if (typeof normalizeCoatingStatusValue === 'function') {
+        return normalizeCoatingStatusValue(value, status);
+    }
+
+    const normalizedStatus = String(status || '').trim();
+    const normalizedValue = String(value || '').trim();
+
+    if (normalizedStatus !== '新品予備保管') {
+        return '';
+    }
+
+    return ['coated', 'uncoated'].includes(normalizedValue) ? normalizedValue : '';
+}
+
 function setSyncMessage(message, isError = false) {
     const syncEl = document.getElementById('sync-message');
     if (syncEl) {
@@ -638,6 +653,7 @@ function normalizeRole(role) {
         updatedAt: role.updatedAt || new Date().toISOString(),
         memo: role.memo || '',
         status: ALLOWED_STATUSES.includes(role.status) ? role.status : '中古予備（バラシ前）',
+        coatingStatus: normalizeCoatingStatusForSync(role.coatingStatus, role.status),
         useStartDate: normalizeUseStartDateForSync(role.useStartDate),
         currentDiameter: normalizeCurrentDiameter(role.currentDiameter),
         workProgress: progress,
@@ -703,6 +719,9 @@ function mergeRemoteAndLocalRoles(remoteRoles, localRoles) {
             localRole.history = mergeRoleHistory(remoteRole.history, localRole.history);
             if (!localRole.useStartDate && remoteRole.useStartDate) {
                 localRole.useStartDate = remoteRole.useStartDate;
+            }
+            if (!Object.prototype.hasOwnProperty.call(role, 'coatingStatus') && remoteRole.coatingStatus) {
+                localRole.coatingStatus = remoteRole.coatingStatus;
             }
         } else if (seenKeys.has(key)) {
             duplicateKeys.push({ source: 'local', key, role: getRollDebugSnapshot(localRole) });
@@ -947,6 +966,7 @@ function getRoleVerificationSnapshot(role) {
         id: String(normalized.id ?? ''),
         name: String(normalized.name ?? ''),
         status: String(normalized.status ?? ''),
+        coatingStatus: String(normalized.coatingStatus ?? ''),
         memo: String(normalized.memo ?? ''),
         currentDiameter: normalized.currentDiameter === '' ? '' : Number(normalized.currentDiameter),
         useStartDate: String(normalized.useStartDate ?? ''),

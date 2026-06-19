@@ -1532,6 +1532,24 @@ body {
     color: #166534;
 }
 
+.three-set-management-purchase-alert.is-coating-required,
+.three-set-management-purchase-alert.is-coating-dispatch {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+.three-set-management-purchase-roll-coating {
+    display: block;
+    margin-top: 3px;
+    color: #166534;
+    font-size: 0.78rem;
+    font-weight: 900;
+}
+
+.three-set-management-purchase-roll-coating.is-warning {
+    color: #991b1b;
+}
+
 .three-set-management-purchase-empty {
     padding: 8px;
     border-radius: 8px;
@@ -3326,6 +3344,7 @@ body.workshop-board-mode .table-container {
 
 .form-input-zone .status-field,
 .form-input-zone .status-preview-row,
+.form-input-zone .coating-status-field,
 .form-input-zone .diameter-change-reason-field,
 .form-input-zone .dispatch-date-field {
     width: 100%;
@@ -3335,6 +3354,7 @@ body.workshop-board-mode .table-container {
 
 .form-input-zone .status-select,
 .form-input-zone #role-name,
+.form-input-zone #role-coating-status,
 .form-input-zone #role-current-diameter,
 .form-input-zone #diameter-change-reason,
 .form-input-zone #role-dispatch-date,
@@ -3354,6 +3374,21 @@ body.workshop-board-mode .table-container {
 .diameter-change-reason-field {
     display: none;
     gap: 8px;
+}
+
+.coating-status-field {
+    display: grid;
+    gap: 8px;
+}
+
+.coating-status-field.is-hidden {
+    display: none;
+}
+
+.coating-status-label {
+    color: #334155;
+    font-size: 0.92rem;
+    font-weight: 900;
 }
 
 .diameter-change-reason-label {
@@ -3651,6 +3686,26 @@ tbody tr:hover {
     background: #f8fafc;
     color: #334155;
     border-color: #cbd5e1;
+}
+
+.coating-status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    padding: 6px 10px;
+    border-radius: 8px;
+    border: 1px solid #bbf7d0;
+    background: #f0fdf4;
+    color: #166534;
+    font-size: 0.86rem;
+    font-weight: 900;
+}
+
+.coating-status-badge.is-warning {
+    border-color: #fecaca;
+    background: #fef2f2;
+    color: #991b1b;
 }
 
 .action-buttons {

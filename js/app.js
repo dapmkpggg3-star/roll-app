@@ -373,6 +373,11 @@ const NEW_READY_STATUS = '新品予備（組替可能）';
 const NEW_INSTALLED_STATUS = '新品予備（組込完了）';
 const NEW_STORAGE_STATUS = '新品予備保管';
 const ONLINE_STATUS = 'オンライン';
+const COATING_STATUS_OPTIONS = {
+    coated: '溶射有り',
+    uncoated: '溶射無し'
+};
+const UNCOATED_STATUS = 'uncoated';
 const REWORKING_CONFIRM_THRESHOLD_DAYS = 25;
 const TASK_PRIORITY_LABELS = {
     high: '高優先',
@@ -408,6 +413,42 @@ function normalizeRoleStatusValue(status) {
     }
 
     return ALLOWED_STATUSES.includes(normalizedStatus) ? normalizedStatus : '中古予備（バラシ前）';
+}
+
+function normalizeCoatingStatusValue(value, status = NEW_STORAGE_STATUS) {
+    const normalizedStatus = normalizeRoleStatusValue(status);
+    const normalizedValue = String(value || '').trim();
+
+    if (normalizedStatus !== NEW_STORAGE_STATUS) {
+        return '';
+    }
+
+    return Object.prototype.hasOwnProperty.call(COATING_STATUS_OPTIONS, normalizedValue)
+        ? normalizedValue
+        : '';
+}
+
+function getCoatingStatusLabel(value) {
+    return COATING_STATUS_OPTIONS[normalizeCoatingStatusValue(value)] || '未設定';
+}
+
+function getCoatingStatusDisplay(role) {
+    if (!role || normalizeRoleStatusValue(role.status) !== NEW_STORAGE_STATUS) {
+        return null;
+    }
+
+    const coatingStatus = normalizeCoatingStatusValue(role.coatingStatus, role.status);
+
+    if (!coatingStatus) {
+        return null;
+    }
+
+    return {
+        key: coatingStatus,
+        label: getCoatingStatusLabel(coatingStatus),
+        note: coatingStatus === UNCOATED_STATUS ? '溶射搬出必要' : '',
+        isWarning: coatingStatus === UNCOATED_STATUS
+    };
 }
 
 let roles = [];
@@ -959,6 +1000,24 @@ function setEditModeUi(role = null) {
     if (editingStatusBadge) editingStatusBadge.innerHTML = role ? getStatusBadge(role.status) : '';
     if (editingHelp) editingHelp.textContent = '内容を変更したら「入力内容を更新」を押してください。';
     if (diameterChangeReasonField) diameterChangeReasonField.style.display = isEditing ? 'grid' : 'none';
+}
+
+function updateCoatingStatusFieldState(status) {
+    const field = document.querySelector('.coating-status-field');
+    const select = document.getElementById('role-coating-status');
+    const isAllowed = normalizeRoleStatusValue(status) === NEW_STORAGE_STATUS;
+
+    if (!field || !select) {
+        return;
+    }
+
+    field.classList.toggle('is-hidden', !isAllowed);
+    field.setAttribute('aria-hidden', isAllowed ? 'false' : 'true');
+    select.disabled = !isAllowed;
+
+    if (!isAllowed) {
+        select.value = '';
+    }
 }
 
 function saveLocalRoles() {
@@ -2301,6 +2360,7 @@ function loadLocalRoles() {
         updatedAt: role.updatedAt || new Date().toISOString(),
         memo: role.memo || '',
         status: normalizeRoleStatusValue(role.status),
+        coatingStatus: normalizeCoatingStatusValue(role.coatingStatus, role.status),
         useStartDate: normalizeUseStartDate(role.useStartDate),
         dispatchDate: normalizeDateInputValue(role.dispatchDate),
         currentDiameter: normalizeCurrentDiameter(role.currentDiameter),
@@ -2540,6 +2600,7 @@ function updateStatusPreview(selectEl) {
     previewEl.classList.add(selectedStatus ? getStatusClass(selectedStatus) : 'status-empty');
     previewEl.textContent = `現在のステータス：${selectedStatus || '未選択'}`;
     updateDispatchDateFieldState(selectedStatus);
+    updateCoatingStatusFieldState(selectedStatus);
 }
 
 function updateDispatchDateFieldState(status) {
@@ -2609,10 +2670,15 @@ function getRollSymbol(roleName) {
 function getRoleInfoHtml(role, formattedDate) {
     const memo = getMemoPreview(role.memo);
     const dispatchDate = normalizeDateInputValue(role.dispatchDate);
+    const coatingDisplay = getCoatingStatusDisplay(role);
     const rows = [
         ['使用開始日', formatUseStartDate(role.useStartDate)],
         ['最終更新', formattedDate]
     ];
+
+    if (coatingDisplay) {
+        rows.push(['溶射状態', coatingDisplay.note ? `${coatingDisplay.label} / ${coatingDisplay.note}` : coatingDisplay.label]);
+    }
 
     if (dispatchDate) {
         rows.push(['搬出日', formatDateForDisplay(dispatchDate)]);
@@ -3535,6 +3601,10 @@ function getPurchaseRoleAlert(role, basisRole) {
 
     if (status === NEW_STORAGE_STATUS) {
         alerts.push({ key: 'new-storage', label: '新品予備保管あり' });
+        if (normalizeCoatingStatusValue(role && role.coatingStatus, status) === UNCOATED_STATUS) {
+            alerts.push({ key: 'coating-required', label: '溶射無しあり' });
+            alerts.push({ key: 'coating-dispatch', label: '溶射搬出必要' });
+        }
     }
 
     if (info) {
@@ -3560,9 +3630,12 @@ function getThreeSetManagementPurchaseRoleRows(standRoles, basisRole) {
         .sort(compareRolesByStandRole)
         .map(role => {
             const alerts = getPurchaseRoleAlert(role, basisRole);
+            const coatingDisplay = getCoatingStatusDisplay(role);
             return {
                 name: role.name || '-',
                 status: normalizeRoleStatusValue(role.status),
+                coatingLabel: coatingDisplay ? coatingDisplay.label : '',
+                coatingNote: coatingDisplay ? coatingDisplay.note : '',
                 currentDiameter: normalizeCurrentDiameter(role.currentDiameter),
                 diameterLabel: formatPurchaseDiameter(role.currentDiameter),
                 alerts,
@@ -3601,6 +3674,10 @@ function getThreeSetManagementPurchaseStandItems(allRoles = roles) {
         }
 
         const hasNewStorage = activeStandRoles.some(role => normalizeRoleStatusValue(role.status) === NEW_STORAGE_STATUS);
+        const hasUncoatedStorage = activeStandRoles.some(role =>
+            normalizeRoleStatusValue(role.status) === NEW_STORAGE_STATUS
+            && normalizeCoatingStatusValue(role.coatingStatus, role.status) === UNCOATED_STATUS
+        );
         const roleRows = getThreeSetManagementPurchaseRoleRows(activeStandRoles, basisPlan.role);
 
         items.push({
@@ -3623,7 +3700,9 @@ function getThreeSetManagementPurchaseStandItems(allRoles = roles) {
             meta: level.memo,
             basisRoleName: basisPlan.roleName || '',
             hasNewStorage,
-            storageLabel: hasNewStorage ? '新品予備保管あり' : '新品予備保管なし',
+            storageLabel: hasNewStorage
+                ? `新品予備保管あり${hasUncoatedStorage ? ' / 溶射無しあり' : ''}`
+                : '新品予備保管なし',
             roleRows
         });
     });
@@ -3777,7 +3856,10 @@ function getThreeSetManagementPurchaseRowsHtml(item) {
             ${rows.map(row => `
                 <div class="three-set-management-purchase-roll ${row.isAlert ? 'is-alert' : ''}">
                     <span class="three-set-management-purchase-roll-name">${escapeHtml(row.name || '-')}</span>
-                    <span class="three-set-management-purchase-roll-status">${escapeHtml(row.status || '-')}</span>
+                    <span class="three-set-management-purchase-roll-status">
+                        ${escapeHtml(row.status || '-')}
+                        ${row.coatingLabel ? `<span class="three-set-management-purchase-roll-coating ${row.coatingNote ? 'is-warning' : ''}">${escapeHtml(row.coatingNote ? `${row.coatingLabel} / ${row.coatingNote}` : row.coatingLabel)}</span>` : ''}
+                    </span>
                     <span class="three-set-management-purchase-roll-diameter">${escapeHtml(row.diameterLabel || '-')}</span>
                     <span class="three-set-management-purchase-roll-alerts">
                         ${row.alerts.map(alert => `
@@ -5429,6 +5511,7 @@ if (standNumber >= 2 && standNumber <= 5) {
         }
         const formattedDate = formatUpdatedAt(role.updatedAt);
         const currentDiameterText = formatCurrentDiameter(role.currentDiameter);
+        const coatingDisplay = getCoatingStatusDisplay(role);
         const workProgressState = getWorkProgressState(role);
         const memoMobileText = hasDisplayMemo(role.memo) ? getMemoPreview(role.memo) : '';
         if (workProgressState.isIncomplete) {
@@ -5456,6 +5539,12 @@ if (standNumber >= 2 && standNumber <= 5) {
 </td>
             <td class="status-cell">${getStatusBadge(role.status)}</td>
             <td class="memo-cell ${hasDisplayMemo(role.memo) ? '' : 'is-empty-memo'}">
+                ${coatingDisplay ? `
+                    <div class="coating-status-badge ${coatingDisplay.isWarning ? 'is-warning' : 'is-ready'}">
+                        <span>${escapeHtml(coatingDisplay.label)}</span>
+                        ${coatingDisplay.note ? `<strong>${escapeHtml(coatingDisplay.note)}</strong>` : ''}
+                    </div>
+                ` : ''}
                 <div class="role-info-grid">${getRoleInfoHtml(role, formattedDate)}</div>
                 <span class="memo-mobile-text">${escapeHtml(memoMobileText)}</span>
             </td>
@@ -5488,6 +5577,7 @@ function addRole() {
 
     const roleName = document.getElementById('role-name').value.trim();
     const roleStatus = document.getElementById('role-status').value;
+    const roleCoatingStatus = normalizeCoatingStatusValue(document.getElementById('role-coating-status').value, roleStatus);
     const roleCurrentDiameter = normalizeCurrentDiameter(document.getElementById('role-current-diameter').value);
     const roleDispatchDate = isDispatchDateAllowedStatus(roleStatus)
         ? normalizeDateInputValue(document.getElementById('role-dispatch-date').value)
@@ -5506,7 +5596,7 @@ function addRole() {
         alert('このスタンド番号は既に登録されています');
         return;
     }
-    const newRole = { id: nextId++, name: roleName, status: roleStatus, memo: roleMemo, currentDiameter: roleCurrentDiameter, dispatchDate: roleDispatchDate, useStartDate: '', updatedAt: new Date().toISOString(), workProgress: normalizeWorkProgress({}), history: [] };
+    const newRole = { id: nextId++, name: roleName, status: roleStatus, coatingStatus: roleCoatingStatus, memo: roleMemo, currentDiameter: roleCurrentDiameter, dispatchDate: roleDispatchDate, useStartDate: '', updatedAt: new Date().toISOString(), workProgress: normalizeWorkProgress({}), history: [] };
     addRoleHistoryEntry(newRole, 'create', '新規追加', '-', roleStatus, newRole.updatedAt);
     setUseStartDateIfNeeded(newRole, newRole.updatedAt);
     
@@ -5528,6 +5618,7 @@ function addRole() {
     document.getElementById('role-name').value = '';
     document.getElementById('role-status').value = '';
     updateStatusPreview(document.getElementById('role-status'));
+    document.getElementById('role-coating-status').value = '';
     document.getElementById('role-current-diameter').value = '';
     clearDiameterChangeReason();
     document.getElementById('role-dispatch-date').value = '';
@@ -5554,6 +5645,7 @@ function editRole(id) {
     document.getElementById('role-name').value = role.name;
     document.getElementById('role-status').value = role.status;
     updateStatusPreview(document.getElementById('role-status'));
+    document.getElementById('role-coating-status').value = normalizeCoatingStatusValue(role.coatingStatus, role.status);
     document.getElementById('role-current-diameter').value = normalizeCurrentDiameter(role.currentDiameter);
     clearDiameterChangeReason();
     document.getElementById('role-dispatch-date').value = isDispatchDateAllowedStatus(role.status)
@@ -5577,6 +5669,7 @@ function updateRole() {
     
     const roleName = document.getElementById('role-name').value.trim();
     const roleStatus = document.getElementById('role-status').value;
+    const roleCoatingStatus = normalizeCoatingStatusValue(document.getElementById('role-coating-status').value, roleStatus);
     const roleCurrentDiameter = normalizeCurrentDiameter(document.getElementById('role-current-diameter').value);
     const diameterChangeReason = getDiameterChangeReason();
     const roleDispatchDate = isDispatchDateAllowedStatus(roleStatus)
@@ -5597,6 +5690,7 @@ function updateRole() {
     if (!role) return;
     const beforeName = role.name;
     const beforeStatus = role.status || '';
+    const beforeCoatingStatus = normalizeCoatingStatusValue(role.coatingStatus, role.status);
     const beforeMemo = role.memo || '';
     const beforeCurrentDiameter = normalizeCurrentDiameter(role.currentDiameter);
     const beforeDispatchDate = normalizeDateInputValue(role.dispatchDate);
@@ -5619,6 +5713,7 @@ function updateRole() {
     
     role.name = roleName;
     role.status = roleStatus;
+    role.coatingStatus = roleCoatingStatus;
     role.memo = roleMemo;
     role.currentDiameter = roleCurrentDiameter;
     role.dispatchDate = roleDispatchDate;
@@ -5632,6 +5727,7 @@ function updateRole() {
         }));
     }
     addRoleHistoryEntry(role, 'status', 'ステータス変更', beforeStatus, roleStatus, role.updatedAt);
+    addRoleHistoryEntry(role, 'coatingStatus', '溶射状態変更', getCoatingStatusLabel(beforeCoatingStatus), getCoatingStatusLabel(roleCoatingStatus), role.updatedAt);
     setUseStartDateIfNeeded(role, role.updatedAt);
     addRoleHistoryEntry(role, 'memo', 'メモ変更', beforeMemo, roleMemo, role.updatedAt);
     addRoleHistoryEntry(role, 'diameter', '現在径変更', formatCurrentDiameter(beforeCurrentDiameter), formatCurrentDiameter(roleCurrentDiameter), role.updatedAt);
@@ -5689,6 +5785,7 @@ function cancelEdit() {
     document.getElementById('role-name').value = '';
     document.getElementById('role-status').value = '';
     updateStatusPreview(document.getElementById('role-status'));
+    document.getElementById('role-coating-status').value = '';
     document.getElementById('role-current-diameter').value = '';
     clearDiameterChangeReason();
     document.getElementById('role-dispatch-date').value = '';

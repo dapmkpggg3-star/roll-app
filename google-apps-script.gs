@@ -2,10 +2,11 @@ const SHEET_NAME = 'Roles';
 const STAND_MASTER_SHEET_NAME = 'StandMaster';
 const INPUT_SHEET_NAMES = ['入力シート', 'Input', '入力'];
 const SPREADSHEET_ID = '1X07qQa7u9YPLvErT0D48goT5wYmvcpgNjqzK3FhRFeA';
-const HEADER_VALUES = ['ID', 'スタンド番号', 'ステータス', 'メモ', '最終更新日', '作業依頼済み', '作業依頼進捗', '履歴', '現在径', '使用開始日'];
+const HEADER_VALUES = ['ID', 'スタンド番号', 'ステータス', 'メモ', '最終更新日', '作業依頼済み', '作業依頼進捗', '履歴', '現在径', '使用開始日', '溶射状態'];
 const STATUS_COLUMN_INDEX = 3;
 const CURRENT_DIAMETER_COLUMN_INDEX = 9;
 const USE_START_DATE_COLUMN_INDEX = 10;
+const COATING_STATUS_COLUMN_INDEX = 11;
 const ADD_ROLE_ACTION_NAME = 'addRoleFromInputArea';
 const HEADER_BACKGROUND = '#1f4e78';
 const HEADER_FONT_COLOR = '#ffffff';
@@ -526,7 +527,8 @@ function fetchRoles() {
       workProgress: workProgress,
       history: parseHistory(row[7]),
       currentDiameter: normalizeCurrentDiameterForSheet(row[8]),
-      useStartDate: normalizeUseStartDateForSheet(row[9])
+      useStartDate: normalizeUseStartDateForSheet(row[9]),
+      coatingStatus: normalizeCoatingStatusForSheet(row[10], row[2])
     };
   }).filter(row => row.name && String(row.name).trim() !== '');
   
@@ -1633,7 +1635,8 @@ function writeRoles(roles) {
         JSON.stringify(normalizeWorkProgressForSheet(role)),
         JSON.stringify(normalizeHistoryForSheet(role)),
         normalizeCurrentDiameterForSheet(role.currentDiameter),
-        normalizeUseStartDateForSheet(role.useStartDate)
+        normalizeUseStartDateForSheet(role.useStartDate),
+        normalizeCoatingStatusForSheet(role.coatingStatus, role.status)
       ];
     } catch (err) {
       Logger.log('writeRoles error at row ' + index + ': ' + err.toString());
@@ -1719,6 +1722,7 @@ function addRoleFromInputArea() {
     false,
     JSON.stringify(normalizeWorkProgressForSheet({})),
     JSON.stringify([]),
+    '',
     '',
     ''
   ];
@@ -1912,6 +1916,17 @@ function normalizeCurrentDiameterForSheet(value) {
   return isFinite(numericValue) ? numericValue : '';
 }
 
+function normalizeCoatingStatusForSheet(value, status) {
+  const normalizedStatus = String(status || '').trim();
+  const normalizedValue = String(value || '').trim();
+
+  if (normalizedStatus !== '新品予備保管') {
+    return '';
+  }
+
+  return normalizedValue === 'coated' || normalizedValue === 'uncoated' ? normalizedValue : '';
+}
+
 function normalizeUseStartDateForSheet(value) {
   if (value === undefined || value === null) {
     return '';
@@ -2072,6 +2087,7 @@ function applySheetFormatting(sheet, dataRowCount) {
   sheet.setColumnWidth(8, 80);
   sheet.setColumnWidth(CURRENT_DIAMETER_COLUMN_INDEX, 95);
   sheet.setColumnWidth(USE_START_DATE_COLUMN_INDEX, 115);
+  sheet.setColumnWidth(COATING_STATUS_COLUMN_INDEX, 110);
   sheet.hideColumns(1);
   sheet.hideColumns(7);
   sheet.hideColumns(8);
@@ -2084,6 +2100,9 @@ function applySheetFormatting(sheet, dataRowCount) {
     .setHorizontalAlignment('center')
     .setNumberFormat('yyyy/mm/dd');
 
+  sheet.getRange(2, COATING_STATUS_COLUMN_INDEX, maxRows - 1, 1)
+    .setHorizontalAlignment('center');
+
   sheet.getRange(1, 1, totalRows, columnCount).setVerticalAlignment('middle');
   if (dataRowCount > 0) {
     sheet.getRange(2, 1, dataRowCount, columnCount).setWrap(true);
@@ -2091,6 +2110,7 @@ function applySheetFormatting(sheet, dataRowCount) {
     sheet.getRange(2, 8, dataRowCount, 1).setWrap(false);
     sheet.getRange(2, CURRENT_DIAMETER_COLUMN_INDEX, dataRowCount, 1).setWrap(false);
     sheet.getRange(2, USE_START_DATE_COLUMN_INDEX, dataRowCount, 1).setWrap(false);
+    sheet.getRange(2, COATING_STATUS_COLUMN_INDEX, dataRowCount, 1).setWrap(false);
   }
 
   hideAddRoleButtons(sheet);
