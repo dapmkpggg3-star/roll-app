@@ -460,7 +460,6 @@ function getCoatingStatusDisplay(role) {
 let roles = [];
 let nextId = 1;
 let searchQuery = '';
-let searchTarget = 'all';
 let memoOnlyFilter = false;
 let statusFilter = 'all';
 let watchStandFilter = null;
@@ -2999,15 +2998,6 @@ function clearSearch() {
 function changeStatusFilter(event) {
     statusFilter = event.target.value || 'all';
     watchStandFilter = null;
-    renderRoles();
-}
-
-function normalizeSearchTarget(value) {
-    return String(value || '').trim() === 'memo' ? 'memo' : 'all';
-}
-
-function changeSearchTarget(event) {
-    searchTarget = normalizeSearchTarget(event && event.target ? event.target.value : 'all');
     renderRoles();
 }
 
@@ -5608,7 +5598,6 @@ function filterWatchStand(standKey) {
 function getFilteredRoles() {
     const normalizedQuery = String(searchQuery).trim().toLowerCase();
     const hasSearch = normalizedQuery.length > 0;
-    const normalizedSearchTarget = normalizeSearchTarget(searchTarget);
     return roles.filter(role => {
         if (!isStatusMatched(role)) {
             return false;
@@ -5626,7 +5615,7 @@ function getFilteredRoles() {
         if (!hasSearch) {
             return true;
         }
-        if (normalizedSearchTarget === 'memo') {
+        if (memoOnlyFilter) {
             return String(role.memo || '').toLowerCase().includes(normalizedQuery);
         }
         return [
