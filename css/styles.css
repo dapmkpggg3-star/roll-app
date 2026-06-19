@@ -450,6 +450,29 @@ body {
     box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.12);
 }
 
+.memo-only-filter {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 48px;
+    padding: 10px 12px;
+    border: 2px solid #e0e0e0;
+    border-radius: 6px;
+    background: #ffffff;
+    color: #334155;
+    font-size: 1rem;
+    font-weight: 800;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.memo-only-filter input {
+    width: 18px;
+    height: 18px;
+    margin: 0;
+    accent-color: #667eea;
+}
+
 .summary-heading:hover,
 .summary-heading:focus-visible {
     outline: 3px solid rgba(37, 99, 235, 0.18);
@@ -4017,6 +4040,7 @@ body.modal-open {
     .search-bar button,
     .search-target-wrap,
     .search-target-select,
+    .memo-only-filter,
     .sort-select,
     .status-filter-select {
         width: 100%;

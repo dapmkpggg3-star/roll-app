@@ -229,6 +229,10 @@
                             <option value="memo">メモのみ</option>
                         </select>
                     </label>
+                    <label class="memo-only-filter" for="memo-only-filter">
+                        <input type="checkbox" id="memo-only-filter" onchange="toggleMemoOnlyFilter(event)">
+                        <span>メモありのみ</span>
+                    </label>
                     <select id="status-filter" class="status-filter-select" aria-label="ステータス絞り込み" onchange="changeStatusFilter(event)">
                         <option value="all">すべて</option>
 <option value="オンライン">オンライン</option>

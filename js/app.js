@@ -461,6 +461,7 @@ let roles = [];
 let nextId = 1;
 let searchQuery = '';
 let searchTarget = 'all';
+let memoOnlyFilter = false;
 let statusFilter = 'all';
 let watchStandFilter = null;
 let sortOption = 'name';
@@ -3007,6 +3008,15 @@ function normalizeSearchTarget(value) {
 
 function changeSearchTarget(event) {
     searchTarget = normalizeSearchTarget(event && event.target ? event.target.value : 'all');
+    renderRoles();
+}
+
+function hasMemoText(role) {
+    return String(role && role.memo || '').trim() !== '';
+}
+
+function toggleMemoOnlyFilter(event) {
+    memoOnlyFilter = Boolean(event && event.target && event.target.checked);
     renderRoles();
 }
 
@@ -5606,8 +5616,11 @@ function getFilteredRoles() {
         if (!isWatchStandMatched(role)) {
             return false;
         }
+        if (memoOnlyFilter && !hasMemoText(role)) {
+            return false;
+        }
         const isNormallyHiddenStatus = role.status === NEW_STORAGE_STATUS || role.status === SCRAP_WAITING_STATUS;
-        if (isNormallyHiddenStatus && statusFilter !== role.status && !hasSearch) {
+        if (isNormallyHiddenStatus && statusFilter !== role.status && !hasSearch && !memoOnlyFilter) {
             return false;
         }
         if (!hasSearch) {
