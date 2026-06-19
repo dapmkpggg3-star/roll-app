@@ -390,20 +390,24 @@ const TASK_PRIORITY_ORDER = {
     low: 3
 };
 const WORK_REQUEST_ACTION_LABEL = '作業依頼';
-const WORK_PROGRESS_STEPS = [
+const REWORK_CHECKLIST_STEPS = [
     { key: 'requestFormCreatedAt', label: '改削依頼書作成' },
     { key: 'sealConfirmedAt', label: '押印確認' },
     { key: 'pdfCreatedAt', label: 'PDF化' },
-    { key: 'vendorSentAt', label: '業者送信' }
+    { key: 'vendorSentAt', label: '業者へ送信' },
+    { key: 'vendorContactedAt', label: '業者連絡' },
+    { key: 'pickupAdjustedAt', label: '引き取り日調整' }
 ];
-const THREE_SET_MANAGEMENT_REWORK_CHECKLIST_STEPS = [
-    { key: 'requestForm', label: '改削依頼書作成' },
-    { key: 'sealConfirmed', label: '押印確認' },
-    { key: 'pdfCreated', label: 'PDF化' },
-    { key: 'vendorSent', label: '業者へ送信' },
-    { key: 'vendorContacted', label: '業者連絡' },
-    { key: 'pickupAdjusted', label: '引き取り日調整' }
-];
+const WORK_PROGRESS_STEPS = REWORK_CHECKLIST_STEPS;
+const THREE_SET_MANAGEMENT_REWORK_CHECKLIST_STEPS = REWORK_CHECKLIST_STEPS;
+const LEGACY_REWORK_CHECKLIST_STEP_KEYS = {
+    requestForm: 'requestFormCreatedAt',
+    sealConfirmed: 'sealConfirmedAt',
+    pdfCreated: 'pdfCreatedAt',
+    vendorSent: 'vendorSentAt',
+    vendorContacted: 'vendorContactedAt',
+    pickupAdjusted: 'pickupAdjustedAt'
+};
 
 function normalizeRoleStatusValue(status) {
     const normalizedStatus = String(status || '');
@@ -1049,20 +1053,71 @@ if (backupKeys.length > 20) {
     localStorage.setItem('roles', JSON.stringify(roles));
 }
 
+function normalizeWorkProgressStepState(value) {
+    if (value && typeof value === 'object') {
+        return {
+            done: value.done === true,
+            updatedAt: value.updatedAt || '',
+            updatedBy: value.updatedBy || ''
+        };
+    }
+
+    if (value) {
+        return {
+            done: true,
+            updatedAt: String(value),
+            updatedBy: ''
+        };
+    }
+
+    return {
+        done: false,
+        updatedAt: '',
+        updatedBy: ''
+    };
+}
+
 function normalizeWorkProgress(role) {
-    const progress = role && role.workProgress && typeof role.workProgress === 'object'
+    const source = role && role.workProgress && typeof role.workProgress === 'object'
         ? { ...role.workProgress }
         : {};
+    const progress = {};
 
-    if (role && role.requestSent === true && !progress.vendorSentAt) {
-        progress.vendorSentAt = role.updatedAt || new Date().toISOString();
+    Object.entries(LEGACY_REWORK_CHECKLIST_STEP_KEYS).forEach(([legacyKey, currentKey]) => {
+        if (source[legacyKey] !== undefined && source[currentKey] === undefined) {
+            source[currentKey] = source[legacyKey];
+        }
+    });
+
+    if (role && role.requestSent === true && !source.vendorSentAt) {
+        source.vendorSentAt = role.updatedAt || new Date().toISOString();
     }
 
     WORK_PROGRESS_STEPS.forEach(step => {
-        progress[step.key] = progress[step.key] || '';
+        progress[step.key] = normalizeWorkProgressStepState(source[step.key]);
     });
 
     return progress;
+}
+
+function isWorkProgressStepDone(progress, stepKey) {
+    const state = progress && progress[stepKey];
+    return Boolean(state && typeof state === 'object' ? state.done : state);
+}
+
+function getWorkProgressStepUpdatedAt(progress, stepKey) {
+    const state = progress && progress[stepKey];
+
+    if (!state) {
+        return '';
+    }
+
+    return typeof state === 'object' ? state.updatedAt || '' : String(state);
+}
+
+function getWorkProgressStepUpdatedBy(progress, stepKey) {
+    const state = progress && progress[stepKey];
+    return state && typeof state === 'object' ? state.updatedBy || '' : '';
 }
 
 function normalizeRoleHistory(role) {
@@ -2366,8 +2421,9 @@ function loadLocalRoles() {
         currentDiameter: normalizeCurrentDiameter(role.currentDiameter),
         workProgress: normalizeWorkProgress(role),
         history: normalizeRoleHistory(role),
-        requestSent: role.requestSent === true || Boolean(normalizeWorkProgress(role).vendorSentAt)
+        requestSent: role.requestSent === true || isWorkProgressStepDone(normalizeWorkProgress(role), 'vendorSentAt')
     }));
+    migrateLegacyThreeSetManagementReworkChecklistToRoles();
     fixOnlineDuplicates();
     const ids = roles.map(r => Number(r.id) || 0);
     nextId = ids.length > 0 ? Math.max(...ids) + 1 : 1;
@@ -2439,14 +2495,14 @@ function formatUpdatedAt(updatedAt) {
 
 function getWorkProgressCompletedCount(role) {
     const progress = normalizeWorkProgress(role);
-    return WORK_PROGRESS_STEPS.filter(step => Boolean(progress[step.key])).length;
+    return WORK_PROGRESS_STEPS.filter(step => isWorkProgressStepDone(progress, step.key)).length;
 }
 
 function getWorkProgressState(role) {
     const progress = normalizeWorkProgress(role);
     const completedCount = getWorkProgressCompletedCount(role);
     const totalCount = WORK_PROGRESS_STEPS.length;
-    const hasProgressValue = WORK_PROGRESS_STEPS.some(step => Boolean(progress[step.key]));
+    const hasProgressValue = WORK_PROGRESS_STEPS.some(step => isWorkProgressStepDone(progress, step.key));
     const hasWorkRequest = role.status === REWORK_READY_STATUS || hasProgressValue || role.requestSent === true;
 
     return {
@@ -2469,11 +2525,12 @@ function isWorkProgressStepEnabled(role, index) {
 
     const progress = normalizeWorkProgress(role);
     const previousStep = WORK_PROGRESS_STEPS[index - 1];
-    return Boolean(progress[previousStep.key]);
+    return isWorkProgressStepDone(progress, previousStep.key);
 }
 
 function formatProgressTimestamp(value) {
-    return value ? formatUpdatedAt(value) : '';
+    const updatedAt = value && typeof value === 'object' ? value.updatedAt : value;
+    return updatedAt ? formatUpdatedAt(updatedAt) : '';
 }
 
 function getWorkProgressHtml(role) {
@@ -2484,8 +2541,9 @@ function getWorkProgressHtml(role) {
     const progress = normalizeWorkProgress(role);
     const completedCount = getWorkProgressCompletedCount(role);
     const stepsHtml = WORK_PROGRESS_STEPS.map((step, index) => {
-        const completedAt = progress[step.key];
-        const isDone = Boolean(completedAt);
+        const completedAt = getWorkProgressStepUpdatedAt(progress, step.key);
+        const completedBy = getWorkProgressStepUpdatedBy(progress, step.key);
+        const isDone = isWorkProgressStepDone(progress, step.key);
         const disabled = isDone || !isWorkProgressStepEnabled(role, index);
         const title = isDone
             ? `${step.label}: ${formatProgressTimestamp(completedAt)}`
@@ -2501,14 +2559,17 @@ function getWorkProgressHtml(role) {
             >
                 <span class="progress-step-index">${index + 1}</span>
                 <span class="progress-step-label">${escapeHtml(step.label)}</span>
-                ${isDone ? `<span class="progress-step-date">${escapeHtml(formatProgressTimestamp(completedAt))}</span>` : ''}
+                ${isDone ? `
+                    <span class="progress-step-date">${escapeHtml(formatProgressTimestamp(completedAt))}</span>
+                    <span class="progress-step-date">更新者：${escapeHtml(completedBy || '未設定')}</span>
+                ` : ''}
             </button>
         `;
     }).join('');
 
     return `
         <div class="work-progress" aria-label="作業依頼進捗">
-            <div class="work-progress-summary">作業依頼進捗 ${completedCount}/4</div>
+            <div class="work-progress-summary">作業依頼進捗 ${completedCount}/${WORK_PROGRESS_STEPS.length}</div>
             <div class="work-progress-steps">${stepsHtml}</div>
         </div>
     `;
@@ -3375,6 +3436,40 @@ function saveThreeSetManagementReworkChecklist(checklist) {
     }
 }
 
+function migrateLegacyThreeSetManagementReworkChecklistToRoles() {
+    const checklist = getStoredThreeSetManagementReworkChecklist();
+
+    if (!checklist || Object.keys(checklist).length === 0) {
+        return false;
+    }
+
+    let migrated = false;
+
+    roles.forEach(role => {
+        if (!role || normalizeRoleStatusValue(role.status) !== REWORK_READY_STATUS) {
+            return;
+        }
+
+        const roleKey = getThreeSetManagementReworkRoleKey(role);
+        const legacyEntry = normalizeThreeSetManagementReworkChecklistEntry(checklist[roleKey]);
+
+        if (!roleKey || !legacyEntry) {
+            return;
+        }
+
+        role.workProgress = normalizeWorkProgress(role);
+
+        THREE_SET_MANAGEMENT_REWORK_CHECKLIST_STEPS.forEach(step => {
+            if (!isWorkProgressStepDone(role.workProgress, step.key) && legacyEntry[step.key] && legacyEntry[step.key].done) {
+                role.workProgress[step.key] = legacyEntry[step.key];
+                migrated = true;
+            }
+        });
+    });
+
+    return migrated;
+}
+
 function getThreeSetManagementReworkRoleKey(role) {
     if (!role) {
         return '';
@@ -3384,35 +3479,63 @@ function getThreeSetManagementReworkRoleKey(role) {
 }
 
 function normalizeThreeSetManagementReworkChecklistEntry(entry) {
-    const source = entry && typeof entry === 'object' ? entry : {};
+    const source = entry && typeof entry === 'object' ? { ...entry } : {};
     const normalized = {};
+
+    Object.entries(LEGACY_REWORK_CHECKLIST_STEP_KEYS).forEach(([legacyKey, currentKey]) => {
+        if (source[legacyKey] !== undefined && source[currentKey] === undefined) {
+            source[currentKey] = source[legacyKey];
+        }
+    });
 
     THREE_SET_MANAGEMENT_REWORK_CHECKLIST_STEPS.forEach(step => {
         const value = source[step.key];
-        normalized[step.key] = value && typeof value === 'object'
-            ? {
-                done: value.done === true,
-                updatedAt: value.updatedAt || '',
-                updatedBy: value.updatedBy || ''
-            }
-            : {
-                done: false,
-                updatedAt: '',
-                updatedBy: ''
-            };
+        normalized[step.key] = normalizeWorkProgressStepState(value);
     });
 
     return normalized;
 }
 
-function getThreeSetManagementReworkChecklistEntry(roleKey) {
+function getThreeSetManagementReworkRoleByKey(roleKey, allRoles = roles) {
+    const key = String(roleKey || '').trim();
+
+    if (!key) {
+        return null;
+    }
+
+    return (Array.isArray(allRoles) ? allRoles : []).find(role => getThreeSetManagementReworkRoleKey(role) === key) || null;
+}
+
+function getLegacyThreeSetManagementReworkChecklistEntry(roleKey) {
     const checklist = getStoredThreeSetManagementReworkChecklist();
     return normalizeThreeSetManagementReworkChecklistEntry(checklist[roleKey]);
 }
 
+function getThreeSetManagementReworkChecklistEntry(roleOrKey) {
+    const role = roleOrKey && typeof roleOrKey === 'object'
+        ? roleOrKey
+        : getThreeSetManagementReworkRoleByKey(roleOrKey);
+    const progress = normalizeWorkProgress(role);
+
+    if (!role) {
+        return normalizeThreeSetManagementReworkChecklistEntry(null);
+    }
+
+    const legacyEntry = getLegacyThreeSetManagementReworkChecklistEntry(getThreeSetManagementReworkRoleKey(role));
+    const merged = { ...progress };
+
+    THREE_SET_MANAGEMENT_REWORK_CHECKLIST_STEPS.forEach(step => {
+        if (!isWorkProgressStepDone(merged, step.key) && legacyEntry[step.key] && legacyEntry[step.key].done) {
+            merged[step.key] = legacyEntry[step.key];
+        }
+    });
+
+    return normalizeThreeSetManagementReworkChecklistEntry(merged);
+}
+
 function getThreeSetManagementReworkChecklistCompletedCount(entry) {
     const normalized = normalizeThreeSetManagementReworkChecklistEntry(entry);
-    return THREE_SET_MANAGEMENT_REWORK_CHECKLIST_STEPS.filter(step => normalized[step.key].done).length;
+    return THREE_SET_MANAGEMENT_REWORK_CHECKLIST_STEPS.filter(step => isWorkProgressStepDone(normalized, step.key)).length;
 }
 
 function getThreeSetManagementReworkNextChecklistStep(entry) {
@@ -3468,7 +3591,7 @@ function getThreeSetManagementReworkItems(allRoles = roles) {
             const status = normalizeRoleStatusValue(role.status);
             const standKey = getStandKey(role.name);
             const roleKey = getThreeSetManagementReworkRoleKey(role);
-            const checklist = getThreeSetManagementReworkChecklistEntry(roleKey);
+            const checklist = getThreeSetManagementReworkChecklistEntry(role);
             const nextChecklistStep = getThreeSetManagementReworkNextChecklistStep(checklist);
             const checklistAction = nextChecklistStep ? nextChecklistStep.label : '引き取り日調整まで完了';
             const checklistCompletedCount = getThreeSetManagementReworkChecklistCompletedCount(checklist);
@@ -4173,13 +4296,14 @@ function toggleThreeSetManagementReworkChecklistStep(encodedRoleKey, stepKey) {
     const roleKey = decodeURIComponent(String(encodedRoleKey || ''));
     const stepIndex = THREE_SET_MANAGEMENT_REWORK_CHECKLIST_STEPS.findIndex(step => step.key === stepKey);
     const step = THREE_SET_MANAGEMENT_REWORK_CHECKLIST_STEPS[stepIndex];
+    const role = getThreeSetManagementReworkRoleByKey(roleKey);
 
-    if (!roleKey || !step) {
+    if (!roleKey || !step || !role) {
         return;
     }
 
-    const checklist = getStoredThreeSetManagementReworkChecklist();
-    const entry = normalizeThreeSetManagementReworkChecklistEntry(checklist[roleKey]);
+    role.workProgress = normalizeWorkProgress(role);
+    const entry = normalizeThreeSetManagementReworkChecklistEntry(role.workProgress);
     const state = entry[step.key];
 
     if (state.done) {
@@ -4221,9 +4345,12 @@ function toggleThreeSetManagementReworkChecklistStep(encodedRoleKey, stepKey) {
         };
     }
 
-    checklist[roleKey] = entry;
-    saveThreeSetManagementReworkChecklist(checklist);
-    updateThreeSetManagementDashboard(roles);
+    role.workProgress = entry;
+    role.requestSent = isWorkProgressStepDone(role.workProgress, 'vendorSentAt');
+    role.updatedAt = new Date().toISOString();
+    saveLocalRoles();
+    renderRoles();
+    syncRoles();
 }
 
 function updateThreeSetForecastDashboard(allRoles = roles) {
@@ -5801,13 +5928,13 @@ function requestWork(roleId) {
     if (!role) return;
     role.workProgress = normalizeWorkProgress(role);
 
-    if (role.workProgress.vendorSentAt) {
-        alert('業者送信は完了済みです');
+    if (isWorkProgressStepDone(role.workProgress, 'vendorSentAt')) {
+        alert('業者へ送信は完了済みです');
         return;
     }
 
     if (!isWorkProgressStepEnabled(role, 3)) {
-        alert('前工程が完了していないため、業者送信は完了できません');
+        alert('前工程が完了していないため、業者へ送信は完了できません');
         return;
     }
 
@@ -5832,7 +5959,7 @@ ${new Date().toLocaleString("ja-JP")}
     const mailtoUrl =
 `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 
-    const confirmed = confirm("業者送信メールを作成し、工程「業者送信」を完了にしますか？");
+    const confirmed = confirm("業者送信メールを作成し、工程「業者へ送信」を完了にしますか？");
 
     if (!confirmed) return;
 
@@ -5850,7 +5977,10 @@ ${new Date().toLocaleString("ja-JP")}
 }
 
 function completeWorkProgressStep(roleId, stepKey, options = {}) {
-    warnIfOperatorMissing();
+    if (warnIfOperatorMissing()) {
+        return false;
+    }
+
     const role = roles.find(r => String(r.id) === String(roleId));
     const stepIndex = WORK_PROGRESS_STEPS.findIndex(step => step.key === stepKey);
     const step = WORK_PROGRESS_STEPS[stepIndex];
@@ -5862,7 +5992,7 @@ function completeWorkProgressStep(roleId, stepKey, options = {}) {
     role.workProgress = normalizeWorkProgress(role);
     const beforeCompletedCount = getWorkProgressCompletedCount(role);
 
-    if (role.workProgress[stepKey]) {
+    if (isWorkProgressStepDone(role.workProgress, stepKey)) {
         return false;
     }
 
@@ -5876,9 +6006,14 @@ function completeWorkProgressStep(roleId, stepKey, options = {}) {
     }
 
     const completedAt = new Date().toISOString();
-    const beforeValue = role.workProgress[stepKey] || '';
-    role.workProgress[stepKey] = completedAt;
-    role.requestSent = Boolean(role.workProgress.vendorSentAt);
+    const operator = getSelectedOperator();
+    const beforeValue = getWorkProgressStepUpdatedAt(role.workProgress, stepKey);
+    role.workProgress[stepKey] = {
+        done: true,
+        updatedAt: completedAt,
+        updatedBy: operator ? operator.name : ''
+    };
+    role.requestSent = isWorkProgressStepDone(role.workProgress, 'vendorSentAt');
     role.updatedAt = completedAt;
     addRoleHistoryEntry(role, 'workProgress', '作業依頼進捗変更', beforeValue, `${step.label}: ${formatUpdatedAt(completedAt)}`, completedAt);
 
