@@ -1164,24 +1164,116 @@ function getWorkProgressStepUpdatedBy(progress, stepKey) {
 }
 
 function getReworkPickupDateSummaryHtml(progress) {
-    const dispatchDate = normalizeDateInputValue(progress && progress.dispatchDate);
-    const arrivalDate = normalizeDateInputValue(progress && progress.arrivalDate);
-    const temporaryInboundPlanDate = dispatchDate && !arrivalDate
-        ? getTemporaryInboundPlanDate(dispatchDate)
-        : '';
+    const pickupAction = getReworkPickupActionInfo(progress);
+    const lines = [
+        `<span class="rework-pickup-action-line">次にやること：${escapeHtml(pickupAction.action || '-')}</span>`,
+        `<span class="rework-pickup-date-line">状態：${escapeHtml(pickupAction.status || '-')}</span>`
+    ];
 
-    if (!dispatchDate) {
-        return '<span class="rework-pickup-help is-required">搬出日を入力してください</span>';
+    if (!pickupAction.dispatchDate) {
+        return lines.join('');
     }
 
-    return `
-        <span class="rework-pickup-date-line">搬出日：${escapeHtml(formatDateForDisplay(dispatchDate))}</span>
-        <span class="rework-pickup-date-line">搬入日：${escapeHtml(arrivalDate ? formatDateForDisplay(arrivalDate) : '未定')}</span>
-        ${temporaryInboundPlanDate ? `
-            <span class="rework-pickup-date-line">仮搬入予定：${escapeHtml(formatDateForDisplay(temporaryInboundPlanDate))}</span>
-            <span class="rework-pickup-help">目安：搬出日から20〜30日</span>
-        ` : ''}
-    `;
+    lines.push(`<span class="rework-pickup-date-line">搬出日：${escapeHtml(formatDateForDisplay(pickupAction.dispatchDate))}</span>`);
+
+    if (pickupAction.arrivalDate) {
+        lines.push(`<span class="rework-pickup-date-line">搬入日：${escapeHtml(formatDateForDisplay(pickupAction.arrivalDate))}</span>`);
+        return lines.join('');
+    }
+
+    if (pickupAction.temporaryInboundPlanDate) {
+        lines.push(`<span class="rework-pickup-date-line">仮搬入予定：${escapeHtml(formatDateForDisplay(pickupAction.temporaryInboundPlanDate))}</span>`);
+    }
+
+    lines.push('<span class="rework-pickup-date-line">搬入日：未定</span>');
+
+    if (pickupAction.key === 'waiting-arrival') {
+        lines.push('<span class="rework-pickup-help">目安：搬出日から20〜30日</span>');
+    }
+
+    if (pickupAction.key === 'arrival-overdue') {
+        lines.push(`<span class="rework-pickup-help is-required">超過：${escapeHtml(String(pickupAction.overdueDays || 0))}日</span>`);
+    }
+
+    return lines.join('');
+}
+
+function getDateDiffDays(fromDateValue, toDateValue) {
+    const fromDate = normalizeDateInputValue(fromDateValue);
+    const toDate = normalizeDateInputValue(toDateValue);
+
+    if (!fromDate || !toDate) {
+        return null;
+    }
+
+    const fromTime = new Date(`${fromDate}T00:00:00`).getTime();
+    const toTime = new Date(`${toDate}T00:00:00`).getTime();
+
+    if (Number.isNaN(fromTime) || Number.isNaN(toTime)) {
+        return null;
+    }
+
+    return Math.floor((toTime - fromTime) / (1000 * 60 * 60 * 24));
+}
+
+function getReworkPickupActionInfo(progress, today = getTodayDateString()) {
+    const dispatchDate = normalizeDateInputValue(progress && progress.dispatchDate);
+    const arrivalDate = normalizeDateInputValue(progress && progress.arrivalDate);
+    const temporaryInboundPlanDate = dispatchDate ? getTemporaryInboundPlanDate(dispatchDate) : '';
+
+    if (!dispatchDate) {
+        return {
+            key: 'missing-dispatch',
+            level: 'warning',
+            action: '搬出日を入力してください',
+            status: '引き取り日未定',
+            dispatchDate,
+            arrivalDate,
+            temporaryInboundPlanDate,
+            overdueDays: null
+        };
+    }
+
+    if (arrivalDate) {
+        return {
+            key: 'arrival-entered',
+            level: 'complete',
+            action: '搬入日入力済み',
+            status: '搬入済み確認',
+            dispatchDate,
+            arrivalDate,
+            temporaryInboundPlanDate: '',
+            overdueDays: null
+        };
+    }
+
+    const overdueDays = temporaryInboundPlanDate && today > temporaryInboundPlanDate
+        ? getDateDiffDays(temporaryInboundPlanDate, today)
+        : null;
+
+    if (overdueDays !== null && overdueDays > 0) {
+        return {
+            key: 'arrival-overdue',
+            level: 'danger',
+            action: '業者へ搬入確認してください',
+            status: '搬入予定超過',
+            dispatchDate,
+            arrivalDate,
+            temporaryInboundPlanDate,
+            overdueDays
+        };
+    }
+
+    return {
+        key: 'waiting-arrival',
+        level: 'normal',
+        action: '搬入予定を確認してください',
+        status: '搬入待ち',
+        dispatchDate,
+        arrivalDate,
+        temporaryInboundPlanDate,
+        overdueDays: null
+    };
 }
 
 function getReworkPickupChecklistItemHtml(roleKey, step, index, progress, options = {}) {
@@ -3862,6 +3954,51 @@ function getThreeSetManagementReworkFieldHtml(label, value) {
     `;
 }
 
+function getThreeSetManagementReworkPickupStatusHtml(pickupAction) {
+    if (!pickupAction) {
+        return '';
+    }
+
+    const fields = [
+        ['状態', pickupAction.status || '-'],
+        ['搬出日', pickupAction.dispatchDate ? formatDateForDisplay(pickupAction.dispatchDate) : '未入力']
+    ];
+
+    if (pickupAction.arrivalDate) {
+        fields.push(['搬入日', formatDateForDisplay(pickupAction.arrivalDate)]);
+    } else {
+        if (pickupAction.temporaryInboundPlanDate) {
+            fields.push(['仮搬入予定', formatDateForDisplay(pickupAction.temporaryInboundPlanDate)]);
+        }
+        fields.push(['搬入日', '未定']);
+    }
+
+    if (pickupAction.key === 'waiting-arrival') {
+        fields.push(['目安', '搬出日から20〜30日']);
+    }
+
+    if (pickupAction.key === 'arrival-overdue') {
+        fields.push(['超過', `${pickupAction.overdueDays || 0}日`]);
+    }
+
+    return `
+        <div class="three-set-management-rework-pickup-status is-${escapeHtml(pickupAction.level || 'normal')}">
+            <div class="three-set-management-rework-pickup-status-head">
+                <span>搬入出状況</span>
+                <strong>${escapeHtml(pickupAction.status || '-')}</strong>
+            </div>
+            <div class="three-set-management-rework-pickup-status-grid">
+                ${fields.map(([label, value]) => `
+                    <div>
+                        <span>${escapeHtml(label)}</span>
+                        <strong>${escapeHtml(value)}</strong>
+                    </div>
+                `).join('')}
+            </div>
+        </div>
+    `;
+}
+
 function getThreeSetManagementReworkItems(allRoles = roles) {
     return (Array.isArray(allRoles) ? allRoles : [])
         .filter(role => role && normalizeRoleStatusValue(role.status) === REWORK_READY_STATUS)
@@ -3873,6 +4010,7 @@ function getThreeSetManagementReworkItems(allRoles = roles) {
             const nextChecklistStep = getThreeSetManagementReworkNextChecklistStep(checklist);
             const checklistAction = nextChecklistStep ? nextChecklistStep.label : '引き取り日調整まで完了';
             const checklistCompletedCount = getThreeSetManagementReworkChecklistCompletedCount(checklist);
+            const pickupAction = getReworkPickupActionInfo(checklist);
 
             return {
                 key: `rework-${role.id || role.name || standKey}`,
@@ -3881,10 +4019,11 @@ function getThreeSetManagementReworkItems(allRoles = roles) {
                 title: role.name || `#${standKey || '-'}`,
                 currentStatus: status,
                 status,
-                action: checklistAction,
+                action: pickupAction.action || checklistAction,
                 checklist,
                 checklistCompletedCount,
                 checklistTotalCount: THREE_SET_MANAGEMENT_REWORK_CHECKLIST_STEPS.length,
+                pickupAction,
                 updatedAt: role.updatedAt
             };
         })
@@ -4441,6 +4580,7 @@ function getThreeSetManagementItemHtml(item, activeTab) {
                     <span>次にやること</span>
                     <strong>${escapeHtml(item.action || '-')}</strong>
                 </div>
+                ${getThreeSetManagementReworkPickupStatusHtml(item.pickupAction)}
                 ${getThreeSetManagementReworkChecklistHtml(item)}
             </article>
         `;

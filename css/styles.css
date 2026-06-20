@@ -1363,6 +1363,86 @@ body {
     overflow-wrap: anywhere;
 }
 
+.three-set-management-rework-pickup-status {
+    display: grid;
+    gap: 8px;
+    padding: 8px;
+    border-radius: 8px;
+    border: 1px solid #dbeafe;
+    background: #eff6ff;
+}
+
+.three-set-management-rework-pickup-status.is-warning {
+    border-color: #fde68a;
+    background: #fffbeb;
+}
+
+.three-set-management-rework-pickup-status.is-danger {
+    border-color: #fecaca;
+    background: #fef2f2;
+}
+
+.three-set-management-rework-pickup-status.is-complete {
+    border-color: #bbf7d0;
+    background: #f0fdf4;
+}
+
+.three-set-management-rework-pickup-status-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.three-set-management-rework-pickup-status-head span {
+    color: #475569;
+    font-size: 0.76rem;
+    font-weight: 900;
+}
+
+.three-set-management-rework-pickup-status-head strong {
+    color: #1e40af;
+    font-size: 0.88rem;
+    font-weight: 900;
+}
+
+.three-set-management-rework-pickup-status.is-warning .three-set-management-rework-pickup-status-head strong {
+    color: #92400e;
+}
+
+.three-set-management-rework-pickup-status.is-danger .three-set-management-rework-pickup-status-head strong {
+    color: #991b1b;
+}
+
+.three-set-management-rework-pickup-status.is-complete .three-set-management-rework-pickup-status-head strong {
+    color: #166534;
+}
+
+.three-set-management-rework-pickup-status-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 6px;
+}
+
+.three-set-management-rework-pickup-status-grid div {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+}
+
+.three-set-management-rework-pickup-status-grid span {
+    color: #64748b;
+    font-size: 0.74rem;
+    font-weight: 900;
+}
+
+.three-set-management-rework-pickup-status-grid strong {
+    color: #0f172a;
+    font-size: 0.84rem;
+    font-weight: 900;
+    overflow-wrap: anywhere;
+}
+
 .three-set-management-assembly-excluded {
     display: grid;
     gap: 8px;
@@ -1741,6 +1821,12 @@ body {
 
 .rework-pickup-date-line,
 .rework-pickup-help {
+    overflow-wrap: anywhere;
+}
+
+.rework-pickup-action-line {
+    color: #1e40af;
+    font-weight: 900;
     overflow-wrap: anywhere;
 }
 
