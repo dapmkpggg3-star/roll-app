@@ -6443,7 +6443,10 @@ function renderRoles() {
         const hasSearch = searchQuery.trim().length > 0;
         const hasStatusFilter = statusFilter !== 'all';
         const hasWatchStandFilter = Boolean(watchStandFilter);
-        if (hasSearch || hasStatusFilter || hasWatchStandFilter) {
+        if (memoOnlyFilter) {
+            const label = hasSearch ? 'メモ内検索中' : 'メモありのみ適用中';
+            countInfo.textContent = `${label}：現在 ${visibleRoles.length}件表示中 / 全 ${roles.length}件`;
+        } else if (hasSearch || hasStatusFilter || hasWatchStandFilter) {
             countInfo.textContent = `現在${visibleRoles.length}件表示中 / 全${roles.length}件`;
         } else {
             countInfo.textContent = '';
