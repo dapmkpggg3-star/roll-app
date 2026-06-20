@@ -1346,6 +1346,11 @@ function formatCurrentDiameter(value) {
     return normalized === '' ? '-' : `φ${normalized.toFixed(1)}`;
 }
 
+function normalizePurchaseDiameter(value) {
+    const normalized = normalizeCurrentDiameter(value);
+    return Number.isFinite(normalized) && normalized > 0 ? normalized : '';
+}
+
 function formatMillimeterValue(value) {
     const numericValue = Number(value);
 
@@ -1715,7 +1720,7 @@ function getStandOnlineUseMonths(standKey) {
 
 function getPurchasePlanningInfo(role) {
     const standKey = getStandKey(role && role.name);
-    const currentDiameter = normalizeCurrentDiameter(role && role.currentDiameter);
+    const currentDiameter = normalizePurchaseDiameter(role && role.currentDiameter);
 
     if (!standKey || currentDiameter === '' || role.status === DISCARDED_STATUS) {
         return null;
@@ -1838,8 +1843,8 @@ function getPurchaseConfirmationItems(allRoles = roles) {
 }
 
 function formatPurchaseDiameter(value) {
-    const numericValue = Number(value);
-    return Number.isFinite(numericValue) ? `φ${numericValue.toFixed(1)}` : '-';
+    const numericValue = normalizePurchaseDiameter(value);
+    return numericValue === '' ? '-' : `φ${numericValue.toFixed(1)}`;
 }
 
 function formatPurchaseMonth(value) {
@@ -4040,7 +4045,7 @@ function getThreeSetManagementReworkItems(allRoles = roles) {
 
 function getThreeSetManagementPurchasePlanningInfo(role) {
     const standKey = getStandKey(role && role.name);
-    const currentDiameter = normalizeCurrentDiameter(role && role.currentDiameter);
+    const currentDiameter = normalizePurchaseDiameter(role && role.currentDiameter);
 
     if (!standKey || currentDiameter === '' || role.status === DISCARDED_STATUS) {
         return null;
@@ -4076,6 +4081,69 @@ function getThreeSetManagementPurchasePlanningInfo(role) {
         disposalForecastDate,
         purchaseDecisionDate
     };
+}
+
+function getThreeSetManagementPurchaseReasonText(roleName, level) {
+    const targetName = roleName || '対象ロール';
+
+    if (level && level.key === 'urgent') {
+        return `${targetName} の購入判断期限を過ぎています`;
+    }
+
+    return `${targetName} の購入判断期限が近いです`;
+}
+
+function formatPurchaseApproxDuration(days, isFuture = true) {
+    const dayCount = Number(days);
+
+    if (!Number.isFinite(dayCount)) {
+        return '';
+    }
+
+    const absoluteDays = Math.abs(Math.round(dayCount));
+
+    if (absoluteDays < 30) {
+        return isFuture ? `あと${absoluteDays}日` : `${absoluteDays}日`;
+    }
+
+    return `約${Math.max(1, Math.round(absoluteDays / 30))}か月`;
+}
+
+function getThreeSetManagementPurchaseTimingNotes(basisPlan, today = getTodayDateString()) {
+    if (!basisPlan) {
+        return [];
+    }
+
+    const todayValue = normalizeDateInputValue(today);
+    const purchaseDecisionDate = normalizeDateInputValue(basisPlan.purchaseDecisionDate);
+    const disposalForecastDate = normalizeDateInputValue(basisPlan.disposalForecastDate);
+    const notes = [];
+
+    if (todayValue && purchaseDecisionDate) {
+        const decisionDays = getDateDiffDays(todayValue, purchaseDecisionDate);
+
+        if (decisionDays !== null) {
+            if (decisionDays < 0) {
+                notes.push(`購入判断期限超過：${formatPurchaseApproxDuration(decisionDays, false)}`);
+            } else {
+                notes.push(`購入判断期限まで：${formatPurchaseApproxDuration(decisionDays, true)}`);
+            }
+        }
+    }
+
+    if (todayValue && disposalForecastDate) {
+        const disposalDays = getDateDiffDays(todayValue, disposalForecastDate);
+
+        if (disposalDays !== null) {
+            if (disposalDays < 0) {
+                notes.push(`廃却予想超過：${formatPurchaseApproxDuration(disposalDays, false)}`);
+            } else {
+                notes.push(`廃却予想まで：${formatPurchaseApproxDuration(disposalDays, true)}`);
+            }
+        }
+    }
+
+    return notes;
 }
 
 function getThreeSetManagementPurchaseDecisionLevel(purchaseDecisionDate, today = getTodayDateString()) {
@@ -4128,7 +4196,9 @@ function groupRolesByStand(allRoles = roles) {
 function getPurchaseRoleAlert(role, basisRole) {
     const alerts = [];
     const status = normalizeRoleStatusValue(role && role.status);
-    const info = getRemainingDiameterInfo(role);
+    const info = normalizePurchaseDiameter(role && role.currentDiameter) === ''
+        ? null
+        : getRemainingDiameterInfo(role);
     const isBasisRole = basisRole && role && (
         (basisRole.id && role.id && basisRole.id === role.id)
         || (basisRole.name && role.name && basisRole.name === role.name)
@@ -4176,7 +4246,7 @@ function getThreeSetManagementPurchaseRoleRows(standRoles, basisRole) {
                 status: normalizeRoleStatusValue(role.status),
                 coatingLabel: coatingDisplay ? coatingDisplay.label : '',
                 coatingNote: coatingDisplay ? coatingDisplay.note : '',
-                currentDiameter: normalizeCurrentDiameter(role.currentDiameter),
+                currentDiameter: normalizePurchaseDiameter(role.currentDiameter),
                 diameterLabel: formatPurchaseDiameter(role.currentDiameter),
                 alerts,
                 isAlert: alerts.length > 0
@@ -4274,13 +4344,14 @@ function getThreeSetManagementPurchaseStandItems(allRoles = roles) {
                 : '3セット維持可否と購入要否を確認',
             reason: [
                 level.memo,
-                `${basisPlan.roleName || `#${standKey}`} が廃却見込みです`,
+                getThreeSetManagementPurchaseReasonText(basisPlan.roleName || `#${standKey}`, level),
                 hasNewStorage
                     ? '新品予備保管を含めて3セット維持確認が必要です'
                     : '3セット維持確認が必要です'
             ].join('\n'),
             meta: level.memo,
             basisRoleName: basisPlan.roleName || '',
+            purchaseTimingNotes: getThreeSetManagementPurchaseTimingNotes(basisPlan, today),
             hasNewStorage,
             storageLabel: hasNewStorage
                 ? `新品予備保管あり${hasUncoatedStorage ? ' / 溶射無しあり' : ''}`
@@ -4465,6 +4536,23 @@ function getThreeSetManagementPurchaseRowsHtml(item) {
                     </span>
                 </div>
             `).join('')}
+        </div>
+    `;
+}
+
+function getThreeSetManagementPurchaseTimingHtml(item) {
+    const notes = item && Array.isArray(item.purchaseTimingNotes)
+        ? item.purchaseTimingNotes.filter(Boolean)
+        : [];
+
+    if (notes.length === 0) {
+        return '';
+    }
+
+    return `
+        <div class="three-set-management-task-meta">
+            <span>目安</span>
+            <strong>${escapeHtml(notes.join('\n'))}</strong>
         </div>
     `;
 }
@@ -4658,6 +4746,7 @@ function getThreeSetManagementItemHtml(item, activeTab) {
                     <span>理由</span>
                     <strong>${escapeHtml(item.reason || '-')}</strong>
                 </div>
+                ${getThreeSetManagementPurchaseTimingHtml(item)}
                 <div class="three-set-management-task-action">
                     <span>次にやること</span>
                     <strong>${escapeHtml(item.action || '-')}</strong>
