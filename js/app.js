@@ -4110,11 +4110,13 @@ function getThreeSetManagementPurchaseStandItems(allRoles = roles) {
     });
 
     return items.sort((a, b) => {
-        if (a.deadline !== b.deadline) {
-            return String(a.deadline).localeCompare(String(b.deadline));
+        const standDiff = (Number(a.standKey) || 999999) - (Number(b.standKey) || 999999);
+
+        if (standDiff !== 0) {
+            return standDiff;
         }
 
-        return (Number(a.standKey) || 999999) - (Number(b.standKey) || 999999);
+        return String(a.deadline || '').localeCompare(String(b.deadline || ''));
     });
 }
 
