@@ -5334,198 +5334,300 @@ function getWorkshopAssemblyCandidatesHtml(candidates) {
     `;
 }
 
-function getWorkshopBoardPrintPriorityForReworkSetup(item, now = new Date()) {
-    if (!item || !item.workshopTaskDueDate) {
-        return 'low';
+function printWorkshopBoard() {
+    const sourceBoard = document.getElementById('workshop-board');
+
+    if (!sourceBoard) {
+        return;
     }
 
-    const daysRemaining = getDaysUntilDate(item.workshopTaskDueDate, now);
+    const printBoard = sourceBoard.cloneNode(true);
+    printBoard.removeAttribute('id');
+    printBoard.removeAttribute('aria-live');
 
-    if (daysRemaining === null) {
-        return 'low';
-    }
+    printBoard.querySelectorAll([
+        'button',
+        '.no-print',
+        '.print-button',
+        '.workshop-print-button',
+        '.workshop-board-print-btn',
+        '.workshop-board-back-btn',
+        '.workshop-board-sort-wrap',
+        '[data-print-hidden]'
+    ].join(',')).forEach(element => element.remove());
 
-    if (daysRemaining <= WORKSHOP_BOARD_PRIORITY_THRESHOLD_DAYS.high) {
-        return 'high';
-    }
-
-    if (daysRemaining <= WORKSHOP_BOARD_PRIORITY_THRESHOLD_DAYS.medium) {
-        return 'medium';
-    }
-
-    return 'low';
-}
-
-function getWorkshopBoardPrintItemHtml(item) {
-    if (!item) {
-        return '';
-    }
-
-    const priorityClass = `workshop-priority-${escapeHtml(item.priority)}`;
-    const memoText = hasDisplayMemo(item.memo) ? item.memo : '-';
-    const updatedText = item.updatedAt ? formatUpdatedAt(item.updatedAt) : '-';
-    const deadlineText = item.deadline ? formatDateForDisplay(item.deadline) : '-';
-
-    return `
-        <article class="workshop-board-print-card ${priorityClass}">
-            <div class="workshop-board-print-card-head">
-                <div class="workshop-board-print-card-head-main">
-                    <span class="workshop-board-print-stand">${escapeHtml(item.standLabel || '-')}</span>
-                    <span class="workshop-board-print-title">${escapeHtml(item.title || item.content || '-')}</span>
-                </div>
-                <span class="workshop-priority-badge workshop-priority-${escapeHtml(item.priority)}">${escapeHtml(item.priorityLabel || '低')}</span>
-            </div>
-            <div class="workshop-board-print-grid">
-                <div class="workshop-board-print-field">
-                    <span>優先度</span>
-                    <strong>${escapeHtml(item.priorityLabel || '-')}</strong>
-                </div>
-                <div class="workshop-board-print-field">
-                    <span>スタンド番号</span>
-                    <strong>${escapeHtml(item.standLabel || '-')}</strong>
-                </div>
-                <div class="workshop-board-print-field">
-                    <span>ステータス</span>
-                    <strong>${escapeHtml(item.statusLabel || '-')}</strong>
-                </div>
-                <div class="workshop-board-print-field workshop-board-print-field-wide">
-                    <span>内容</span>
-                    <strong>${escapeHtml(item.content || '-')}</strong>
-                </div>
-                <div class="workshop-board-print-field workshop-board-print-field-wide">
-                    <span>次にやること</span>
-                    <strong>${escapeHtml(item.action || '-')}</strong>
-                </div>
-                <div class="workshop-board-print-field workshop-board-print-field-wide">
-                    <span>メモ</span>
-                    <strong>${escapeHtml(memoText)}</strong>
-                </div>
-                <div class="workshop-board-print-field">
-                    <span>更新日</span>
-                    <strong>${escapeHtml(updatedText)}</strong>
-                </div>
-                <div class="workshop-board-print-field">
-                    <span>期限</span>
-                    <strong>${escapeHtml(deadlineText)}</strong>
-                </div>
-            </div>
-        </article>
-    `;
-}
-
-function getWorkshopBoardPrintHtml(allRoles) {
-    const now = new Date();
-    const reworkSetupItems = getReworkSetupPlanItems(allRoles).map(item => ({
-        standNumber: Number(item.standKey) || 999999,
-        priority: getWorkshopBoardPrintPriorityForReworkSetup(item, now),
-        priorityLabel: WORKSHOP_BOARD_PRIORITY_LABELS[getWorkshopBoardPrintPriorityForReworkSetup(item, now)] || '低',
-        standLabel: `#${item.standKey}`,
-        statusLabel: item.role && item.role.status ? item.role.status : '改削段取り予定',
-        title: '改削段取り予定',
-        content: item.roleName || `#${item.standKey}`,
-        action: getWorkshopReworkSetupAction(item),
-        memo: item.role ? item.role.memo : '',
-        updatedAt: item.role ? item.role.updatedAt : '',
-        deadline: item.workshopTaskDueDate
-    }));
-
-    const assemblyItems = getAssemblyCandidateItems(allRoles)
-        .map(candidate => {
-            const details = getWorkshopBoardCandidateDetails(candidate, now);
-            return {
-                standNumber: candidate.standNumber || 999999,
-                priority: details.priority,
-                priorityLabel: details.priorityLabel,
-                standLabel: candidate.standLabel || `#${candidate.standKey}`,
-                statusLabel: '組替候補',
-                title: '組替候補',
-                content: candidate.standLabel || `#${candidate.standKey}`,
-                action: '組替対象を確認する',
-                memo: details.referenceRole ? details.referenceRole.memo : '',
-                updatedAt: details.referenceRole ? details.referenceRole.updatedAt : '',
-                deadline: details.estimatedReplacementDate
-            };
-        });
-
-    const itemsByPriority = {
-        high: [],
-        medium: [],
-        low: []
-    };
-
-    [...reworkSetupItems, ...assemblyItems].forEach(item => {
-        const priority = item.priority === 'high' || item.priority === 'medium' ? item.priority : 'low';
-        itemsByPriority[priority].push(item);
+    printBoard.querySelectorAll('[id]').forEach(element => element.removeAttribute('id'));
+    printBoard.querySelectorAll('[onclick], [onchange], [oninput]').forEach(element => {
+        element.removeAttribute('onclick');
+        element.removeAttribute('onchange');
+        element.removeAttribute('oninput');
     });
 
-    Object.values(itemsByPriority).forEach(items => {
-        items.sort((a, b) => {
-            if ((a.standNumber || 999999) !== (b.standNumber || 999999)) {
-                return (a.standNumber || 999999) - (b.standNumber || 999999);
-            }
+    const frame = document.createElement('iframe');
+    frame.setAttribute('aria-hidden', 'true');
+    frame.style.position = 'fixed';
+    frame.style.left = '-10000px';
+    frame.style.top = '0';
+    frame.style.width = '1px';
+    frame.style.height = '1px';
+    frame.style.border = '0';
 
-            return String(a.content || a.title || '').localeCompare(String(b.content || b.title || ''), 'ja');
-        });
-    });
+    document.body.appendChild(frame);
 
-    const groups = ['high', 'medium', 'low'].map(priority => {
-        const items = itemsByPriority[priority];
-
-        if (items.length === 0) {
-            return '';
+    const printCss = `
+        @page {
+            size: A4 portrait;
+            margin: 8mm;
         }
 
-        return `
-            <section class="workshop-board-print-group workshop-board-print-${priority}">
-                <div class="workshop-board-print-group-header">
-                    <span>${escapeHtml(TASK_PRIORITY_LABELS[priority] || priority)}</span>
-                    <span>${escapeHtml(items.length)}件</span>
-                </div>
-                <div class="workshop-board-print-group-list">
-                    ${items.map(getWorkshopBoardPrintItemHtml).join('')}
-                </div>
-            </section>
-        `;
-    }).join('');
+        * {
+            box-sizing: border-box;
+        }
 
-    return `
-        <div class="workshop-board-print-header">
-            <div>
-                <h3>工作課ボード</h3>
-                <p id="workshop-board-print-datetime">印刷日時：-</p>
-            </div>
-        </div>
-        ${groups || '<div class="workshop-board-print-empty">工作課ボードの対象はありません</div>'}
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            background: #fff;
+            color: #000;
+            font-family: sans-serif;
+        }
+
+        button,
+        .no-print,
+        .print-button,
+        .workshop-print-button,
+        .workshop-board-print-btn,
+        .workshop-board-back-btn,
+        .workshop-board-sort-wrap {
+            display: none !important;
+        }
+
+        .workshop-board {
+            display: grid !important;
+            gap: 10px;
+            width: 100%;
+            margin: 0;
+            padding: 0;
+            border: 0;
+            border-radius: 0;
+            background: #fff;
+            color: #000;
+            box-shadow: none;
+        }
+
+        .workshop-board-header,
+        .workshop-board-actions {
+            display: flex;
+            align-items: flex-end;
+            justify-content: space-between;
+            gap: 10px;
+        }
+
+        .workshop-board-header {
+            padding: 0 0 6px;
+            border-bottom: 2px solid #000;
+        }
+
+        .workshop-board-header h2 {
+            margin: 0;
+            color: #000;
+            font-size: 18pt;
+            line-height: 1.2;
+        }
+
+        .workshop-board-header p {
+            margin: 2px 0 0;
+            color: #000;
+            font-size: 9pt;
+            font-weight: 700;
+        }
+
+        .workshop-board-count {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 42px;
+            min-height: 24px;
+            padding: 2px 8px;
+            border: 1px solid #000;
+            border-radius: 0;
+            background: #fff;
+            color: #000;
+            font-size: 10pt;
+            font-weight: 700;
+        }
+
+        .workshop-board-list,
+        .workshop-board-section,
+        .workshop-role-list,
+        .workshop-card-title-main,
+        .workshop-role-line {
+            display: grid;
+            gap: 6px;
+        }
+
+        .workshop-board-section {
+            break-inside: avoid;
+            page-break-inside: avoid;
+        }
+
+        .workshop-board-section-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            padding: 2px 0 4px;
+            border-bottom: 1px solid #000;
+        }
+
+        .workshop-board-section-header h3 {
+            margin: 0;
+            color: #000;
+            font-size: 12pt;
+            font-weight: 900;
+        }
+
+        .workshop-board-section-header span {
+            color: #000;
+            font-size: 10pt;
+            font-weight: 700;
+        }
+
+        .workshop-board-section-list {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 8px;
+        }
+
+        .card,
+        .workshop-card {
+            display: grid;
+            gap: 7px;
+            padding: 8px;
+            border: 1px solid #000;
+            border-left: 4px solid #000;
+            border-radius: 0;
+            background: #fff;
+            color: #000;
+            box-shadow: none;
+            break-inside: avoid;
+            page-break-inside: avoid;
+        }
+
+        .workshop-card-title {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 8px;
+            color: #000;
+            font-weight: 900;
+        }
+
+        .workshop-stand {
+            color: #000;
+            font-size: 13pt;
+            line-height: 1.1;
+            font-weight: 900;
+        }
+
+        .workshop-card-title-text,
+        .workshop-card-label,
+        .workshop-card-summary-label,
+        .workshop-role-meta {
+            color: #000;
+            font-size: 8pt;
+            font-weight: 700;
+        }
+
+        .workshop-card-summary,
+        .workshop-card-section {
+            display: grid;
+            gap: 4px;
+            padding: 6px;
+            border: 1px solid #999;
+            border-radius: 0;
+            background: #fff;
+        }
+
+        .workshop-card-summary-item {
+            display: grid;
+            gap: 1px;
+        }
+
+        .workshop-card-summary-value,
+        .workshop-role-name {
+            color: #000;
+            font-size: 9pt;
+            font-weight: 700;
+            overflow-wrap: anywhere;
+        }
+
+        .workshop-priority-badge,
+        .workshop-rework-deadline {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2px 6px;
+            border: 1px solid #000;
+            border-radius: 0;
+            background: #fff !important;
+            color: #000 !important;
+            font-size: 8pt;
+            font-weight: 700;
+            line-height: 1.1;
+        }
+
+        .workshop-board-empty {
+            padding: 12px;
+            border: 1px dashed #000;
+            color: #000;
+            font-size: 10pt;
+            font-weight: 700;
+        }
     `;
-}
 
-function updateWorkshopBoardPrint(allRoles = roles) {
-    const printEl = document.getElementById('workshop-board-print');
+    const frameDoc = frame.contentDocument || frame.contentWindow.document;
+    frameDoc.open();
+    frameDoc.write(`<!doctype html>
+        <html>
+            <head>
+                <meta charset="utf-8">
+                <title>工作課ボード 印刷</title>
+                <style>${printCss}</style>
+            </head>
+            <body>${printBoard.outerHTML}</body>
+        </html>
+    `);
+    frameDoc.close();
 
-    if (!printEl) {
-        return;
+    const cleanup = () => {
+        if (frame.parentNode) {
+            frame.parentNode.removeChild(frame);
+        }
+    };
+
+    const printFrame = () => {
+        const printWindow = frame.contentWindow;
+
+        if (!printWindow) {
+            cleanup();
+            return;
+        }
+
+        printWindow.focus();
+        printWindow.onafterprint = cleanup;
+        printWindow.print();
+        setTimeout(cleanup, 60000);
+    };
+
+    if (frame.contentWindow) {
+        frame.contentWindow.requestAnimationFrame(() => {
+            frame.contentWindow.requestAnimationFrame(printFrame);
+        });
+    } else {
+        printFrame();
     }
-
-    printEl.innerHTML = getWorkshopBoardPrintHtml(allRoles);
-
-    const target = document.getElementById('workshop-board-print-datetime');
-
-    if (!target) {
-        return;
-    }
-
-    target.textContent = `印刷日時：${new Date().toLocaleString('ja-JP', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit'
-    })}`;
-}
-
-function printWorkshopBoard() {
-    updateWorkshopBoardPrint(roles);
-    window.print();
 }
 
 function updateWorkshopBoard(allRoles) {
@@ -5555,7 +5657,6 @@ function updateWorkshopBoard(allRoles) {
 
     if (totalCount === 0) {
         listEl.innerHTML = '<div class="workshop-board-empty">改削段取り予定・組替候補はありません</div>';
-        updateWorkshopBoardPrint(allRoles);
         return;
     }
 
@@ -5564,7 +5665,6 @@ function updateWorkshopBoard(allRoles) {
         getWorkshopAssemblyCandidatesHtml(candidates)
     ].join('');
 
-    updateWorkshopBoardPrint(allRoles);
 }
 
 function setWorkshopBoardOpen(isOpen) {
