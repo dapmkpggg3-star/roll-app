@@ -5767,6 +5767,13 @@ function printWorkshopBoard() {
         return;
     }
 
+    const printTargetCount = sourceBoard.querySelectorAll('#workshop-board-list .workshop-card').length;
+
+    if (printTargetCount === 0) {
+        alert('印刷対象がありません');
+        return;
+    }
+
     const printBoard = sourceBoard.cloneNode(true);
     printBoard.removeAttribute('id');
     printBoard.removeAttribute('aria-live');
