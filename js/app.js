@@ -4184,6 +4184,46 @@ function getThreeSetManagementPurchaseRoleRows(standRoles, basisRole) {
         });
 }
 
+function hasThreeSetManagementPurchaseAlert(item, alertKey) {
+    return Array.isArray(item && item.roleRows)
+        && item.roleRows.some(row =>
+            Array.isArray(row && row.alerts)
+            && row.alerts.some(alert => alert && alert.key === alertKey)
+        );
+}
+
+function getThreeSetManagementPurchaseTopReason(item) {
+    if (!item) {
+        return '確認必要';
+    }
+
+    if (item.purchaseLevelKey === 'urgent') {
+        return '購入判断期限超過';
+    }
+
+    if (item.purchaseLevelKey === 'soon') {
+        return '購入判断期限が近い';
+    }
+
+    if (hasThreeSetManagementPurchaseAlert(item, 'remaining-one')) {
+        return '残1回のロールがあります';
+    }
+
+    if (!item.hasNewStorage) {
+        return '新品予備保管なし';
+    }
+
+    if (hasThreeSetManagementPurchaseAlert(item, 'coating-required')) {
+        return '溶射無しあり。先に溶射搬出が必要';
+    }
+
+    if (hasThreeSetManagementPurchaseAlert(item, 'scrap-waiting')) {
+        return '廃却待ちあり';
+    }
+
+    return '確認必要';
+}
+
 function getThreeSetManagementPurchaseStandItems(allRoles = roles) {
     const today = getTodayDateString();
     const groups = groupRolesByStand(allRoles);
@@ -4227,6 +4267,7 @@ function getThreeSetManagementPurchaseStandItems(allRoles = roles) {
             title: `#${standKey} 購入判断`,
             deadline: basisPlan.purchaseDecisionDate,
             disposalForecastDate: basisPlan.disposalForecastDate,
+            purchaseLevelKey: level.key,
             status: level.label,
             action: hasNewStorage
                 ? '新品予備保管を含めて購入要否を確認'
@@ -4598,6 +4639,10 @@ function getThreeSetManagementItemHtml(item, activeTab) {
                 <div class="three-set-management-task-head">
                     <span class="three-set-management-task-stand">${escapeHtml(item.title || `#${item.standKey || '-'}`)}</span>
                     <span class="three-set-management-task-status">${escapeHtml(item.status || '-')}</span>
+                </div>
+                <div class="three-set-management-task-action">
+                    <span>最優先理由</span>
+                    <strong>${escapeHtml(getThreeSetManagementPurchaseTopReason(item))}</strong>
                 </div>
                 <div class="three-set-management-task-main">
                     <div>
