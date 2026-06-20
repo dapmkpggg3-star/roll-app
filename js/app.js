@@ -3884,7 +3884,7 @@ function getThreeSetManagementAssemblyExcludedItems(allRoles = roles) {
         }
 
         if (!hasInstallCandidate) {
-            reasons.push(`${NEW_READY_STATUS}がありません`);
+            reasons.push('組む側候補がありません');
         }
 
         let supplement = '';
