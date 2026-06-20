@@ -6355,6 +6355,37 @@ function getFilteredRoles() {
         ].some(field => field.toLowerCase().includes(normalizedQuery));
     });
 }
+
+function getEmptyRoleListMessage() {
+    if (roles.length === 0) {
+        return 'ロールがまだ登録されていません';
+    }
+
+    const query = String(searchQuery || '').trim();
+    const hasSearch = query.length > 0;
+    const hasStatusFilter = statusFilter !== 'all';
+    const hasWatchStandFilter = Boolean(watchStandFilter);
+    const activeFilterCount = [hasSearch, memoOnlyFilter, hasStatusFilter, hasWatchStandFilter]
+        .filter(Boolean).length;
+
+    if (memoOnlyFilter && hasSearch && activeFilterCount === 2) {
+        return `メモ内に「${query}」を含むロールはありません`;
+    }
+
+    if (memoOnlyFilter && !hasSearch && activeFilterCount === 1) {
+        return 'メモが入力されているロールはありません';
+    }
+
+    if (hasSearch && !memoOnlyFilter && activeFilterCount === 1) {
+        return `「${query}」に一致するロールはありません`;
+    }
+
+    if (hasStatusFilter && activeFilterCount === 1) {
+        return 'このステータスのロールはありません';
+    }
+
+    return '絞り込み条件に一致するロールはありません';
+}
 function showToast(message) {
   const toast = document.createElement("div");
   toast.textContent = message;
@@ -6549,9 +6580,7 @@ function renderRoles() {
         }
     }
     if (visibleRoles.length === 0) {
-        const message = roles.length === 0
-            ? 'ロールがまだ登録されていません'
-            : '検索条件に一致するロールが見つかりません';
+        const message = getEmptyRoleListMessage();
         roleList.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 40px; color: #999;">${message}</td></tr>`;
         return;
     }
