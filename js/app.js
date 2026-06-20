@@ -192,10 +192,16 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
     const roleStatusSelect = document.getElementById('role-status');
+    const roleNameInput = document.getElementById('role-name');
     if (roleStatusSelect) {
         updateStatusPreview(roleStatusSelect);
         roleStatusSelect.addEventListener('change', function(e) {
             updateStatusPreview(e.target);
+        });
+    }
+    if (roleNameInput) {
+        roleNameInput.addEventListener('input', function() {
+            updateCoatingStatusFieldState(roleStatusSelect ? roleStatusSelect.value : '');
         });
     }
     setRoleFormOpen(false);
@@ -421,11 +427,20 @@ function normalizeRoleStatusValue(status) {
     return ALLOWED_STATUSES.includes(normalizedStatus) ? normalizedStatus : '中古予備（バラシ前）';
 }
 
-function normalizeCoatingStatusValue(value, status = NEW_STORAGE_STATUS) {
+function isCoatingManagedStand(standValue) {
+    const standNumber = Number(getStandKey(standValue));
+    return standNumber >= 2 && standNumber <= 11;
+}
+
+function isCoatingStatusAllowedForRole(status, standValue) {
+    return normalizeRoleStatusValue(status) === NEW_STORAGE_STATUS && isCoatingManagedStand(standValue);
+}
+
+function normalizeCoatingStatusValue(value, status = NEW_STORAGE_STATUS, standValue = '') {
     const normalizedStatus = normalizeRoleStatusValue(status);
     const normalizedValue = String(value || '').trim();
 
-    if (normalizedStatus !== NEW_STORAGE_STATUS) {
+    if (normalizedStatus !== NEW_STORAGE_STATUS || (standValue && !isCoatingManagedStand(standValue))) {
         return '';
     }
 
@@ -439,11 +454,11 @@ function getCoatingStatusLabel(value) {
 }
 
 function getCoatingStatusDisplay(role) {
-    if (!role || normalizeRoleStatusValue(role.status) !== NEW_STORAGE_STATUS) {
+    if (!role || !isCoatingStatusAllowedForRole(role.status, role.name)) {
         return null;
     }
 
-    const coatingStatus = normalizeCoatingStatusValue(role.coatingStatus, role.status);
+    const coatingStatus = normalizeCoatingStatusValue(role.coatingStatus, role.status, role.name);
 
     if (!coatingStatus) {
         return null;
@@ -1012,7 +1027,9 @@ function setEditModeUi(role = null) {
 function updateCoatingStatusFieldState(status) {
     const field = document.querySelector('.coating-status-field');
     const select = document.getElementById('role-coating-status');
-    const isAllowed = normalizeRoleStatusValue(status) === NEW_STORAGE_STATUS;
+    const roleNameInput = document.getElementById('role-name');
+    const standValue = roleNameInput ? roleNameInput.value : '';
+    const isAllowed = isCoatingStatusAllowedForRole(status, standValue);
 
     if (!field || !select) {
         return;
@@ -2533,7 +2550,7 @@ function loadLocalRoles() {
             updatedAt: role.updatedAt || new Date().toISOString(),
             memo: role.memo || '',
             status: normalizeRoleStatusValue(role.status),
-            coatingStatus: normalizeCoatingStatusValue(role.coatingStatus, role.status),
+            coatingStatus: normalizeCoatingStatusValue(role.coatingStatus, role.status, role.name),
             useStartDate: normalizeUseStartDate(role.useStartDate),
             dispatchDate: workProgress.dispatchDate || normalizeDateInputValue(role.dispatchDate),
             currentDiameter: normalizeCurrentDiameter(role.currentDiameter),
@@ -3708,13 +3725,31 @@ function getThreeSetManagementAssemblyItems(allRoles = roles) {
                 .map(role => `${role.name || '-'} ${USED_STANDBY_STATUS}`)
                 .join('\n') || '-',
             installSide: candidate.newReadyRoles
-                .map(role => `${role.name || '-'} ${NEW_READY_STATUS}`)
+                .map(role => `${role.name || '-'} ${normalizeRoleStatusValue(role.status)}`)
                 .join('\n') || '-',
             deadline: candidate.details.estimatedReplacementDate,
             status: '依頼前',
             action: '工作課へ組替依頼',
             meta: candidate.details.remainingDaysLabel
         }));
+}
+
+function isAssemblyInstallCandidateRole(role, standKey = getStandKey(role && role.name)) {
+    const status = normalizeRoleStatusValue(role && role.status);
+
+    if (status === NEW_READY_STATUS) {
+        return true;
+    }
+
+    if (status !== NEW_STORAGE_STATUS) {
+        return false;
+    }
+
+    if (!isCoatingManagedStand(standKey)) {
+        return true;
+    }
+
+    return normalizeCoatingStatusValue(role && role.coatingStatus, status, standKey) === 'coated';
 }
 
 function getThreeSetManagementAssemblyExcludedItems(allRoles = roles) {
@@ -3735,10 +3770,15 @@ function getThreeSetManagementAssemblyExcludedItems(allRoles = roles) {
         }
 
         const hasUsedStandby = activeRoles.some(role => normalizeRoleStatusValue(role.status) === USED_STANDBY_STATUS);
-        const hasNewReady = activeRoles.some(role => normalizeRoleStatusValue(role.status) === NEW_READY_STATUS);
+        const hasInstallCandidate = activeRoles.some(role => isAssemblyInstallCandidateRole(role, standKey));
         const storageRoles = activeRoles.filter(role => normalizeRoleStatusValue(role.status) === NEW_STORAGE_STATUS);
         const hasUncoatedStorage = storageRoles.some(role =>
-            normalizeCoatingStatusValue(role.coatingStatus, role.status) === UNCOATED_STATUS
+            isCoatingManagedStand(standKey)
+            && normalizeCoatingStatusValue(role.coatingStatus, role.status, standKey) === UNCOATED_STATUS
+        );
+        const hasUnsetCoatingStorage = storageRoles.some(role =>
+            isCoatingManagedStand(standKey)
+            && !normalizeCoatingStatusValue(role.coatingStatus, role.status, standKey)
         );
         const reasons = [];
 
@@ -3746,15 +3786,19 @@ function getThreeSetManagementAssemblyExcludedItems(allRoles = roles) {
             reasons.push(`${USED_STANDBY_STATUS}がありません`);
         }
 
-        if (!hasNewReady) {
+        if (!hasInstallCandidate) {
             reasons.push(`${NEW_READY_STATUS}がありません`);
         }
 
-        const supplement = storageRoles.length === 0
-            ? ''
-            : (hasUncoatedStorage
-                ? `${NEW_STORAGE_STATUS}（溶射無し）はあります。先に溶射搬出が必要です`
-                : `${NEW_STORAGE_STATUS}はありますが、組替候補には含めていません`);
+        let supplement = '';
+
+        if (storageRoles.length > 0 && isCoatingManagedStand(standKey)) {
+            if (hasUncoatedStorage) {
+                supplement = `${NEW_STORAGE_STATUS}（溶射無し）はあります。先に溶射搬出が必要です`;
+            } else if (hasUnsetCoatingStorage) {
+                supplement = `${NEW_STORAGE_STATUS}はありますが、溶射状態が未設定です`;
+            }
+        }
 
         items.push({
             standKey,
@@ -3958,7 +4002,7 @@ function getPurchaseRoleAlert(role, basisRole) {
 
     if (status === NEW_STORAGE_STATUS) {
         alerts.push({ key: 'new-storage', label: '新品予備保管あり' });
-        if (normalizeCoatingStatusValue(role && role.coatingStatus, status) === UNCOATED_STATUS) {
+        if (isCoatingManagedStand(role && role.name) && normalizeCoatingStatusValue(role && role.coatingStatus, status, role && role.name) === UNCOATED_STATUS) {
             alerts.push({ key: 'coating-required', label: '溶射無しあり' });
             alerts.push({ key: 'coating-dispatch', label: '溶射搬出必要' });
         }
@@ -4033,7 +4077,8 @@ function getThreeSetManagementPurchaseStandItems(allRoles = roles) {
         const hasNewStorage = activeStandRoles.some(role => normalizeRoleStatusValue(role.status) === NEW_STORAGE_STATUS);
         const hasUncoatedStorage = activeStandRoles.some(role =>
             normalizeRoleStatusValue(role.status) === NEW_STORAGE_STATUS
-            && normalizeCoatingStatusValue(role.coatingStatus, role.status) === UNCOATED_STATUS
+            && isCoatingManagedStand(role.name)
+            && normalizeCoatingStatusValue(role.coatingStatus, role.status, role.name) === UNCOATED_STATUS
         );
         const roleRows = getThreeSetManagementPurchaseRoleRows(activeStandRoles, basisPlan.role);
 
@@ -4959,8 +5004,8 @@ function getAssemblyCandidateItems(allRoles) {
 
     return Array.from(groups.entries())
         .map(([standKey, standRoles]) => {
-            const usedRoles = standRoles.filter(role => role.status === USED_STANDBY_STATUS);
-            const newReadyRoles = standRoles.filter(role => role.status === NEW_READY_STATUS);
+            const usedRoles = standRoles.filter(role => normalizeRoleStatusValue(role.status) === USED_STANDBY_STATUS);
+            const newReadyRoles = standRoles.filter(role => isAssemblyInstallCandidateRole(role, standKey));
 
             if (usedRoles.length === 0 || newReadyRoles.length === 0) {
                 return null;
@@ -5293,11 +5338,12 @@ function getWorkshopRoleLines(roleList) {
         .map(role => {
             const currentDiameter = formatCurrentDiameter(role.currentDiameter);
             const useStartDate = formatUseStartDate(role.useStartDate);
+            const status = normalizeRoleStatusValue(role.status);
 
             return `
                 <div class="workshop-role-line">
                     <span class="workshop-role-name">${escapeHtml(role.name || '-')}</span>
-                    <span class="workshop-role-meta">現在径 ${escapeHtml(currentDiameter)} / 使用開始日 ${escapeHtml(useStartDate)}</span>
+                    <span class="workshop-role-meta">${escapeHtml(status)} / 現在径 ${escapeHtml(currentDiameter)} / 使用開始日 ${escapeHtml(useStartDate)}</span>
                 </div>
             `;
         })
@@ -5428,7 +5474,7 @@ function getWorkshopAssemblyCandidatesHtml(candidates) {
                             <div class="workshop-role-list">${getWorkshopRoleLines(candidate.usedRoles)}</div>
                         </div>
                         <div class="workshop-card-section">
-                            <span class="workshop-card-label">新品予備（組替可能）</span>
+                            <span class="workshop-card-label">組む側候補</span>
                             <div class="workshop-role-list">${getWorkshopRoleLines(candidate.newReadyRoles)}</div>
                         </div>
                     </article>
@@ -6323,7 +6369,7 @@ function addRole() {
 
     const roleName = document.getElementById('role-name').value.trim();
     const roleStatus = document.getElementById('role-status').value;
-    const roleCoatingStatus = normalizeCoatingStatusValue(document.getElementById('role-coating-status').value, roleStatus);
+    const roleCoatingStatus = normalizeCoatingStatusValue(document.getElementById('role-coating-status').value, roleStatus, roleName);
     const roleCurrentDiameter = normalizeCurrentDiameter(document.getElementById('role-current-diameter').value);
     const roleDispatchDate = isDispatchDateAllowedStatus(roleStatus)
         ? normalizeDateInputValue(document.getElementById('role-dispatch-date').value)
@@ -6391,7 +6437,7 @@ function editRole(id) {
     document.getElementById('role-name').value = role.name;
     document.getElementById('role-status').value = role.status;
     updateStatusPreview(document.getElementById('role-status'));
-    document.getElementById('role-coating-status').value = normalizeCoatingStatusValue(role.coatingStatus, role.status);
+    document.getElementById('role-coating-status').value = normalizeCoatingStatusValue(role.coatingStatus, role.status, role.name);
     document.getElementById('role-current-diameter').value = normalizeCurrentDiameter(role.currentDiameter);
     clearDiameterChangeReason();
     document.getElementById('role-dispatch-date').value = isDispatchDateAllowedStatus(role.status)
@@ -6415,7 +6461,7 @@ function updateRole() {
     
     const roleName = document.getElementById('role-name').value.trim();
     const roleStatus = document.getElementById('role-status').value;
-    const roleCoatingStatus = normalizeCoatingStatusValue(document.getElementById('role-coating-status').value, roleStatus);
+    const roleCoatingStatus = normalizeCoatingStatusValue(document.getElementById('role-coating-status').value, roleStatus, roleName);
     const roleCurrentDiameter = normalizeCurrentDiameter(document.getElementById('role-current-diameter').value);
     const diameterChangeReason = getDiameterChangeReason();
     const roleDispatchDate = isDispatchDateAllowedStatus(roleStatus)
@@ -6436,7 +6482,7 @@ function updateRole() {
     if (!role) return;
     const beforeName = role.name;
     const beforeStatus = role.status || '';
-    const beforeCoatingStatus = normalizeCoatingStatusValue(role.coatingStatus, role.status);
+    const beforeCoatingStatus = normalizeCoatingStatusValue(role.coatingStatus, role.status, role.name);
     const beforeMemo = role.memo || '';
     const beforeCurrentDiameter = normalizeCurrentDiameter(role.currentDiameter);
     const beforeDispatchDate = getRoleDispatchDate(role);
