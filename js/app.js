@@ -3717,6 +3717,98 @@ function getThreeSetManagementAssemblyItems(allRoles = roles) {
         }));
 }
 
+function getThreeSetManagementAssemblyExcludedItems(allRoles = roles) {
+    const candidateStandKeys = new Set(getAssemblyCandidateItems(allRoles).map(candidate => candidate.standKey));
+    const groups = groupRolesByStand(allRoles);
+    const items = [];
+
+    groups.forEach((standRoles, standKey) => {
+        if (candidateStandKeys.has(standKey)) {
+            return;
+        }
+
+        const activeRoles = (Array.isArray(standRoles) ? standRoles : [])
+            .filter(role => role && normalizeRoleStatusValue(role.status) !== DISCARDED_STATUS);
+
+        if (activeRoles.length === 0) {
+            return;
+        }
+
+        const hasUsedStandby = activeRoles.some(role => normalizeRoleStatusValue(role.status) === USED_STANDBY_STATUS);
+        const hasNewReady = activeRoles.some(role => normalizeRoleStatusValue(role.status) === NEW_READY_STATUS);
+        const storageRoles = activeRoles.filter(role => normalizeRoleStatusValue(role.status) === NEW_STORAGE_STATUS);
+        const hasUncoatedStorage = storageRoles.some(role =>
+            normalizeCoatingStatusValue(role.coatingStatus, role.status) === UNCOATED_STATUS
+        );
+        const reasons = [];
+
+        if (!hasUsedStandby) {
+            reasons.push(`${USED_STANDBY_STATUS}がありません`);
+        }
+
+        if (!hasNewReady) {
+            reasons.push(`${NEW_READY_STATUS}がありません`);
+        }
+
+        const supplement = storageRoles.length === 0
+            ? ''
+            : (hasUncoatedStorage
+                ? `${NEW_STORAGE_STATUS}（溶射無し）はあります。先に溶射搬出が必要です`
+                : `${NEW_STORAGE_STATUS}はありますが、組替候補には含めていません`);
+
+        items.push({
+            standKey,
+            standNumber: Number(standKey) || 999999,
+            reason: reasons.join(' / ') || '組替候補条件を満たしていません',
+            supplement
+        });
+    });
+
+    return items.sort((a, b) => {
+        if (a.standNumber !== b.standNumber) {
+            return a.standNumber - b.standNumber;
+        }
+
+        return String(a.standKey || '').localeCompare(String(b.standKey || ''), 'ja');
+    });
+}
+
+function getThreeSetManagementAssemblyExcludedHtml(items) {
+    const list = Array.isArray(items) ? items : [];
+    const bodyHtml = list.length === 0
+        ? '<div class="three-set-management-assembly-excluded-empty">候補外スタンドはありません</div>'
+        : list.map(item => `
+            <article class="three-set-management-assembly-excluded-item">
+                <div class="three-set-management-assembly-excluded-head">
+                    <span>#${escapeHtml(item.standKey || '-')}</span>
+                    <strong>組替候補なし</strong>
+                </div>
+                <div class="three-set-management-assembly-excluded-reason">
+                    <span>理由</span>
+                    <strong>${escapeHtml(item.reason || '-')}</strong>
+                </div>
+                ${item.supplement ? `
+                    <div class="three-set-management-assembly-excluded-note">
+                        <span>補足</span>
+                        <strong>${escapeHtml(item.supplement)}</strong>
+                    </div>
+                ` : ''}
+            </article>
+        `).join('');
+
+    return `
+        <details class="three-set-management-assembly-excluded">
+            <summary>
+                <span>候補外スタンドの理由</span>
+                <strong>${escapeHtml(String(list.length))}件</strong>
+            </summary>
+            <div class="three-set-management-assembly-excluded-list">
+                ${bodyHtml}
+            </div>
+        </details>
+    `;
+}
+
 function getThreeSetManagementReworkFieldHtml(label, value) {
     return `
         <div>
@@ -4000,6 +4092,7 @@ function getThreeSetManagementSummary(label, items) {
 
 function getThreeSetManagementData(allRoles = roles) {
     const assemblyItems = getThreeSetManagementAssemblyItems(allRoles);
+    const assemblyExcludedItems = getThreeSetManagementAssemblyExcludedItems(allRoles);
     const reworkItems = getThreeSetManagementReworkItems(allRoles);
     const purchaseItems = getThreeSetManagementPurchaseItems(allRoles);
 
@@ -4008,7 +4101,8 @@ function getThreeSetManagementData(allRoles = roles) {
             key: 'assembly',
             label: '組替',
             summary: getThreeSetManagementSummary('組替', assemblyItems),
-            items: assemblyItems
+            items: assemblyItems,
+            excludedItems: assemblyExcludedItems
         },
         {
             key: 'rework',
@@ -4415,6 +4509,10 @@ function updateThreeSetManagementDashboard(allRoles = roles) {
     }).join('');
 
     if (!activeGroup || activeGroup.items.length === 0) {
+        const assemblyExcludedHtml = activeGroup && activeGroup.key === 'assembly'
+            ? getThreeSetManagementAssemblyExcludedHtml(activeGroup.excludedItems)
+            : '';
+
         detailEl.innerHTML = `
             <section class="three-set-management-panel">
                 <div class="three-set-management-panel-header">
@@ -4422,10 +4520,15 @@ function updateThreeSetManagementDashboard(allRoles = roles) {
                     ${getThreeSetManagementPanelHeaderMetaHtml(activeGroup)}
                 </div>
                 <div class="three-set-management-empty">現在、${escapeHtml(activeGroup ? activeGroup.label : '対象')}タスクはありません</div>
+                ${assemblyExcludedHtml}
             </section>
         `;
         return;
     }
+
+    const assemblyExcludedHtml = activeGroup.key === 'assembly'
+        ? getThreeSetManagementAssemblyExcludedHtml(activeGroup.excludedItems)
+        : '';
 
     detailEl.innerHTML = `
         <section class="three-set-management-panel">
@@ -4436,6 +4539,7 @@ function updateThreeSetManagementDashboard(allRoles = roles) {
             <div class="three-set-management-task-list">
                 ${activeGroup.items.map(item => getThreeSetManagementItemHtml(item, activeGroup.key)).join('')}
             </div>
+            ${assemblyExcludedHtml}
         </section>
     `;
 }

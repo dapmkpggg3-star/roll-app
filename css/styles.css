@@ -1363,6 +1363,110 @@ body {
     overflow-wrap: anywhere;
 }
 
+.three-set-management-assembly-excluded {
+    display: grid;
+    gap: 8px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    border: 1px solid #e2e8f0;
+    background: #ffffff;
+}
+
+.three-set-management-assembly-excluded summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    color: #475569;
+    font-size: 0.86rem;
+    font-weight: 900;
+    line-height: 1.2;
+    cursor: pointer;
+}
+
+.three-set-management-assembly-excluded summary::marker {
+    color: #64748b;
+}
+
+.three-set-management-assembly-excluded summary strong {
+    flex: 0 0 auto;
+    color: #1e40af;
+    font-weight: 900;
+}
+
+.three-set-management-assembly-excluded-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.three-set-management-assembly-excluded-item {
+    display: grid;
+    gap: 6px;
+    padding: 8px;
+    border-radius: 8px;
+    border: 1px solid #e2e8f0;
+    background: #f8fafc;
+}
+
+.three-set-management-assembly-excluded-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.three-set-management-assembly-excluded-head span {
+    color: #0f172a;
+    font-size: 0.98rem;
+    font-weight: 900;
+}
+
+.three-set-management-assembly-excluded-head strong {
+    color: #64748b;
+    font-size: 0.78rem;
+    font-weight: 900;
+}
+
+.three-set-management-assembly-excluded-reason,
+.three-set-management-assembly-excluded-note {
+    display: grid;
+    gap: 2px;
+    color: #475569;
+    font-size: 0.8rem;
+    font-weight: 800;
+    line-height: 1.25;
+}
+
+.three-set-management-assembly-excluded-reason span,
+.three-set-management-assembly-excluded-note span {
+    color: #64748b;
+    font-size: 0.74rem;
+    font-weight: 900;
+}
+
+.three-set-management-assembly-excluded-reason strong,
+.three-set-management-assembly-excluded-note strong {
+    color: #0f172a;
+    font-size: 0.84rem;
+    font-weight: 900;
+    overflow-wrap: anywhere;
+}
+
+.three-set-management-assembly-excluded-note strong {
+    color: #92400e;
+}
+
+.three-set-management-assembly-excluded-empty {
+    padding: 8px;
+    border-radius: 8px;
+    border: 1px dashed #cbd5e1;
+    color: #64748b;
+    font-size: 0.82rem;
+    font-weight: 800;
+}
+
 .three-set-management-purchase-task .three-set-management-task-meta {
     display: grid;
     gap: 3px;
