@@ -1177,7 +1177,7 @@ function getReworkPickupDateSummaryHtml(progress) {
     lines.push(`<span class="rework-pickup-date-line">搬出日：${escapeHtml(formatDateForDisplay(pickupAction.dispatchDate))}</span>`);
 
     if (pickupAction.arrivalDate) {
-        lines.push(`<span class="rework-pickup-date-line">搬入日：${escapeHtml(formatDateForDisplay(pickupAction.arrivalDate))}</span>`);
+        lines.push(`<span class="rework-pickup-date-line">搬入日（実績/確定）：${escapeHtml(formatDateForDisplay(pickupAction.arrivalDate))}</span>`);
         return lines.join('');
     }
 
@@ -1185,7 +1185,7 @@ function getReworkPickupDateSummaryHtml(progress) {
         lines.push(`<span class="rework-pickup-date-line">仮搬入予定：${escapeHtml(formatDateForDisplay(pickupAction.temporaryInboundPlanDate))}</span>`);
     }
 
-    lines.push('<span class="rework-pickup-date-line">搬入日：未定</span>');
+    lines.push('<span class="rework-pickup-date-line">搬入日（実績/確定）：未定</span>');
 
     if (pickupAction.key === 'waiting-arrival') {
         lines.push('<span class="rework-pickup-help">目安：搬出日から20〜30日</span>');
@@ -1238,7 +1238,7 @@ function getReworkPickupActionInfo(progress, today = getTodayDateString()) {
         return {
             key: 'arrival-entered',
             level: 'complete',
-            action: '搬入日入力済み',
+            action: '搬入日（実績/確定）入力済み',
             status: '搬入済み確認',
             dispatchDate,
             arrivalDate,
@@ -1308,7 +1308,7 @@ function getReworkPickupChecklistItemHtml(roleKey, step, index, progress, option
                     >
                 </label>
                 <label class="rework-pickup-date-field">
-                    <span>搬入日 <small>任意</small></span>
+                    <span>搬入日（実績/確定） <small>任意</small></span>
                     <input
                         type="date"
                         class="rework-pickup-arrival-date"
@@ -2987,7 +2987,7 @@ function getRoleInfoHtml(role, formattedDate) {
     if (dispatchDate) {
         rows.push(['搬出日', formatDateForDisplay(dispatchDate)]);
         if (arrivalDate) {
-            rows.push(['搬入日', formatDateForDisplay(arrivalDate)]);
+            rows.push(['搬入日（実績/確定）', formatDateForDisplay(arrivalDate)]);
         } else {
             rows.push(['仮搬入予定', formatDateForDisplay(getTemporaryInboundPlanDate(dispatchDate))]);
         }
@@ -3970,12 +3970,12 @@ function getThreeSetManagementReworkPickupStatusHtml(pickupAction) {
     ];
 
     if (pickupAction.arrivalDate) {
-        fields.push(['搬入日', formatDateForDisplay(pickupAction.arrivalDate)]);
+        fields.push(['搬入日（実績/確定）', formatDateForDisplay(pickupAction.arrivalDate)]);
     } else {
         if (pickupAction.temporaryInboundPlanDate) {
             fields.push(['仮搬入予定', formatDateForDisplay(pickupAction.temporaryInboundPlanDate)]);
         }
-        fields.push(['搬入日', '未定']);
+        fields.push(['搬入日（実績/確定）', '未定']);
     }
 
     if (pickupAction.key === 'waiting-arrival') {
