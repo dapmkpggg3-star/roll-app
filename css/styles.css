@@ -1685,6 +1685,11 @@ body {
     background: #fff7ed;
 }
 
+.three-set-management-purchase-roll.is-handled {
+    border-color: #bbf7d0;
+    background: #f0fdf4;
+}
+
 .three-set-management-purchase-roll-name,
 .three-set-management-purchase-roll-status,
 .three-set-management-purchase-roll-diameter {

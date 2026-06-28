@@ -4264,6 +4264,7 @@ function getPurchaseRoleAlert(role, basisRole) {
         alerts.push({ key: 'ordered-waiting', label: ORDERED_WAITING_STATUS });
         alerts.push({ key: 'purchase-handled', label: '購入対応済み' });
         alerts.push({ key: 'not-arrived', label: '現物未納入' });
+        return alerts;
     }
 
     if (info) {
@@ -4290,15 +4291,18 @@ function getThreeSetManagementPurchaseRoleRows(standRoles, basisRole) {
         .map(role => {
             const alerts = getPurchaseRoleAlert(role, basisRole);
             const coatingDisplay = getCoatingStatusDisplay(role);
+            const status = normalizeRoleStatusValue(role.status);
+            const isHandled = status === ORDERED_WAITING_STATUS;
             return {
                 name: role.name || '-',
-                status: normalizeRoleStatusValue(role.status),
+                status,
                 coatingLabel: coatingDisplay ? coatingDisplay.label : '',
                 coatingNote: coatingDisplay ? coatingDisplay.note : '',
                 currentDiameter: normalizePurchaseDiameter(role.currentDiameter),
                 diameterLabel: formatPurchaseDiameter(role.currentDiameter),
                 alerts,
-                isAlert: alerts.length > 0
+                isAlert: alerts.length > 0,
+                isHandled
             };
         });
 }
@@ -4442,17 +4446,24 @@ function getThreeSetManagementPurchaseItems(allRoles = roles) {
     return getThreeSetManagementPurchaseStandItems(allRoles);
 }
 
-function getThreeSetManagementSummary(label, items) {
+function getThreeSetManagementSummary(label, items, options = {}) {
     if (!Array.isArray(items) || items.length === 0) {
         return getThreeSetManagementEmptySummary(label);
     }
 
-    const first = items[0];
+    const summaryItems = typeof options.summaryFilter === 'function'
+        ? items.filter(options.summaryFilter)
+        : items;
+    const first = summaryItems[0] || items[0];
     return {
-        count: items.length,
+        count: summaryItems.length,
         status: first.status || '確認あり',
         nextAction: first.action || `${label}を確認`
     };
+}
+
+function isThreeSetManagementPurchaseUnhandledItem(item) {
+    return !(item && item.hasOrderedWaiting);
 }
 
 function getThreeSetManagementData(allRoles = roles) {
@@ -4479,8 +4490,11 @@ function getThreeSetManagementData(allRoles = roles) {
         {
             key: 'purchase',
             label: '購入',
-            summary: getThreeSetManagementSummary('購入', purchaseItems),
-            items: purchaseItems
+            summary: getThreeSetManagementSummary('購入', purchaseItems, {
+                summaryFilter: isThreeSetManagementPurchaseUnhandledItem
+            }),
+            items: purchaseItems,
+            summaryFilter: isThreeSetManagementPurchaseUnhandledItem
         }
     ];
 }
@@ -4510,7 +4524,10 @@ function getThreeSetManagementItemTitle(activeTab) {
 }
 
 function getThreeSetManagementPanelHeaderMetaHtml(activeGroup) {
-    const count = activeGroup && Array.isArray(activeGroup.items) ? activeGroup.items.length : 0;
+    const items = activeGroup && Array.isArray(activeGroup.items) ? activeGroup.items : [];
+    const count = activeGroup && typeof activeGroup.summaryFilter === 'function'
+        ? items.filter(activeGroup.summaryFilter).length
+        : items.length;
 
     return `<span>${escapeHtml(String(count))}件</span>`;
 }
@@ -4589,7 +4606,7 @@ function getThreeSetManagementPurchaseRowsHtml(item) {
     return `
         <div class="three-set-management-purchase-rolls">
             ${rows.map(row => `
-                <div class="three-set-management-purchase-roll ${row.isAlert ? 'is-alert' : ''}">
+                <div class="three-set-management-purchase-roll ${row.isAlert ? 'is-alert' : ''} ${row.isHandled ? 'is-handled' : ''}">
                     <span class="three-set-management-purchase-roll-name">${escapeHtml(row.name || '-')}</span>
                     <span class="three-set-management-purchase-roll-status">
                         ${escapeHtml(row.status || '-')}
