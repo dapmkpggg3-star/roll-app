@@ -549,6 +549,12 @@ body {
     border-color: #bbf7d0;
 }
 
+.count-summary .summary-card:has(#summary-ordered-waiting) {
+    background: #eff6ff;
+    color: #1d4ed8;
+    border-color: #bfdbfe;
+}
+
 .count-summary .summary-card:has(#summary-scrap-waiting) {
     background: #fef2f2;
     color: #991b1b;

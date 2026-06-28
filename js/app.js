@@ -3205,6 +3205,10 @@ function getStatusSummaryCategory(role) {
         return 'newStorage';
     }
 
+    if (status === ORDERED_WAITING_STATUS) {
+        return 'orderedWaiting';
+    }
+
     if (status === SCRAP_WAITING_STATUS) {
         return 'scrapWaiting';
     }
@@ -3217,6 +3221,8 @@ function getStatusSummaryCategory(role) {
 }
 
 function updateCountSummary(allRoles = roles) {
+    ensureOrderedWaitingSummaryCard();
+
     const summary = {
     total: allRoles.length,
     online: 0,
@@ -3226,6 +3232,7 @@ function updateCountSummary(allRoles = roles) {
     newReady: 0,
     newInstalled: 0,
     newStorage: 0,
+    orderedWaiting: 0,
     scrapWaiting: 0,
     discarded: 0,
     other: 0
@@ -3245,6 +3252,7 @@ function updateCountSummary(allRoles = roles) {
         newReady: 'summary-new-ready',
         newInstalled: 'summary-new-installed',
         newStorage: 'summary-new-storage',
+        orderedWaiting: 'summary-ordered-waiting',
         scrapWaiting: 'summary-scrap-waiting',
         discarded: 'summary-discarded'
     };
@@ -3257,6 +3265,32 @@ function updateCountSummary(allRoles = roles) {
         summaryEl.textContent = `${value}件`;
     }
 });
+}
+
+function ensureOrderedWaitingSummaryCard() {
+    if (document.getElementById('summary-ordered-waiting')) {
+        return;
+    }
+
+    const storageGroup = document.querySelector('.summary-group-storage');
+
+    if (!storageGroup) {
+        return;
+    }
+
+    const card = document.createElement('div');
+    card.className = 'summary-card status-other';
+    card.onclick = () => setSummaryFilter(ORDERED_WAITING_STATUS);
+    card.innerHTML = `
+        <span class="summary-label">${escapeHtml(ORDERED_WAITING_STATUS)}</span>
+        <span id="summary-ordered-waiting" class="summary-count">0件</span>
+    `;
+
+    const scrapWaitingCard = document.getElementById('summary-scrap-waiting')
+        ? document.getElementById('summary-scrap-waiting').closest('.summary-card')
+        : null;
+
+    storageGroup.insertBefore(card, scrapWaitingCard);
 }
 
 function getStandKey(roleName) {
@@ -6242,7 +6276,7 @@ function getTodayTaskTargetRole(task) {
     }
 
     if (taskId.startsWith('reserve-shortage-')) {
-        const normallyHiddenStatuses = [NEW_STORAGE_STATUS, SCRAP_WAITING_STATUS, DISCARDED_STATUS];
+        const normallyHiddenStatuses = [NEW_STORAGE_STATUS, ORDERED_WAITING_STATUS, SCRAP_WAITING_STATUS, DISCARDED_STATUS];
         return getTodayTaskStandTargetRole(task, ALLOWED_STATUSES.filter(status => !normallyHiddenStatuses.includes(status)));
     }
 
@@ -6375,7 +6409,9 @@ function getFilteredRoles() {
         if (memoOnlyFilter && !hasMemoText(role)) {
             return false;
         }
-        const isNormallyHiddenStatus = role.status === NEW_STORAGE_STATUS || role.status === SCRAP_WAITING_STATUS;
+        const isNormallyHiddenStatus = role.status === NEW_STORAGE_STATUS
+            || role.status === ORDERED_WAITING_STATUS
+            || role.status === SCRAP_WAITING_STATUS;
         if (isNormallyHiddenStatus && statusFilter !== role.status && !hasSearch && !memoOnlyFilter) {
             return false;
         }
