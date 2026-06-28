@@ -1739,6 +1739,17 @@ body {
     color: #166534;
 }
 
+.three-set-management-purchase-alert.is-ordered-waiting,
+.three-set-management-purchase-alert.is-purchase-handled {
+    background: #dcfce7;
+    color: #166534;
+}
+
+.three-set-management-purchase-alert.is-not-arrived {
+    background: #e0f2fe;
+    color: #075985;
+}
+
 .three-set-management-purchase-alert.is-coating-required,
 .three-set-management-purchase-alert.is-coating-dispatch {
     background: #fee2e2;
@@ -3956,6 +3967,12 @@ tbody tr:hover {
     background: #dcfce7;
     color: #166534;
     border-color: #86efac;
+}
+
+.status-ordered-waiting {
+    background: #e0f2fe;
+    color: #0f4c81;
+    border-color: #38bdf8;
 }
 
 .status-scrap-waiting {

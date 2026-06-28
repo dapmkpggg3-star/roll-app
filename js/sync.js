@@ -648,11 +648,15 @@ function normalizeRole(role) {
         });
     }
 
+    const normalizedStatus = typeof normalizeRoleStatusValue === 'function'
+        ? normalizeRoleStatusValue(role.status)
+        : (ALLOWED_STATUSES.includes(role.status) ? role.status : '中古予備（バラシ前）');
+
     return {
         ...role,
         updatedAt: role.updatedAt || new Date().toISOString(),
         memo: role.memo || '',
-        status: ALLOWED_STATUSES.includes(role.status) ? role.status : '中古予備（バラシ前）',
+        status: normalizedStatus,
         coatingStatus: normalizeCoatingStatusForSync(role.coatingStatus, role.status),
         useStartDate: normalizeUseStartDateForSync(role.useStartDate),
         currentDiameter: normalizeCurrentDiameter(role.currentDiameter),

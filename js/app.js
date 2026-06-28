@@ -365,6 +365,7 @@ const ALLOWED_STATUSES = [
     '新品予備（組替可能）',
     '新品予備（組込完了）',
     '新品予備保管',
+    '発注済み（納入待ち）',
     '廃却待ち（ラック保管）',
     '廃棄'
 ];
@@ -378,6 +379,7 @@ const USED_STANDBY_STATUS = '中古予備（バラシ前）';
 const NEW_READY_STATUS = '新品予備（組替可能）';
 const NEW_INSTALLED_STATUS = '新品予備（組込完了）';
 const NEW_STORAGE_STATUS = '新品予備保管';
+const ORDERED_WAITING_STATUS = '発注済み（納入待ち）';
 const ONLINE_STATUS = 'オンライン';
 const COATING_STATUS_OPTIONS = {
     coated: '溶射有り',
@@ -425,6 +427,11 @@ function normalizeRoleStatusValue(status) {
     }
 
     return ALLOWED_STATUSES.includes(normalizedStatus) ? normalizedStatus : '中古予備（バラシ前）';
+}
+
+function isPurchaseHandledStatus(status) {
+    const normalizedStatus = normalizeRoleStatusValue(status);
+    return normalizedStatus === NEW_STORAGE_STATUS || normalizedStatus === ORDERED_WAITING_STATUS;
 }
 
 function isCoatingManagedStand(standValue) {
@@ -1807,7 +1814,7 @@ function getPurchaseConfirmationLevel(info) {
 
 function getPurchaseConfirmationItems(allRoles = roles) {
     const excludedStandKeys = new Set((Array.isArray(allRoles) ? allRoles : [])
-        .filter(role => role && role.status === NEW_STORAGE_STATUS)
+        .filter(role => role && isPurchaseHandledStatus(role.status))
         .map(role => getStandKey(role.name))
         .filter(Boolean));
 
@@ -2835,6 +2842,7 @@ function getStatusClass(status) {
         '新品予備（組替可能）': 'status-new-ready',
         '新品予備（組込完了）': 'status-new-done',
         '新品予備保管': 'status-new-storage',
+        '発注済み（納入待ち）': 'status-ordered-waiting',
         '廃却待ち（ラック保管）': 'status-scrap-waiting',
         '廃棄': 'status-discarded'
     };
@@ -2887,6 +2895,7 @@ function updateStatusPreview(selectEl) {
         'status-new-ready',
         'status-new-done',
         'status-new-storage',
+        'status-ordered-waiting',
         'status-scrap-waiting',
         'status-discarded',
         'status-other'
@@ -4217,6 +4226,12 @@ function getPurchaseRoleAlert(role, basisRole) {
         }
     }
 
+    if (status === ORDERED_WAITING_STATUS) {
+        alerts.push({ key: 'ordered-waiting', label: ORDERED_WAITING_STATUS });
+        alerts.push({ key: 'purchase-handled', label: '購入対応済み' });
+        alerts.push({ key: 'not-arrived', label: '現物未納入' });
+    }
+
     if (info) {
         if (info.currentDiameter < info.scrapDiameter) {
             alerts.push({ key: 'scrap', label: '廃却径以下' });
@@ -4265,6 +4280,10 @@ function hasThreeSetManagementPurchaseAlert(item, alertKey) {
 function getThreeSetManagementPurchaseTopReason(item) {
     if (!item) {
         return '確認必要';
+    }
+
+    if (item.hasOrderedWaiting) {
+        return ORDERED_WAITING_STATUS;
     }
 
     if (item.purchaseLevelKey === 'urgent') {
@@ -4324,6 +4343,8 @@ function getThreeSetManagementPurchaseStandItems(allRoles = roles) {
         }
 
         const hasNewStorage = activeStandRoles.some(role => normalizeRoleStatusValue(role.status) === NEW_STORAGE_STATUS);
+        const hasOrderedWaiting = activeStandRoles.some(role => normalizeRoleStatusValue(role.status) === ORDERED_WAITING_STATUS);
+        const hasPurchaseHandled = activeStandRoles.some(role => isPurchaseHandledStatus(role.status));
         const hasUncoatedStorage = activeStandRoles.some(role =>
             normalizeRoleStatusValue(role.status) === NEW_STORAGE_STATUS
             && isCoatingManagedStand(role.name)
@@ -4338,22 +4359,34 @@ function getThreeSetManagementPurchaseStandItems(allRoles = roles) {
             deadline: basisPlan.purchaseDecisionDate,
             disposalForecastDate: basisPlan.disposalForecastDate,
             purchaseLevelKey: level.key,
-            status: level.label,
-            action: hasNewStorage
+            status: hasOrderedWaiting ? '購入対応済み' : level.label,
+            action: hasOrderedWaiting
+                ? '納入後に新品予備保管へ変更してください'
+                : hasNewStorage
                 ? '新品予備保管を含めて購入要否を確認'
                 : '3セット維持可否と購入要否を確認',
-            reason: [
-                level.memo,
-                getThreeSetManagementPurchaseReasonText(basisPlan.roleName || `#${standKey}`, level),
-                hasNewStorage
+            reason: hasOrderedWaiting
+                ? [
+                    `${ORDERED_WAITING_STATUS}あり`,
+                    '購入対応済みです',
+                    '現物未納入。納入後に新品予備保管または新品予備（組替可能）へ変更してください'
+                ].join('\n')
+                : [
+                    level.memo,
+                    getThreeSetManagementPurchaseReasonText(basisPlan.roleName || `#${standKey}`, level),
+                    hasNewStorage
                     ? '新品予備保管を含めて3セット維持確認が必要です'
                     : '3セット維持確認が必要です'
-            ].join('\n'),
-            meta: level.memo,
+                ].join('\n'),
+            meta: hasOrderedWaiting ? '購入対応済み / 現物未納入' : level.memo,
             basisRoleName: basisPlan.roleName || '',
             purchaseTimingNotes: getThreeSetManagementPurchaseTimingNotes(basisPlan, today),
             hasNewStorage,
-            storageLabel: hasNewStorage
+            hasOrderedWaiting,
+            hasPurchaseHandled,
+            storageLabel: hasOrderedWaiting
+                ? `${ORDERED_WAITING_STATUS}あり / 現物未納入`
+                : hasNewStorage
                 ? `新品予備保管あり${hasUncoatedStorage ? ' / 溶射無しあり' : ''}`
                 : '新品予備保管なし',
             roleRows
@@ -4636,7 +4669,11 @@ function hasThreeSetManagementPurchaseRollAttention(item) {
     const rows = item && Array.isArray(item.roleRows) ? item.roleRows : [];
 
     return rows.some(row => Array.isArray(row.alerts)
-        && row.alerts.some(alert => attentionAlertKeys.has(alert && alert.key)));
+        && row.alerts.some(alert => {
+            const alertKey = alert && alert.key;
+            return attentionAlertKeys.has(alertKey)
+                && !(item && item.hasPurchaseHandled && alertKey === 'purchase-attention');
+        }));
 }
 
 function getThreeSetManagementPurchaseRollSummary(item) {
