@@ -648,9 +648,10 @@ function normalizeRole(role) {
         });
     }
 
+    const rawStatus = String(role.status || '').trim();
     const normalizedStatus = typeof normalizeRoleStatusValue === 'function'
-        ? normalizeRoleStatusValue(role.status)
-        : (ALLOWED_STATUSES.includes(role.status) ? role.status : '中古予備（バラシ前）');
+        ? normalizeRoleStatusValue(rawStatus)
+        : (ALLOWED_STATUSES.includes(rawStatus) ? rawStatus : '中古予備（バラシ前）');
 
     return {
         ...role,

@@ -420,7 +420,7 @@ const LEGACY_REWORK_CHECKLIST_STEP_KEYS = {
 };
 
 function normalizeRoleStatusValue(status) {
-    const normalizedStatus = String(status || '');
+    const normalizedStatus = String(status || '').trim();
 
     if (normalizedStatus === LEGACY_SCRAP_WAITING_STATUS) {
         return SCRAP_WAITING_STATUS;
@@ -3279,7 +3279,7 @@ function ensureOrderedWaitingSummaryCard() {
     }
 
     const card = document.createElement('div');
-    card.className = 'summary-card status-other';
+    card.className = 'summary-card status-ordered-waiting';
     card.onclick = () => setSummaryFilter(ORDERED_WAITING_STATUS);
     card.innerHTML = `
         <span class="summary-label">${escapeHtml(ORDERED_WAITING_STATUS)}</span>
