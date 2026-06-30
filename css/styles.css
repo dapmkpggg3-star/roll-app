@@ -1775,6 +1775,14 @@ body {
     font-weight: 900;
 }
 
+.three-set-management-purchase-roll-delivery-date {
+    display: block;
+    margin-top: 3px;
+    color: #1d4ed8;
+    font-size: 0.78rem;
+    font-weight: 900;
+}
+
 .three-set-management-purchase-roll-coating.is-warning {
     color: #991b1b;
 }
@@ -3656,7 +3664,8 @@ body.workshop-board-mode .table-container {
 .form-input-zone .status-preview-row,
 .form-input-zone .coating-status-field,
 .form-input-zone .diameter-change-reason-field,
-.form-input-zone .dispatch-date-field {
+.form-input-zone .dispatch-date-field,
+.form-input-zone .order-expected-delivery-date-field {
     width: 100%;
     min-width: 0;
     flex: 0 0 auto;
@@ -3668,6 +3677,7 @@ body.workshop-board-mode .table-container {
 .form-input-zone #role-current-diameter,
 .form-input-zone #diameter-change-reason,
 .form-input-zone #role-dispatch-date,
+.form-input-zone #role-order-expected-delivery-date,
 .form-input-zone #role-memo {
     flex: 0 0 auto !important;
 }
@@ -3677,6 +3687,11 @@ body.workshop-board-mode .table-container {
 }
 
 .dispatch-date-field {
+    display: grid;
+    gap: 8px;
+}
+
+.order-expected-delivery-date-field {
     display: grid;
     gap: 8px;
 }
@@ -3711,7 +3726,17 @@ body.workshop-board-mode .table-container {
     display: none;
 }
 
+.order-expected-delivery-date-field.is-hidden {
+    display: none;
+}
+
 .dispatch-date-label {
+    color: #334155;
+    font-size: 0.92rem;
+    font-weight: 900;
+}
+
+.order-expected-delivery-date-label {
     color: #334155;
     font-size: 0.92rem;
     font-weight: 900;

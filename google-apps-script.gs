@@ -2,7 +2,7 @@ const SHEET_NAME = 'Roles';
 const STAND_MASTER_SHEET_NAME = 'StandMaster';
 const INPUT_SHEET_NAMES = ['入力シート', 'Input', '入力'];
 const SPREADSHEET_ID = '1X07qQa7u9YPLvErT0D48goT5wYmvcpgNjqzK3FhRFeA';
-const HEADER_VALUES = ['ID', 'スタンド番号', 'ステータス', 'メモ', '最終更新日', '作業依頼済み', '作業依頼進捗', '履歴', '現在径', '使用開始日', '溶射状態'];
+const HEADER_VALUES = ['ID', 'スタンド番号', 'ステータス', 'メモ', '最終更新日', '作業依頼済み', '作業依頼進捗', '履歴', '現在径', '使用開始日', '溶射状態', '納入予定日'];
 const STATUS_COLUMN_INDEX = 3;
 const CURRENT_DIAMETER_COLUMN_INDEX = 9;
 const USE_START_DATE_COLUMN_INDEX = 10;
@@ -529,7 +529,8 @@ function fetchRoles() {
       history: parseHistory(row[7]),
       currentDiameter: normalizeCurrentDiameterForSheet(row[8]),
       useStartDate: normalizeUseStartDateForSheet(row[9]),
-      coatingStatus: normalizeCoatingStatusForSheet(row[10], row[2])
+      coatingStatus: normalizeCoatingStatusForSheet(row[10], row[2]),
+      orderExpectedDeliveryDate: normalizeDateInputValueForSheet(row[11])
     };
   }).filter(row => row.name && String(row.name).trim() !== '');
   
@@ -1637,7 +1638,8 @@ function writeRoles(roles) {
         JSON.stringify(normalizeHistoryForSheet(role)),
         normalizeCurrentDiameterForSheet(role.currentDiameter),
         normalizeUseStartDateForSheet(role.useStartDate),
-        normalizeCoatingStatusForSheet(role.coatingStatus, role.status)
+        normalizeCoatingStatusForSheet(role.coatingStatus, role.status),
+        normalizeDateInputValueForSheet(role.orderExpectedDeliveryDate)
       ];
     } catch (err) {
       Logger.log('writeRoles error at row ' + index + ': ' + err.toString());
@@ -1725,6 +1727,7 @@ function addRoleFromInputArea() {
     JSON.stringify([]),
     '',
     '',
+    '',
     ''
   ];
 
@@ -1749,6 +1752,18 @@ function debugSortRolesSheet() {
     action: 'debug-sort-roles',
     rowCount: afterRowCount,
     sortedRows: rowCount
+  };
+}
+
+function updateRolesHeader() {
+  const sheet = getSheet();
+  ensureRolesHeader(sheet);
+  applySheetFormatting(sheet, Math.max(sheet.getLastRow() - 1, 0));
+
+  return {
+    action: 'update-roles-header',
+    sheetName: sheet.getName(),
+    headers: HEADER_VALUES.slice()
   };
 }
 
@@ -1995,6 +2010,44 @@ function normalizeUseStartDateForSheet(value) {
   }
 
   return text;
+}
+
+function normalizeDateInputValueForSheet(value) {
+  if (value === undefined || value === null) {
+    return '';
+  }
+
+  if (Object.prototype.toString.call(value) === '[object Date]' && !isNaN(value.getTime())) {
+    return Utilities.formatDate(value, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  }
+
+  const text = String(value).trim();
+  if (!text) {
+    return '';
+  }
+
+  const ymdMatch = text.match(/^(\d{4})[\/-](\d{1,2})[\/-](\d{1,2})$/);
+  if (ymdMatch) {
+    const year = Number(ymdMatch[1]);
+    const month = Number(ymdMatch[2]);
+    const day = Number(ymdMatch[3]);
+    const date = new Date(year, month - 1, day);
+
+    if (
+      date.getFullYear() === year &&
+      date.getMonth() === month - 1 &&
+      date.getDate() === day
+    ) {
+      return Utilities.formatDate(date, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+    }
+  }
+
+  const parsed = new Date(text);
+  if (!isNaN(parsed.getTime())) {
+    return Utilities.formatDate(parsed, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  }
+
+  return '';
 }
 
 function formatUseStartDateForSheet(date) {

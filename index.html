@@ -307,6 +307,10 @@
                             搬入予定日：<span id="role-inbound-plan-preview">-</span>
                         </div>
                     </div>
+                    <div class="order-expected-delivery-date-field is-hidden">
+                        <label for="role-order-expected-delivery-date" class="order-expected-delivery-date-label">納入予定日</label>
+                        <input type="date" id="role-order-expected-delivery-date">
+                    </div>
                     <textarea id="role-memo" placeholder="メモを入力...(改行可)" style="flex: 1; min-height: 40px; padding: 12px 15px; border: 2px solid #e0e0e0; border-radius: 6px; font-size: 1rem; resize: vertical;"></textarea>
                     </div>
                     <input id="csv-import-input" type="file" accept=".csv,text/csv" style="display:none" onchange="importCsv(event)">

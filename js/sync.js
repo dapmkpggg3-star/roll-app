@@ -660,6 +660,9 @@ function normalizeRole(role) {
         status: normalizedStatus,
         coatingStatus: normalizeCoatingStatusForSync(role.coatingStatus, role.status),
         useStartDate: normalizeUseStartDateForSync(role.useStartDate),
+        orderExpectedDeliveryDate: typeof normalizeDateInputValue === 'function'
+            ? normalizeDateInputValue(role.orderExpectedDeliveryDate)
+            : String(role.orderExpectedDeliveryDate || ''),
         currentDiameter: normalizeCurrentDiameter(role.currentDiameter),
         workProgress: progress,
         history: history,
@@ -724,6 +727,9 @@ function mergeRemoteAndLocalRoles(remoteRoles, localRoles) {
             localRole.history = mergeRoleHistory(remoteRole.history, localRole.history);
             if (!localRole.useStartDate && remoteRole.useStartDate) {
                 localRole.useStartDate = remoteRole.useStartDate;
+            }
+            if (!localRole.orderExpectedDeliveryDate && remoteRole.orderExpectedDeliveryDate) {
+                localRole.orderExpectedDeliveryDate = remoteRole.orderExpectedDeliveryDate;
             }
             if (!Object.prototype.hasOwnProperty.call(role, 'coatingStatus') && remoteRole.coatingStatus) {
                 localRole.coatingStatus = remoteRole.coatingStatus;
@@ -975,6 +981,7 @@ function getRoleVerificationSnapshot(role) {
         memo: String(normalized.memo ?? ''),
         currentDiameter: normalized.currentDiameter === '' ? '' : Number(normalized.currentDiameter),
         useStartDate: String(normalized.useStartDate ?? ''),
+        orderExpectedDeliveryDate: String(normalized.orderExpectedDeliveryDate ?? ''),
         updatedAt: String(normalized.updatedAt ?? ''),
         requestSent: normalized.requestSent === true,
         workProgress: normalized.workProgress || {},

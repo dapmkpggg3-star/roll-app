@@ -64,6 +64,9 @@ function importCsv(event) {
                 startIndex = 1;
             }
             const hasStatusColumn = header.some(cell => cell.includes('ステータス') || cell.includes('status'));
+            const orderExpectedDeliveryDateIndex = header.findIndex(cell =>
+                cell.includes('orderexpecteddeliverydate') || cell.includes('納入予定日')
+            );
             const importedRoles = [];
             for (let i = startIndex; i < rows.length; i++) {
                 const row = rows[i];
@@ -76,6 +79,9 @@ function importCsv(event) {
                 const status = rawStatus === '廃却待ち' ? '廃却待ち（ラック保管）' : rawStatus;
                 const memo = hasStatusColumn ? (row[3] ? row[3].trim() : '') : (row[2] ? row[2].trim() : '');
                 const updatedAt = hasStatusColumn ? (row[4] ? row[4].trim() : new Date().toISOString()) : (row[3] ? row[3].trim() : new Date().toISOString());
+                const orderExpectedDeliveryDate = orderExpectedDeliveryDateIndex >= 0
+                    ? normalizeDateInputValue(row[orderExpectedDeliveryDateIndex] || '')
+                    : normalizeDateInputValue(hasStatusColumn ? (row[5] || '') : '');
                 if (!name) {
                     continue;
                 }
@@ -83,7 +89,7 @@ function importCsv(event) {
                 if (!validStatuses.includes(status)) {
                     continue;
                 }
-                importedRoles.push({ id: isNaN(rawId) ? null : rawId, name, status, memo, updatedAt, history: [] });
+                importedRoles.push({ id: isNaN(rawId) ? null : rawId, name, status, memo, updatedAt, orderExpectedDeliveryDate, history: [] });
             }
             if (importedRoles.length === 0) {
                 alert('有効なロールデータがありません');
@@ -119,12 +125,14 @@ function exportCsv() {
         return;
     }
     const headers = ['ID', 'スタンド番号', 'ステータス', 'メモ', '最終更新日'];
+    headers.push('納入予定日');
     const rows = roles.map(role => [
         role.id,
         role.name,
         role.status || '',
         role.memo || '',
-        role.updatedAt
+        role.updatedAt,
+        role.orderExpectedDeliveryDate || ''
     ]);
     const csv = [headers, ...rows]
         .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))

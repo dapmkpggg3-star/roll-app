@@ -2486,6 +2486,15 @@ function getRoleArrivalDate(role) {
     return progress.arrivalDate || '';
 }
 
+function getRoleOrderExpectedDeliveryDate(role) {
+    return normalizeDateInputValue(role && role.orderExpectedDeliveryDate);
+}
+
+function formatOrderExpectedDeliveryDateForHistory(value) {
+    const normalized = normalizeDateInputValue(value);
+    return normalized ? formatDateForDisplay(normalized) : '未設定';
+}
+
 function addMonthsToDateString(dateValue, months) {
     const normalized = normalizeDateInputValue(dateValue);
     const monthCount = Number(months);
@@ -2656,6 +2665,7 @@ function loadLocalRoles() {
             status: normalizeRoleStatusValue(role.status),
             coatingStatus: normalizeCoatingStatusValue(role.coatingStatus, role.status, role.name),
             useStartDate: normalizeUseStartDate(role.useStartDate),
+            orderExpectedDeliveryDate: normalizeDateInputValue(role.orderExpectedDeliveryDate),
             dispatchDate: workProgress.dispatchDate || normalizeDateInputValue(role.dispatchDate),
             currentDiameter: normalizeCurrentDiameter(role.currentDiameter),
             workProgress,
@@ -2913,6 +2923,7 @@ function updateStatusPreview(selectEl) {
     previewEl.textContent = `現在のステータス：${selectedStatus || '未選択'}`;
     updateDispatchDateFieldState(selectedStatus);
     updateCoatingStatusFieldState(selectedStatus);
+    updateOrderExpectedDeliveryDateFieldState(selectedStatus);
 }
 
 function updateDispatchDateFieldState(status) {
@@ -2945,6 +2956,24 @@ function updateInboundPlanPreview() {
 
     const inboundPlanDate = getInboundPlanDate(dispatchInput.value);
     previewEl.textContent = formatDateForDisplay(inboundPlanDate);
+}
+
+function updateOrderExpectedDeliveryDateFieldState(status) {
+    const field = document.querySelector('.order-expected-delivery-date-field');
+    const input = document.getElementById('role-order-expected-delivery-date');
+    const isAllowed = normalizeRoleStatusValue(status) === ORDERED_WAITING_STATUS;
+
+    if (!field || !input) {
+        return;
+    }
+
+    field.classList.toggle('is-hidden', !isAllowed);
+    field.setAttribute('aria-hidden', isAllowed ? 'false' : 'true');
+    input.disabled = !isAllowed;
+
+    if (!isAllowed) {
+        input.value = '';
+    }
 }
 
 function getMemoPreview(memo) {
@@ -2983,6 +3012,7 @@ function getRoleInfoHtml(role, formattedDate) {
     const memo = getMemoPreview(role.memo);
     const dispatchDate = getRoleDispatchDate(role);
     const arrivalDate = getRoleArrivalDate(role);
+    const orderExpectedDeliveryDate = getRoleOrderExpectedDeliveryDate(role);
     const coatingDisplay = getCoatingStatusDisplay(role);
     const rows = [
         ['使用開始日', formatUseStartDate(role.useStartDate)],
@@ -3000,6 +3030,10 @@ function getRoleInfoHtml(role, formattedDate) {
         } else {
             rows.push(['仮搬入予定', formatDateForDisplay(getTemporaryInboundPlanDate(dispatchDate))]);
         }
+    }
+
+    if (normalizeRoleStatusValue(role.status) === ORDERED_WAITING_STATUS && orderExpectedDeliveryDate) {
+        rows.push(['納入予定日', formatDateForDisplay(orderExpectedDeliveryDate)]);
     }
 
     if (hasDisplayMemo(role.memo)) {
@@ -4293,9 +4327,11 @@ function getThreeSetManagementPurchaseRoleRows(standRoles, basisRole) {
             const coatingDisplay = getCoatingStatusDisplay(role);
             const status = normalizeRoleStatusValue(role.status);
             const isHandled = status === ORDERED_WAITING_STATUS;
+            const orderExpectedDeliveryDate = getRoleOrderExpectedDeliveryDate(role);
             return {
                 name: role.name || '-',
                 status,
+                orderExpectedDeliveryDate,
                 coatingLabel: coatingDisplay ? coatingDisplay.label : '',
                 coatingNote: coatingDisplay ? coatingDisplay.note : '',
                 currentDiameter: normalizePurchaseDiameter(role.currentDiameter),
@@ -4610,6 +4646,7 @@ function getThreeSetManagementPurchaseRowsHtml(item) {
                     <span class="three-set-management-purchase-roll-name">${escapeHtml(row.name || '-')}</span>
                     <span class="three-set-management-purchase-roll-status">
                         ${escapeHtml(row.status || '-')}
+                        ${row.orderExpectedDeliveryDate ? `<span class="three-set-management-purchase-roll-delivery-date">納入予定日：${escapeHtml(formatDateForDisplay(row.orderExpectedDeliveryDate))}</span>` : ''}
                         ${row.coatingLabel ? `<span class="three-set-management-purchase-roll-coating ${row.coatingNote ? 'is-warning' : ''}">${escapeHtml(row.coatingNote ? `${row.coatingLabel} / ${row.coatingNote}` : row.coatingLabel)}</span>` : ''}
                     </span>
                     <span class="three-set-management-purchase-roll-diameter">${escapeHtml(row.diameterLabel || '-')}</span>
@@ -6441,7 +6478,8 @@ function getFilteredRoles() {
         return [
             String(role.name || ''),
             String(role.status || ''),
-            String(role.memo || '')
+            String(role.memo || ''),
+            String(role.orderExpectedDeliveryDate || '')
         ].some(field => field.toLowerCase().includes(normalizedQuery));
     });
 }
@@ -6779,6 +6817,9 @@ function addRole() {
     const roleDispatchDate = isDispatchDateAllowedStatus(roleStatus)
         ? normalizeDateInputValue(document.getElementById('role-dispatch-date').value)
         : '';
+    const roleOrderExpectedDeliveryDate = roleStatus === ORDERED_WAITING_STATUS
+        ? normalizeDateInputValue(document.getElementById('role-order-expected-delivery-date').value)
+        : '';
     const roleMemo = document.getElementById('role-memo').value.trim();
     
     if (!roleName) {
@@ -6793,7 +6834,7 @@ function addRole() {
         alert('このスタンド番号は既に登録されています');
         return;
     }
-    const newRole = { id: nextId++, name: roleName, status: roleStatus, coatingStatus: roleCoatingStatus, memo: roleMemo, currentDiameter: roleCurrentDiameter, dispatchDate: roleDispatchDate, useStartDate: '', updatedAt: new Date().toISOString(), workProgress: normalizeWorkProgress({ dispatchDate: roleDispatchDate }), history: [] };
+    const newRole = { id: nextId++, name: roleName, status: roleStatus, coatingStatus: roleCoatingStatus, memo: roleMemo, currentDiameter: roleCurrentDiameter, orderExpectedDeliveryDate: roleOrderExpectedDeliveryDate, dispatchDate: roleDispatchDate, useStartDate: '', updatedAt: new Date().toISOString(), workProgress: normalizeWorkProgress({ dispatchDate: roleDispatchDate }), history: [] };
     addRoleHistoryEntry(newRole, 'create', '新規追加', '-', roleStatus, newRole.updatedAt);
     setUseStartDateIfNeeded(newRole, newRole.updatedAt);
     
@@ -6820,6 +6861,7 @@ function addRole() {
     clearDiameterChangeReason();
     document.getElementById('role-dispatch-date').value = '';
     updateInboundPlanPreview();
+    document.getElementById('role-order-expected-delivery-date').value = '';
     document.getElementById('role-memo').value = '';
     setRoleFormOpen(false);
     renderRoles();
@@ -6849,6 +6891,7 @@ function editRole(id) {
         ? getRoleDispatchDate(role)
         : '';
     updateInboundPlanPreview();
+    document.getElementById('role-order-expected-delivery-date').value = getRoleOrderExpectedDeliveryDate(role);
     document.getElementById('role-memo').value = role.memo || '';
     
     setEditModeUi(role);
@@ -6872,6 +6915,9 @@ function updateRole() {
     const roleDispatchDate = isDispatchDateAllowedStatus(roleStatus)
         ? normalizeDateInputValue(document.getElementById('role-dispatch-date').value)
         : '';
+    const roleOrderExpectedDeliveryDate = roleStatus === ORDERED_WAITING_STATUS
+        ? normalizeDateInputValue(document.getElementById('role-order-expected-delivery-date').value)
+        : '';
     const roleMemo = document.getElementById('role-memo').value.trim();
     
     if (!roleName) {
@@ -6891,6 +6937,7 @@ function updateRole() {
     const beforeMemo = role.memo || '';
     const beforeCurrentDiameter = normalizeCurrentDiameter(role.currentDiameter);
     const beforeDispatchDate = getRoleDispatchDate(role);
+    const beforeOrderExpectedDeliveryDate = getRoleOrderExpectedDeliveryDate(role);
     
     if (roleName !== role.name && roles.some(r => r.id !== editingId && r.name === roleName)) {
         alert('このスタンド番号は既に登録されています');
@@ -6913,6 +6960,7 @@ function updateRole() {
     role.coatingStatus = roleCoatingStatus;
     role.memo = roleMemo;
     role.currentDiameter = roleCurrentDiameter;
+    role.orderExpectedDeliveryDate = roleOrderExpectedDeliveryDate;
     role.dispatchDate = roleDispatchDate;
     role.useStartDate = normalizeUseStartDate(role.useStartDate);
     role.updatedAt = new Date().toISOString();
@@ -6935,6 +6983,7 @@ function updateRole() {
     addRoleHistoryEntry(role, 'memo', 'メモ変更', beforeMemo, roleMemo, role.updatedAt);
     addRoleHistoryEntry(role, 'diameter', '現在径変更', formatCurrentDiameter(beforeCurrentDiameter), formatCurrentDiameter(roleCurrentDiameter), role.updatedAt);
     addRoleHistoryEntry(role, 'dispatchDate', '搬出日変更', formatDateForDisplay(beforeDispatchDate), formatDateForDisplay(roleDispatchDate), role.updatedAt);
+    addRoleHistoryEntry(role, 'orderExpectedDeliveryDate', '納入予定日変更', formatOrderExpectedDeliveryDateForHistory(beforeOrderExpectedDeliveryDate), formatOrderExpectedDeliveryDateForHistory(roleOrderExpectedDeliveryDate), role.updatedAt);
     const shouldAppendWorkHistory = beforeCurrentDiameter !== roleCurrentDiameter && diameterChangeReason === '改削';
     const workHistoryEvent = shouldAppendWorkHistory
         ? buildWorkHistoryDiameterEvent(role, beforeCurrentDiameter, roleCurrentDiameter, role.updatedAt)
@@ -6993,6 +7042,7 @@ function cancelEdit() {
     clearDiameterChangeReason();
     document.getElementById('role-dispatch-date').value = '';
     updateInboundPlanPreview();
+    document.getElementById('role-order-expected-delivery-date').value = '';
     document.getElementById('role-memo').value = '';
     setEditModeUi(null);
     renderRoles();
