@@ -2,7 +2,7 @@ const SHEET_NAME = 'Roles';
 const STAND_MASTER_SHEET_NAME = 'StandMaster';
 const INPUT_SHEET_NAMES = ['入力シート', 'Input', '入力'];
 const SPREADSHEET_ID = '1X07qQa7u9YPLvErT0D48goT5wYmvcpgNjqzK3FhRFeA';
-const HEADER_VALUES = ['ID', 'スタンド番号', 'ステータス', 'メモ', '最終更新日', '作業依頼済み', '作業依頼進捗', '履歴', '現在径', '使用開始日', '溶射状態', '納入予定日'];
+const HEADER_VALUES = ['ID', 'スタンド番号', 'ステータス', 'メモ', '最終更新日', '作業依頼済み', '作業依頼進捗', '履歴', '現在径', '使用開始日', '溶射状態', '納入予定日', '組替指示期限'];
 const STATUS_COLUMN_INDEX = 3;
 const CURRENT_DIAMETER_COLUMN_INDEX = 9;
 const USE_START_DATE_COLUMN_INDEX = 10;
@@ -530,7 +530,8 @@ function fetchRoles() {
       currentDiameter: normalizeCurrentDiameterForSheet(row[8]),
       useStartDate: normalizeUseStartDateForSheet(row[9]),
       coatingStatus: normalizeCoatingStatusForSheet(row[10], row[2]),
-      orderExpectedDeliveryDate: normalizeDateInputValueForSheet(row[11])
+      orderExpectedDeliveryDate: normalizeDateInputValueForSheet(row[11]),
+      assemblyInstructionDue: normalizeTextForSheet(row[12])
     };
   }).filter(row => row.name && String(row.name).trim() !== '');
   
@@ -1639,7 +1640,8 @@ function writeRoles(roles) {
         normalizeCurrentDiameterForSheet(role.currentDiameter),
         normalizeUseStartDateForSheet(role.useStartDate),
         normalizeCoatingStatusForSheet(role.coatingStatus, role.status),
-        normalizeDateInputValueForSheet(role.orderExpectedDeliveryDate)
+        normalizeDateInputValueForSheet(role.orderExpectedDeliveryDate),
+        normalizeTextForSheet(role.assemblyInstructionDue)
       ];
     } catch (err) {
       Logger.log('writeRoles error at row ' + index + ': ' + err.toString());
@@ -1725,6 +1727,7 @@ function addRoleFromInputArea() {
     false,
     JSON.stringify(normalizeWorkProgressForSheet({})),
     JSON.stringify([]),
+    '',
     '',
     '',
     '',
@@ -1930,6 +1933,14 @@ function normalizeCurrentDiameterForSheet(value) {
 
   const numericValue = Number(value);
   return isFinite(numericValue) ? numericValue : '';
+}
+
+function normalizeTextForSheet(value) {
+  if (value === undefined || value === null) {
+    return '';
+  }
+
+  return String(value).trim();
 }
 
 function normalizeCoatingStatusForSheet(value, status) {

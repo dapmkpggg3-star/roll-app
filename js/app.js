@@ -2495,6 +2495,19 @@ function formatOrderExpectedDeliveryDateForHistory(value) {
     return normalized ? formatDateForDisplay(normalized) : '未設定';
 }
 
+function normalizeAssemblyInstructionDue(value) {
+    return String(value || '').trim();
+}
+
+function getRoleAssemblyInstructionDue(role) {
+    return normalizeAssemblyInstructionDue(role && role.assemblyInstructionDue);
+}
+
+function formatAssemblyInstructionDueForHistory(value) {
+    const normalized = normalizeAssemblyInstructionDue(value);
+    return normalized || '未設定';
+}
+
 function addMonthsToDateString(dateValue, months) {
     const normalized = normalizeDateInputValue(dateValue);
     const monthCount = Number(months);
@@ -2671,6 +2684,7 @@ function loadLocalRoles() {
             coatingStatus: normalizeCoatingStatusValue(role.coatingStatus, role.status, role.name),
             useStartDate: normalizeUseStartDate(role.useStartDate),
             orderExpectedDeliveryDate: normalizeDateInputValue(role.orderExpectedDeliveryDate),
+            assemblyInstructionDue: normalizeAssemblyInstructionDue(role.assemblyInstructionDue),
             dispatchDate: workProgress.dispatchDate || normalizeDateInputValue(role.dispatchDate),
             currentDiameter: normalizeCurrentDiameter(role.currentDiameter),
             workProgress,
@@ -2985,6 +2999,7 @@ function updateStatusPreview(selectEl) {
     updateDispatchDateFieldState(selectedStatus);
     updateCoatingStatusFieldState(selectedStatus);
     updateOrderExpectedDeliveryDateFieldState(selectedStatus);
+    updateAssemblyInstructionDueFieldState(selectedStatus);
 }
 
 function updateDispatchDateFieldState(status) {
@@ -3037,6 +3052,31 @@ function updateOrderExpectedDeliveryDateFieldState(status) {
     }
 }
 
+function isAssemblyInstructionDueAllowedStatus(status) {
+    const normalizedStatus = normalizeRoleStatusValue(status);
+    return normalizedStatus === USED_STANDBY_STATUS
+        || normalizedStatus === NEW_READY_STATUS
+        || normalizedStatus === NEW_STORAGE_STATUS;
+}
+
+function updateAssemblyInstructionDueFieldState(status) {
+    const field = document.querySelector('.assembly-instruction-due-field');
+    const input = document.getElementById('role-assembly-instruction-due');
+    const isAllowed = isAssemblyInstructionDueAllowedStatus(status);
+
+    if (!field || !input) {
+        return;
+    }
+
+    field.classList.toggle('is-hidden', !isAllowed);
+    field.setAttribute('aria-hidden', isAllowed ? 'false' : 'true');
+    input.disabled = !isAllowed;
+
+    if (!isAllowed) {
+        input.value = '';
+    }
+}
+
 function getMemoPreview(memo) {
     const normalized = (memo || '').replace(/\n/g, ' ').trim();
     if (!normalized) {
@@ -3074,6 +3114,7 @@ function getRoleInfoHtml(role, formattedDate) {
     const dispatchDate = getRoleDispatchDate(role);
     const arrivalDate = getRoleArrivalDate(role);
     const orderExpectedDeliveryDate = getRoleOrderExpectedDeliveryDate(role);
+    const assemblyInstructionDue = getRoleAssemblyInstructionDue(role);
     const coatingDisplay = getCoatingStatusDisplay(role);
     const rows = [
         ['使用開始日', formatUseStartDate(role.useStartDate)],
@@ -3095,6 +3136,10 @@ function getRoleInfoHtml(role, formattedDate) {
 
     if (normalizeRoleStatusValue(role.status) === ORDERED_WAITING_STATUS && orderExpectedDeliveryDate) {
         rows.push(['納入予定日', formatDateForDisplay(orderExpectedDeliveryDate)]);
+    }
+
+    if (assemblyInstructionDue) {
+        rows.push(['組替指示期限', assemblyInstructionDue]);
     }
 
     if (hasDisplayMemo(role.memo)) {
@@ -5898,6 +5943,17 @@ function getWorkshopAssemblyCandidatesHtml(candidates) {
         `;
     }
 
+    const getInstructionDueSummary = candidate => {
+        const values = [
+            ...(Array.isArray(candidate && candidate.usedRoles) ? candidate.usedRoles : []),
+            ...(Array.isArray(candidate && candidate.newReadyRoles) ? candidate.newReadyRoles : [])
+        ]
+            .map(getRoleAssemblyInstructionDue)
+            .filter(Boolean);
+
+        return Array.from(new Set(values)).join(' / ');
+    };
+
     return `
         <section class="workshop-board-section">
             <div class="workshop-board-section-header">
@@ -5906,6 +5962,9 @@ function getWorkshopAssemblyCandidatesHtml(candidates) {
             </div>
             <div class="workshop-board-section-list">
                 ${candidates.map(candidate => `
+                    ${(() => {
+                        const instructionDue = getInstructionDueSummary(candidate);
+                        return `
                     <article class="workshop-card">
                         <div class="workshop-card-title">
                             <div class="workshop-card-title-main">
@@ -5931,6 +5990,12 @@ function getWorkshopAssemblyCandidatesHtml(candidates) {
                                 <span class="workshop-card-summary-label">残日数</span>
                                 <span class="workshop-card-summary-value">${escapeHtml(candidate.details.remainingDaysLabel)}</span>
                             </div>
+                            ${instructionDue ? `
+                                <div class="workshop-card-summary-item">
+                                    <span class="workshop-card-summary-label">組替指示期限</span>
+                                    <span class="workshop-card-summary-value">${escapeHtml(instructionDue)}</span>
+                                </div>
+                            ` : ''}
                         </div>
                         <div class="workshop-card-section">
                             <span class="workshop-card-label">中古予備（バラシ前）</span>
@@ -5941,6 +6006,8 @@ function getWorkshopAssemblyCandidatesHtml(candidates) {
                             <div class="workshop-role-list">${getWorkshopRoleLines(candidate.newReadyRoles)}</div>
                         </div>
                     </article>
+                        `;
+                    })()}
                 `).join('')}
             </div>
         </section>
@@ -6537,7 +6604,8 @@ function getFilteredRoles() {
             String(role.name || ''),
             String(role.status || ''),
             String(role.memo || ''),
-            String(role.orderExpectedDeliveryDate || '')
+            String(role.orderExpectedDeliveryDate || ''),
+            String(role.assemblyInstructionDue || '')
         ].some(field => field.toLowerCase().includes(normalizedQuery));
     });
 }
@@ -6878,6 +6946,9 @@ function addRole() {
     const roleOrderExpectedDeliveryDate = roleStatus === ORDERED_WAITING_STATUS
         ? normalizeDateInputValue(document.getElementById('role-order-expected-delivery-date').value)
         : '';
+    const roleAssemblyInstructionDue = isAssemblyInstructionDueAllowedStatus(roleStatus)
+        ? normalizeAssemblyInstructionDue(document.getElementById('role-assembly-instruction-due').value)
+        : '';
     const roleMemo = document.getElementById('role-memo').value.trim();
     
     if (!roleName) {
@@ -6892,7 +6963,7 @@ function addRole() {
         alert('このスタンド番号は既に登録されています');
         return;
     }
-    const newRole = { id: nextId++, name: roleName, status: roleStatus, coatingStatus: roleCoatingStatus, memo: roleMemo, currentDiameter: roleCurrentDiameter, orderExpectedDeliveryDate: roleOrderExpectedDeliveryDate, dispatchDate: roleDispatchDate, useStartDate: '', updatedAt: new Date().toISOString(), workProgress: normalizeWorkProgress({ dispatchDate: roleDispatchDate }), history: [] };
+    const newRole = { id: nextId++, name: roleName, status: roleStatus, coatingStatus: roleCoatingStatus, memo: roleMemo, currentDiameter: roleCurrentDiameter, orderExpectedDeliveryDate: roleOrderExpectedDeliveryDate, assemblyInstructionDue: roleAssemblyInstructionDue, dispatchDate: roleDispatchDate, useStartDate: '', updatedAt: new Date().toISOString(), workProgress: normalizeWorkProgress({ dispatchDate: roleDispatchDate }), history: [] };
     addRoleHistoryEntry(newRole, 'create', '新規追加', '-', roleStatus, newRole.updatedAt);
     setUseStartDateIfNeeded(newRole, newRole.updatedAt);
     
@@ -6921,6 +6992,7 @@ function addRole() {
     document.getElementById('role-dispatch-date').value = '';
     updateInboundPlanPreview();
     document.getElementById('role-order-expected-delivery-date').value = '';
+    document.getElementById('role-assembly-instruction-due').value = '';
     document.getElementById('role-memo').value = '';
     setRoleFormOpen(false);
     renderRoles();
@@ -6954,6 +7026,7 @@ function editRole(id) {
         : '';
     updateInboundPlanPreview();
     document.getElementById('role-order-expected-delivery-date').value = getRoleOrderExpectedDeliveryDate(role);
+    document.getElementById('role-assembly-instruction-due').value = getRoleAssemblyInstructionDue(role);
     document.getElementById('role-memo').value = role.memo || '';
     
     setEditModeUi(role);
@@ -6980,6 +7053,9 @@ function updateRole() {
     const roleOrderExpectedDeliveryDate = roleStatus === ORDERED_WAITING_STATUS
         ? normalizeDateInputValue(document.getElementById('role-order-expected-delivery-date').value)
         : '';
+    const roleAssemblyInstructionDue = isAssemblyInstructionDueAllowedStatus(roleStatus)
+        ? normalizeAssemblyInstructionDue(document.getElementById('role-assembly-instruction-due').value)
+        : '';
     const roleMemo = document.getElementById('role-memo').value.trim();
     
     if (!roleName) {
@@ -7000,6 +7076,7 @@ function updateRole() {
     const beforeCurrentDiameter = normalizeCurrentDiameter(role.currentDiameter);
     const beforeDispatchDate = getRoleDispatchDate(role);
     const beforeOrderExpectedDeliveryDate = getRoleOrderExpectedDeliveryDate(role);
+    const beforeAssemblyInstructionDue = getRoleAssemblyInstructionDue(role);
     
     if (roleName !== role.name && roles.some(r => r.id !== editingId && r.name === roleName)) {
         alert('このスタンド番号は既に登録されています');
@@ -7023,6 +7100,7 @@ function updateRole() {
     role.memo = roleMemo;
     role.currentDiameter = roleCurrentDiameter;
     role.orderExpectedDeliveryDate = roleOrderExpectedDeliveryDate;
+    role.assemblyInstructionDue = roleAssemblyInstructionDue;
     role.dispatchDate = roleDispatchDate;
     role.useStartDate = normalizeUseStartDate(role.useStartDate);
     role.updatedAt = new Date().toISOString();
@@ -7046,6 +7124,7 @@ function updateRole() {
     addRoleHistoryEntry(role, 'diameter', '現在径変更', formatCurrentDiameter(beforeCurrentDiameter), formatCurrentDiameter(roleCurrentDiameter), role.updatedAt);
     addRoleHistoryEntry(role, 'dispatchDate', '搬出日変更', formatDateForDisplay(beforeDispatchDate), formatDateForDisplay(roleDispatchDate), role.updatedAt);
     addRoleHistoryEntry(role, 'orderExpectedDeliveryDate', '納入予定日変更', formatOrderExpectedDeliveryDateForHistory(beforeOrderExpectedDeliveryDate), formatOrderExpectedDeliveryDateForHistory(roleOrderExpectedDeliveryDate), role.updatedAt);
+    addRoleHistoryEntry(role, 'assemblyInstructionDue', '組替指示期限変更', formatAssemblyInstructionDueForHistory(beforeAssemblyInstructionDue), formatAssemblyInstructionDueForHistory(roleAssemblyInstructionDue), role.updatedAt);
     const autoChangedRoles = autoMoveUsedStandbyToReworkReadyForNewInstalled(role, role.updatedAt);
     const shouldAppendWorkHistory = beforeCurrentDiameter !== roleCurrentDiameter && diameterChangeReason === '改削';
     const workHistoryEvent = shouldAppendWorkHistory
@@ -7108,6 +7187,7 @@ function cancelEdit() {
     document.getElementById('role-dispatch-date').value = '';
     updateInboundPlanPreview();
     document.getElementById('role-order-expected-delivery-date').value = '';
+    document.getElementById('role-assembly-instruction-due').value = '';
     document.getElementById('role-memo').value = '';
     setEditModeUi(null);
     renderRoles();

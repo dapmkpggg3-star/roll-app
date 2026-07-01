@@ -11,7 +11,7 @@
     <link rel="manifest" href="manifest.json">
     <link rel="icon" type="image/png" sizes="192x192" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect fill='%23667eea' width='192' height='192'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' font-size='96' fill='white' font-family='Arial'>📋</text></svg>">
     <title>ロール管理アプリ</title>
-    <link rel="stylesheet" href="css/styles.css?v=20260619-coating-status">
+    <link rel="stylesheet" href="css/styles.css?v=20260701-assembly-instruction-due">
 </head>
 <body>
     <div id="app-update-notice" class="app-update-notice" hidden>
@@ -204,7 +204,7 @@
                     <div class="workshop-board-header">
                         <div>
                             <h2>工作課ボード</h2>
-                            <p>改削段取り予定・組替候補</p>
+                            <p>組替候補</p>
                         </div>
                         <div class="workshop-board-actions">
                             <label class="workshop-board-sort-wrap">
@@ -311,6 +311,10 @@
                         <label for="role-order-expected-delivery-date" class="order-expected-delivery-date-label">納入予定日</label>
                         <input type="date" id="role-order-expected-delivery-date">
                     </div>
+                    <div class="assembly-instruction-due-field is-hidden">
+                        <label for="role-assembly-instruction-due" class="assembly-instruction-due-label">組替指示期限</label>
+                        <input type="text" id="role-assembly-instruction-due" placeholder="例：7月中旬まで">
+                    </div>
                     <textarea id="role-memo" placeholder="メモを入力...(改行可)" style="flex: 1; min-height: 40px; padding: 12px 15px; border: 2px solid #e0e0e0; border-radius: 6px; font-size: 1rem; resize: vertical;"></textarea>
                     </div>
                     <input id="csv-import-input" type="file" accept=".csv,text/csv" style="display:none" onchange="importCsv(event)">
@@ -401,9 +405,9 @@
         <button type="button" id="pageScrollToggleBtn" class="page-scroll-btn" onclick="scrollPageByCurrentPosition()" aria-label="ページ下部へ移動">↓ 下へ</button>
     </div>
 
-    <script src="js/sync.js?v=20260619-coating-status"></script>
-<script src="js/csv.js?v=20260607-summary-groups"></script>
-<script src="js/app.js?v=20260619-coating-status"></script>
+    <script src="js/sync.js?v=20260701-assembly-instruction-due"></script>
+<script src="js/csv.js?v=20260701-assembly-instruction-due"></script>
+<script src="js/app.js?v=20260701-assembly-instruction-due"></script>
 
         // ログイン状態チェック
 </body>

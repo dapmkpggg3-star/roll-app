@@ -3665,7 +3665,8 @@ body.workshop-board-mode .table-container {
 .form-input-zone .coating-status-field,
 .form-input-zone .diameter-change-reason-field,
 .form-input-zone .dispatch-date-field,
-.form-input-zone .order-expected-delivery-date-field {
+.form-input-zone .order-expected-delivery-date-field,
+.form-input-zone .assembly-instruction-due-field {
     width: 100%;
     min-width: 0;
     flex: 0 0 auto;
@@ -3678,6 +3679,7 @@ body.workshop-board-mode .table-container {
 .form-input-zone #diameter-change-reason,
 .form-input-zone #role-dispatch-date,
 .form-input-zone #role-order-expected-delivery-date,
+.form-input-zone #role-assembly-instruction-due,
 .form-input-zone #role-memo {
     flex: 0 0 auto !important;
 }
@@ -3692,6 +3694,11 @@ body.workshop-board-mode .table-container {
 }
 
 .order-expected-delivery-date-field {
+    display: grid;
+    gap: 8px;
+}
+
+.assembly-instruction-due-field {
     display: grid;
     gap: 8px;
 }
@@ -3730,6 +3737,10 @@ body.workshop-board-mode .table-container {
     display: none;
 }
 
+.assembly-instruction-due-field.is-hidden {
+    display: none;
+}
+
 .dispatch-date-label {
     color: #334155;
     font-size: 0.92rem;
@@ -3737,6 +3748,12 @@ body.workshop-board-mode .table-container {
 }
 
 .order-expected-delivery-date-label {
+    color: #334155;
+    font-size: 0.92rem;
+    font-weight: 900;
+}
+
+.assembly-instruction-due-label {
     color: #334155;
     font-size: 0.92rem;
     font-weight: 900;
