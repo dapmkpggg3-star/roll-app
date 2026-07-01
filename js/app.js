@@ -6270,20 +6270,16 @@ function updateWorkshopBoard(allRoles) {
             details: getWorkshopBoardCandidateDetails(candidate)
         }))
         .sort(compareWorkshopBoardCandidates);
-    const reworkSetupItems = getReworkSetupPlanItems(allRoles);
-    const totalCount = candidates.length + reworkSetupItems.length;
+    const totalCount = candidates.length;
 
     countEl.textContent = `${totalCount}件`;
 
     if (totalCount === 0) {
-        listEl.innerHTML = '<div class="workshop-board-empty">改削段取り予定・組替候補はありません</div>';
+        listEl.innerHTML = '<div class="workshop-board-empty">組替候補はありません</div>';
         return;
     }
 
-    listEl.innerHTML = [
-        getWorkshopReworkSetupHtml(reworkSetupItems),
-        getWorkshopAssemblyCandidatesHtml(candidates)
-    ].join('');
+    listEl.innerHTML = getWorkshopAssemblyCandidatesHtml(candidates);
 
 }
 
