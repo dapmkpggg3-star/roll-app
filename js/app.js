@@ -2643,6 +2643,11 @@ function addRoleHistoryEntry(role, type, label, beforeValue, afterValue, at = ne
         before: beforeText || '-',
         after: afterText || '-'
     };
+
+    if (options.reason) {
+        entry.reason = String(options.reason);
+    }
+
     const operator = getHistoryOperator();
 
     if (operator && !options.skipOperator) {
@@ -2700,6 +2705,62 @@ function fixOnlineDuplicates() {
 
 function getGroup(name) {
     return String(name || '').split('-')[0];
+}
+
+function autoMoveUsedStandbyToReworkReadyForNewInstalled(sourceRole, changedAt = new Date().toISOString()) {
+    if (!sourceRole || normalizeRoleStatusValue(sourceRole.status) !== NEW_INSTALLED_STATUS) {
+        return [];
+    }
+
+    const sourceStandKey = getStandKey(sourceRole.name);
+
+    if (!sourceStandKey) {
+        return [];
+    }
+
+    const sourceId = sourceRole.id !== undefined && sourceRole.id !== null ? String(sourceRole.id) : '';
+    const changedRoles = [];
+
+    roles.forEach(role => {
+        if (!role) {
+            return;
+        }
+
+        const isSameRole = sourceId
+            ? String(role.id) === sourceId
+            : role === sourceRole;
+
+        if (isSameRole) {
+            return;
+        }
+
+        if (getStandKey(role.name) !== sourceStandKey) {
+            return;
+        }
+
+        if (normalizeRoleStatusValue(role.status) !== USED_STANDBY_STATUS) {
+            return;
+        }
+
+        const beforeStatus = role.status;
+        role.status = REWORK_READY_STATUS;
+        role.updatedAt = changedAt;
+        role.workProgress = normalizeWorkProgress(role);
+        addRoleHistoryEntry(
+            role,
+            'status',
+            'ステータス自動変更',
+            beforeStatus,
+            REWORK_READY_STATUS,
+            changedAt,
+            {
+                reason: `同一スタンドで${NEW_INSTALLED_STATUS}が作成されたため`
+            }
+        );
+        changedRoles.push(role);
+    });
+
+    return changedRoles;
 }
 
 loadLocalRoles();
@@ -3100,6 +3161,7 @@ function showHistory(id) {
                     <div><span>担当者</span>${escapeHtml(getOperatorNameForDisplay(entry))}</div>
                     <div><span>変更前</span>${escapeHtml(entry.before || '-')}</div>
                     <div><span>変更後</span>${escapeHtml(entry.after || '-')}</div>
+                    ${entry.reason ? `<div><span>理由</span>${escapeHtml(entry.reason)}</div>` : ''}
                 </div>
             </div>
         `).join('');
@@ -6851,6 +6913,7 @@ function addRole() {
     }
     
     roles.push(newRole);
+    const autoChangedRoles = autoMoveUsedStandbyToReworkReadyForNewInstalled(newRole, newRole.updatedAt);
     updatedRoleId = newRole.id;
     saveLocalRoles();
     document.getElementById('role-name').value = '';
@@ -6865,6 +6928,9 @@ function addRole() {
     document.getElementById('role-memo').value = '';
     setRoleFormOpen(false);
     renderRoles();
+    if (autoChangedRoles.length > 0) {
+        showToast('同一スタンドの中古予備を「改削行き（搬出可能）」へ自動変更しました。');
+    }
     scrollToRoleCard(newRole.id);
     syncRoles();
 
@@ -6984,6 +7050,7 @@ function updateRole() {
     addRoleHistoryEntry(role, 'diameter', '現在径変更', formatCurrentDiameter(beforeCurrentDiameter), formatCurrentDiameter(roleCurrentDiameter), role.updatedAt);
     addRoleHistoryEntry(role, 'dispatchDate', '搬出日変更', formatDateForDisplay(beforeDispatchDate), formatDateForDisplay(roleDispatchDate), role.updatedAt);
     addRoleHistoryEntry(role, 'orderExpectedDeliveryDate', '納入予定日変更', formatOrderExpectedDeliveryDateForHistory(beforeOrderExpectedDeliveryDate), formatOrderExpectedDeliveryDateForHistory(roleOrderExpectedDeliveryDate), role.updatedAt);
+    const autoChangedRoles = autoMoveUsedStandbyToReworkReadyForNewInstalled(role, role.updatedAt);
     const shouldAppendWorkHistory = beforeCurrentDiameter !== roleCurrentDiameter && diameterChangeReason === '改削';
     const workHistoryEvent = shouldAppendWorkHistory
         ? buildWorkHistoryDiameterEvent(role, beforeCurrentDiameter, roleCurrentDiameter, role.updatedAt)
@@ -7021,7 +7088,9 @@ function updateRole() {
 
     renderRoles();
     syncRoles();
-    showToast("更新しました");
+    showToast(autoChangedRoles.length > 0
+        ? '同一スタンドの中古予備を「改削行き（搬出可能）」へ自動変更しました。'
+        : '更新しました');
 
 setTimeout(() => {
   updatedRoleId = null;
