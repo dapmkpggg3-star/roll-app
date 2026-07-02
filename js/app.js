@@ -5721,8 +5721,18 @@ function getWorkshopBoardAssemblyInstructionDue(candidate) {
 }
 
 function getWorkshopBoardDeadlineDisplayLabel(deadlineValue) {
-    const normalizedDate = normalizeDateInputValue(deadlineValue);
+    const normalizedDate = normalizeWorkshopBoardInstructionDueDate(deadlineValue);
     return normalizedDate ? formatDateForDisplay(normalizedDate) : String(deadlineValue || '').trim();
+}
+
+function normalizeWorkshopBoardInstructionDueDate(value) {
+    const text = String(value || '').trim();
+
+    if (!/^\d{4}[/-]\d{1,2}[/-]\d{1,2}$/.test(text)) {
+        return '';
+    }
+
+    return normalizeDateInputValue(text);
 }
 
 function getWorkshopBoardCandidateDetails(candidate, now = new Date()) {
@@ -5733,7 +5743,7 @@ function getWorkshopBoardCandidateDetails(candidate, now = new Date()) {
     const onlineUseEndDate = getOnlineUseEndDate(onlineRole);
     const usedRoleAssemblyInstructionDue = getRoleAssemblyInstructionDue(candidate && candidate.usedRole);
     const assemblyInstructionDue = usedRoleAssemblyInstructionDue || getWorkshopBoardAssemblyInstructionDue(candidate);
-    const assemblyInstructionDueDate = normalizeDateInputValue(assemblyInstructionDue);
+    const assemblyInstructionDueDate = normalizeWorkshopBoardInstructionDueDate(assemblyInstructionDue);
     const assemblyTargetDate = onlineUseEndDate
         ? addDaysToDateString(onlineUseEndDate, -ASSEMBLY_TARGET_LEAD_DAYS)
         : '';
@@ -6205,7 +6215,10 @@ function getWorkshopBoardAlertCardHtml(candidate) {
     const dueStatus = details.dueStatus || 'unknown';
     const usedRoleName = candidate && candidate.usedRole && candidate.usedRole.name || '-';
     const selectedInstallName = candidate && candidate.selectedInstallRole && candidate.selectedInstallRole.name || '未選択';
-    const shouldShowRemainingDays = !(details.deadlineSource === 'assemblyInstructionDue' && details.remainingDaysLabel === '算出不可');
+    const assemblyInstructionDue = getRoleAssemblyInstructionDue(candidate && candidate.usedRole) || details.assemblyInstructionDue || '';
+    const deadlineSource = assemblyInstructionDue ? 'assemblyInstructionDue' : (details.deadlineSource || '');
+    const deadlineLabel = assemblyInstructionDue || details.deadlineLabel || details.estimatedReplacementLabel || '算出不可';
+    const shouldShowRemainingDays = !(deadlineSource === 'assemblyInstructionDue' && details.remainingDaysLabel === '算出不可');
     const remainingDaysHtml = shouldShowRemainingDays
         ? `<em>${escapeHtml(details.remainingDaysLabel || '算出不可')}</em>`
         : '';
@@ -6223,7 +6236,7 @@ function getWorkshopBoardAlertCardHtml(candidate) {
             </div>
             <div class="assembly-deadline-cell">
                 <span>組替期限</span>
-                <strong>${escapeHtml(details.estimatedReplacementLabel || '算出不可')}</strong>
+                <strong>${escapeHtml(deadlineLabel)}</strong>
                 ${remainingDaysHtml}
             </div>
             <div class="assembly-action-cell">
@@ -6234,9 +6247,13 @@ function getWorkshopBoardAlertCardHtml(candidate) {
 }
 
 function getWorkshopBoardAlertListHtml(candidates) {
+    const sortedCandidates = (Array.isArray(candidates) ? candidates : [])
+        .slice()
+        .sort(compareWorkshopBoardCandidates);
+
     return `
         <div class="assembly-alert-list">
-            ${(Array.isArray(candidates) ? candidates : []).map(getWorkshopBoardAlertCardHtml).join('')}
+            ${sortedCandidates.map(getWorkshopBoardAlertCardHtml).join('')}
         </div>
     `;
 }
@@ -6839,7 +6856,9 @@ function updateWorkshopBoard(allRoles) {
 
     const candidates = getWorkshopBoardCandidates(allRoles);
     syncWorkshopBoardFilterOptions(candidates);
-    const filteredCandidates = getWorkshopBoardFilteredCandidates(candidates);
+    const filteredCandidates = getWorkshopBoardFilteredCandidates(candidates)
+        .slice()
+        .sort(compareWorkshopBoardCandidates);
     const totalCount = filteredCandidates.length;
     const selectedToggle = document.getElementById('workshop-board-selected-toggle');
 
