@@ -203,10 +203,26 @@
                 <section id="workshop-board" class="workshop-board" aria-live="polite">
                     <div class="workshop-board-header">
                         <div>
-                            <h2>工作課ボード</h2>
-                            <p>組替候補</p>
+                            <h2>組替候補ボード</h2>
+                            <p>中古予備と組む側の候補と、いつまでに組替が必要かを一覧で確認</p>
                         </div>
                         <div class="workshop-board-actions">
+                            <label class="workshop-board-sort-wrap">
+                                <span class="workshop-board-sort-label">スタンド</span>
+                                <select id="workshop-board-stand-filter" class="workshop-board-sort-select" aria-label="組替候補スタンド絞り込み" onchange="changeWorkshopBoardStandFilter(event)">
+                                    <option value="all">全スタンド</option>
+                                </select>
+                            </label>
+                            <label class="workshop-board-sort-wrap">
+                                <span class="workshop-board-sort-label">サイズ</span>
+                                <select id="workshop-board-size-filter" class="workshop-board-sort-select" aria-label="組替候補サイズ絞り込み" onchange="changeWorkshopBoardSizeFilter(event)">
+                                    <option value="all">全サイズ</option>
+                                </select>
+                            </label>
+                            <label class="workshop-board-required-filter">
+                                <input type="checkbox" id="workshop-board-required-only" onchange="changeWorkshopBoardRequiredOnly(event)">
+                                <span>組替必要のみ</span>
+                            </label>
                             <label class="workshop-board-sort-wrap">
                                 <span class="workshop-board-sort-label">並び順</span>
                                 <select id="workshop-board-sort" class="workshop-board-sort-select" aria-label="工作課ボード並び順" onchange="changeWorkshopBoardSort(event)">
@@ -219,7 +235,9 @@
                             <button type="button" onclick="closeWorkshopBoard()" class="workshop-board-back-btn">ロール一覧に戻る</button>
                         </div>
                     </div>
+                    <div id="workshop-board-summary" class="workshop-board-summary" aria-label="組替候補サマリー"></div>
                     <div id="workshop-board-list" class="workshop-board-list"></div>
+                    <div id="workshop-board-detail" class="workshop-board-detail" aria-live="polite"></div>
                 </section>
                 <div class="search-bar">
                     <input type="search" id="role-search" placeholder="スタンド番号、ステータス、メモで検索..." aria-label="ロール検索" oninput="searchRoles(event)">
