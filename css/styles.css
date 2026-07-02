@@ -4139,6 +4139,147 @@ body.workshop-board-mode .table-container {
     margin-top: 8px;
 }
 
+.workshop-board-summary {
+    grid-template-columns: minmax(180px, 280px);
+}
+
+.workshop-summary-card {
+    min-height: 60px;
+    border-left-color: #2563eb;
+}
+
+.assembly-alert-board {
+    gap: 10px;
+}
+
+.assembly-alert-list {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+}
+
+.assembly-alert-card {
+    grid-template-columns: minmax(180px, 1.15fr) 42px minmax(180px, 1.15fr) minmax(150px, 0.8fr) minmax(150px, auto);
+    align-items: center;
+    gap: 12px;
+    min-height: 92px;
+    padding: 14px 16px;
+    border-left-width: 6px;
+    box-shadow: 0 4px 12px rgba(15, 23, 42, 0.06);
+}
+
+.assembly-roll-cell,
+.assembly-deadline-cell {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+}
+
+.assembly-roll-cell span,
+.assembly-deadline-cell span {
+    color: #64748b;
+    font-size: 0.78rem;
+    font-weight: 900;
+}
+
+.assembly-roll-cell strong {
+    color: #0f172a;
+    font-size: 1.7rem;
+    line-height: 1.05;
+    font-weight: 900;
+    overflow-wrap: anywhere;
+}
+
+.assembly-arrow-cell {
+    color: #64748b;
+    font-size: 1.65rem;
+    font-weight: 900;
+    text-align: center;
+}
+
+.assembly-deadline-cell {
+    justify-items: start;
+}
+
+.assembly-deadline-cell strong {
+    color: #0f172a;
+    font-size: 1.35rem;
+    line-height: 1.1;
+    font-weight: 900;
+}
+
+.assembly-deadline-cell em {
+    color: #166534;
+    font-style: normal;
+    font-weight: 900;
+}
+
+.assembly-alert-card.is-overdue .assembly-deadline-cell em {
+    color: #991b1b;
+}
+
+.assembly-alert-card.is-soon .assembly-deadline-cell em {
+    color: #9a3412;
+}
+
+.assembly-action-cell {
+    display: flex;
+    justify-content: flex-end;
+    min-width: 0;
+}
+
+.assembly-selection-status,
+.assembly-selection-menu summary {
+    display: inline-flex;
+    min-height: 38px;
+    align-items: center;
+    justify-content: center;
+    padding: 8px 13px;
+    border-radius: 8px;
+    background: #16a34a;
+    color: #ffffff;
+    cursor: pointer;
+    font-weight: 900;
+    white-space: nowrap;
+}
+
+.assembly-selection-status {
+    cursor: default;
+}
+
+.assembly-selection-menu {
+    position: relative;
+}
+
+.assembly-selection-menu summary {
+    background: #2563eb;
+    list-style: none;
+}
+
+.assembly-selection-menu summary::-webkit-details-marker {
+    display: none;
+}
+
+.assembly-selection-menu[open] .assembly-selection-options {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 8px);
+    z-index: 5;
+    width: min(420px, 86vw);
+    padding: 10px;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    background: #ffffff;
+    box-shadow: 0 12px 28px rgba(15, 23, 42, 0.16);
+}
+
+.workshop-board-note {
+    margin: 0;
+    color: #64748b;
+    font-size: 0.82rem;
+    font-weight: 800;
+}
+
 @media (max-width: 720px) {
     .assembly-alert-main {
         display: grid;
@@ -4155,6 +4296,18 @@ body.workshop-board-mode .table-container {
 
     .assembly-alert-pair {
         grid-template-columns: 1fr;
+    }
+
+    .assembly-alert-card {
+        grid-template-columns: 1fr;
+    }
+
+    .assembly-arrow-cell {
+        text-align: left;
+    }
+
+    .assembly-action-cell {
+        justify-content: flex-start;
     }
 }
 

@@ -204,7 +204,7 @@
                     <div class="workshop-board-header">
                         <div>
                             <h2>組替候補ボード</h2>
-                            <p>中古予備と組む側の候補と、いつまでに組替が必要かを一覧で確認</p>
+                            <p>組替が可能となったスタンド一覧です。組替期限までに実施してください。</p>
                         </div>
                         <div class="workshop-board-actions">
                             <label class="workshop-board-sort-wrap">
@@ -214,12 +214,14 @@
                                 </select>
                             </label>
                             <span id="workshop-board-count" class="workshop-board-count">0件</span>
+                            <button type="button" id="workshop-board-selected-toggle" class="workshop-board-print-btn" onclick="toggleWorkshopBoardSelectedOnly()">工作課へ表示する候補を確認</button>
                             <button type="button" class="workshop-board-print-btn" onclick="printWorkshopBoard()">印刷</button>
                             <button type="button" onclick="closeWorkshopBoard()" class="workshop-board-back-btn">ロール一覧に戻る</button>
                         </div>
                     </div>
                     <div id="workshop-board-summary" class="workshop-board-summary" aria-label="組替候補サマリー"></div>
                     <div id="workshop-board-list" class="workshop-board-list"></div>
+                    <p class="workshop-board-note">組替期限は使用終了予定日から算出しています。</p>
                 </section>
                 <div class="search-bar">
                     <input type="search" id="role-search" placeholder="スタンド番号、ステータス、メモで検索..." aria-label="ロール検索" oninput="searchRoles(event)">

@@ -493,9 +493,10 @@ let editingId = null; // 編集中のID
 let lastScrollY = 0;
 let updatedRoleId = null;
 let isWorkshopBoardOpen = false;
-let workshopBoardSortOption = 'stand';
+let workshopBoardSortOption = 'priority';
 let workshopBoardStandFilter = 'all';
 let selectedWorkshopCandidateKey = '';
+let workshopBoardSelectedOnly = false;
 let cuttingMasterRows = [];
 let cuttingMasterByStand = new Map();
 const RENDER_STATUS_DEBUG_ROLE_NAME = '#11-44';
@@ -6066,48 +6067,29 @@ function getWorkshopBoardRoleSummary(role, options = {}) {
 }
 
 function getWorkshopBoardSummary(candidates) {
-    const summary = {
-        ready: 0,
-        overdue: 0,
-        soon: 0
+    return {
+        total: Array.isArray(candidates) ? candidates.length : 0
     };
-
-    (Array.isArray(candidates) ? candidates : []).forEach(candidate => {
-        const dueStatus = candidate && candidate.details && candidate.details.dueStatus;
-
-        if (candidate && candidate.isSelected) {
-            summary.ready += 1;
-        }
-
-        if (dueStatus === 'overdue') {
-            summary.overdue += 1;
-        } else if (dueStatus === 'soon') {
-            summary.soon += 1;
-        }
-    });
-
-    return summary;
 }
 
 function getWorkshopBoardSummaryHtml(candidates) {
     const summary = getWorkshopBoardSummary(candidates);
-    const cards = [
-        { label: '組替可能', value: summary.ready, className: 'is-total' },
-        { label: '期限超過', value: summary.overdue, className: 'is-overdue' },
-        { label: '30日以内', value: summary.soon, className: 'is-soon' }
-    ];
 
-    return cards.map(card => `
-        <div class="workshop-summary-card ${card.className}">
-            <span>${escapeHtml(card.label)}</span>
-            <strong>${escapeHtml(String(card.value))}件</strong>
+    return `
+        <div class="workshop-summary-card is-total">
+            <span>組替候補 総数</span>
+            <strong>${escapeHtml(String(summary.total))}件</strong>
         </div>
-    `).join('');
+    `;
 }
 
 function getWorkshopBoardFilteredCandidates(candidates) {
     return (Array.isArray(candidates) ? candidates : []).filter(candidate => {
         if (workshopBoardStandFilter !== 'all' && String(candidate.standKey || '') !== workshopBoardStandFilter) {
+            return false;
+        }
+
+        if (workshopBoardSelectedOnly && !(candidate && candidate.isSelected)) {
             return false;
         }
 
@@ -6153,23 +6135,16 @@ function getWorkshopBoardCoatingSummary(candidate) {
     return hasCheckNeeded ? '溶射要確認' : '溶射OK';
 }
 
-function getWorkshopBoardAlertSupplementHtml(candidate) {
-    const coatingSummary = getWorkshopBoardCoatingSummary(candidate);
-    const coatingClass = coatingSummary.includes('要確認') ? 'is-check' : 'is-ok';
-    const usedRoleName = candidate && candidate.usedRole && candidate.usedRole.name || '-';
-    const selectedInstallName = candidate && candidate.selectedInstallRole && candidate.selectedInstallRole.name || '未採用';
+function getWorkshopBoardSelectionActionHtml(candidate) {
     const installCandidates = Array.isArray(candidate && candidate.installCandidates) ? candidate.installCandidates : [];
-    const selectionKey = getAssemblyCandidateSelectionKey(candidate && candidate.standKey, candidate && candidate.usedRole);
+
+    if (candidate && candidate.isAutoSelected) {
+        return '<span class="assembly-selection-status">採用中</span>';
+    }
 
     return `
-        <div class="assembly-alert-supplements">
-            <span>中古予備 ${escapeHtml(usedRoleName)}</span>
-            <span>組む側 ${escapeHtml(selectedInstallName)}</span>
-            <span class="${coatingClass}">${escapeHtml(coatingSummary)}</span>
-            <span>${candidate && candidate.isAutoSelected ? '自動採用' : (candidate && candidate.isSelected ? '採用中' : '採用候補未選択')}</span>
-        </div>
-        <details class="assembly-alert-details">
-            <summary>採用候補を選択する</summary>
+        <details class="assembly-selection-menu">
+            <summary>${candidate && candidate.isSelected ? '候補を変更する' : '候補を選択する'}</summary>
             <div class="assembly-selection-options">
                 ${installCandidates.map(role => {
                     const roleId = getAssemblyCandidateRoleId(role);
@@ -6184,10 +6159,6 @@ function getWorkshopBoardAlertSupplementHtml(candidate) {
                     `;
                 }).join('')}
             </div>
-            <div class="assembly-alert-detail-meta">
-                <span>保存キー ${escapeHtml(selectionKey)}</span>
-                <span>オンライン終了予定 ${escapeHtml(candidate.details && candidate.details.onlineUseEndLabel || '算出不可')}</span>
-            </div>
         </details>
     `;
 }
@@ -6195,59 +6166,38 @@ function getWorkshopBoardAlertSupplementHtml(candidate) {
 function getWorkshopBoardAlertCardHtml(candidate) {
     const details = candidate.details || {};
     const dueStatus = details.dueStatus || 'unknown';
+    const usedRoleName = candidate && candidate.usedRole && candidate.usedRole.name || '-';
+    const selectedInstallName = candidate && candidate.selectedInstallRole && candidate.selectedInstallRole.name || '未選択';
 
     return `
         <article class="assembly-alert-card is-${escapeHtml(dueStatus)}">
-            <div class="assembly-alert-main">
-                <div>
-                    <span class="assembly-alert-label">${candidate.isSelected ? '組替可能' : '採用候補未選択'}</span>
-                    <strong class="assembly-alert-stand">${escapeHtml(candidate.standLabel)}</strong>
-                </div>
-                <div class="assembly-alert-deadline">
-                    <span>組替期限</span>
-                    <strong>${escapeHtml(details.estimatedReplacementLabel || '算出不可')}</strong>
-                    <em>${escapeHtml(details.remainingDaysLabel || '算出不可')}</em>
-                </div>
+            <div class="assembly-roll-cell">
+                <span>中古予備</span>
+                <strong>${escapeHtml(usedRoleName)}</strong>
             </div>
-            <div class="assembly-alert-pair">
-                <strong>${escapeHtml(candidate.usedRole && candidate.usedRole.name || '-')}</strong>
-                <span>→</span>
-                <strong>${escapeHtml(candidate.selectedInstallRole && candidate.selectedInstallRole.name || '未採用')}</strong>
+            <div class="assembly-arrow-cell">→</div>
+            <div class="assembly-roll-cell">
+                <span>組む側</span>
+                <strong>${escapeHtml(selectedInstallName)}</strong>
             </div>
-            ${getWorkshopBoardAlertSupplementHtml(candidate)}
+            <div class="assembly-deadline-cell">
+                <span>組替期限</span>
+                <strong>${escapeHtml(details.estimatedReplacementLabel || '算出不可')}</strong>
+                <em>${escapeHtml(details.remainingDaysLabel || '算出不可')}</em>
+            </div>
+            <div class="assembly-action-cell">
+                ${getWorkshopBoardSelectionActionHtml(candidate)}
+            </div>
         </article>
     `;
 }
 
-function getWorkshopBoardAlertGroupsHtml(candidates) {
-    const groups = [
-        { key: 'overdue', title: '期限超過' },
-        { key: 'soon', title: '30日以内' },
-        { key: 'ok', title: '期限内' },
-        { key: 'unknown', title: '期限未設定' }
-    ];
-
-    return groups.map(group => {
-        const items = (Array.isArray(candidates) ? candidates : []).filter(candidate =>
-            candidate.details && candidate.details.dueStatus === group.key
-        );
-
-        if (items.length === 0 && group.key === 'unknown') {
-            return '';
-        }
-
-        return `
-            <section class="assembly-alert-group is-${group.key}">
-                <div class="assembly-alert-group-header">
-                    <h3>${escapeHtml(group.title)}</h3>
-                    <span>${items.length}件</span>
-                </div>
-                <div class="assembly-alert-list">
-                    ${items.length === 0 ? '<div class="workshop-board-empty">該当候補はありません</div>' : items.map(getWorkshopBoardAlertCardHtml).join('')}
-                </div>
-            </section>
-        `;
-    }).join('');
+function getWorkshopBoardAlertListHtml(candidates) {
+    return `
+        <div class="assembly-alert-list">
+            ${(Array.isArray(candidates) ? candidates : []).map(getWorkshopBoardAlertCardHtml).join('')}
+        </div>
+    `;
 }
 
 function getWorkshopReworkSetupAction(item) {
@@ -6329,7 +6279,7 @@ function getWorkshopAssemblyCandidatesHtml(candidates) {
 
     return `
         <div class="assembly-alert-board">
-            ${getWorkshopBoardAlertGroupsHtml(candidates)}
+            ${getWorkshopBoardAlertListHtml(candidates)}
         </div>
     `;
 }
@@ -6489,6 +6439,11 @@ function registerWorkshopAssemblyWork(key) {
 function changeWorkshopBoardStandFilter(event) {
     workshopBoardStandFilter = String(event && event.target ? event.target.value : 'all') || 'all';
     selectedWorkshopCandidateKey = '';
+    updateWorkshopBoard(roles);
+}
+
+function toggleWorkshopBoardSelectedOnly() {
+    workshopBoardSelectedOnly = !workshopBoardSelectedOnly;
     updateWorkshopBoard(roles);
 }
 
@@ -6842,11 +6797,17 @@ function updateWorkshopBoard(allRoles) {
     syncWorkshopBoardFilterOptions(candidates);
     const filteredCandidates = getWorkshopBoardFilteredCandidates(candidates);
     const totalCount = filteredCandidates.length;
+    const selectedToggle = document.getElementById('workshop-board-selected-toggle');
+
+    if (selectedToggle) {
+        selectedToggle.textContent = workshopBoardSelectedOnly ? 'すべての候補を表示' : '工作課へ表示する候補を確認';
+        selectedToggle.setAttribute('aria-pressed', workshopBoardSelectedOnly ? 'true' : 'false');
+    }
 
     countEl.textContent = `${totalCount}件`;
 
     if (summaryEl) {
-        summaryEl.innerHTML = getWorkshopBoardSummaryHtml(candidates);
+        summaryEl.innerHTML = getWorkshopBoardSummaryHtml(filteredCandidates);
     }
 
     if (candidates.length === 0) {
