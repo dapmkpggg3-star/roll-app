@@ -213,23 +213,6 @@
                                     <option value="all">全スタンド</option>
                                 </select>
                             </label>
-                            <label class="workshop-board-sort-wrap">
-                                <span class="workshop-board-sort-label">サイズ</span>
-                                <select id="workshop-board-size-filter" class="workshop-board-sort-select" aria-label="組替候補サイズ絞り込み" onchange="changeWorkshopBoardSizeFilter(event)">
-                                    <option value="all">全サイズ</option>
-                                </select>
-                            </label>
-                            <label class="workshop-board-required-filter">
-                                <input type="checkbox" id="workshop-board-required-only" onchange="changeWorkshopBoardRequiredOnly(event)">
-                                <span>組替必要のみ</span>
-                            </label>
-                            <label class="workshop-board-sort-wrap">
-                                <span class="workshop-board-sort-label">並び順</span>
-                                <select id="workshop-board-sort" class="workshop-board-sort-select" aria-label="工作課ボード並び順" onchange="changeWorkshopBoardSort(event)">
-                                    <option value="stand">スタンド番号順</option>
-                                    <option value="priority">優先度順</option>
-                                </select>
-                            </label>
                             <span id="workshop-board-count" class="workshop-board-count">0件</span>
                             <button type="button" class="workshop-board-print-btn" onclick="printWorkshopBoard()">印刷</button>
                             <button type="button" onclick="closeWorkshopBoard()" class="workshop-board-back-btn">ロール一覧に戻る</button>
@@ -237,7 +220,6 @@
                     </div>
                     <div id="workshop-board-summary" class="workshop-board-summary" aria-label="組替候補サマリー"></div>
                     <div id="workshop-board-list" class="workshop-board-list"></div>
-                    <div id="workshop-board-detail" class="workshop-board-detail" aria-live="polite"></div>
                 </section>
                 <div class="search-bar">
                     <input type="search" id="role-search" placeholder="スタンド番号、ステータス、メモで検索..." aria-label="ロール検索" oninput="searchRoles(event)">

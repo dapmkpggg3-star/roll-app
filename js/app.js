@@ -31,6 +31,7 @@ const WORKSHOP_BOARD_PRIORITY_ORDER = {
 };
 const ASSEMBLY_TARGET_LEAD_DAYS = 7;
 const WORKSHOP_BOARD_DUE_SOON_DAYS = 30;
+const ASSEMBLY_CANDIDATE_SELECTIONS_KEY = 'assemblyCandidateSelections';
 const TODAY_TASK_DASHBOARD_OPEN_KEY = 'todayTaskDashboardOpen';
 const THREE_SET_FORECAST_DASHBOARD_OPEN_KEY = 'threeSetForecastDashboardOpen';
 const REWORK_SETUP_DASHBOARD_OPEN_KEY = 'reworkSetupDashboardOpen';
@@ -494,8 +495,6 @@ let updatedRoleId = null;
 let isWorkshopBoardOpen = false;
 let workshopBoardSortOption = 'stand';
 let workshopBoardStandFilter = 'all';
-let workshopBoardSizeFilter = 'all';
-let workshopBoardRequiredOnly = false;
 let selectedWorkshopCandidateKey = '';
 let cuttingMasterRows = [];
 let cuttingMasterByStand = new Map();
@@ -5716,7 +5715,6 @@ function getWorkshopBoardCandidateDetails(candidate, now = new Date()) {
     const priority = getWorkshopBoardPriority(daysRemaining);
     const dueStatus = getWorkshopBoardDueStatus(daysRemaining);
     const remainingDaysLabel = getWorkshopBoardRemainingDaysLabel(daysRemaining);
-    const size = getWorkshopBoardCandidateSize(candidate);
 
     return {
         referenceRole,
@@ -5725,8 +5723,6 @@ function getWorkshopBoardCandidateDetails(candidate, now = new Date()) {
         assemblyTargetDate,
         dueStatus,
         dueStatusLabel: getWorkshopBoardDueStatusLabel(dueStatus),
-        size,
-        sizeLabel: size || '未設定',
         standbyDate,
         estimatedReplacementDate: assemblyTargetDate,
         daysRemaining,
@@ -5960,7 +5956,81 @@ function getWorkshopRoleLines(roleList) {
 }
 
 function getWorkshopBoardCandidateKey(candidate) {
-    return `assembly-${candidate && candidate.standKey || ''}`;
+    return `assembly-${candidate && candidate.standKey || ''}-${getAssemblyCandidateRoleId(candidate && candidate.usedRole)}`;
+}
+
+function getAssemblyCandidateRoleId(role) {
+    return String(role && (role.id ?? role.name) || '').trim();
+}
+
+function getAssemblyCandidateSelectionKey(standKey, usedRole) {
+    return `${String(standKey || '')}::${getAssemblyCandidateRoleId(usedRole)}`;
+}
+
+function getStoredAssemblyCandidateSelections() {
+    try {
+        const rawValue = localStorage.getItem(ASSEMBLY_CANDIDATE_SELECTIONS_KEY);
+        const parsedValue = rawValue ? JSON.parse(rawValue) : {};
+        return parsedValue && typeof parsedValue === 'object' && !Array.isArray(parsedValue)
+            ? parsedValue
+            : {};
+    } catch (error) {
+        console.error('getStoredAssemblyCandidateSelections error:', error);
+        return {};
+    }
+}
+
+function saveAssemblyCandidateSelection(standKey, usedRoleId, installRoleId) {
+    const selectionKey = `${String(standKey || '')}::${String(usedRoleId || '')}`;
+    const selections = getStoredAssemblyCandidateSelections();
+
+    if (!standKey || !usedRoleId || !installRoleId) {
+        return;
+    }
+
+    selections[selectionKey] = {
+        standKey: String(standKey),
+        usedRoleId: String(usedRoleId),
+        installRoleId: String(installRoleId),
+        selectedAssemblyCandidate: {
+            standKey: String(standKey),
+            usedRoleId: String(usedRoleId),
+            installRoleId: String(installRoleId)
+        },
+        selectedAt: new Date().toISOString()
+    };
+
+    try {
+        localStorage.setItem(ASSEMBLY_CANDIDATE_SELECTIONS_KEY, JSON.stringify(selections));
+    } catch (error) {
+        console.error('saveAssemblyCandidateSelection error:', error);
+    }
+}
+
+function selectAssemblyCandidate(standKey, usedRoleId, installRoleId) {
+    saveAssemblyCandidateSelection(
+        decodeURIComponent(String(standKey || '')),
+        decodeURIComponent(String(usedRoleId || '')),
+        decodeURIComponent(String(installRoleId || ''))
+    );
+    updateWorkshopBoard(roles);
+}
+
+function getSelectedAssemblyInstallRole(standKey, usedRole, installRoles, selections = getStoredAssemblyCandidateSelections()) {
+    const candidates = Array.isArray(installRoles) ? installRoles : [];
+
+    if (candidates.length === 0) {
+        return null;
+    }
+
+    if (candidates.length === 1) {
+        return candidates[0];
+    }
+
+    const selection = selections[getAssemblyCandidateSelectionKey(standKey, usedRole)];
+    const selectedInstallRoleId = selection && (selection.installRoleId || (selection.selectedAssemblyCandidate && selection.selectedAssemblyCandidate.installRoleId));
+
+    return candidates.find(role => getAssemblyCandidateRoleId(role) === String(selectedInstallRoleId || '')) || null;
 }
 
 function getWorkshopBoardRoleSummary(role, options = {}) {
@@ -5997,22 +6067,22 @@ function getWorkshopBoardRoleSummary(role, options = {}) {
 
 function getWorkshopBoardSummary(candidates) {
     const summary = {
-        required: 0,
+        ready: 0,
         overdue: 0,
-        soon: 0,
-        total: Array.isArray(candidates) ? candidates.length : 0
+        soon: 0
     };
 
     (Array.isArray(candidates) ? candidates : []).forEach(candidate => {
         const dueStatus = candidate && candidate.details && candidate.details.dueStatus;
 
+        if (candidate && candidate.isSelected) {
+            summary.ready += 1;
+        }
+
         if (dueStatus === 'overdue') {
             summary.overdue += 1;
         } else if (dueStatus === 'soon') {
             summary.soon += 1;
-            summary.required += 1;
-        } else if (dueStatus === 'ok') {
-            summary.required += 1;
         }
     });
 
@@ -6022,10 +6092,9 @@ function getWorkshopBoardSummary(candidates) {
 function getWorkshopBoardSummaryHtml(candidates) {
     const summary = getWorkshopBoardSummary(candidates);
     const cards = [
-        { label: '要組替（期限内）', value: summary.required, className: 'is-required' },
+        { label: '組替可能', value: summary.ready, className: 'is-total' },
         { label: '期限超過', value: summary.overdue, className: 'is-overdue' },
-        { label: '30日以内', value: summary.soon, className: 'is-soon' },
-        { label: '総候補数', value: summary.total, className: 'is-total' }
+        { label: '30日以内', value: summary.soon, className: 'is-soon' }
     ];
 
     return cards.map(card => `
@@ -6038,17 +6107,7 @@ function getWorkshopBoardSummaryHtml(candidates) {
 
 function getWorkshopBoardFilteredCandidates(candidates) {
     return (Array.isArray(candidates) ? candidates : []).filter(candidate => {
-        const details = candidate && candidate.details || {};
-
         if (workshopBoardStandFilter !== 'all' && String(candidate.standKey || '') !== workshopBoardStandFilter) {
-            return false;
-        }
-
-        if (workshopBoardSizeFilter !== 'all' && String(details.sizeLabel || '') !== workshopBoardSizeFilter) {
-            return false;
-        }
-
-        if (workshopBoardRequiredOnly && !['overdue', 'soon'].includes(details.dueStatus)) {
             return false;
         }
 
@@ -6058,21 +6117,12 @@ function getWorkshopBoardFilteredCandidates(candidates) {
 
 function syncWorkshopBoardFilterOptions(candidates) {
     const standSelect = document.getElementById('workshop-board-stand-filter');
-    const sizeSelect = document.getElementById('workshop-board-size-filter');
-    const requiredOnlyInput = document.getElementById('workshop-board-required-only');
     const standOptions = (Array.isArray(candidates) ? candidates : [])
         .map(candidate => String(candidate.standKey || ''))
-        .filter(Boolean);
-    const sizeOptions = (Array.isArray(candidates) ? candidates : [])
-        .map(candidate => String(candidate.details && candidate.details.sizeLabel || '未設定'))
         .filter(Boolean);
 
     if (!standOptions.includes(workshopBoardStandFilter)) {
         workshopBoardStandFilter = 'all';
-    }
-
-    if (!sizeOptions.includes(workshopBoardSizeFilter)) {
-        workshopBoardSizeFilter = 'all';
     }
 
     if (standSelect) {
@@ -6082,91 +6132,122 @@ function syncWorkshopBoardFilterOptions(candidates) {
             .join('');
         standSelect.value = workshopBoardStandFilter;
     }
-
-    if (sizeSelect) {
-        const uniqueSizeOptions = Array.from(new Set(sizeOptions)).sort((a, b) => a.localeCompare(b, 'ja'));
-        sizeSelect.innerHTML = '<option value="all">全サイズ</option>' + uniqueSizeOptions
-            .map(value => `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`)
-            .join('');
-        sizeSelect.value = workshopBoardSizeFilter;
-    }
-
-    if (requiredOnlyInput) {
-        requiredOnlyInput.checked = workshopBoardRequiredOnly;
-    }
 }
 
-function getWorkshopBoardPriorityGroupsHtml(candidates) {
+function getWorkshopBoardCoatingSummary(candidate) {
+    const standKey = candidate && candidate.standKey;
+    const installRoles = candidate && candidate.selectedInstallRole
+        ? [candidate.selectedInstallRole]
+        : (Array.isArray(candidate && candidate.newReadyRoles) ? candidate.newReadyRoles : []);
+
+    if (!isCoatingManagedStand(standKey)) {
+        return '溶射OK';
+    }
+
+    const hasCheckNeeded = installRoles.some(role => {
+        const status = normalizeRoleStatusValue(role && role.status);
+        const coatingStatus = normalizeCoatingStatusValue(role && role.coatingStatus, status, standKey);
+        return !coatingStatus || coatingStatus === UNCOATED_STATUS;
+    });
+
+    return hasCheckNeeded ? '溶射要確認' : '溶射OK';
+}
+
+function getWorkshopBoardAlertSupplementHtml(candidate) {
+    const coatingSummary = getWorkshopBoardCoatingSummary(candidate);
+    const coatingClass = coatingSummary.includes('要確認') ? 'is-check' : 'is-ok';
+    const usedRoleName = candidate && candidate.usedRole && candidate.usedRole.name || '-';
+    const selectedInstallName = candidate && candidate.selectedInstallRole && candidate.selectedInstallRole.name || '未採用';
+    const installCandidates = Array.isArray(candidate && candidate.installCandidates) ? candidate.installCandidates : [];
+    const selectionKey = getAssemblyCandidateSelectionKey(candidate && candidate.standKey, candidate && candidate.usedRole);
+
+    return `
+        <div class="assembly-alert-supplements">
+            <span>中古予備 ${escapeHtml(usedRoleName)}</span>
+            <span>組む側 ${escapeHtml(selectedInstallName)}</span>
+            <span class="${coatingClass}">${escapeHtml(coatingSummary)}</span>
+            <span>${candidate && candidate.isAutoSelected ? '自動採用' : (candidate && candidate.isSelected ? '採用中' : '採用候補未選択')}</span>
+        </div>
+        <details class="assembly-alert-details">
+            <summary>採用候補を選択する</summary>
+            <div class="assembly-selection-options">
+                ${installCandidates.map(role => {
+                    const roleId = getAssemblyCandidateRoleId(role);
+                    const isSelected = candidate && candidate.selectedInstallRole
+                        && getAssemblyCandidateRoleId(candidate.selectedInstallRole) === roleId;
+
+                    return `
+                        <div class="assembly-selection-option ${isSelected ? 'is-selected' : ''}">
+                            <span>${escapeHtml(candidate && candidate.usedRole && candidate.usedRole.name || '-')} → ${escapeHtml(role.name || '-')}</span>
+                            <button type="button" onclick="selectAssemblyCandidate('${encodeURIComponent(String(candidate && candidate.standKey || ''))}', '${encodeURIComponent(getAssemblyCandidateRoleId(candidate && candidate.usedRole))}', '${encodeURIComponent(roleId)}')">${isSelected ? '採用中' : '採用'}</button>
+                        </div>
+                    `;
+                }).join('')}
+            </div>
+            <div class="assembly-alert-detail-meta">
+                <span>保存キー ${escapeHtml(selectionKey)}</span>
+                <span>オンライン終了予定 ${escapeHtml(candidate.details && candidate.details.onlineUseEndLabel || '算出不可')}</span>
+            </div>
+        </details>
+    `;
+}
+
+function getWorkshopBoardAlertCardHtml(candidate) {
+    const details = candidate.details || {};
+    const dueStatus = details.dueStatus || 'unknown';
+
+    return `
+        <article class="assembly-alert-card is-${escapeHtml(dueStatus)}">
+            <div class="assembly-alert-main">
+                <div>
+                    <span class="assembly-alert-label">${candidate.isSelected ? '組替可能' : '採用候補未選択'}</span>
+                    <strong class="assembly-alert-stand">${escapeHtml(candidate.standLabel)}</strong>
+                </div>
+                <div class="assembly-alert-deadline">
+                    <span>組替期限</span>
+                    <strong>${escapeHtml(details.estimatedReplacementLabel || '算出不可')}</strong>
+                    <em>${escapeHtml(details.remainingDaysLabel || '算出不可')}</em>
+                </div>
+            </div>
+            <div class="assembly-alert-pair">
+                <strong>${escapeHtml(candidate.usedRole && candidate.usedRole.name || '-')}</strong>
+                <span>→</span>
+                <strong>${escapeHtml(candidate.selectedInstallRole && candidate.selectedInstallRole.name || '未採用')}</strong>
+            </div>
+            ${getWorkshopBoardAlertSupplementHtml(candidate)}
+        </article>
+    `;
+}
+
+function getWorkshopBoardAlertGroupsHtml(candidates) {
     const groups = [
         { key: 'overdue', title: '期限超過' },
-        { key: 'soon', title: '30日以内に期限' },
-        { key: 'ok', title: '期限内' }
+        { key: 'soon', title: '30日以内' },
+        { key: 'ok', title: '期限内' },
+        { key: 'unknown', title: '期限未設定' }
     ];
 
     return groups.map(group => {
-        const items = candidates.filter(candidate => candidate.details && candidate.details.dueStatus === group.key);
+        const items = (Array.isArray(candidates) ? candidates : []).filter(candidate =>
+            candidate.details && candidate.details.dueStatus === group.key
+        );
+
+        if (items.length === 0 && group.key === 'unknown') {
+            return '';
+        }
 
         return `
-            <section class="assembly-priority-group is-${group.key}">
-                <div class="assembly-priority-group-header">
+            <section class="assembly-alert-group is-${group.key}">
+                <div class="assembly-alert-group-header">
                     <h3>${escapeHtml(group.title)}</h3>
                     <span>${items.length}件</span>
                 </div>
-                <div class="assembly-priority-items">
-                    ${items.length === 0 ? '<div class="assembly-priority-empty">該当候補なし</div>' : items.map(candidate => `
-                        <button type="button" class="assembly-priority-item" onclick="selectWorkshopBoardCandidate('${encodeURIComponent(getWorkshopBoardCandidateKey(candidate))}')">
-                            <span>${escapeHtml(candidate.standLabel)}</span>
-                            <strong>${escapeHtml(candidate.details.remainingDaysLabel)}</strong>
-                            <small>${escapeHtml(candidate.details.estimatedReplacementLabel)}</small>
-                        </button>
-                    `).join('')}
+                <div class="assembly-alert-list">
+                    ${items.length === 0 ? '<div class="workshop-board-empty">該当候補はありません</div>' : items.map(getWorkshopBoardAlertCardHtml).join('')}
                 </div>
             </section>
         `;
     }).join('');
-}
-
-function getWorkshopBoardCandidateTableHtml(candidates) {
-    if (!Array.isArray(candidates) || candidates.length === 0) {
-        return '<div class="workshop-board-empty">条件に合う組替候補はありません</div>';
-    }
-
-    return `
-        <div class="assembly-candidate-table-wrap">
-            <table class="assembly-candidate-table">
-                <thead>
-                    <tr>
-                        <th>スタンド</th>
-                        <th>サイズ</th>
-                        <th>オンライン終了予定</th>
-                        <th>残り日数</th>
-                        <th>組替候補（中古予備）</th>
-                        <th>組む側（新品予備）</th>
-                        <th>推奨度</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${candidates.map(candidate => {
-                        const key = getWorkshopBoardCandidateKey(candidate);
-                        const selectedClass = key === selectedWorkshopCandidateKey ? ' is-selected' : '';
-                        const details = candidate.details || {};
-
-                        return `
-                            <tr class="assembly-candidate-row is-${escapeHtml(details.dueStatus || 'unknown')}${selectedClass}" role="button" tabindex="0" onclick="selectWorkshopBoardCandidate('${encodeURIComponent(key)}')" onkeydown="handleWorkshopBoardCandidateKeydown(event, '${encodeURIComponent(key)}')">
-                                <td><strong>${escapeHtml(candidate.standLabel)}</strong></td>
-                                <td>${escapeHtml(details.sizeLabel || '未設定')}</td>
-                                <td>${escapeHtml(details.onlineUseEndLabel || '算出不可')}</td>
-                                <td><span class="assembly-due-badge is-${escapeHtml(details.dueStatus || 'unknown')}">${escapeHtml(details.remainingDaysLabel || '算出不可')}</span></td>
-                                <td>${escapeHtml((candidate.usedRoles || []).map(role => getWorkshopBoardRoleSummary(role)).join('\n') || '-')}</td>
-                                <td>${escapeHtml((candidate.newReadyRoles || []).map(role => getWorkshopBoardRoleSummary(role, { includeRemaining: false, includeCoating: true })).join('\n') || '-')}</td>
-                                <td>${escapeHtml(details.dueStatusLabel || '-')}</td>
-                            </tr>
-                        `;
-                    }).join('')}
-                </tbody>
-            </table>
-        </div>
-    `;
 }
 
 function getWorkshopReworkSetupAction(item) {
@@ -6242,22 +6323,13 @@ function getWorkshopReworkSetupHtml(items) {
 }
 
 function getWorkshopAssemblyCandidatesHtml(candidates) {
+    if (!Array.isArray(candidates) || candidates.length === 0) {
+        return '<div class="workshop-board-empty">条件に合う組替候補はありません</div>';
+    }
+
     return `
-        <div class="assembly-board-layout">
-            <section class="assembly-priority-panel">
-                <div class="workshop-board-section-header">
-                    <h3>組替優先度</h3>
-                    <span>${Array.isArray(candidates) ? candidates.length : 0}件</span>
-                </div>
-                ${getWorkshopBoardPriorityGroupsHtml(candidates)}
-            </section>
-            <section class="assembly-candidate-panel">
-                <div class="workshop-board-section-header">
-                    <h3>組替候補一覧</h3>
-                    <span>${Array.isArray(candidates) ? candidates.length : 0}件</span>
-                </div>
-                ${getWorkshopBoardCandidateTableHtml(candidates)}
-            </section>
+        <div class="assembly-alert-board">
+            ${getWorkshopBoardAlertGroupsHtml(candidates)}
         </div>
     `;
 }
@@ -6310,7 +6382,7 @@ function getWorkshopBoardDetailHtml(candidate) {
         <div class="assembly-detail-header">
             <div>
                 <span>選択中の組替候補</span>
-                <h3>${escapeHtml(candidate.standLabel)} / サイズ ${escapeHtml(details.sizeLabel || '未設定')}</h3>
+                <h3>${escapeHtml(candidate.standLabel)}</h3>
             </div>
             <span class="assembly-due-badge is-${escapeHtml(details.dueStatus || 'unknown')}">${escapeHtml(details.dueStatusLabel || '-')}</span>
         </div>
@@ -6331,11 +6403,30 @@ function getWorkshopBoardDetailHtml(candidate) {
 }
 
 function getWorkshopBoardCandidates(allRoles = roles) {
+    const selections = getStoredAssemblyCandidateSelections();
+
     return getAssemblyCandidateItems(allRoles)
-        .map(candidate => ({
-            ...candidate,
-            details: getWorkshopBoardCandidateDetails(candidate)
-        }))
+        .flatMap(candidate => {
+            const usedRoles = Array.isArray(candidate.usedRoles) ? candidate.usedRoles : [];
+            const installCandidates = Array.isArray(candidate.newReadyRoles) ? candidate.newReadyRoles : [];
+
+            return usedRoles.map(usedRole => {
+                const selectedInstallRole = getSelectedAssemblyInstallRole(candidate.standKey, usedRole, installCandidates, selections);
+
+                return {
+                    ...candidate,
+                    usedRole,
+                    usedRoles: [usedRole],
+                    installCandidates,
+                    selectedInstallRole,
+                    newReadyRoles: selectedInstallRole ? [selectedInstallRole] : [],
+                    isAutoSelected: installCandidates.length === 1,
+                    isSelectionRequired: installCandidates.length > 1,
+                    isSelected: Boolean(selectedInstallRole),
+                    details: getWorkshopBoardCandidateDetails(candidate)
+                };
+            });
+        })
         .sort(compareWorkshopBoardCandidates);
 }
 
@@ -6401,18 +6492,6 @@ function changeWorkshopBoardStandFilter(event) {
     updateWorkshopBoard(roles);
 }
 
-function changeWorkshopBoardSizeFilter(event) {
-    workshopBoardSizeFilter = String(event && event.target ? event.target.value : 'all') || 'all';
-    selectedWorkshopCandidateKey = '';
-    updateWorkshopBoard(roles);
-}
-
-function changeWorkshopBoardRequiredOnly(event) {
-    workshopBoardRequiredOnly = Boolean(event && event.target && event.target.checked);
-    selectedWorkshopCandidateKey = '';
-    updateWorkshopBoard(roles);
-}
-
 function printWorkshopBoard() {
     const sourceBoard = document.getElementById('workshop-board');
 
@@ -6420,7 +6499,7 @@ function printWorkshopBoard() {
         return;
     }
 
-    const printTargetCount = sourceBoard.querySelectorAll('#workshop-board-list .assembly-candidate-row, #workshop-board-list .workshop-card').length;
+    const printTargetCount = sourceBoard.querySelectorAll('#workshop-board-list .assembly-alert-card, #workshop-board-list .workshop-card').length;
 
     if (printTargetCount === 0) {
         alert('印刷対象がありません');
@@ -6589,23 +6668,20 @@ function printWorkshopBoard() {
         }
 
         .workshop-board-summary,
-        .assembly-board-layout,
-        .assembly-detail-grid {
+        .assembly-alert-board,
+        .assembly-alert-list {
             display: grid;
             grid-template-columns: repeat(2, minmax(0, 1fr));
             gap: 8px;
         }
 
-        .assembly-candidate-panel,
-        .workshop-board-detail {
+        .assembly-alert-group {
             grid-column: 1 / -1;
         }
 
         .workshop-summary-card,
-        .assembly-priority-panel,
-        .assembly-candidate-panel,
-        .workshop-board-detail,
-        .assembly-detail-section {
+        .assembly-alert-group,
+        .assembly-alert-card {
             border: 1px solid #000;
             border-radius: 0;
             background: #fff;
@@ -6613,31 +6689,13 @@ function printWorkshopBoard() {
             padding: 6px;
         }
 
-        .assembly-candidate-table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 7.5pt;
-        }
-
-        .assembly-candidate-table th,
-        .assembly-candidate-table td {
-            border: 1px solid #000;
-            padding: 4px;
+        .assembly-alert-main,
+        .assembly-alert-supplements,
+        .assembly-alert-details div {
+            display: flex;
+            gap: 6px;
+            justify-content: space-between;
             color: #000;
-            text-align: left;
-            vertical-align: top;
-            white-space: pre-line;
-        }
-
-        .assembly-priority-group,
-        .assembly-priority-item,
-        .assembly-detail-role,
-        .assembly-due-badge {
-            border: 1px solid #000;
-            border-radius: 0;
-            background: #fff !important;
-            color: #000 !important;
-            padding: 4px;
         }
 
         .card,
@@ -6780,20 +6838,10 @@ function updateWorkshopBoard(allRoles) {
         return;
     }
 
-    const sortSelect = document.getElementById('workshop-board-sort');
-    if (sortSelect) {
-        sortSelect.value = normalizeWorkshopBoardSortOption(workshopBoardSortOption);
-    }
-
     const candidates = getWorkshopBoardCandidates(allRoles);
     syncWorkshopBoardFilterOptions(candidates);
     const filteredCandidates = getWorkshopBoardFilteredCandidates(candidates);
     const totalCount = filteredCandidates.length;
-    const selectedCandidateExists = filteredCandidates.some(candidate => getWorkshopBoardCandidateKey(candidate) === selectedWorkshopCandidateKey);
-
-    if (!selectedCandidateExists) {
-        selectedWorkshopCandidateKey = filteredCandidates[0] ? getWorkshopBoardCandidateKey(filteredCandidates[0]) : '';
-    }
 
     countEl.textContent = `${totalCount}件`;
 
@@ -6806,8 +6854,6 @@ function updateWorkshopBoard(allRoles) {
     } else {
         listEl.innerHTML = getWorkshopAssemblyCandidatesHtml(filteredCandidates);
     }
-
-    renderWorkshopBoardDetail(filteredCandidates);
 }
 
 function setWorkshopBoardOpen(isOpen) {

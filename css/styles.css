@@ -3875,6 +3875,289 @@ body.workshop-board-mode .table-container {
     }
 }
 
+.workshop-board-summary {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.assembly-alert-board {
+    display: grid;
+    gap: 16px;
+}
+
+.assembly-alert-group {
+    display: grid;
+    gap: 10px;
+}
+
+.assembly-alert-group-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 0 2px 8px;
+    border-bottom: 1px solid #cbd5e1;
+}
+
+.assembly-alert-group-header h3 {
+    margin: 0;
+    color: #0f172a;
+    font-size: 1.08rem;
+    line-height: 1.2;
+    font-weight: 900;
+}
+
+.assembly-alert-group-header span {
+    color: #475569;
+    font-weight: 900;
+}
+
+.assembly-alert-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 12px;
+}
+
+.assembly-alert-card {
+    display: grid;
+    gap: 14px;
+    min-height: 156px;
+    padding: 18px;
+    border: 1px solid #cbd5e1;
+    border-left: 8px solid #16a34a;
+    border-radius: 8px;
+    background: #ffffff;
+    box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
+}
+
+.assembly-alert-card.is-overdue {
+    border-left-color: #dc2626;
+    background: #fff7f7;
+}
+
+.assembly-alert-card.is-soon {
+    border-left-color: #f97316;
+    background: #fffaf3;
+}
+
+.assembly-alert-card.is-unknown {
+    border-left-color: #94a3b8;
+}
+
+.assembly-alert-main {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 14px;
+}
+
+.assembly-alert-label {
+    display: inline-flex;
+    margin-bottom: 6px;
+    color: #166534;
+    font-size: 0.82rem;
+    font-weight: 900;
+}
+
+.assembly-alert-card.is-overdue .assembly-alert-label {
+    color: #991b1b;
+}
+
+.assembly-alert-card.is-soon .assembly-alert-label {
+    color: #9a3412;
+}
+
+.assembly-alert-stand {
+    display: block;
+    color: #0f172a;
+    font-size: 2.35rem;
+    line-height: 1;
+    font-weight: 900;
+}
+
+.assembly-alert-deadline {
+    display: grid;
+    justify-items: end;
+    gap: 4px;
+    min-width: 130px;
+    text-align: right;
+}
+
+.assembly-alert-deadline span {
+    color: #64748b;
+    font-size: 0.78rem;
+    font-weight: 900;
+}
+
+.assembly-alert-deadline strong {
+    color: #0f172a;
+    font-size: 1.2rem;
+    line-height: 1.1;
+    font-weight: 900;
+}
+
+.assembly-alert-deadline em {
+    display: inline-flex;
+    min-height: 30px;
+    align-items: center;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: #dcfce7;
+    color: #166534;
+    font-style: normal;
+    font-weight: 900;
+}
+
+.assembly-alert-pair {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    align-items: center;
+    gap: 10px;
+    padding: 12px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    background: #f8fafc;
+}
+
+.assembly-alert-pair strong {
+    color: #0f172a;
+    font-size: 1.08rem;
+    font-weight: 900;
+    overflow-wrap: anywhere;
+}
+
+.assembly-alert-pair span {
+    color: #64748b;
+    font-weight: 900;
+}
+
+.assembly-alert-card.is-overdue .assembly-alert-deadline em {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+.assembly-alert-card.is-soon .assembly-alert-deadline em {
+    background: #ffedd5;
+    color: #9a3412;
+}
+
+.assembly-alert-supplements {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.assembly-alert-supplements span {
+    display: inline-flex;
+    min-height: 28px;
+    align-items: center;
+    padding: 4px 9px;
+    border-radius: 999px;
+    background: #f1f5f9;
+    color: #334155;
+    font-size: 0.82rem;
+    font-weight: 900;
+}
+
+.assembly-alert-supplements .is-ok {
+    background: #dcfce7;
+    color: #166534;
+}
+
+.assembly-alert-supplements .is-check {
+    background: #ffedd5;
+    color: #9a3412;
+}
+
+.assembly-alert-details {
+    border-top: 1px solid #e2e8f0;
+    padding-top: 8px;
+}
+
+.assembly-alert-details summary {
+    color: #475569;
+    cursor: pointer;
+    font-size: 0.86rem;
+    font-weight: 900;
+}
+
+.assembly-alert-details div {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 12px;
+    padding-top: 8px;
+    color: #334155;
+    font-size: 0.86rem;
+    font-weight: 800;
+}
+
+.assembly-selection-options {
+    display: grid !important;
+    gap: 8px;
+}
+
+.assembly-selection-option {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    width: 100%;
+    padding: 9px;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    background: #ffffff;
+}
+
+.assembly-selection-option.is-selected {
+    border-color: #16a34a;
+    background: #f0fdf4;
+}
+
+.assembly-selection-option span {
+    color: #0f172a;
+    font-weight: 900;
+    overflow-wrap: anywhere;
+}
+
+.assembly-selection-option button {
+    flex: 0 0 auto;
+    min-height: 32px;
+    padding: 6px 12px;
+    border: none;
+    border-radius: 8px;
+    background: #2563eb;
+    color: #ffffff;
+    cursor: pointer;
+    font-weight: 900;
+}
+
+.assembly-selection-option.is-selected button {
+    background: #16a34a;
+}
+
+.assembly-alert-detail-meta {
+    border-top: 1px solid #e2e8f0;
+    margin-top: 8px;
+}
+
+@media (max-width: 720px) {
+    .assembly-alert-main {
+        display: grid;
+    }
+
+    .assembly-alert-deadline {
+        justify-items: start;
+        text-align: left;
+    }
+
+    .assembly-alert-stand {
+        font-size: 2rem;
+    }
+
+    .assembly-alert-pair {
+        grid-template-columns: 1fr;
+    }
+}
+
 .today-task-target-highlight {
     position: relative;
     z-index: 2;
