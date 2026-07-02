@@ -4311,6 +4311,68 @@ body.workshop-board-mode .table-container {
     }
 }
 
+@media print {
+    @page {
+        size: A4 portrait;
+        margin: 10mm;
+    }
+
+    html,
+    body {
+        width: 100%;
+        margin: 0;
+        padding: 0;
+        background: #ffffff !important;
+        color: #0f172a;
+        zoom: 1 !important;
+        transform: none !important;
+    }
+
+    body.workshop-board-mode header,
+    body.workshop-board-mode .header-actions,
+    body.workshop-board-mode .workshop-board-actions,
+    body.workshop-board-mode .workshop-board-print-btn,
+    body.workshop-board-mode .workshop-board-back-btn,
+    body.workshop-board-mode .workshop-board-sort-wrap,
+    body.workshop-board-mode .assembly-action-cell,
+    body.workshop-board-mode .assembly-selection-menu,
+    body.workshop-board-mode .assembly-selection-status,
+    body.workshop-board-mode .page-scroll-controls,
+    body.workshop-board-mode .detail-modal {
+        display: none !important;
+    }
+
+    body.workshop-board-mode .workshop-board {
+        display: grid !important;
+        width: 100% !important;
+        max-width: none !important;
+        margin: 0 !important;
+        padding: 18px !important;
+        box-shadow: none !important;
+        transform: none !important;
+        zoom: 1 !important;
+    }
+
+    body.workshop-board-mode .workshop-board-header {
+        display: block;
+    }
+
+    body.workshop-board-mode .workshop-board-list,
+    body.workshop-board-mode .assembly-alert-board,
+    body.workshop-board-mode .assembly-alert-list {
+        width: 100% !important;
+        max-width: none !important;
+    }
+
+    body.workshop-board-mode .assembly-alert-card {
+        width: 100% !important;
+        max-width: none !important;
+        break-inside: avoid;
+        page-break-inside: avoid;
+        box-shadow: none !important;
+    }
+}
+
 .today-task-target-highlight {
     position: relative;
     z-index: 2;
