@@ -6550,8 +6550,8 @@ function printWorkshopBoard() {
     frame.style.position = 'fixed';
     frame.style.left = '-10000px';
     frame.style.top = '0';
-    frame.style.width = '1px';
-    frame.style.height = '1px';
+    frame.style.width = '210mm';
+    frame.style.height = '297mm';
     frame.style.border = '0';
 
     document.body.appendChild(frame);
@@ -6559,20 +6559,25 @@ function printWorkshopBoard() {
     const printCss = `
         @page {
             size: A4 portrait;
-            margin: 8mm;
+            margin: 10mm;
         }
 
         * {
             box-sizing: border-box;
+            max-width: none !important;
+            transform: none !important;
+            zoom: 1 !important;
         }
 
         html,
         body {
             margin: 0;
             padding: 0;
+            width: 100%;
             background: #fff;
             color: #000;
             font-family: sans-serif;
+            font-size: 11pt;
         }
 
         button,
@@ -6588,8 +6593,9 @@ function printWorkshopBoard() {
 
         .workshop-board {
             display: grid !important;
-            gap: 10px;
+            gap: 6px;
             width: 100%;
+            max-width: none !important;
             margin: 0;
             padding: 0;
             border: 0;
@@ -6605,17 +6611,18 @@ function printWorkshopBoard() {
             align-items: flex-end;
             justify-content: space-between;
             gap: 10px;
+            width: 100%;
         }
 
         .workshop-board-header {
-            padding: 0 0 6px;
+            padding: 0 0 5px;
             border-bottom: 2px solid #000;
         }
 
         .workshop-board-header h2 {
             margin: 0;
             color: #000;
-            font-size: 18pt;
+            font-size: 16pt;
             line-height: 1.2;
         }
 
@@ -6642,12 +6649,16 @@ function printWorkshopBoard() {
         }
 
         .workshop-board-list,
+        .assembly-alert-board,
+        .assembly-alert-list,
         .workshop-board-section,
         .workshop-role-list,
         .workshop-card-title-main,
         .workshop-role-line {
             display: grid;
-            gap: 6px;
+            grid-template-columns: 1fr !important;
+            gap: 4px;
+            width: 100%;
         }
 
         .workshop-board-section {
@@ -6679,7 +6690,7 @@ function printWorkshopBoard() {
 
         .workshop-board-section-list {
             display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
+            grid-template-columns: 1fr !important;
             gap: 8px;
         }
 
@@ -6687,8 +6698,9 @@ function printWorkshopBoard() {
         .assembly-alert-board,
         .assembly-alert-list {
             display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 8px;
+            grid-template-columns: 1fr !important;
+            gap: 4px;
+            width: 100%;
         }
 
         .assembly-alert-group {
@@ -6702,16 +6714,64 @@ function printWorkshopBoard() {
             border-radius: 0;
             background: #fff;
             color: #000;
-            padding: 6px;
+            padding: 0;
+            width: 100%;
+            break-inside: avoid;
+            page-break-inside: avoid;
         }
 
-        .assembly-alert-main,
-        .assembly-alert-supplements,
-        .assembly-alert-details div {
-            display: flex;
-            gap: 6px;
-            justify-content: space-between;
+        .assembly-alert-card {
+            display: grid;
+            grid-template-columns: minmax(0, 1.15fr) 18pt minmax(0, 1.15fr) minmax(0, 0.85fr);
+            align-items: center;
+            gap: 7px;
+            min-height: 0;
+            border-left: 4px solid #000;
+            box-shadow: none;
+            padding: 6px 8px;
+        }
+
+        .assembly-roll-cell,
+        .assembly-deadline-cell {
+            display: grid;
+            gap: 1px;
+            min-width: 0;
+        }
+
+        .assembly-roll-cell span,
+        .assembly-deadline-cell span {
             color: #000;
+            font-size: 8pt;
+            font-weight: 700;
+        }
+
+        .assembly-roll-cell strong,
+        .assembly-deadline-cell strong {
+            color: #000;
+            font-size: 13pt;
+            line-height: 1.15;
+            font-weight: 900;
+            overflow-wrap: anywhere;
+        }
+
+        .assembly-arrow-cell {
+            color: #000;
+            font-size: 13pt;
+            font-weight: 900;
+            text-align: center;
+        }
+
+        .assembly-deadline-cell em {
+            display: none !important;
+        }
+
+        .assembly-action-cell,
+        .assembly-selection-status,
+        .assembly-selection-menu,
+        .workshop-board-count,
+        .workshop-board-summary,
+        .workshop-board-note {
+            display: none !important;
         }
 
         .card,
