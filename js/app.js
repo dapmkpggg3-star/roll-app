@@ -493,7 +493,7 @@ let editingId = null; // 編集中のID
 let lastScrollY = 0;
 let updatedRoleId = null;
 let isWorkshopBoardOpen = false;
-let workshopBoardSortOption = 'priority';
+let workshopBoardSortOption = 'stand';
 let workshopBoardStandFilter = 'all';
 let selectedWorkshopCandidateKey = '';
 let workshopBoardSelectedOnly = false;
@@ -5731,7 +5731,8 @@ function getWorkshopBoardCandidateDetails(candidate, now = new Date()) {
     const standbyDate = standbyDateInfo.date;
     const onlineRole = getWorkshopBoardOnlineRole(candidate);
     const onlineUseEndDate = getOnlineUseEndDate(onlineRole);
-    const assemblyInstructionDue = getWorkshopBoardAssemblyInstructionDue(candidate);
+    const usedRoleAssemblyInstructionDue = getRoleAssemblyInstructionDue(candidate && candidate.usedRole);
+    const assemblyInstructionDue = usedRoleAssemblyInstructionDue || getWorkshopBoardAssemblyInstructionDue(candidate);
     const assemblyInstructionDueDate = normalizeDateInputValue(assemblyInstructionDue);
     const assemblyTargetDate = onlineUseEndDate
         ? addDaysToDateString(onlineUseEndDate, -ASSEMBLY_TARGET_LEAD_DAYS)
@@ -5757,6 +5758,7 @@ function getWorkshopBoardCandidateDetails(candidate, now = new Date()) {
         assemblyInstructionDue,
         assemblyInstructionDueDate,
         deadlineSource: assemblyInstructionDue ? 'assemblyInstructionDue' : 'onlineUseEndDate',
+        deadlineLabel: estimatedReplacementLabel,
         dueStatus,
         dueStatusLabel: getWorkshopBoardDueStatusLabel(dueStatus),
         standbyDate,
@@ -5773,28 +5775,28 @@ function getWorkshopBoardCandidateDetails(candidate, now = new Date()) {
 }
 
 function compareWorkshopBoardCandidates(a, b) {
-    if (workshopBoardSortOption === 'priority') {
-        const aPriorityRank = (a && a.details && a.details.priorityRank) || a.priorityRank || WORKSHOP_BOARD_PRIORITY_ORDER.low;
-        const bPriorityRank = (b && b.details && b.details.priorityRank) || b.priorityRank || WORKSHOP_BOARD_PRIORITY_ORDER.low;
-        const priorityDiff = aPriorityRank - bPriorityRank;
+    const aStandNumber = Number(getStandKey(a && (a.standKey || a.standLabel || (a.usedRole && a.usedRole.name)))) || a.standNumber || 999999;
+    const bStandNumber = Number(getStandKey(b && (b.standKey || b.standLabel || (b.usedRole && b.usedRole.name)))) || b.standNumber || 999999;
 
-        if (priorityDiff !== 0) {
-            return priorityDiff;
-        }
-
-        const aDays = a && a.details && Number.isFinite(a.details.daysRemaining) ? a.details.daysRemaining : Number.POSITIVE_INFINITY;
-        const bDays = b && b.details && Number.isFinite(b.details.daysRemaining) ? b.details.daysRemaining : Number.POSITIVE_INFINITY;
-
-        if (aDays !== bDays) {
-            return aDays - bDays;
-        }
+    if (aStandNumber !== bStandNumber) {
+        return aStandNumber - bStandNumber;
     }
 
-    if (a.standNumber !== b.standNumber) {
-        return a.standNumber - b.standNumber;
+    if (Boolean(a && a.isSelected) !== Boolean(b && b.isSelected)) {
+        return a && a.isSelected ? -1 : 1;
     }
 
-    return a.standLabel.localeCompare(b.standLabel, 'ja');
+    const aUsedName = a && a.usedRole && a.usedRole.name || a && a.standLabel || '';
+    const bUsedName = b && b.usedRole && b.usedRole.name || b && b.standLabel || '';
+    const usedNameDiff = String(aUsedName).localeCompare(String(bUsedName), 'ja', { numeric: true });
+
+    if (usedNameDiff !== 0) {
+        return usedNameDiff;
+    }
+
+    const aInstallName = a && a.selectedInstallRole && a.selectedInstallRole.name || '';
+    const bInstallName = b && b.selectedInstallRole && b.selectedInstallRole.name || '';
+    return String(aInstallName).localeCompare(String(bInstallName), 'ja', { numeric: true });
 }
 
 function changeWorkshopBoardSort(event) {
@@ -6203,6 +6205,10 @@ function getWorkshopBoardAlertCardHtml(candidate) {
     const dueStatus = details.dueStatus || 'unknown';
     const usedRoleName = candidate && candidate.usedRole && candidate.usedRole.name || '-';
     const selectedInstallName = candidate && candidate.selectedInstallRole && candidate.selectedInstallRole.name || '未選択';
+    const shouldShowRemainingDays = !(details.deadlineSource === 'assemblyInstructionDue' && details.remainingDaysLabel === '算出不可');
+    const remainingDaysHtml = shouldShowRemainingDays
+        ? `<em>${escapeHtml(details.remainingDaysLabel || '算出不可')}</em>`
+        : '';
 
     return `
         <article class="assembly-alert-card is-${escapeHtml(dueStatus)}">
@@ -6218,7 +6224,7 @@ function getWorkshopBoardAlertCardHtml(candidate) {
             <div class="assembly-deadline-cell">
                 <span>組替期限</span>
                 <strong>${escapeHtml(details.estimatedReplacementLabel || '算出不可')}</strong>
-                <em>${escapeHtml(details.remainingDaysLabel || '算出不可')}</em>
+                ${remainingDaysHtml}
             </div>
             <div class="assembly-action-cell">
                 ${getWorkshopBoardSelectionActionHtml(candidate)}

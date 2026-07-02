@@ -1,4 +1,4 @@
-const CACHE_NAME = 'roll-app-v39';
+const CACHE_NAME = 'roll-app-v40';
 const CACHE_PREFIX = 'roll-app-';
 const urlsToCache = [
   '/roll-app/',
