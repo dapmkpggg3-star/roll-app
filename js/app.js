@@ -5701,38 +5701,73 @@ function getWorkshopBoardRemainingDaysLabel(daysRemaining) {
     return `あと${daysRemaining}日`;
 }
 
+function getWorkshopBoardAssemblyInstructionDue(candidate) {
+    const roleGroups = [
+        candidate && candidate.usedRole ? [candidate.usedRole] : [],
+        Array.isArray(candidate && candidate.usedRoles) ? candidate.usedRoles : [],
+        candidate && candidate.selectedInstallRole ? [candidate.selectedInstallRole] : [],
+        Array.isArray(candidate && candidate.newReadyRoles) ? candidate.newReadyRoles : []
+    ];
+
+    for (const roleGroup of roleGroups) {
+        const role = roleGroup.find(item => getRoleAssemblyInstructionDue(item));
+
+        if (role) {
+            return getRoleAssemblyInstructionDue(role);
+        }
+    }
+
+    return '';
+}
+
+function getWorkshopBoardDeadlineDisplayLabel(deadlineValue) {
+    const normalizedDate = normalizeDateInputValue(deadlineValue);
+    return normalizedDate ? formatDateForDisplay(normalizedDate) : String(deadlineValue || '').trim();
+}
+
 function getWorkshopBoardCandidateDetails(candidate, now = new Date()) {
     const referenceRole = getWorkshopBoardReferenceUsedRole(candidate && candidate.standRoles);
     const standbyDateInfo = getWorkshopBoardUsedStandbyDateInfo(referenceRole);
     const standbyDate = standbyDateInfo.date;
     const onlineRole = getWorkshopBoardOnlineRole(candidate);
     const onlineUseEndDate = getOnlineUseEndDate(onlineRole);
+    const assemblyInstructionDue = getWorkshopBoardAssemblyInstructionDue(candidate);
+    const assemblyInstructionDueDate = normalizeDateInputValue(assemblyInstructionDue);
     const assemblyTargetDate = onlineUseEndDate
         ? addDaysToDateString(onlineUseEndDate, -ASSEMBLY_TARGET_LEAD_DAYS)
         : '';
-    const daysRemaining = assemblyTargetDate
-        ? getDaysUntilDate(assemblyTargetDate, now)
+    const deadlineDateForCalculation = assemblyInstructionDue
+        ? assemblyInstructionDueDate
+        : assemblyTargetDate;
+    const daysRemaining = deadlineDateForCalculation
+        ? getDaysUntilDate(deadlineDateForCalculation, now)
         : null;
     const priority = getWorkshopBoardPriority(daysRemaining);
     const dueStatus = getWorkshopBoardDueStatus(daysRemaining);
     const remainingDaysLabel = getWorkshopBoardRemainingDaysLabel(daysRemaining);
+    const estimatedReplacementLabel = assemblyInstructionDue
+        ? getWorkshopBoardDeadlineDisplayLabel(assemblyInstructionDue)
+        : (assemblyTargetDate ? formatDateForDisplay(assemblyTargetDate) : '算出不可');
 
     return {
         referenceRole,
         onlineRole,
         onlineUseEndDate,
         assemblyTargetDate,
+        assemblyInstructionDue,
+        assemblyInstructionDueDate,
+        deadlineSource: assemblyInstructionDue ? 'assemblyInstructionDue' : 'onlineUseEndDate',
         dueStatus,
         dueStatusLabel: getWorkshopBoardDueStatusLabel(dueStatus),
         standbyDate,
-        estimatedReplacementDate: assemblyTargetDate,
+        estimatedReplacementDate: deadlineDateForCalculation,
         daysRemaining,
         priority,
         priorityRank: WORKSHOP_BOARD_PRIORITY_ORDER[priority] || WORKSHOP_BOARD_PRIORITY_ORDER.low,
         priorityLabel: WORKSHOP_BOARD_PRIORITY_LABELS[priority] || '低',
         standbyDateLabel: standbyDate ? formatDateForDisplay(standbyDate) : '算出不可',
         onlineUseEndLabel: onlineUseEndDate ? formatDateForDisplay(onlineUseEndDate) : '算出不可',
-        estimatedReplacementLabel: assemblyTargetDate ? formatDateForDisplay(assemblyTargetDate) : '算出不可',
+        estimatedReplacementLabel,
         remainingDaysLabel
     };
 }
@@ -6362,8 +6397,7 @@ function getWorkshopBoardCandidates(allRoles = roles) {
 
             return usedRoles.map(usedRole => {
                 const selectedInstallRole = getSelectedAssemblyInstallRole(candidate.standKey, usedRole, installCandidates, selections);
-
-                return {
+                const item = {
                     ...candidate,
                     usedRole,
                     usedRoles: [usedRole],
@@ -6372,8 +6406,12 @@ function getWorkshopBoardCandidates(allRoles = roles) {
                     newReadyRoles: selectedInstallRole ? [selectedInstallRole] : [],
                     isAutoSelected: installCandidates.length === 1,
                     isSelectionRequired: installCandidates.length > 1,
-                    isSelected: Boolean(selectedInstallRole),
-                    details: getWorkshopBoardCandidateDetails(candidate)
+                    isSelected: Boolean(selectedInstallRole)
+                };
+
+                return {
+                    ...item,
+                    details: getWorkshopBoardCandidateDetails(item)
                 };
             });
         })
