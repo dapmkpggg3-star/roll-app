@@ -4520,6 +4520,7 @@ body.workshop-board-mode .table-container {
 .form-input-zone .coating-status-field,
 .form-input-zone .diameter-change-reason-field,
 .form-input-zone .dispatch-date-field,
+.form-input-zone .arrival-date-field,
 .form-input-zone .order-expected-delivery-date-field,
 .form-input-zone .assembly-instruction-due-field {
     width: 100%;
@@ -4533,6 +4534,7 @@ body.workshop-board-mode .table-container {
 .form-input-zone #role-current-diameter,
 .form-input-zone #diameter-change-reason,
 .form-input-zone #role-dispatch-date,
+.form-input-zone #role-arrival-date,
 .form-input-zone #role-order-expected-delivery-date,
 .form-input-zone #role-assembly-instruction-due,
 .form-input-zone #role-memo {
@@ -4544,6 +4546,11 @@ body.workshop-board-mode .table-container {
 }
 
 .dispatch-date-field {
+    display: grid;
+    gap: 8px;
+}
+
+.arrival-date-field {
     display: grid;
     gap: 8px;
 }
@@ -4588,6 +4595,10 @@ body.workshop-board-mode .table-container {
     display: none;
 }
 
+.arrival-date-field.is-hidden {
+    display: none;
+}
+
 .order-expected-delivery-date-field.is-hidden {
     display: none;
 }
@@ -4597,6 +4608,12 @@ body.workshop-board-mode .table-container {
 }
 
 .dispatch-date-label {
+    color: #334155;
+    font-size: 0.92rem;
+    font-weight: 900;
+}
+
+.arrival-date-label {
     color: #334155;
     font-size: 0.92rem;
     font-weight: 900;

@@ -3004,6 +3004,7 @@ function updateStatusPreview(selectEl) {
     previewEl.classList.add(selectedStatus ? getStatusClass(selectedStatus) : 'status-empty');
     previewEl.textContent = `現在のステータス：${selectedStatus || '未選択'}`;
     updateDispatchDateFieldState(selectedStatus);
+    updateArrivalDateFieldState(selectedStatus);
     updateCoatingStatusFieldState(selectedStatus);
     updateOrderExpectedDeliveryDateFieldState(selectedStatus);
     updateAssemblyInstructionDueFieldState(selectedStatus);
@@ -3039,6 +3040,28 @@ function updateInboundPlanPreview() {
 
     const inboundPlanDate = getInboundPlanDate(dispatchInput.value);
     previewEl.textContent = formatDateForDisplay(inboundPlanDate);
+}
+
+function isArrivalDateAllowedStatus(status) {
+    return normalizeRoleStatusValue(status) === REWORKING_STATUS;
+}
+
+function updateArrivalDateFieldState(status) {
+    const field = document.querySelector('.arrival-date-field');
+    const input = document.getElementById('role-arrival-date');
+    const isAllowed = isArrivalDateAllowedStatus(status);
+
+    if (!field || !input) {
+        return;
+    }
+
+    field.classList.toggle('is-hidden', !isAllowed);
+    field.setAttribute('aria-hidden', isAllowed ? 'false' : 'true');
+    input.disabled = !isAllowed;
+
+    if (!isAllowed) {
+        input.value = '';
+    }
 }
 
 function updateOrderExpectedDeliveryDateFieldState(status) {
@@ -5852,8 +5875,13 @@ function getTodayTaskItems(allRoles) {
 
         if (role.status === REWORKING_STATUS) {
             const dispatchDate = getRoleDispatchDate(role);
+            const arrivalDate = getRoleArrivalDate(role);
             const inboundPlanDate = getInboundPlanDate(dispatchDate);
             const isInboundPlanOverdue = Boolean(inboundPlanDate) && getTodayDateString() > inboundPlanDate;
+
+            if (arrivalDate) {
+                return;
+            }
 
             if (isInboundPlanOverdue) {
                 const occurredAt = getRoleStatusChangedAt(role, REWORKING_STATUS);
@@ -7202,6 +7230,7 @@ function addRole() {
     document.getElementById('role-current-diameter').value = '';
     clearDiameterChangeReason();
     document.getElementById('role-dispatch-date').value = '';
+    document.getElementById('role-arrival-date').value = '';
     updateInboundPlanPreview();
     document.getElementById('role-order-expected-delivery-date').value = '';
     document.getElementById('role-assembly-instruction-due').value = '';
@@ -7235,6 +7264,9 @@ function editRole(id) {
     clearDiameterChangeReason();
     document.getElementById('role-dispatch-date').value = isDispatchDateAllowedStatus(role.status)
         ? getRoleDispatchDate(role)
+        : '';
+    document.getElementById('role-arrival-date').value = isArrivalDateAllowedStatus(role.status)
+        ? getRoleArrivalDate(role)
         : '';
     updateInboundPlanPreview();
     document.getElementById('role-order-expected-delivery-date').value = getRoleOrderExpectedDeliveryDate(role);
@@ -7287,8 +7319,12 @@ function updateRole() {
     const beforeMemo = role.memo || '';
     const beforeCurrentDiameter = normalizeCurrentDiameter(role.currentDiameter);
     const beforeDispatchDate = getRoleDispatchDate(role);
+    const beforeArrivalDate = getRoleArrivalDate(role);
     const beforeOrderExpectedDeliveryDate = getRoleOrderExpectedDeliveryDate(role);
     const beforeAssemblyInstructionDue = getRoleAssemblyInstructionDue(role);
+    const roleArrivalDate = isArrivalDateAllowedStatus(roleStatus)
+        ? normalizeDateInputValue(document.getElementById('role-arrival-date').value)
+        : beforeArrivalDate;
     
     if (roleName !== role.name && roles.some(r => r.id !== editingId && r.name === roleName)) {
         alert('このスタンド番号は既に登録されています');
@@ -7320,7 +7356,8 @@ function updateRole() {
         ...role,
         workProgress: {
             ...(role.workProgress || {}),
-            dispatchDate: roleDispatchDate
+            dispatchDate: roleDispatchDate,
+            arrivalDate: roleArrivalDate
         }
     });
     if (beforeName !== roleName) {
@@ -7335,6 +7372,7 @@ function updateRole() {
     addRoleHistoryEntry(role, 'memo', 'メモ変更', beforeMemo, roleMemo, role.updatedAt);
     addRoleHistoryEntry(role, 'diameter', '現在径変更', formatCurrentDiameter(beforeCurrentDiameter), formatCurrentDiameter(roleCurrentDiameter), role.updatedAt);
     addRoleHistoryEntry(role, 'dispatchDate', '搬出日変更', formatDateForDisplay(beforeDispatchDate), formatDateForDisplay(roleDispatchDate), role.updatedAt);
+    addRoleHistoryEntry(role, 'arrivalDate', '搬入日変更', formatDateForDisplay(beforeArrivalDate), formatDateForDisplay(roleArrivalDate), role.updatedAt);
     addRoleHistoryEntry(role, 'orderExpectedDeliveryDate', '納入予定日変更', formatOrderExpectedDeliveryDateForHistory(beforeOrderExpectedDeliveryDate), formatOrderExpectedDeliveryDateForHistory(roleOrderExpectedDeliveryDate), role.updatedAt);
     addRoleHistoryEntry(role, 'assemblyInstructionDue', '組替指示期限変更', formatAssemblyInstructionDueForHistory(beforeAssemblyInstructionDue), formatAssemblyInstructionDueForHistory(roleAssemblyInstructionDue), role.updatedAt);
     const autoChangedRoles = autoMoveUsedStandbyToReworkReadyForNewInstalled(role, role.updatedAt);
@@ -7397,6 +7435,7 @@ function cancelEdit() {
     document.getElementById('role-current-diameter').value = '';
     clearDiameterChangeReason();
     document.getElementById('role-dispatch-date').value = '';
+    document.getElementById('role-arrival-date').value = '';
     updateInboundPlanPreview();
     document.getElementById('role-order-expected-delivery-date').value = '';
     document.getElementById('role-assembly-instruction-due').value = '';
