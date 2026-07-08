@@ -1898,7 +1898,12 @@ function normalizeWorkProgressForSheet(role) {
     requestFormCreatedAt: progress.requestFormCreatedAt || '',
     sealConfirmedAt: progress.sealConfirmedAt || '',
     pdfCreatedAt: progress.pdfCreatedAt || '',
-    vendorSentAt: progress.vendorSentAt || ''
+    vendorSentAt: progress.vendorSentAt || '',
+    vendorContactedAt: progress.vendorContactedAt || '',
+    pickupAdjustedAt: progress.pickupAdjustedAt || '',
+    dispatchDate: progress.dispatchDate || '',
+    arrivalDate: progress.arrivalDate || '',
+    pickupAdjustedBy: progress.pickupAdjustedBy || ''
   };
 }
 

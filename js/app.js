@@ -409,7 +409,7 @@ const REWORK_CHECKLIST_STEPS = [
     { key: 'pdfCreatedAt', label: 'PDF化' },
     { key: 'vendorSentAt', label: '業者へ送信' },
     { key: 'vendorContactedAt', label: '業者連絡' },
-    { key: 'pickupAdjustedAt', label: '引き取り日調整' }
+    { key: 'pickupAdjustedAt', label: '引き取り日設定' }
 ];
 const WORK_PROGRESS_STEPS = REWORK_CHECKLIST_STEPS;
 const THREE_SET_MANAGEMENT_REWORK_CHECKLIST_STEPS = REWORK_CHECKLIST_STEPS;
@@ -1304,6 +1304,7 @@ function getReworkPickupChecklistItemHtml(roleKey, step, index, progress, option
         <div class="${escapeHtml(itemClass)} rework-pickup-step ${isDone ? 'is-done' : ''} ${isEnabled ? '' : 'is-disabled'}">
             <span class="progress-step-index">${escapeHtml(String(index + 1))}</span>
             <span class="progress-step-label">${escapeHtml(step.label)}</span>
+            <span class="progress-step-help">搬出日を入力すると完了になります</span>
             ${isDone ? `
                 <span class="progress-step-date">完了：${escapeHtml(formatProgressTimestamp(completedAt))}</span>
                 <span class="progress-step-date">更新者：${escapeHtml(completedBy || '未設定')}</span>
@@ -4203,7 +4204,7 @@ function getThreeSetManagementReworkItems(allRoles = roles) {
             const roleKey = getThreeSetManagementReworkRoleKey(role);
             const checklist = getThreeSetManagementReworkChecklistEntry(role);
             const nextChecklistStep = getThreeSetManagementReworkNextChecklistStep(checklist);
-            const checklistAction = nextChecklistStep ? nextChecklistStep.label : '引き取り日調整まで完了';
+            const checklistAction = nextChecklistStep ? nextChecklistStep.label : '引き取り日設定まで完了';
             const checklistCompletedCount = getThreeSetManagementReworkChecklistCompletedCount(checklist);
             const pickupAction = getReworkPickupActionInfo(checklist);
 
