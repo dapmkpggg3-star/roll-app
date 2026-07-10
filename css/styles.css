@@ -4555,6 +4555,11 @@ body.workshop-board-mode .table-container {
     gap: 8px;
 }
 
+.use-start-date-field {
+    display: grid;
+    gap: 8px;
+}
+
 .order-expected-delivery-date-field {
     display: grid;
     gap: 8px;
@@ -4599,6 +4604,10 @@ body.workshop-board-mode .table-container {
     display: none;
 }
 
+.use-start-date-field.is-hidden {
+    display: none;
+}
+
 .order-expected-delivery-date-field.is-hidden {
     display: none;
 }
@@ -4614,6 +4623,12 @@ body.workshop-board-mode .table-container {
 }
 
 .arrival-date-label {
+    color: #334155;
+    font-size: 0.92rem;
+    font-weight: 900;
+}
+
+.use-start-date-label {
     color: #334155;
     font-size: 0.92rem;
     font-weight: 900;
