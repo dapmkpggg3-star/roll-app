@@ -496,6 +496,7 @@ let isWorkshopBoardOpen = false;
 let workshopBoardSortOption = 'stand';
 let workshopBoardStandFilter = 'all';
 let selectedWorkshopCandidateKey = '';
+let workshopBoardEditingAssemblyDueKey = '';
 let workshopBoardSelectedOnly = false;
 let cuttingMasterRows = [];
 let cuttingMasterByStand = new Map();
@@ -6258,6 +6259,86 @@ function getWorkshopBoardSelectionActionHtml(candidate) {
     `;
 }
 
+function getWorkshopBoardAssemblyDueInputId(candidate) {
+    return `assembly-due-input-${encodeURIComponent(getWorkshopBoardCandidateKey(candidate))}`;
+}
+
+function getWorkshopBoardAssemblyDueEditHtml(candidate, deadlineLabel, remainingDaysHtml) {
+    const candidateKey = encodeURIComponent(getWorkshopBoardCandidateKey(candidate));
+    const inputId = getWorkshopBoardAssemblyDueInputId(candidate);
+    const currentDateValue = normalizeWorkshopBoardInstructionDueDate(getRoleAssemblyInstructionDue(candidate && candidate.usedRole));
+
+    if (workshopBoardEditingAssemblyDueKey !== getWorkshopBoardCandidateKey(candidate)) {
+        return `
+            <button type="button" class="assembly-deadline-display" onclick="startWorkshopBoardAssemblyDueEdit('${candidateKey}')">
+                <span>組替期限</span>
+                <strong>${escapeHtml(deadlineLabel)}</strong>
+                ${remainingDaysHtml}
+            </button>
+        `;
+    }
+
+    return `
+        <div class="assembly-deadline-editor">
+            <label for="${escapeHtml(inputId)}">組替期限</label>
+            <input type="date" id="${escapeHtml(inputId)}" value="${escapeHtml(currentDateValue)}">
+            <div class="assembly-deadline-editor-actions">
+                <button type="button" class="assembly-deadline-save-btn" onclick="saveWorkshopBoardAssemblyDue('${candidateKey}')">保存</button>
+                <button type="button" class="assembly-deadline-cancel-btn" onclick="cancelWorkshopBoardAssemblyDueEdit()">キャンセル</button>
+            </div>
+        </div>
+    `;
+}
+
+function startWorkshopBoardAssemblyDueEdit(key) {
+    workshopBoardEditingAssemblyDueKey = decodeURIComponent(String(key || ''));
+    updateWorkshopBoard(roles);
+}
+
+function cancelWorkshopBoardAssemblyDueEdit() {
+    workshopBoardEditingAssemblyDueKey = '';
+    updateWorkshopBoard(roles);
+}
+
+async function saveWorkshopBoardAssemblyDue(key) {
+    const candidate = findWorkshopBoardCandidateByKey(key);
+    const targetRole = candidate && candidate.usedRole;
+
+    if (!targetRole) {
+        showToast('対象ロールが見つかりません');
+        return;
+    }
+
+    const input = document.getElementById(getWorkshopBoardAssemblyDueInputId(candidate));
+    const beforeAssemblyInstructionDue = getRoleAssemblyInstructionDue(targetRole);
+    const nextAssemblyInstructionDue = normalizeAssemblyInstructionDue(input ? input.value : '');
+
+    targetRole.assemblyInstructionDue = nextAssemblyInstructionDue;
+    targetRole.updatedAt = new Date().toISOString();
+    addRoleHistoryEntry(
+        targetRole,
+        'assemblyInstructionDue',
+        '組替指示期限変更',
+        formatAssemblyInstructionDueForHistory(beforeAssemblyInstructionDue),
+        formatAssemblyInstructionDueForHistory(nextAssemblyInstructionDue),
+        targetRole.updatedAt
+    );
+
+    saveLocalRoles();
+    workshopBoardEditingAssemblyDueKey = '';
+    updateWorkshopBoard(roles);
+
+    if (typeof saveData === 'function') {
+        const ok = await saveData(roles);
+        if (!ok) {
+            showToast('ブラウザ内に保存しました。スプレッドシート同期は未完了です');
+            return;
+        }
+    }
+
+    showToast('組替期限を保存しました');
+}
+
 function getWorkshopBoardAlertCardHtml(candidate) {
     const details = candidate.details || {};
     const dueStatus = details.dueStatus || 'unknown';
@@ -6270,6 +6351,7 @@ function getWorkshopBoardAlertCardHtml(candidate) {
     const remainingDaysHtml = shouldShowRemainingDays
         ? `<em>${escapeHtml(details.remainingDaysLabel || '算出不可')}</em>`
         : '';
+    const deadlineEditHtml = getWorkshopBoardAssemblyDueEditHtml(candidate, deadlineLabel, remainingDaysHtml);
 
     return `
         <article class="assembly-alert-card is-${escapeHtml(dueStatus)}">
@@ -6283,9 +6365,7 @@ function getWorkshopBoardAlertCardHtml(candidate) {
                 <strong>${escapeHtml(selectedInstallName)}</strong>
             </div>
             <div class="assembly-deadline-cell">
-                <span>組替期限</span>
-                <strong>${escapeHtml(deadlineLabel)}</strong>
-                ${remainingDaysHtml}
+                ${deadlineEditHtml}
             </div>
             <div class="assembly-action-cell">
                 ${getWorkshopBoardSelectionActionHtml(candidate)}

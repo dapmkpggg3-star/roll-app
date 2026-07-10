@@ -4201,11 +4201,76 @@ body.workshop-board-mode .table-container {
     justify-items: start;
 }
 
+.assembly-deadline-display {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    text-align: left;
+}
+
+.assembly-deadline-display:hover strong,
+.assembly-deadline-display:focus-visible strong {
+    text-decoration: underline;
+}
+
 .assembly-deadline-cell strong {
     color: #0f172a;
     font-size: 1.35rem;
     line-height: 1.1;
     font-weight: 900;
+}
+
+.assembly-deadline-editor {
+    display: grid;
+    gap: 6px;
+    width: min(100%, 210px);
+}
+
+.assembly-deadline-editor label {
+    color: #64748b;
+    font-size: 0.78rem;
+    font-weight: 900;
+}
+
+.assembly-deadline-editor input {
+    min-height: 38px;
+    width: 100%;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    padding: 7px 9px;
+    font: inherit;
+}
+
+.assembly-deadline-editor-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.assembly-deadline-save-btn,
+.assembly-deadline-cancel-btn {
+    min-height: 34px;
+    padding: 6px 10px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 900;
+}
+
+.assembly-deadline-save-btn {
+    border: 1px solid #15803d;
+    background: #16a34a;
+    color: #ffffff;
+}
+
+.assembly-deadline-cancel-btn {
+    border: 1px solid #cbd5e1;
+    background: #ffffff;
+    color: #334155;
 }
 
 .assembly-deadline-cell em {
