@@ -2507,6 +2507,18 @@ function normalizeAssemblyInstructionDue(value) {
     return String(value || '').trim();
 }
 
+function normalizeAssemblyInstructionDueDateInput(value) {
+    if (value instanceof Date) {
+        return Number.isNaN(value.getTime()) ? '' : normalizeDateInputValue(value);
+    }
+
+    const text = String(value || '').trim();
+    const isDateOnlyText = /^\d{4}[/-]\d{1,2}[/-]\d{1,2}$/.test(text);
+    const isDateToStringText = /^(?:Sun|Mon|Tue|Wed|Thu|Fri|Sat)\s+[A-Z][a-z]{2}\s+\d{1,2}\s+\d{4}\s+\d{2}:\d{2}:\d{2}\s+GMT(?:[+-]\d{4})?/.test(text);
+
+    return isDateOnlyText || isDateToStringText ? normalizeDateInputValue(text) : '';
+}
+
 function getRoleAssemblyInstructionDue(role) {
     return normalizeAssemblyInstructionDue(role && role.assemblyInstructionDue);
 }
@@ -5772,20 +5784,7 @@ function getWorkshopBoardDeadlineDisplayLabel(deadlineValue) {
 }
 
 function normalizeWorkshopBoardInstructionDueDate(value) {
-    if (value instanceof Date) {
-        return Number.isNaN(value.getTime()) ? '' : normalizeDateInputValue(value);
-    }
-
-    const text = String(value || '').trim();
-
-    const isDateOnlyText = /^\d{4}[/-]\d{1,2}[/-]\d{1,2}$/.test(text);
-    const isDateToStringText = /^(?:Sun|Mon|Tue|Wed|Thu|Fri|Sat)\s+[A-Z][a-z]{2}\s+\d{1,2}\s+\d{4}\s+\d{2}:\d{2}:\d{2}\s+GMT(?:[+-]\d{4})?/.test(text);
-
-    if (!isDateOnlyText && !isDateToStringText) {
-        return '';
-    }
-
-    return normalizeDateInputValue(text);
+    return normalizeAssemblyInstructionDueDateInput(value);
 }
 
 function getWorkshopBoardCandidateDetails(candidate, now = new Date()) {
@@ -7333,7 +7332,7 @@ function addRole() {
         ? normalizeDateInputValue(document.getElementById('role-order-expected-delivery-date').value)
         : '';
     const roleAssemblyInstructionDue = isAssemblyInstructionDueAllowedStatus(roleStatus)
-        ? normalizeAssemblyInstructionDue(document.getElementById('role-assembly-instruction-due').value)
+        ? normalizeAssemblyInstructionDueDateInput(document.getElementById('role-assembly-instruction-due').value)
         : '';
     const roleUseStartDate = roleStatus === ONLINE_STATUS
         ? normalizeUseStartDate(document.getElementById('role-use-start-date').value)
@@ -7421,7 +7420,7 @@ function editRole(id) {
     document.getElementById('role-use-start-date').value = getUseStartDateInputValue(role.useStartDate);
     updateInboundPlanPreview();
     document.getElementById('role-order-expected-delivery-date').value = getRoleOrderExpectedDeliveryDate(role);
-    document.getElementById('role-assembly-instruction-due').value = getRoleAssemblyInstructionDue(role);
+    document.getElementById('role-assembly-instruction-due').value = normalizeAssemblyInstructionDueDateInput(getRoleAssemblyInstructionDue(role));
     document.getElementById('role-memo').value = role.memo || '';
     
     setEditModeUi(role);
@@ -7448,8 +7447,8 @@ function updateRole() {
     const roleOrderExpectedDeliveryDate = roleStatus === ORDERED_WAITING_STATUS
         ? normalizeDateInputValue(document.getElementById('role-order-expected-delivery-date').value)
         : '';
-    const roleAssemblyInstructionDue = isAssemblyInstructionDueAllowedStatus(roleStatus)
-        ? normalizeAssemblyInstructionDue(document.getElementById('role-assembly-instruction-due').value)
+    const roleAssemblyInstructionDueInput = isAssemblyInstructionDueAllowedStatus(roleStatus)
+        ? normalizeAssemblyInstructionDueDateInput(document.getElementById('role-assembly-instruction-due').value)
         : '';
     const roleUseStartDate = roleStatus === ONLINE_STATUS
         ? normalizeUseStartDate(document.getElementById('role-use-start-date').value)
@@ -7476,6 +7475,10 @@ function updateRole() {
     const beforeArrivalDate = getRoleArrivalDate(role);
     const beforeOrderExpectedDeliveryDate = getRoleOrderExpectedDeliveryDate(role);
     const beforeAssemblyInstructionDue = getRoleAssemblyInstructionDue(role);
+    const beforeAssemblyInstructionDueDate = normalizeAssemblyInstructionDueDateInput(beforeAssemblyInstructionDue);
+    const roleAssemblyInstructionDue = isAssemblyInstructionDueAllowedStatus(roleStatus)
+        ? (roleAssemblyInstructionDueInput || (!beforeAssemblyInstructionDueDate ? beforeAssemblyInstructionDue : ''))
+        : '';
     const beforeUseStartDate = normalizeUseStartDate(role.useStartDate);
     const roleArrivalDate = isArrivalDateAllowedStatus(roleStatus)
         ? normalizeDateInputValue(document.getElementById('role-arrival-date').value)
