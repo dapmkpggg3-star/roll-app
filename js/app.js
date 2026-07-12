@@ -697,6 +697,9 @@ function setDashboardVisibility(key, isVisible) {
     if (!option) return;
     saveDashboardVisibility(option, isVisible);
     applyDashboardVisibilitySettings();
+    if (key === 'futureWork') {
+        renderRoles();
+    }
 }
 
 function toggleDashboardDisplaySettings() {
@@ -1073,7 +1076,7 @@ if (backupKeys.length > 20) {
 }
 
 function normalizeWorkProgressStepState(value) {
-    if (value && typeof value === 'object') {
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
         return {
             done: value.done === true,
             updatedAt: value.updatedAt || '',
@@ -1081,10 +1084,14 @@ function normalizeWorkProgressStepState(value) {
         };
     }
 
-    if (value) {
+    const textValue = typeof value === 'string' ? value.trim() : '';
+    const isLegacyCompletedAt = textValue !== '' && !Number.isNaN(new Date(textValue).getTime());
+    const isExplicitlyDone = value === true || isLegacyCompletedAt;
+
+    if (isExplicitlyDone) {
         return {
             done: true,
-            updatedAt: String(value),
+            updatedAt: textValue,
             updatedBy: ''
         };
     }
@@ -2839,11 +2846,9 @@ function getWorkProgressCompletedCount(role) {
 }
 
 function getWorkProgressState(role) {
-    const progress = normalizeWorkProgress(role);
     const completedCount = getWorkProgressCompletedCount(role);
     const totalCount = WORK_PROGRESS_STEPS.length;
-    const hasProgressValue = WORK_PROGRESS_STEPS.some(step => isWorkProgressStepDone(progress, step.key));
-    const hasWorkRequest = role.status === REWORK_READY_STATUS || hasProgressValue || role.requestSent === true;
+    const hasWorkRequest = completedCount > 0;
 
     return {
         hasWorkRequest,
@@ -3017,6 +3022,11 @@ function updateStatusPreview(selectEl) {
     updateCoatingStatusFieldState(selectedStatus);
     updateOrderExpectedDeliveryDateFieldState(selectedStatus);
     updateAssemblyInstructionDueFieldState(selectedStatus);
+}
+
+function isWorkRequestBadgeDisplayEnabled() {
+    const option = getDashboardVisibilityOption('futureWork');
+    return option ? getStoredDashboardVisibility(option) : true;
 }
 
 function updateDispatchDateFieldState(status) {
@@ -7250,6 +7260,7 @@ if (standNumber >= 2 && standNumber <= 5) {
         const currentDiameterText = formatCurrentDiameter(role.currentDiameter);
         const coatingDisplay = getCoatingStatusDisplay(role);
         const workProgressState = getWorkProgressState(role);
+        const showWorkRequestBadge = isWorkRequestBadgeDisplayEnabled() && workProgressState.isIncomplete;
         const memoMobileText = hasDisplayMemo(role.memo) ? getMemoPreview(role.memo) : '';
         if (workProgressState.isIncomplete) {
             row.classList.add('work-request-incomplete');
@@ -7267,7 +7278,7 @@ if (standNumber >= 2 && standNumber <= 5) {
       ${getRemainingDiameterHtml(role)}
     </div>
     <div class="stand-card-actions">
-      ${workProgressState.isIncomplete ? '<span class="work-request-badge">作業依頼中</span>' : ''}
+      ${showWorkRequestBadge ? '<span class="work-request-badge">作業依頼中</span>' : ''}
       <button class="action-btn history-btn history-card-btn" onclick="showHistory('${role.id}')">履歴</button>
     </div>
   </div>
