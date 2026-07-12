@@ -2504,7 +2504,8 @@ function formatOrderExpectedDeliveryDateForHistory(value) {
 }
 
 function normalizeAssemblyInstructionDue(value) {
-    return String(value || '').trim();
+    const originalValue = String(value || '').trim();
+    return normalizeAssemblyInstructionDueDateInput(value) || originalValue;
 }
 
 function normalizeAssemblyInstructionDueDateInput(value) {
@@ -2526,6 +2527,11 @@ function getRoleAssemblyInstructionDue(role) {
 function formatAssemblyInstructionDueForHistory(value) {
     const normalized = normalizeAssemblyInstructionDue(value);
     return normalized || '未設定';
+}
+
+function formatAssemblyInstructionDueForDisplay(value) {
+    const normalizedDate = normalizeAssemblyInstructionDueDateInput(value);
+    return normalizedDate ? formatDateForDisplay(normalizedDate) : normalizeAssemblyInstructionDue(value);
 }
 
 function addMonthsToDateString(dateValue, months) {
@@ -3201,7 +3207,7 @@ function getRoleInfoHtml(role, formattedDate) {
     }
 
     if (assemblyInstructionDue) {
-        rows.push(['組替指示期限', assemblyInstructionDue]);
+        rows.push(['組替指示期限', formatAssemblyInstructionDueForDisplay(assemblyInstructionDue)]);
     }
 
     if (hasDisplayMemo(role.memo)) {
