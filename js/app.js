@@ -49,68 +49,58 @@ const REWORK_SETUP_REWORK_DAYS = 30;
 const REWORK_SETUP_DISPLAY_WINDOW_DAYS = 30;
 const THREE_SET_FORECAST_MIN_STAND = 2;
 const THREE_SET_FORECAST_MAX_STAND = 17;
-const DASHBOARD_DISPLAY_SETTINGS_OPEN_KEY = 'dashboardDisplaySettingsOpen';
-const DASHBOARD_VISIBILITY_STORAGE_PREFIX = 'dashboardVisibility.';
 const THREE_SET_MANAGEMENT_ACTIVE_TAB_KEY = 'threeSetManagementActiveTab';
 const THREE_SET_MANAGEMENT_REWORK_CHECKLIST_KEY = 'threeSetManagementReworkChecklist';
 const THREE_SET_MANAGEMENT_PURCHASE_EXPANDED_STANDS_KEY = 'threeSetManagementPurchaseExpandedStands';
 const THREE_SET_MANAGEMENT_DEFAULT_TAB = 'assembly';
-const DASHBOARD_VISIBILITY_OPTIONS = [
+const FIXED_DASHBOARD_VISIBILITY = [
     {
         key: 'priorityStand',
         label: '最優先確認',
         targetId: 'priority-stand-panel',
-        inputId: 'dashboard-visibility-priority-stand',
-        defaultVisible: false
+        isVisible: false
     },
     {
         key: 'standRisk',
         label: 'スタンド別リスク',
         targetId: 'stand-risk-panel',
-        inputId: 'dashboard-visibility-stand-risk',
-        defaultVisible: false
+        isVisible: false
     },
     {
         key: 'dangerRoll',
         label: '危険ロール一覧',
         targetId: 'danger-roll-dashboard',
-        inputId: 'dashboard-visibility-danger-roll',
-        defaultVisible: false
+        isVisible: false
     },
     {
         key: 'threeSetForecast',
         label: '3セット維持予測',
         targetId: 'three-set-forecast-dashboard',
-        inputId: 'dashboard-visibility-three-set-forecast',
-        defaultVisible: false
+        isVisible: false
     },
     {
         key: 'reworkSetup',
         label: '改削段取り予定',
         targetId: 'rework-setup-dashboard',
-        inputId: 'dashboard-visibility-rework-setup',
-        defaultVisible: false
+        isVisible: false
     },
     {
         key: 'purchaseConfirmation',
         label: '購入確認候補',
         targetId: 'purchase-confirmation-board',
-        inputId: 'dashboard-visibility-purchase-confirmation',
-        defaultVisible: false
+        isVisible: false
     },
     {
         key: 'futureWork',
         label: '未来作業依頼',
         targetId: 'incomplete-work-dashboard',
-        inputId: 'dashboard-visibility-future-work',
-        defaultVisible: false
+        isVisible: false
     },
     {
         key: 'cuttingAnomaly',
         label: '改削異常チェック',
         targetId: 'cutting-anomaly-dashboard',
-        inputId: 'dashboard-visibility-cutting-anomaly',
-        defaultVisible: true
+        isVisible: true
     }
 ];
 
@@ -186,7 +176,6 @@ document.addEventListener('DOMContentLoaded', function() {
     updateSyncStatusBadge();
     setupOperatorSelect();
     setupCountSummaryToggle();
-    setupDashboardDisplaySettings();
     loadRemoteRoles();
     Promise.all([loadStandMaster(), loadCuttingMaster()]).then(() => renderRoles());
     document.getElementById('password-input').addEventListener('keypress', function(e) {
@@ -208,7 +197,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     setRoleFormOpen(false);
-    applyDashboardVisibilitySettings();
+    applyFixedDashboardVisibility();
     document.addEventListener('keydown', function(e) {
         if (e.key === 'Escape') {
             closeDetailModal();
@@ -603,67 +592,14 @@ function setupCountSummaryToggle() {
     setCountSummaryOpen(getStoredDashboardOpen(COUNT_SUMMARY_OPEN_KEY), { save: false });
 }
 
-function getDashboardVisibilityStorageKey(key) {
-    return `${DASHBOARD_VISIBILITY_STORAGE_PREFIX}${key}`;
-}
-
-function getDashboardVisibilityOption(key) {
-    return DASHBOARD_VISIBILITY_OPTIONS.find(option => option.key === key) || null;
-}
-
-function getStoredDashboardVisibility(option) {
+function clearLegacyDashboardVisibilitySettings() {
     try {
-        const value = localStorage.getItem(getDashboardVisibilityStorageKey(option.key));
-
-        if (value === null) {
-            return option.defaultVisible === true;
-        }
-
-        return value === 'true';
+        localStorage.removeItem('dashboardDisplaySettingsOpen');
+        FIXED_DASHBOARD_VISIBILITY.forEach(option => {
+            localStorage.removeItem(`dashboardVisibility.${option.key}`);
+        });
     } catch (error) {
-        console.error('getStoredDashboardVisibility error:', error);
-        return option.defaultVisible === true;
-    }
-}
-
-function saveDashboardVisibility(option, isVisible) {
-    try {
-        localStorage.setItem(getDashboardVisibilityStorageKey(option.key), isVisible ? 'true' : 'false');
-    } catch (error) {
-        console.error('saveDashboardVisibility error:', error);
-    }
-}
-
-function getDashboardVisibilityState() {
-    return DASHBOARD_VISIBILITY_OPTIONS.reduce((state, option) => {
-        state[option.key] = getStoredDashboardVisibility(option);
-        return state;
-    }, {});
-}
-
-function setDashboardDisplaySettingsOpen(isOpen, options = {}) {
-    const panel = document.getElementById('dashboard-display-settings-options');
-    const toggle = document.getElementById('dashboard-display-settings-toggle');
-
-    if (panel) {
-        panel.hidden = !isOpen;
-
-        if (isOpen) {
-            panel.removeAttribute('hidden');
-        } else {
-            panel.setAttribute('hidden', '');
-        }
-
-        panel.classList.toggle('is-open', isOpen);
-    }
-
-    if (toggle) {
-        toggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
-        toggle.textContent = `表示設定 ${isOpen ? '▲' : '▼'}`;
-    }
-
-    if (options.save !== false) {
-        saveDashboardOpen(DASHBOARD_DISPLAY_SETTINGS_OPEN_KEY, isOpen);
+        console.error('clearLegacyDashboardVisibilitySettings error:', error);
     }
 }
 
@@ -684,61 +620,23 @@ function updatePriorityRiskOverviewVisibility(state) {
     overview.classList.toggle('is-stand-risk-hidden', !standRiskVisible);
 }
 
-function applyDashboardVisibilitySettings() {
-    const state = getDashboardVisibilityState();
+function applyFixedDashboardVisibility() {
+    const state = FIXED_DASHBOARD_VISIBILITY.reduce((result, option) => {
+        result[option.key] = option.isVisible === true;
+        return result;
+    }, {});
 
-    DASHBOARD_VISIBILITY_OPTIONS.forEach(option => {
+    clearLegacyDashboardVisibilitySettings();
+
+    FIXED_DASHBOARD_VISIBILITY.forEach(option => {
         const target = document.getElementById(option.targetId);
-        const input = document.getElementById(option.inputId);
-        const isVisible = state[option.key] === true;
 
         if (target) {
-            target.hidden = !isVisible;
-        }
-
-        if (input) {
-            input.checked = isVisible;
+            target.hidden = option.isVisible !== true;
         }
     });
 
     updatePriorityRiskOverviewVisibility(state);
-}
-
-function setDashboardVisibility(key, isVisible) {
-    const option = getDashboardVisibilityOption(key);
-
-    if (!option) {
-        return;
-    }
-
-    saveDashboardVisibility(option, isVisible);
-    applyDashboardVisibilitySettings();
-}
-
-function toggleDashboardDisplaySettings() {
-    const panel = document.getElementById('dashboard-display-settings-options');
-    const isOpen = panel ? panel.hidden : false;
-    setDashboardDisplaySettingsOpen(isOpen);
-}
-
-function setupDashboardDisplaySettings() {
-    const isOpen = getStoredDashboardOpen(DASHBOARD_DISPLAY_SETTINGS_OPEN_KEY);
-    setDashboardDisplaySettingsOpen(isOpen, { save: false });
-
-    DASHBOARD_VISIBILITY_OPTIONS.forEach(option => {
-        const input = document.getElementById(option.inputId);
-
-        if (!input) {
-            return;
-        }
-
-        input.checked = getStoredDashboardVisibility(option);
-        input.addEventListener('change', event => {
-            setDashboardVisibility(option.key, event.target.checked);
-        });
-    });
-
-    applyDashboardVisibilitySettings();
 }
 
 function setCollapsibleDashboardOpen(config, isOpen, options = {}) {
