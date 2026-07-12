@@ -35,7 +35,6 @@ const ASSEMBLY_CANDIDATE_SELECTIONS_KEY = 'assemblyCandidateSelections';
 const TODAY_TASK_DASHBOARD_OPEN_KEY = 'todayTaskDashboardOpen';
 const THREE_SET_FORECAST_DASHBOARD_OPEN_KEY = 'threeSetForecastDashboardOpen';
 const REWORK_SETUP_DASHBOARD_OPEN_KEY = 'reworkSetupDashboardOpen';
-const CUTTING_ANOMALY_DASHBOARD_OPEN_KEY = 'cuttingAnomalyDashboardOpen';
 const DANGER_ROLL_DASHBOARD_OPEN_KEY = 'dangerRollDashboardOpen';
 const FUTURE_WORK_DASHBOARD_OPEN_KEY = 'futureWorkDashboardOpen';
 const PURCHASE_CONFIRMATION_DASHBOARD_OPEN_KEY = 'purchaseConfirmationDashboardOpen';
@@ -53,54 +52,64 @@ const THREE_SET_MANAGEMENT_ACTIVE_TAB_KEY = 'threeSetManagementActiveTab';
 const THREE_SET_MANAGEMENT_REWORK_CHECKLIST_KEY = 'threeSetManagementReworkChecklist';
 const THREE_SET_MANAGEMENT_PURCHASE_EXPANDED_STANDS_KEY = 'threeSetManagementPurchaseExpandedStands';
 const THREE_SET_MANAGEMENT_DEFAULT_TAB = 'assembly';
-const FIXED_DASHBOARD_VISIBILITY = [
+const DASHBOARD_DISPLAY_SETTINGS_OPEN_KEY = 'dashboardDisplaySettingsOpen';
+const DASHBOARD_VISIBILITY_STORAGE_PREFIX = 'dashboardVisibility.';
+const DASHBOARD_VISIBILITY_OPTIONS = [
     {
         key: 'priorityStand',
         label: '最優先確認',
         targetId: 'priority-stand-panel',
-        isVisible: false
+        inputId: 'dashboard-visibility-priority-stand',
+        defaultVisible: false
     },
     {
         key: 'standRisk',
         label: 'スタンド別リスク',
         targetId: 'stand-risk-panel',
-        isVisible: false
+        inputId: 'dashboard-visibility-stand-risk',
+        defaultVisible: false
     },
     {
         key: 'dangerRoll',
         label: '危険ロール一覧',
         targetId: 'danger-roll-dashboard',
-        isVisible: false
+        inputId: 'dashboard-visibility-danger-roll',
+        defaultVisible: false
     },
     {
         key: 'threeSetForecast',
         label: '3セット維持予測',
         targetId: 'three-set-forecast-dashboard',
-        isVisible: false
+        inputId: 'dashboard-visibility-three-set-forecast',
+        defaultVisible: false
     },
     {
         key: 'reworkSetup',
         label: '改削段取り予定',
         targetId: 'rework-setup-dashboard',
-        isVisible: false
+        inputId: 'dashboard-visibility-rework-setup',
+        defaultVisible: false
     },
     {
         key: 'purchaseConfirmation',
         label: '購入確認候補',
         targetId: 'purchase-confirmation-board',
-        isVisible: false
+        inputId: 'dashboard-visibility-purchase-confirmation',
+        defaultVisible: false
     },
     {
         key: 'futureWork',
         label: '未来作業依頼',
         targetId: 'incomplete-work-dashboard',
-        isVisible: false
+        inputId: 'dashboard-visibility-future-work',
+        defaultVisible: false
     },
     {
         key: 'cuttingAnomaly',
         label: '改削異常チェック',
         targetId: 'cutting-anomaly-dashboard',
-        isVisible: true
+        inputId: 'dashboard-visibility-cutting-anomaly',
+        defaultVisible: true
     }
 ];
 
@@ -176,6 +185,8 @@ document.addEventListener('DOMContentLoaded', function() {
     updateSyncStatusBadge();
     setupOperatorSelect();
     setupCountSummaryToggle();
+    setupDashboardDisplaySettings();
+    resetCuttingAnomalyDashboardOpenState();
     loadRemoteRoles();
     Promise.all([loadStandMaster(), loadCuttingMaster()]).then(() => renderRoles());
     document.getElementById('password-input').addEventListener('keypress', function(e) {
@@ -197,7 +208,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     setRoleFormOpen(false);
-    applyFixedDashboardVisibility();
+    applyDashboardVisibilitySettings();
     document.addEventListener('keydown', function(e) {
         if (e.key === 'Escape') {
             closeDetailModal();
@@ -487,6 +498,7 @@ let workshopBoardStandFilter = 'all';
 let selectedWorkshopCandidateKey = '';
 let workshopBoardEditingAssemblyDueKey = '';
 let workshopBoardSelectedOnly = false;
+let cuttingAnomalyDashboardOpen = false;
 let cuttingMasterRows = [];
 let cuttingMasterByStand = new Map();
 const RENDER_STATUS_DEBUG_ROLE_NAME = '#11-44';
@@ -592,14 +604,55 @@ function setupCountSummaryToggle() {
     setCountSummaryOpen(getStoredDashboardOpen(COUNT_SUMMARY_OPEN_KEY), { save: false });
 }
 
-function clearLegacyDashboardVisibilitySettings() {
+function getDashboardVisibilityStorageKey(key) {
+    return `${DASHBOARD_VISIBILITY_STORAGE_PREFIX}${key}`;
+}
+
+function getDashboardVisibilityOption(key) {
+    return DASHBOARD_VISIBILITY_OPTIONS.find(option => option.key === key) || null;
+}
+
+function getStoredDashboardVisibility(option) {
     try {
-        localStorage.removeItem('dashboardDisplaySettingsOpen');
-        FIXED_DASHBOARD_VISIBILITY.forEach(option => {
-            localStorage.removeItem(`dashboardVisibility.${option.key}`);
-        });
+        const value = localStorage.getItem(getDashboardVisibilityStorageKey(option.key));
+        return value === null ? option.defaultVisible === true : value === 'true';
     } catch (error) {
-        console.error('clearLegacyDashboardVisibilitySettings error:', error);
+        console.error('getStoredDashboardVisibility error:', error);
+        return option.defaultVisible === true;
+    }
+}
+
+function saveDashboardVisibility(option, isVisible) {
+    try {
+        localStorage.setItem(getDashboardVisibilityStorageKey(option.key), isVisible ? 'true' : 'false');
+    } catch (error) {
+        console.error('saveDashboardVisibility error:', error);
+    }
+}
+
+function getDashboardVisibilityState() {
+    return DASHBOARD_VISIBILITY_OPTIONS.reduce((state, option) => {
+        state[option.key] = getStoredDashboardVisibility(option);
+        return state;
+    }, {});
+}
+
+function setDashboardDisplaySettingsOpen(isOpen, options = {}) {
+    const panel = document.getElementById('dashboard-display-settings-options');
+    const toggle = document.getElementById('dashboard-display-settings-toggle');
+
+    if (panel) {
+        panel.hidden = !isOpen;
+        panel.classList.toggle('is-open', isOpen);
+    }
+
+    if (toggle) {
+        toggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+        toggle.textContent = `表示設定 ${isOpen ? '▲' : '▼'}`;
+    }
+
+    if (options.save !== false) {
+        saveDashboardOpen(DASHBOARD_DISPLAY_SETTINGS_OPEN_KEY, isOpen);
     }
 }
 
@@ -620,23 +673,46 @@ function updatePriorityRiskOverviewVisibility(state) {
     overview.classList.toggle('is-stand-risk-hidden', !standRiskVisible);
 }
 
-function applyFixedDashboardVisibility() {
-    const state = FIXED_DASHBOARD_VISIBILITY.reduce((result, option) => {
-        result[option.key] = option.isVisible === true;
-        return result;
-    }, {});
+function applyDashboardVisibilitySettings() {
+    const state = getDashboardVisibilityState();
 
-    clearLegacyDashboardVisibilitySettings();
-
-    FIXED_DASHBOARD_VISIBILITY.forEach(option => {
+    DASHBOARD_VISIBILITY_OPTIONS.forEach(option => {
         const target = document.getElementById(option.targetId);
+        const input = document.getElementById(option.inputId);
+        const isVisible = state[option.key] === true;
 
         if (target) {
-            target.hidden = option.isVisible !== true;
+            target.hidden = !isVisible;
+        }
+        if (input) {
+            input.checked = isVisible;
         }
     });
 
     updatePriorityRiskOverviewVisibility(state);
+}
+
+function setDashboardVisibility(key, isVisible) {
+    const option = getDashboardVisibilityOption(key);
+    if (!option) return;
+    saveDashboardVisibility(option, isVisible);
+    applyDashboardVisibilitySettings();
+}
+
+function toggleDashboardDisplaySettings() {
+    const panel = document.getElementById('dashboard-display-settings-options');
+    setDashboardDisplaySettingsOpen(panel ? panel.hidden : false);
+}
+
+function setupDashboardDisplaySettings() {
+    setDashboardDisplaySettingsOpen(getStoredDashboardOpen(DASHBOARD_DISPLAY_SETTINGS_OPEN_KEY), { save: false });
+    DASHBOARD_VISIBILITY_OPTIONS.forEach(option => {
+        const input = document.getElementById(option.inputId);
+        if (!input) return;
+        input.checked = getStoredDashboardVisibility(option);
+        input.addEventListener('change', event => setDashboardVisibility(option.key, event.target.checked));
+    });
+    applyDashboardVisibilitySettings();
 }
 
 function setCollapsibleDashboardOpen(config, isOpen, options = {}) {
@@ -697,7 +773,6 @@ const CUTTING_ANOMALY_DASHBOARD_CONFIG = {
     dashboardId: 'cutting-anomaly-dashboard',
     toggleId: 'cutting-anomaly-toggle',
     countId: 'cutting-anomaly-count',
-    storageKey: CUTTING_ANOMALY_DASHBOARD_OPEN_KEY,
     label: '改削異常チェック'
 };
 
@@ -738,7 +813,19 @@ function toggleReworkSetupDashboard() {
 }
 
 function toggleCuttingAnomalyDashboard() {
-    toggleCollapsibleDashboard(CUTTING_ANOMALY_DASHBOARD_CONFIG);
+    const dashboard = document.getElementById(CUTTING_ANOMALY_DASHBOARD_CONFIG.dashboardId);
+    cuttingAnomalyDashboardOpen = dashboard ? dashboard.classList.contains('is-collapsed') : false;
+    setCollapsibleDashboardOpen(CUTTING_ANOMALY_DASHBOARD_CONFIG, cuttingAnomalyDashboardOpen, { save: false });
+}
+
+function resetCuttingAnomalyDashboardOpenState() {
+    cuttingAnomalyDashboardOpen = false;
+    try {
+        localStorage.removeItem('cuttingAnomalyDashboardOpen');
+    } catch (error) {
+        console.error('resetCuttingAnomalyDashboardOpenState error:', error);
+    }
+    setCollapsibleDashboardOpen(CUTTING_ANOMALY_DASHBOARD_CONFIG, false, { save: false });
 }
 
 function toggleDangerRollDashboard() {
@@ -1411,7 +1498,7 @@ function updateCuttingAnomalyDashboard() {
     const items = getCuttingAnomalyItems();
     countEl.textContent = `${items.length}件`;
     dashboard.classList.toggle('is-empty', items.length === 0);
-    syncCollapsibleDashboardState(CUTTING_ANOMALY_DASHBOARD_CONFIG);
+    setCollapsibleDashboardOpen(CUTTING_ANOMALY_DASHBOARD_CONFIG, cuttingAnomalyDashboardOpen, { save: false });
 
     if (items.length === 0) {
         listEl.innerHTML = '<div class="cutting-anomaly-empty">改削異常はありません</div>';

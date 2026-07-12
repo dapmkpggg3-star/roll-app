@@ -1310,6 +1310,69 @@ body {
     overflow-wrap: anywhere;
 }
 
+.dashboard-display-settings {
+    display: grid;
+    gap: 10px;
+    width: 100%;
+    margin: 0 0 14px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    border: 1px solid #e2e8f0;
+    background: #ffffff;
+    box-shadow: 0 4px 14px rgba(15, 23, 42, 0.06);
+}
+
+.dashboard-display-settings-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: fit-content;
+    min-height: 36px;
+    padding: 0 14px;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    background: #f8fafc;
+    color: #0f172a;
+    font-size: 0.92rem;
+    font-weight: 900;
+    cursor: pointer;
+}
+
+.dashboard-display-settings-toggle:hover,
+.dashboard-display-settings-toggle:focus-visible {
+    outline: 3px solid rgba(37, 99, 235, 0.18);
+    outline-offset: 2px;
+    background: #eef2ff;
+}
+
+.dashboard-display-settings-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 14px;
+    align-items: center;
+}
+
+.dashboard-display-option {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 32px;
+    color: #334155;
+    font-size: 0.9rem;
+    font-weight: 800;
+    cursor: pointer;
+}
+
+.dashboard-display-option input {
+    width: 16px;
+    height: 16px;
+    accent-color: #2563eb;
+}
+
+body.workshop-board-mode .main-board-display-settings {
+    display: none !important;
+}
+
 .three-set-management-rework-pickup-status {
     display: grid;
     gap: 8px;
