@@ -5770,9 +5770,16 @@ function getWorkshopBoardDeadlineDisplayLabel(deadlineValue) {
 }
 
 function normalizeWorkshopBoardInstructionDueDate(value) {
+    if (value instanceof Date) {
+        return Number.isNaN(value.getTime()) ? '' : normalizeDateInputValue(value);
+    }
+
     const text = String(value || '').trim();
 
-    if (!/^\d{4}[/-]\d{1,2}[/-]\d{1,2}$/.test(text)) {
+    const isDateOnlyText = /^\d{4}[/-]\d{1,2}[/-]\d{1,2}$/.test(text);
+    const isDateToStringText = /^(?:Sun|Mon|Tue|Wed|Thu|Fri|Sat)\s+[A-Z][a-z]{2}\s+\d{1,2}\s+\d{4}\s+\d{2}:\d{2}:\d{2}\s+GMT(?:[+-]\d{4})?/.test(text);
+
+    if (!isDateOnlyText && !isDateToStringText) {
         return '';
     }
 
@@ -6344,9 +6351,8 @@ function getWorkshopBoardAlertCardHtml(candidate) {
     const dueStatus = details.dueStatus || 'unknown';
     const usedRoleName = candidate && candidate.usedRole && candidate.usedRole.name || '-';
     const selectedInstallName = candidate && candidate.selectedInstallRole && candidate.selectedInstallRole.name || '未選択';
-    const assemblyInstructionDue = getRoleAssemblyInstructionDue(candidate && candidate.usedRole) || details.assemblyInstructionDue || '';
-    const deadlineSource = assemblyInstructionDue ? 'assemblyInstructionDue' : (details.deadlineSource || '');
-    const deadlineLabel = assemblyInstructionDue || details.deadlineLabel || details.estimatedReplacementLabel || '算出不可';
+    const deadlineSource = details.deadlineSource || '';
+    const deadlineLabel = details.deadlineLabel || '算出不可';
     const shouldShowRemainingDays = !(deadlineSource === 'assemblyInstructionDue' && details.remainingDaysLabel === '算出不可');
     const remainingDaysHtml = shouldShowRemainingDays
         ? `<em>${escapeHtml(details.remainingDaysLabel || '算出不可')}</em>`
