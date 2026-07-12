@@ -4134,6 +4134,10 @@ body.workshop-board-mode .table-container {
     background: #16a34a;
 }
 
+.assembly-selection-option.is-hold button {
+    background: #64748b;
+}
+
 .assembly-alert-detail-meta {
     border-top: 1px solid #e2e8f0;
     margin-top: 8px;
@@ -4404,6 +4408,10 @@ body.workshop-board-mode .table-container {
     body.workshop-board-mode .assembly-selection-status,
     body.workshop-board-mode .page-scroll-controls,
     body.workshop-board-mode .detail-modal {
+        display: none !important;
+    }
+
+    body.workshop-board-mode .assembly-alert-card:not(.is-selected) {
         display: none !important;
     }
 

@@ -5766,7 +5766,9 @@ function getWorkshopBoardAssemblyInstructionDue(candidate) {
 
 function getWorkshopBoardDeadlineDisplayLabel(deadlineValue) {
     const normalizedDate = normalizeWorkshopBoardInstructionDueDate(deadlineValue);
-    return normalizedDate ? formatDateForDisplay(normalizedDate) : String(deadlineValue || '').trim();
+    const label = normalizedDate ? formatDateForDisplay(normalizedDate) : String(deadlineValue || '').trim();
+    const baseLabel = label.replace(/(?:\s*(?:まで|迄))+\s*$/u, '').trim();
+    return baseLabel ? `${baseLabel}　迄` : '';
 }
 
 function normalizeWorkshopBoardInstructionDueDate(value) {
@@ -5809,7 +5811,7 @@ function getWorkshopBoardCandidateDetails(candidate, now = new Date()) {
     const remainingDaysLabel = getWorkshopBoardRemainingDaysLabel(daysRemaining);
     const estimatedReplacementLabel = assemblyInstructionDue
         ? getWorkshopBoardDeadlineDisplayLabel(assemblyInstructionDue)
-        : (assemblyTargetDate ? formatDateForDisplay(assemblyTargetDate) : '算出不可');
+        : (assemblyTargetDate ? getWorkshopBoardDeadlineDisplayLabel(assemblyTargetDate) : '算出不可');
 
     return {
         referenceRole,
@@ -6096,6 +6098,7 @@ function saveAssemblyCandidateSelection(standKey, usedRoleId, installRoleId) {
         standKey: String(standKey),
         usedRoleId: String(usedRoleId),
         installRoleId: String(installRoleId),
+        status: 'selected',
         selectedAssemblyCandidate: {
             standKey: String(standKey),
             usedRoleId: String(usedRoleId),
@@ -6111,11 +6114,42 @@ function saveAssemblyCandidateSelection(standKey, usedRoleId, installRoleId) {
     }
 }
 
+function holdAssemblyCandidateSelection(standKey, usedRoleId) {
+    const selectionKey = `${String(standKey || '')}::${String(usedRoleId || '')}`;
+    const selections = getStoredAssemblyCandidateSelections();
+
+    if (!standKey || !usedRoleId) {
+        return;
+    }
+
+    selections[selectionKey] = {
+        standKey: String(standKey),
+        usedRoleId: String(usedRoleId),
+        installRoleId: '',
+        status: 'held',
+        heldAt: new Date().toISOString()
+    };
+
+    try {
+        localStorage.setItem(ASSEMBLY_CANDIDATE_SELECTIONS_KEY, JSON.stringify(selections));
+    } catch (error) {
+        console.error('holdAssemblyCandidateSelection error:', error);
+    }
+}
+
 function selectAssemblyCandidate(standKey, usedRoleId, installRoleId) {
     saveAssemblyCandidateSelection(
         decodeURIComponent(String(standKey || '')),
         decodeURIComponent(String(usedRoleId || '')),
         decodeURIComponent(String(installRoleId || ''))
+    );
+    updateWorkshopBoard(roles);
+}
+
+function holdAssemblyCandidate(standKey, usedRoleId) {
+    holdAssemblyCandidateSelection(
+        decodeURIComponent(String(standKey || '')),
+        decodeURIComponent(String(usedRoleId || ''))
     );
     updateWorkshopBoard(roles);
 }
@@ -6127,11 +6161,11 @@ function getSelectedAssemblyInstallRole(standKey, usedRole, installRoles, select
         return null;
     }
 
-    if (candidates.length === 1) {
-        return candidates[0];
-    }
-
     const selection = selections[getAssemblyCandidateSelectionKey(standKey, usedRole)];
+    const selectionStatus = selection && selection.status;
+    if (!selection || selectionStatus === 'held') {
+        return null;
+    }
     const selectedInstallRoleId = selection && (selection.installRoleId || (selection.selectedAssemblyCandidate && selection.selectedAssemblyCandidate.installRoleId));
 
     return candidates.find(role => getAssemblyCandidateRoleId(role) === String(selectedInstallRoleId || '')) || null;
@@ -6240,14 +6274,16 @@ function getWorkshopBoardCoatingSummary(candidate) {
 
 function getWorkshopBoardSelectionActionHtml(candidate) {
     const installCandidates = Array.isArray(candidate && candidate.installCandidates) ? candidate.installCandidates : [];
-
-    if (candidate && candidate.isAutoSelected) {
-        return '<span class="assembly-selection-status">採用中</span>';
-    }
+    const usedRoleId = getAssemblyCandidateRoleId(candidate && candidate.usedRole);
+    const encodedStandKey = encodeURIComponent(String(candidate && candidate.standKey || ''));
+    const encodedUsedRoleId = encodeURIComponent(usedRoleId);
+    const menuLabel = candidate && candidate.isSelected
+        ? '候補を変更'
+        : (candidate && candidate.isHeld ? '保留中（変更）' : '候補を選択');
 
     return `
         <details class="assembly-selection-menu">
-            <summary>${candidate && candidate.isSelected ? '候補を変更する' : '候補を選択する'}</summary>
+            <summary>${menuLabel}</summary>
             <div class="assembly-selection-options">
                 ${installCandidates.map(role => {
                     const roleId = getAssemblyCandidateRoleId(role);
@@ -6261,6 +6297,10 @@ function getWorkshopBoardSelectionActionHtml(candidate) {
                         </div>
                     `;
                 }).join('')}
+                <div class="assembly-selection-option is-hold">
+                    <span>${candidate && candidate.isSelected ? '採用を解除して管理側で保留します' : '工作課への表示を保留します'}</span>
+                    <button type="button" onclick="holdAssemblyCandidate('${encodedStandKey}', '${encodedUsedRoleId}')">${candidate && candidate.isSelected ? '保留に戻す' : '保留'}</button>
+                </div>
             </div>
         </details>
     `;
@@ -6360,7 +6400,7 @@ function getWorkshopBoardAlertCardHtml(candidate) {
     const deadlineEditHtml = getWorkshopBoardAssemblyDueEditHtml(candidate, deadlineLabel, remainingDaysHtml);
 
     return `
-        <article class="assembly-alert-card is-${escapeHtml(dueStatus)}">
+        <article class="assembly-alert-card is-${escapeHtml(dueStatus)} ${candidate && candidate.isSelected ? 'is-selected' : 'is-unselected'}">
             <div class="assembly-roll-cell">
                 <span>中古予備</span>
                 <strong>${escapeHtml(usedRoleName)}</strong>
@@ -6554,6 +6594,7 @@ function getWorkshopBoardCandidates(allRoles = roles) {
 
             return usedRoles.map(usedRole => {
                 const selectedInstallRole = getSelectedAssemblyInstallRole(candidate.standKey, usedRole, installCandidates, selections);
+                const selection = selections[getAssemblyCandidateSelectionKey(candidate.standKey, usedRole)];
                 const item = {
                     ...candidate,
                     usedRole,
@@ -6561,8 +6602,8 @@ function getWorkshopBoardCandidates(allRoles = roles) {
                     installCandidates,
                     selectedInstallRole,
                     newReadyRoles: selectedInstallRole ? [selectedInstallRole] : [],
-                    isAutoSelected: installCandidates.length === 1,
-                    isSelectionRequired: installCandidates.length > 1,
+                    isHeld: Boolean(selection && selection.status === 'held'),
+                    isSelectionRequired: !selectedInstallRole,
                     isSelected: Boolean(selectedInstallRole)
                 };
 
@@ -6649,7 +6690,7 @@ function printWorkshopBoard() {
         return;
     }
 
-    const printTargetCount = sourceBoard.querySelectorAll('#workshop-board-list .assembly-alert-card, #workshop-board-list .workshop-card').length;
+    const printTargetCount = sourceBoard.querySelectorAll('#workshop-board-list .assembly-alert-card.is-selected').length;
 
     if (printTargetCount === 0) {
         alert('印刷対象がありません');
