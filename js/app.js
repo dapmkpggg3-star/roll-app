@@ -3062,7 +3062,8 @@ function updateInboundPlanPreview() {
 }
 
 function isArrivalDateAllowedStatus(status) {
-    return normalizeRoleStatusValue(status) === REWORKING_STATUS;
+    const normalizedStatus = normalizeRoleStatusValue(status);
+    return normalizedStatus === REWORKING_STATUS || normalizedStatus === NEW_READY_STATUS;
 }
 
 function updateArrivalDateFieldState(status) {
@@ -3190,11 +3191,12 @@ function getRoleInfoHtml(role, formattedDate) {
 
     if (dispatchDate) {
         rows.push(['搬出日', formatDateForDisplay(dispatchDate)]);
-        if (arrivalDate) {
-            rows.push(['搬入日（実績/確定）', formatDateForDisplay(arrivalDate)]);
-        } else {
-            rows.push(['仮搬入予定', formatDateForDisplay(getTemporaryInboundPlanDate(dispatchDate))]);
-        }
+    }
+
+    if (arrivalDate) {
+        rows.push(['搬入日（実績/確定）', formatDateForDisplay(arrivalDate)]);
+    } else if (dispatchDate) {
+        rows.push(['仮搬入予定', formatDateForDisplay(getTemporaryInboundPlanDate(dispatchDate))]);
     }
 
     if (normalizeRoleStatusValue(role.status) === ORDERED_WAITING_STATUS && orderExpectedDeliveryDate) {
@@ -7330,6 +7332,9 @@ function addRole() {
     const roleDispatchDate = isDispatchDateAllowedStatus(roleStatus)
         ? normalizeDateInputValue(document.getElementById('role-dispatch-date').value)
         : '';
+    const roleArrivalDate = isArrivalDateAllowedStatus(roleStatus)
+        ? normalizeDateInputValue(document.getElementById('role-arrival-date').value)
+        : '';
     const roleOrderExpectedDeliveryDate = roleStatus === ORDERED_WAITING_STATUS
         ? normalizeDateInputValue(document.getElementById('role-order-expected-delivery-date').value)
         : '';
@@ -7353,7 +7358,26 @@ function addRole() {
         alert('このスタンド番号は既に登録されています');
         return;
     }
-    const newRole = { id: nextId++, name: roleName, status: roleStatus, coatingStatus: roleCoatingStatus, memo: roleMemo, currentDiameter: roleCurrentDiameter, orderExpectedDeliveryDate: roleOrderExpectedDeliveryDate, assemblyInstructionDue: roleAssemblyInstructionDue, dispatchDate: roleDispatchDate, useStartDate: roleUseStartDate, updatedAt: new Date().toISOString(), workProgress: normalizeWorkProgress({ dispatchDate: roleDispatchDate }), history: [] };
+    const newRole = {
+        id: nextId++,
+        name: roleName,
+        status: roleStatus,
+        coatingStatus: roleCoatingStatus,
+        memo: roleMemo,
+        currentDiameter: roleCurrentDiameter,
+        orderExpectedDeliveryDate: roleOrderExpectedDeliveryDate,
+        assemblyInstructionDue: roleAssemblyInstructionDue,
+        dispatchDate: roleDispatchDate,
+        useStartDate: roleUseStartDate,
+        updatedAt: new Date().toISOString(),
+        workProgress: normalizeWorkProgress({
+            workProgress: {
+                dispatchDate: roleDispatchDate,
+                arrivalDate: roleArrivalDate
+            }
+        }),
+        history: []
+    };
     addRoleHistoryEntry(newRole, 'create', '新規追加', '-', roleStatus, newRole.updatedAt);
     setUseStartDateIfNeeded(newRole, newRole.updatedAt);
     
