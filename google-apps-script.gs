@@ -1,4 +1,5 @@
 const SHEET_NAME = 'Roles';
+const ROLL_MANAGEMENT_VIEW_SHEET_NAME = 'ロール管理表';
 const STAND_MASTER_SHEET_NAME = 'StandMaster';
 const INPUT_SHEET_NAMES = ['入力シート', 'Input', '入力'];
 const SPREADSHEET_ID = '1X07qQa7u9YPLvErT0D48goT5wYmvcpgNjqzK3FhRFeA';
@@ -160,6 +161,45 @@ const STATUS_OPTIONS = [
   '廃却待ち（ラック保管）',
   '廃棄'
 ];
+const ROLL_MANAGEMENT_VIEW_HEADERS = [
+  'スタンド',
+  'ロールID',
+  '搬出日',
+  '搬入日',
+  'ロール径',
+  '使用開始日',
+  '使用終了日',
+  'ステータス',
+  'メモ'
+];
+const ROLL_MANAGEMENT_VIEW_STATUS_ORDER = [
+  'オンライン',
+  '新品予備（組込完了）',
+  '新品予備（組替可能）',
+  '中古予備（バラシ前）',
+  '改削行き（搬出可能）',
+  '改削中',
+  '新品予備保管',
+  '発注済み（納入待ち）',
+  '廃却待ち（ラック保管）',
+  '廃棄'
+];
+const ROLL_MANAGEMENT_VIEW_STATUS_COLORS = {
+  'オンライン': '#e2f0d9',
+  '新品予備（組込完了）': '#d9eaf7',
+  '新品予備（組替可能）': '#e8f1fb',
+  '中古予備（バラシ前）': '#eeeeee',
+  '改削行き（搬出可能）': '#fff2cc',
+  '改削中': '#fce4d6',
+  '新品予備保管': '#e4dfec',
+  '発注済み（納入待ち）': '#d9ead3',
+  '廃却待ち（ラック保管）': '#f4cccc',
+  '廃棄': '#d9d9d9'
+};
+const ROLL_MANAGEMENT_VIEW_HEADER_BACKGROUND = '#1f4e78';
+const ROLL_MANAGEMENT_VIEW_HEADER_FONT_COLOR = '#ffffff';
+const ROLL_MANAGEMENT_VIEW_PLANNED_FONT_COLOR = '#7f8c8d';
+const ROLL_MANAGEMENT_VIEW_INBOUND_PLAN_DAYS = 25;
 
 
 function doGet(e) {
@@ -1619,6 +1659,285 @@ function isStandMasterCanonicalRows(rows) {
   });
 }
 
+function initializeRollManagementView() {
+  const result = refreshRollManagementView();
+
+  return {
+    success: true,
+    action: 'initialize-roll-management-view',
+    sheetName: result.sheetName,
+    rowCount: result.rowCount
+  };
+}
+
+function refreshRollManagementView() {
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  let sheet = ss.getSheetByName(ROLL_MANAGEMENT_VIEW_SHEET_NAME);
+
+  if (!sheet) {
+    sheet = ss.insertSheet(ROLL_MANAGEMENT_VIEW_SHEET_NAME);
+  }
+
+  const roles = fetchRoles();
+  const viewRoles = sortRolesForRollManagementView(roles);
+  const rows = [];
+  const plannedArrivalRowIndexes = [];
+  let previousStandKey = '';
+
+  viewRoles.forEach(function(role, index) {
+    const standInfo = getRollManagementViewStandInfo(role && role.name);
+    const workProgress = parseWorkProgress(role && role.workProgress);
+    const dispatchDate = normalizeRollManagementViewDate(workProgress.dispatchDate);
+    const arrivalDate = normalizeRollManagementViewDate(workProgress.arrivalDate);
+    const plannedArrivalDate = !arrivalDate && dispatchDate
+      ? addDaysForRollManagementView(dispatchDate, ROLL_MANAGEMENT_VIEW_INBOUND_PLAN_DAYS)
+      : '';
+    const standLabel = standInfo.key !== previousStandKey ? standInfo.label : '';
+
+    if (plannedArrivalDate) {
+      plannedArrivalRowIndexes.push(index + 2);
+    }
+
+    rows.push([
+      standLabel,
+      normalizeTextForSheet(role && role.name),
+      formatRollManagementViewDate(dispatchDate),
+      arrivalDate
+        ? formatRollManagementViewDate(arrivalDate)
+        : (plannedArrivalDate ? formatRollManagementViewDate(plannedArrivalDate) + '予' : ''),
+      normalizeCurrentDiameterForSheet(role && role.currentDiameter),
+      formatRollManagementViewDate(normalizeRollManagementViewDate(role && role.useStartDate)),
+      getRollManagementViewUseEndDate(role),
+      normalizeTextForSheet(role && role.status),
+      normalizeTextForSheet(role && role.memo)
+    ]);
+
+    previousStandKey = standInfo.key;
+  });
+
+  const existingFilter = sheet.getFilter();
+  if (existingFilter) {
+    existingFilter.remove();
+  }
+
+  sheet.clear();
+  sheet.setConditionalFormatRules([]);
+
+  const values = [ROLL_MANAGEMENT_VIEW_HEADERS].concat(rows);
+  sheet.getRange(1, 1, values.length, ROLL_MANAGEMENT_VIEW_HEADERS.length).setValues(values);
+  applyRollManagementViewFormatting(sheet, rows, plannedArrivalRowIndexes);
+
+  return {
+    success: true,
+    action: 'refresh-roll-management-view',
+    sheetName: sheet.getName(),
+    rowCount: rows.length
+  };
+}
+
+function sortRolesForRollManagementView(roles) {
+  return (Array.isArray(roles) ? roles : []).slice().sort(function(a, b) {
+    const aStand = getRollManagementViewStandInfo(a && a.name);
+    const bStand = getRollManagementViewStandInfo(b && b.name);
+
+    if (aStand.number !== bStand.number) {
+      return aStand.number - bStand.number;
+    }
+
+    if (aStand.key !== bStand.key) {
+      return aStand.key.localeCompare(bStand.key, 'ja');
+    }
+
+    const aStatusOrder = getRollManagementViewStatusOrder(a && a.status);
+    const bStatusOrder = getRollManagementViewStatusOrder(b && b.status);
+
+    if (aStatusOrder !== bStatusOrder) {
+      return aStatusOrder - bStatusOrder;
+    }
+
+    return compareStandRoleNamesForSheet(a && a.name, b && b.name);
+  });
+}
+
+function getRollManagementViewStatusOrder(status) {
+  const index = ROLL_MANAGEMENT_VIEW_STATUS_ORDER.indexOf(String(status || '').trim());
+  return index >= 0 ? index : ROLL_MANAGEMENT_VIEW_STATUS_ORDER.length;
+}
+
+function getRollManagementViewStandInfo(roleName) {
+  const parsed = parseStandNumberForSort(roleName);
+  const roleNameText = String(roleName || '').trim();
+
+  if (parsed.stand === 999999) {
+    return {
+      key: 'unknown:' + roleNameText,
+      number: 999999,
+      label: ''
+    };
+  }
+
+  return {
+    key: String(parsed.stand),
+    number: parsed.stand,
+    label: '#' + parsed.stand + 'st'
+  };
+}
+
+function normalizeRollManagementViewDate(value) {
+  if (value === undefined || value === null || value === '') {
+    return '';
+  }
+
+  if (Object.prototype.toString.call(value) === '[object Date]' && !isNaN(value.getTime())) {
+    return Utilities.formatDate(value, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  }
+
+  const text = String(value).trim();
+  if (!text) {
+    return '';
+  }
+
+  const ymdMatch = text.match(/^(\d{4})[\/-](\d{1,2})[\/-](\d{1,2})(?:$|T)/);
+  if (ymdMatch) {
+    const year = Number(ymdMatch[1]);
+    const month = Number(ymdMatch[2]);
+    const day = Number(ymdMatch[3]);
+    const date = new Date(year, month - 1, day);
+
+    if (
+      date.getFullYear() === year
+      && date.getMonth() === month - 1
+      && date.getDate() === day
+    ) {
+      return [
+        String(year).padStart(4, '0'),
+        String(month).padStart(2, '0'),
+        String(day).padStart(2, '0')
+      ].join('-');
+    }
+  }
+
+  const parsed = new Date(text);
+  if (isNaN(parsed.getTime())) {
+    return '';
+  }
+
+  return Utilities.formatDate(parsed, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+}
+
+function formatRollManagementViewDate(value) {
+  const normalized = normalizeRollManagementViewDate(value);
+  return normalized ? normalized.replace(/-/g, '/') : '';
+}
+
+function addDaysForRollManagementView(value, days) {
+  const normalized = normalizeRollManagementViewDate(value);
+  if (!normalized) {
+    return '';
+  }
+
+  const parts = normalized.split('-').map(Number);
+  const date = new Date(parts[0], parts[1] - 1, parts[2]);
+  date.setDate(date.getDate() + Number(days || 0));
+  return Utilities.formatDate(date, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+}
+
+function getRollManagementViewUseEndDate(role) {
+  if (!role || String(role.status || '').trim() === 'オンライン') {
+    return '';
+  }
+
+  const matchingHistory = parseHistory(role.history).filter(function(entry) {
+    return entry
+      && String(entry.type || '').trim() === 'status'
+      && String(entry.before || '').trim() === 'オンライン'
+      && String(entry.after || '').trim() === '中古予備（バラシ前）'
+      && normalizeRollManagementViewDate(entry.at);
+  }).sort(function(a, b) {
+    return normalizeRollManagementViewDate(b.at)
+      .localeCompare(normalizeRollManagementViewDate(a.at));
+  });
+
+  return matchingHistory.length > 0
+    ? formatRollManagementViewDate(matchingHistory[0].at)
+    : '';
+}
+
+function applyRollManagementViewFormatting(sheet, rows, plannedArrivalRowIndexes) {
+  const columnCount = ROLL_MANAGEMENT_VIEW_HEADERS.length;
+  const dataRowCount = rows.length;
+  const totalRowCount = dataRowCount + 1;
+
+  sheet.setFrozenRows(1);
+  sheet.getRange(1, 1, 1, columnCount)
+    .setBackground(ROLL_MANAGEMENT_VIEW_HEADER_BACKGROUND)
+    .setFontColor(ROLL_MANAGEMENT_VIEW_HEADER_FONT_COLOR)
+    .setFontWeight('bold')
+    .setHorizontalAlignment('center')
+    .setVerticalAlignment('middle');
+
+  sheet.getRange(1, 1, totalRowCount, columnCount)
+    .setBorder(true, true, true, true, true, true, '#b7c9dc', SpreadsheetApp.BorderStyle.SOLID)
+    .setVerticalAlignment('middle');
+
+  sheet.getRange(1, 1, totalRowCount, columnCount).createFilter();
+
+  sheet.setColumnWidth(1, 85);
+  sheet.setColumnWidth(2, 120);
+  sheet.setColumnWidth(3, 105);
+  sheet.setColumnWidth(4, 115);
+  sheet.setColumnWidth(5, 95);
+  sheet.setColumnWidth(6, 105);
+  sheet.setColumnWidth(7, 105);
+  sheet.setColumnWidth(8, 190);
+  sheet.setColumnWidth(9, 280);
+  sheet.setRowHeight(1, 32);
+
+  if (dataRowCount <= 0) {
+    return;
+  }
+
+  const dataRange = sheet.getRange(2, 1, dataRowCount, columnCount);
+  const backgrounds = rows.map(function(row) {
+    const color = ROLL_MANAGEMENT_VIEW_STATUS_COLORS[String(row[7] || '').trim()] || '#ffffff';
+    return new Array(columnCount).fill(color);
+  });
+  dataRange.setBackgrounds(backgrounds);
+  dataRange.setWrap(false);
+
+  sheet.getRange(2, 1, dataRowCount, 2).setHorizontalAlignment('center');
+  sheet.getRange(2, 3, dataRowCount, 2).setHorizontalAlignment('center');
+  sheet.getRange(2, 5, dataRowCount, 1)
+    .setHorizontalAlignment('right')
+    .setNumberFormat('0.0 "mm"');
+  sheet.getRange(2, 6, dataRowCount, 2).setHorizontalAlignment('center');
+  sheet.getRange(2, 8, dataRowCount, 1).setHorizontalAlignment('left');
+  sheet.getRange(2, 9, dataRowCount, 1).setWrap(true);
+
+  plannedArrivalRowIndexes.forEach(function(rowNumber) {
+    sheet.getRange(rowNumber, 4).setFontColor(ROLL_MANAGEMENT_VIEW_PLANNED_FONT_COLOR);
+  });
+
+  rows.forEach(function(row, index) {
+    const nextRow = rows[index + 1];
+    const isLastInStand = !nextRow || String(nextRow[0] || '') !== '';
+
+    if (isLastInStand) {
+      sheet.getRange(index + 2, 1, 1, columnCount)
+        .setBorder(
+          null,
+          null,
+          true,
+          null,
+          null,
+          null,
+          '#64748b',
+          SpreadsheetApp.BorderStyle.SOLID_MEDIUM
+        );
+    }
+  });
+}
+
 function writeRoles(roles) {
   const sheet = getSheet();
   Logger.log('writeRoles: clearing sheet contents');
@@ -1664,6 +1983,13 @@ function writeRoles(roles) {
   Logger.log('ROLL_DEBUG_GAS_WRITE_BEFORE_SET_VALUES values.length=' + values.length + ', expectedColumns=' + HEADER_VALUES.length + ', invalidColumnRows=' + JSON.stringify(invalidColumnRows));
   sheet.getRange(1, 1, values.length, HEADER_VALUES.length).setValues(values);
   applySheetFormatting(sheet, rows.length);
+
+  try {
+    const viewResult = refreshRollManagementView();
+    Logger.log('writeRoles: roll management view updated: ' + JSON.stringify(viewResult));
+  } catch (error) {
+    Logger.log('writeRoles: roll management view update failed: ' + error.toString());
+  }
 
   Logger.log('writeRoles: complete');
   return rows.length;
