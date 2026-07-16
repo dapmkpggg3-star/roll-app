@@ -1692,6 +1692,7 @@ function refreshRollManagementView() {
     const plannedArrivalDate = !arrivalDate && dispatchDate
       ? addDaysForRollManagementView(dispatchDate, ROLL_MANAGEMENT_VIEW_INBOUND_PLAN_DAYS)
       : '';
+    const useCycleDates = getRollManagementViewUseCycleDates(role, dispatchDate);
     const standLabel = standInfo.key !== previousStandKey ? standInfo.label : '';
 
     if (plannedArrivalDate) {
@@ -1706,8 +1707,8 @@ function refreshRollManagementView() {
         ? formatRollManagementViewDate(arrivalDate)
         : (plannedArrivalDate ? formatRollManagementViewDate(plannedArrivalDate) + '予' : ''),
       normalizeCurrentDiameterForSheet(role && role.currentDiameter),
-      formatRollManagementViewDate(normalizeRollManagementViewDate(role && role.useStartDate)),
-      getRollManagementViewUseEndDate(role),
+      formatRollManagementViewDate(useCycleDates.useStartDate),
+      formatRollManagementViewDate(useCycleDates.useEndDate),
       normalizeTextForSheet(role && role.status),
       normalizeTextForSheet(role && role.memo)
     ]);
@@ -1842,6 +1843,26 @@ function addDaysForRollManagementView(value, days) {
   return Utilities.formatDate(date, Session.getScriptTimeZone(), 'yyyy-MM-dd');
 }
 
+function getRollManagementViewUseCycleDates(role, dispatchDate) {
+  const normalizedDispatchDate = normalizeRollManagementViewDate(dispatchDate);
+  const storedUseStartDate = normalizeRollManagementViewDate(role && role.useStartDate);
+  const useStartDate = normalizedDispatchDate
+    && storedUseStartDate
+    && storedUseStartDate < normalizedDispatchDate
+      ? ''
+      : storedUseStartDate;
+  const useEndDate = getRollManagementViewUseEndDate(role);
+  const isUseEndInCurrentCycle = useStartDate
+    && useEndDate
+    && useEndDate >= useStartDate
+    && (!normalizedDispatchDate || useEndDate >= normalizedDispatchDate);
+
+  return {
+    useStartDate: useStartDate,
+    useEndDate: isUseEndInCurrentCycle ? useEndDate : ''
+  };
+}
+
 function getRollManagementViewUseEndDate(role) {
   if (!role || String(role.status || '').trim() === 'オンライン') {
     return '';
@@ -1859,7 +1880,7 @@ function getRollManagementViewUseEndDate(role) {
   });
 
   return matchingHistory.length > 0
-    ? formatRollManagementViewDate(matchingHistory[0].at)
+    ? normalizeRollManagementViewDate(matchingHistory[0].at)
     : '';
 }
 
