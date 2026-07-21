@@ -3205,13 +3205,19 @@ function getRoleInfoHtml(role, formattedDate) {
     const memo = getMemoPreview(role.memo);
     const dispatchDate = getRoleDispatchDate(role);
     const arrivalDate = getRoleArrivalDate(role);
+    const useEndDate = normalizeDateInputValue(role.useEndDate);
     const orderExpectedDeliveryDate = getRoleOrderExpectedDeliveryDate(role);
     const assemblyInstructionDue = getRoleAssemblyInstructionDue(role);
     const coatingDisplay = getCoatingStatusDisplay(role);
     const rows = [
-        ['使用開始日', formatUseStartDate(role.useStartDate)],
-        ['最終更新', formattedDate]
+        ['使用開始日', formatUseStartDate(role.useStartDate)]
     ];
+
+    if (useEndDate) {
+        rows.push(['使用終了日', formatDateForDisplay(useEndDate)]);
+    }
+
+    rows.push(['最終更新', formattedDate]);
 
     if (coatingDisplay) {
         rows.push(['溶射状態', coatingDisplay.note ? `${coatingDisplay.label} / ${coatingDisplay.note}` : coatingDisplay.label]);
