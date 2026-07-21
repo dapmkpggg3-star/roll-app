@@ -11,7 +11,7 @@
     <link rel="manifest" href="manifest.json">
     <link rel="icon" type="image/png" sizes="192x192" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect fill='%23667eea' width='192' height='192'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' font-size='96' fill='white' font-family='Arial'>📋</text></svg>">
     <title>ロール管理アプリ</title>
-    <link rel="stylesheet" href="css/styles.css?v=20260702-direct-print">
+    <link rel="stylesheet" href="css/styles.css?v=20260721-use-end-date">
 </head>
 <body>
     <div id="app-update-notice" class="app-update-notice" hidden>
@@ -263,6 +263,10 @@
                         <label for="role-use-start-date" class="use-start-date-label">使用開始日</label>
                         <input type="date" id="role-use-start-date">
                     </div>
+                    <div class="use-end-date-field is-hidden">
+                        <label for="role-use-end-date" class="use-end-date-label">使用終了日</label>
+                        <input type="date" id="role-use-end-date">
+                    </div>
                     <div class="coating-status-field is-hidden">
                         <label for="role-coating-status" class="coating-status-label">溶射状態</label>
                         <select id="role-coating-status">
@@ -391,9 +395,9 @@
         <button type="button" id="pageScrollToggleBtn" class="page-scroll-btn" onclick="scrollPageByCurrentPosition()" aria-label="ページ下部へ移動">↓ 下へ</button>
     </div>
 
-    <script src="js/sync.js?v=20260702-direct-print"></script>
+    <script src="js/sync.js?v=20260721-use-end-date"></script>
 <script src="js/csv.js?v=20260702-direct-print"></script>
-<script src="js/app.js?v=20260702-direct-print"></script>
+<script src="js/app.js?v=20260721-use-end-date"></script>
 
         // ログイン状態チェック
 </body>

@@ -3,7 +3,7 @@ const ROLL_MANAGEMENT_VIEW_SHEET_NAME = 'ロール管理表';
 const STAND_MASTER_SHEET_NAME = 'StandMaster';
 const INPUT_SHEET_NAMES = ['入力シート', 'Input', '入力'];
 const SPREADSHEET_ID = '1X07qQa7u9YPLvErT0D48goT5wYmvcpgNjqzK3FhRFeA';
-const HEADER_VALUES = ['ID', 'スタンド番号', 'ステータス', 'メモ', '最終更新日', '作業依頼済み', '作業依頼進捗', '履歴', '現在径', '使用開始日', '溶射状態', '納入予定日', '組替指示期限'];
+const HEADER_VALUES = ['ID', 'スタンド番号', 'ステータス', 'メモ', '最終更新日', '作業依頼済み', '作業依頼進捗', '履歴', '現在径', '使用開始日', '溶射状態', '納入予定日', '組替指示期限', '使用終了日'];
 const STATUS_COLUMN_INDEX = 3;
 const CURRENT_DIAMETER_COLUMN_INDEX = 9;
 const USE_START_DATE_COLUMN_INDEX = 10;
@@ -571,7 +571,8 @@ function fetchRoles() {
       useStartDate: normalizeUseStartDateForSheet(row[9]),
       coatingStatus: normalizeCoatingStatusForSheet(row[10], row[2]),
       orderExpectedDeliveryDate: normalizeDateInputValueForSheet(row[11]),
-      assemblyInstructionDue: normalizeTextForSheet(row[12])
+      assemblyInstructionDue: normalizeTextForSheet(row[12]),
+      useEndDate: normalizeDateInputValueForSheet(row[13])
     };
   }).filter(row => row.name && String(row.name).trim() !== '');
   
@@ -1851,7 +1852,7 @@ function getRollManagementViewUseCycleDates(role, dispatchDate) {
     && storedUseStartDate < normalizedDispatchDate
       ? ''
       : storedUseStartDate;
-  const useEndDate = getRollManagementViewUseEndDate(role);
+  const useEndDate = getRollManagementViewUseEndDate(role, useStartDate, normalizedDispatchDate);
   const isUseEndInCurrentCycle = useStartDate
     && useEndDate
     && useEndDate >= useStartDate
@@ -1863,8 +1864,18 @@ function getRollManagementViewUseCycleDates(role, dispatchDate) {
   };
 }
 
-function getRollManagementViewUseEndDate(role) {
+function getRollManagementViewUseEndDate(role, useStartDate, dispatchDate) {
   if (!role || String(role.status || '').trim() === 'オンライン') {
+    return '';
+  }
+
+  const storedUseEndDate = normalizeRollManagementViewDate(role.useEndDate);
+  if (storedUseEndDate
+      && (!useStartDate || storedUseEndDate >= useStartDate)
+      && (!dispatchDate || storedUseEndDate >= dispatchDate)) {
+    return storedUseEndDate;
+  }
+  if (role.useEndDate !== undefined && role.useEndDate !== null && String(role.useEndDate).trim() !== '') {
     return '';
   }
 
@@ -1981,7 +1992,8 @@ function writeRoles(roles) {
         normalizeUseStartDateForSheet(role.useStartDate),
         normalizeCoatingStatusForSheet(role.coatingStatus, role.status),
         normalizeDateInputValueForSheet(role.orderExpectedDeliveryDate),
-        normalizeTextForSheet(role.assemblyInstructionDue)
+        normalizeTextForSheet(role.assemblyInstructionDue),
+        normalizeDateInputValueForSheet(role.useEndDate)
       ];
     } catch (err) {
       Logger.log('writeRoles error at row ' + index + ': ' + err.toString());
@@ -2074,6 +2086,7 @@ function addRoleFromInputArea() {
     false,
     JSON.stringify(normalizeWorkProgressForSheet({})),
     JSON.stringify([]),
+    '',
     '',
     '',
     '',

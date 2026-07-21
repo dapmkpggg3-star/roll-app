@@ -4595,6 +4595,7 @@ body.workshop-board-mode .table-container {
 .form-input-zone .status-field,
 .form-input-zone .status-preview-row,
 .form-input-zone .coating-status-field,
+.form-input-zone .use-end-date-field,
 .form-input-zone .diameter-change-reason-field,
 .form-input-zone .dispatch-date-field,
 .form-input-zone .arrival-date-field,
@@ -4612,6 +4613,7 @@ body.workshop-board-mode .table-container {
 .form-input-zone #diameter-change-reason,
 .form-input-zone #role-dispatch-date,
 .form-input-zone #role-arrival-date,
+.form-input-zone #role-use-end-date,
 .form-input-zone #role-order-expected-delivery-date,
 .form-input-zone #role-assembly-instruction-due,
 .form-input-zone #role-memo {
@@ -4633,6 +4635,11 @@ body.workshop-board-mode .table-container {
 }
 
 .use-start-date-field {
+    display: grid;
+    gap: 8px;
+}
+
+.use-end-date-field {
     display: grid;
     gap: 8px;
 }
@@ -4682,6 +4689,10 @@ body.workshop-board-mode .table-container {
 }
 
 .use-start-date-field.is-hidden {
+    display: none;
+}
+
+.use-end-date-field.is-hidden {
     display: none;
 }
 

@@ -660,6 +660,9 @@ function normalizeRole(role) {
         status: normalizedStatus,
         coatingStatus: normalizeCoatingStatusForSync(role.coatingStatus, role.status),
         useStartDate: normalizeUseStartDateForSync(role.useStartDate),
+        useEndDate: typeof normalizeDateInputValue === 'function'
+            ? normalizeDateInputValue(role.useEndDate)
+            : String(role.useEndDate || ''),
         orderExpectedDeliveryDate: typeof normalizeDateInputValue === 'function'
             ? normalizeDateInputValue(role.orderExpectedDeliveryDate)
             : String(role.orderExpectedDeliveryDate || ''),
@@ -730,6 +733,9 @@ function mergeRemoteAndLocalRoles(remoteRoles, localRoles) {
             localRole.history = mergeRoleHistory(remoteRole.history, localRole.history);
             if (!localRole.useStartDate && remoteRole.useStartDate) {
                 localRole.useStartDate = remoteRole.useStartDate;
+            }
+            if (!Object.prototype.hasOwnProperty.call(role, 'useEndDate') && remoteRole.useEndDate) {
+                localRole.useEndDate = remoteRole.useEndDate;
             }
             if (!localRole.orderExpectedDeliveryDate && remoteRole.orderExpectedDeliveryDate) {
                 localRole.orderExpectedDeliveryDate = remoteRole.orderExpectedDeliveryDate;
@@ -987,6 +993,7 @@ function getRoleVerificationSnapshot(role) {
         memo: String(normalized.memo ?? ''),
         currentDiameter: normalized.currentDiameter === '' ? '' : Number(normalized.currentDiameter),
         useStartDate: String(normalized.useStartDate ?? ''),
+        useEndDate: String(normalized.useEndDate ?? ''),
         orderExpectedDeliveryDate: String(normalized.orderExpectedDeliveryDate ?? ''),
         assemblyInstructionDue: String(normalized.assemblyInstructionDue ?? ''),
         updatedAt: String(normalized.updatedAt ?? ''),
