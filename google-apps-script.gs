@@ -200,6 +200,41 @@ const ROLL_MANAGEMENT_VIEW_HEADER_BACKGROUND = '#1f4e78';
 const ROLL_MANAGEMENT_VIEW_HEADER_FONT_COLOR = '#ffffff';
 const ROLL_MANAGEMENT_VIEW_PLANNED_FONT_COLOR = '#7f8c8d';
 const ROLL_MANAGEMENT_VIEW_INBOUND_PLAN_DAYS = 25;
+const FIELD_ROLL_MANAGEMENT_VIEW_SHEET_NAME = 'ロール管理表（現場）';
+const FIELD_ROLL_MANAGEMENT_VIEW_TITLE = '現場用 3セットロール管理表';
+const FIELD_ROLL_MANAGEMENT_VIEW_HEADERS = [
+  'スタンド',
+  '役割',
+  'ロールID',
+  '搬出日',
+  '搬入日',
+  'ロール径',
+  '使用開始日',
+  '使用終了日',
+  'ステータス',
+  'メモ'
+];
+const FIELD_ROLL_MANAGEMENT_STANDS = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17];
+const FIELD_ROLL_MANAGEMENT_ROLE_DEFINITIONS = [
+  { label: '使用中', statuses: ['オンライン'], reason: 'オンライン重複', sortType: 'online' },
+  {
+    label: '次回使用',
+    statuses: ['新品予備（組込完了）', '新品予備（組替可能）', '新品予備保管'],
+    reason: '次回使用候補が複数',
+    sortType: 'next'
+  },
+  {
+    label: '再生工程',
+    statuses: ['中古予備（バラシ前）', '改削行き（搬出可能）', '改削中'],
+    reason: '再生工程ロールが複数',
+    sortType: 'rework'
+  }
+];
+const FIELD_ROLL_MANAGEMENT_DIRECT_EXCEPTION_STATUSES = [
+  '発注済み（納入待ち）',
+  '廃却待ち（ラック保管）',
+  '廃棄'
+];
 
 
 function doGet(e) {
@@ -1970,6 +2005,371 @@ function applyRollManagementViewFormatting(sheet, rows, plannedArrivalRowIndexes
   });
 }
 
+function initializeFieldRollManagementView() {
+  const result = refreshFieldRollManagementView();
+
+  return {
+    success: true,
+    action: 'initialize-field-roll-management-view',
+    sheetName: result.sheetName,
+    mainRowCount: result.mainRowCount,
+    additionalRowCount: result.additionalRowCount
+  };
+}
+
+function refreshFieldRollManagementView() {
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  let sheet = ss.getSheetByName(FIELD_ROLL_MANAGEMENT_VIEW_SHEET_NAME);
+
+  if (!sheet) {
+    sheet = ss.insertSheet(FIELD_ROLL_MANAGEMENT_VIEW_SHEET_NAME);
+  }
+
+  const result = buildFieldRollManagementRows(fetchRoles());
+  const mainHeaderRow = 3;
+  const mainStartRow = 4;
+  const additionalTitleRow = mainStartRow + result.mainRows.length + 1;
+  const additionalHeaderRow = additionalTitleRow + 1;
+  const additionalStartRow = additionalHeaderRow + 1;
+  const existingFilter = sheet.getFilter();
+
+  if (existingFilter) {
+    existingFilter.remove();
+  }
+
+  sheet.clear();
+  sheet.setConditionalFormatRules([]);
+  sheet.getRange(1, 1).setValue(FIELD_ROLL_MANAGEMENT_VIEW_TITLE);
+  sheet.getRange(2, 1).setValue('更新日時');
+  sheet.getRange(2, 2).setValue(Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy/MM/dd HH:mm:ss'));
+  sheet.getRange(mainHeaderRow, 1, 1, FIELD_ROLL_MANAGEMENT_VIEW_HEADERS.length)
+    .setValues([FIELD_ROLL_MANAGEMENT_VIEW_HEADERS]);
+  sheet.getRange(mainStartRow, 1, result.mainRows.length, FIELD_ROLL_MANAGEMENT_VIEW_HEADERS.length)
+    .setValues(result.mainRows.map(function(item) { return item.values; }));
+  sheet.getRange(additionalTitleRow, 1).setValue('追加・例外ロール');
+  sheet.getRange(additionalHeaderRow, 1, 1, FIELD_ROLL_MANAGEMENT_VIEW_HEADERS.length)
+    .setValues([['スタンド', '例外理由', 'ロールID', '搬出日', '搬入日', 'ロール径', '使用開始日', '使用終了日', 'ステータス', 'メモ']]);
+
+  if (result.additionalRows.length > 0) {
+    sheet.getRange(additionalStartRow, 1, result.additionalRows.length, FIELD_ROLL_MANAGEMENT_VIEW_HEADERS.length)
+      .setValues(result.additionalRows.map(function(item) { return item.values; }));
+  }
+
+  applyFieldRollManagementFormatting(sheet, result, {
+    mainHeaderRow: mainHeaderRow,
+    mainStartRow: mainStartRow,
+    additionalTitleRow: additionalTitleRow,
+    additionalHeaderRow: additionalHeaderRow,
+    additionalStartRow: additionalStartRow
+  });
+
+  return {
+    success: true,
+    action: 'refresh-field-roll-management-view',
+    sheetName: sheet.getName(),
+    mainRowCount: result.mainRows.length,
+    additionalRowCount: result.additionalRows.length,
+    roleCount: result.roleCount
+  };
+}
+
+function buildFieldRollManagementRows(roles) {
+  const roleList = Array.isArray(roles) ? roles : [];
+  const occurrenceCounts = {};
+  const entries = roleList.map(function(role, index) {
+    const baseKey = role && role.id !== undefined && role.id !== null && String(role.id).trim() !== ''
+      ? 'id:' + String(role.id).trim()
+      : 'row:' + index;
+    occurrenceCounts[baseKey] = (occurrenceCounts[baseKey] || 0) + 1;
+    return {
+      role: role,
+      key: baseKey + ':occurrence:' + occurrenceCounts[baseKey]
+    };
+  });
+  const selectedKeys = new Set();
+  const exceptionReasons = {};
+  const mainRows = [];
+
+  FIELD_ROLL_MANAGEMENT_STANDS.forEach(function(standNumber) {
+    const standEntries = entries.filter(function(entry) {
+      return getRollManagementViewStandInfo(entry.role && entry.role.name).number === standNumber;
+    });
+    const selections = selectPrimaryRollsForStand(standEntries);
+
+    FIELD_ROLL_MANAGEMENT_ROLE_DEFINITIONS.forEach(function(definition, roleIndex) {
+      const selected = selections[definition.label] || null;
+      if (selected) {
+        selectedKeys.add(selected.key);
+      }
+      mainRows.push(buildFieldRollManagementDisplayRow(
+        selected ? selected.role : null,
+        roleIndex === 0 ? '#' + standNumber + 'st' : '',
+        definition.label
+      ));
+    });
+
+    Object.keys(selections.exceptionReasons).forEach(function(key) {
+      exceptionReasons[key] = selections.exceptionReasons[key];
+    });
+  });
+
+  const additionalRows = buildAdditionalRollRows(entries, selectedKeys, exceptionReasons);
+  const displayedKeys = new Set();
+  entries.forEach(function(entry) {
+    const isDisplayed = selectedKeys.has(entry.key) || additionalRows.some(function(row) { return row.key === entry.key; });
+    if (!isDisplayed || displayedKeys.has(entry.key)) {
+      throw new Error('現場用ロール管理表の表示整合性エラー: ' + entry.key);
+    }
+    displayedKeys.add(entry.key);
+  });
+
+  return {
+    mainRows: mainRows,
+    additionalRows: additionalRows,
+    roleCount: entries.length
+  };
+}
+
+function selectPrimaryRollsForStand(entries) {
+  const result = { exceptionReasons: {} };
+
+  FIELD_ROLL_MANAGEMENT_ROLE_DEFINITIONS.forEach(function(definition) {
+    const candidates = entries.filter(function(entry) {
+      return definition.statuses.indexOf(String(entry.role && entry.role.status || '').trim()) >= 0;
+    }).sort(function(a, b) {
+      return compareFieldRollCandidates(a.role, b.role, definition);
+    });
+
+    result[definition.label] = candidates.length > 0 ? candidates[0] : null;
+    candidates.slice(1).forEach(function(entry) {
+      result.exceptionReasons[entry.key] = definition.reason;
+    });
+  });
+
+  return result;
+}
+
+function compareFieldRollCandidates(a, b, definition) {
+  const statusA = String(a && a.status || '').trim();
+  const statusB = String(b && b.status || '').trim();
+  const statusOrderA = definition.statuses.indexOf(statusA);
+  const statusOrderB = definition.statuses.indexOf(statusB);
+
+  if (statusOrderA !== statusOrderB) {
+    return statusOrderA - statusOrderB;
+  }
+
+  if (definition.sortType === 'online') {
+    const useStartComparison = compareFieldRollDatesDesc(a && a.useStartDate, b && b.useStartDate);
+    if (useStartComparison !== 0) return useStartComparison;
+  } else if (definition.sortType === 'next') {
+    const dueComparison = compareFieldRollDatesAsc(a && a.assemblyInstructionDue, b && b.assemblyInstructionDue);
+    if (dueComparison !== 0) return dueComparison;
+    const arrivalComparison = compareFieldRollDatesAsc(
+      parseWorkProgress(a && a.workProgress).arrivalDate,
+      parseWorkProgress(b && b.workProgress).arrivalDate
+    );
+    if (arrivalComparison !== 0) return arrivalComparison;
+  } else if (definition.sortType === 'rework') {
+    const dispatchComparison = compareFieldRollDatesDesc(
+      parseWorkProgress(a && a.workProgress).dispatchDate,
+      parseWorkProgress(b && b.workProgress).dispatchDate
+    );
+    if (dispatchComparison !== 0) return dispatchComparison;
+    const updatedComparison = compareFieldRollUpdatedAtDesc(a && a.updatedAt, b && b.updatedAt);
+    if (updatedComparison !== 0) return updatedComparison;
+  }
+
+  return String(a && a.name || '').localeCompare(String(b && b.name || ''), 'ja', { numeric: true });
+}
+
+function compareFieldRollDatesAsc(a, b) {
+  const normalizedA = normalizeRollManagementViewDate(a);
+  const normalizedB = normalizeRollManagementViewDate(b);
+  if (normalizedA && normalizedB) return normalizedA.localeCompare(normalizedB);
+  if (normalizedA) return -1;
+  if (normalizedB) return 1;
+  return 0;
+}
+
+function compareFieldRollDatesDesc(a, b) {
+  const normalizedA = normalizeRollManagementViewDate(a);
+  const normalizedB = normalizeRollManagementViewDate(b);
+  if (normalizedA && normalizedB) return normalizedB.localeCompare(normalizedA);
+  if (normalizedA) return -1;
+  if (normalizedB) return 1;
+  return 0;
+}
+
+function compareFieldRollUpdatedAtDesc(a, b) {
+  const timestampA = a ? new Date(a).getTime() : NaN;
+  const timestampB = b ? new Date(b).getTime() : NaN;
+  const validA = !isNaN(timestampA);
+  const validB = !isNaN(timestampB);
+  if (validA && validB && timestampA !== timestampB) return timestampB - timestampA;
+  if (validA && !validB) return -1;
+  if (!validA && validB) return 1;
+  return 0;
+}
+
+function buildAdditionalRollRows(entries, selectedKeys, exceptionReasons) {
+  return entries.filter(function(entry) {
+    return !selectedKeys.has(entry.key);
+  }).map(function(entry) {
+    const role = entry.role || {};
+    const standInfo = getRollManagementViewStandInfo(role.name);
+    let reason = exceptionReasons[entry.key] || '';
+
+    if (!reason && FIELD_ROLL_MANAGEMENT_DIRECT_EXCEPTION_STATUSES.indexOf(String(role.status || '').trim()) >= 0) {
+      reason = String(role.status || '').trim();
+    }
+    if (!reason && FIELD_ROLL_MANAGEMENT_STANDS.indexOf(standInfo.number) < 0) {
+      reason = '対象スタンド外';
+    }
+    if (!reason) {
+      reason = '基本3セット外';
+    }
+
+    const row = buildFieldRollManagementDisplayRow(role, standInfo.label, reason);
+    row.key = entry.key;
+    row.reason = reason;
+    return row;
+  }).sort(function(a, b) {
+    const aStand = getRollManagementViewStandInfo(a.values[2]);
+    const bStand = getRollManagementViewStandInfo(b.values[2]);
+    if (aStand.number !== bStand.number) return aStand.number - bStand.number;
+    if (a.reason !== b.reason) return a.reason.localeCompare(b.reason, 'ja');
+    return String(a.values[2] || '').localeCompare(String(b.values[2] || ''), 'ja', { numeric: true });
+  });
+}
+
+function buildFieldRollManagementDisplayRow(role, standLabel, roleOrReason) {
+  if (!role) {
+    return {
+      values: [standLabel, roleOrReason, '', '', '', '', '', '', '', ''],
+      plannedArrival: false,
+      empty: true
+    };
+  }
+
+  const workProgress = parseWorkProgress(role.workProgress);
+  const dispatchDate = normalizeRollManagementViewDate(workProgress.dispatchDate);
+  const arrivalDate = normalizeRollManagementViewDate(workProgress.arrivalDate);
+  const plannedArrivalDate = !arrivalDate && dispatchDate
+    ? addDaysForRollManagementView(dispatchDate, ROLL_MANAGEMENT_VIEW_INBOUND_PLAN_DAYS)
+    : '';
+  const useCycleDates = getRollManagementViewUseCycleDates(role, dispatchDate);
+
+  return {
+    values: [
+      standLabel,
+      roleOrReason,
+      normalizeTextForSheet(role.name),
+      formatRollManagementViewDate(dispatchDate),
+      arrivalDate
+        ? formatRollManagementViewDate(arrivalDate)
+        : (plannedArrivalDate ? formatRollManagementViewDate(plannedArrivalDate) + '予' : ''),
+      normalizeCurrentDiameterForSheet(role.currentDiameter),
+      formatRollManagementViewDate(useCycleDates.useStartDate),
+      formatRollManagementViewDate(useCycleDates.useEndDate),
+      normalizeTextForSheet(role.status),
+      normalizeTextForSheet(role.memo)
+    ],
+    plannedArrival: Boolean(plannedArrivalDate),
+    empty: false
+  };
+}
+
+function applyFieldRollManagementFormatting(sheet, result, positions) {
+  const columnCount = FIELD_ROLL_MANAGEMENT_VIEW_HEADERS.length;
+  const mainRowCount = result.mainRows.length;
+  const additionalRowCount = result.additionalRows.length;
+  const lastRow = Math.max(positions.additionalHeaderRow, positions.additionalStartRow + additionalRowCount - 1);
+  const roleColors = {
+    '使用中': '#eaf5e4',
+    '次回使用': '#eaf3fb',
+    '再生工程': '#fff3e6'
+  };
+
+  sheet.setFrozenRows(3);
+  sheet.setHiddenGridlines(true);
+  sheet.getRange(1, 1).setFontSize(16).setFontWeight('bold').setFontColor('#17365d');
+  sheet.getRange(2, 1, 1, 2).setFontSize(9).setFontColor('#64748b');
+  [positions.mainHeaderRow, positions.additionalHeaderRow].forEach(function(rowNumber) {
+    sheet.getRange(rowNumber, 1, 1, columnCount)
+      .setBackground('#1f4e78')
+      .setFontColor('#ffffff')
+      .setFontWeight('bold')
+      .setHorizontalAlignment('center')
+      .setVerticalAlignment('middle');
+  });
+  sheet.getRange(positions.additionalTitleRow, 1)
+    .setFontSize(13)
+    .setFontWeight('bold')
+    .setFontColor('#9c0006');
+  sheet.getRange(positions.mainHeaderRow, 1, lastRow - positions.mainHeaderRow + 1, columnCount)
+    .setVerticalAlignment('middle');
+  sheet.getRange(positions.mainStartRow, 1, mainRowCount, columnCount)
+    .setBackgrounds(result.mainRows.map(function(item) {
+      const color = item.empty ? '#f8fafc' : (roleColors[item.values[1]] || '#ffffff');
+      return new Array(columnCount).fill(color);
+    }))
+    .setBorder(true, true, true, true, true, true, '#cbd5e1', SpreadsheetApp.BorderStyle.SOLID);
+
+  FIELD_ROLL_MANAGEMENT_STANDS.forEach(function(standNumber, index) {
+    const bottomRow = positions.mainStartRow + index * 3 + 2;
+    sheet.getRange(bottomRow, 1, 1, columnCount).setBorder(
+      null, null, true, null, null, null, '#64748b', SpreadsheetApp.BorderStyle.SOLID_MEDIUM
+    );
+  });
+
+  if (additionalRowCount > 0) {
+    const additionalRange = sheet.getRange(positions.additionalStartRow, 1, additionalRowCount, columnCount);
+    additionalRange
+      .setBackgrounds(result.additionalRows.map(function(item) {
+        const isAlert = item.reason.indexOf('重複') >= 0
+          || item.reason.indexOf('廃却') >= 0
+          || item.reason === '廃棄'
+          || item.reason.indexOf('対象スタンド外') >= 0
+          || item.reason.indexOf('基本3セット外') >= 0;
+        return new Array(columnCount).fill(isAlert ? '#fce8e6' : '#fffdf5');
+      }))
+      .setBorder(true, true, true, true, true, true, '#d6c9c6', SpreadsheetApp.BorderStyle.SOLID);
+    sheet.getRange(positions.additionalHeaderRow, 1, additionalRowCount + 1, columnCount).createFilter();
+  }
+
+  sheet.getRange(positions.mainStartRow, 1, mainRowCount, 2).setHorizontalAlignment('center');
+  if (additionalRowCount > 0) {
+    sheet.getRange(positions.additionalStartRow, 1, additionalRowCount, 2).setHorizontalAlignment('center');
+  }
+  sheet.getRange(positions.mainStartRow, 3, mainRowCount, 7).setHorizontalAlignment('center');
+  if (additionalRowCount > 0) {
+    sheet.getRange(positions.additionalStartRow, 3, additionalRowCount, 7).setHorizontalAlignment('center');
+  }
+  sheet.getRange(positions.mainStartRow, 6, mainRowCount, 1).setNumberFormat('0.0 "mm"');
+  if (additionalRowCount > 0) {
+    sheet.getRange(positions.additionalStartRow, 6, additionalRowCount, 1).setNumberFormat('0.0 "mm"');
+  }
+  sheet.getRange(positions.mainStartRow, 10, mainRowCount, 1).setWrap(true);
+  if (additionalRowCount > 0) {
+    sheet.getRange(positions.additionalStartRow, 10, additionalRowCount, 1).setWrap(true);
+  }
+
+  result.mainRows.forEach(function(item, index) {
+    if (item.plannedArrival) sheet.getRange(positions.mainStartRow + index, 5).setFontColor(ROLL_MANAGEMENT_VIEW_PLANNED_FONT_COLOR);
+  });
+  result.additionalRows.forEach(function(item, index) {
+    if (item.plannedArrival) sheet.getRange(positions.additionalStartRow + index, 5).setFontColor(ROLL_MANAGEMENT_VIEW_PLANNED_FONT_COLOR);
+  });
+
+  [72, 92, 112, 92, 102, 82, 102, 102, 174, 230].forEach(function(width, index) {
+    sheet.setColumnWidth(index + 1, width);
+  });
+  sheet.setRowHeight(1, 30);
+  sheet.setRowHeight(positions.mainHeaderRow, 28);
+  sheet.setRowHeight(positions.additionalHeaderRow, 28);
+}
+
 function writeRoles(roles) {
   const sheet = getSheet();
   Logger.log('writeRoles: clearing sheet contents');
@@ -2022,6 +2422,13 @@ function writeRoles(roles) {
     Logger.log('writeRoles: roll management view updated: ' + JSON.stringify(viewResult));
   } catch (error) {
     Logger.log('writeRoles: roll management view update failed: ' + error.toString());
+  }
+
+  try {
+    const fieldViewResult = refreshFieldRollManagementView();
+    Logger.log('writeRoles: field roll management view updated: ' + JSON.stringify(fieldViewResult));
+  } catch (error) {
+    Logger.log('writeRoles: field roll management view update failed: ' + error.toString());
   }
 
   Logger.log('writeRoles: complete');
