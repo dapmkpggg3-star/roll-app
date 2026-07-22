@@ -4,6 +4,8 @@ const STAND_MASTER_SHEET_NAME = 'StandMaster';
 const INPUT_SHEET_NAMES = ['入力シート', 'Input', '入力'];
 const SPREADSHEET_ID = '1X07qQa7u9YPLvErT0D48goT5wYmvcpgNjqzK3FhRFeA';
 const SCRIPT_VERSION = 'three-set-fields-v1';
+const ROLES_EDIT_TRIGGER_HANDLER = 'handleRolesSheetEdit';
+const ROLES_EDIT_TRIGGER_LOCK_TIMEOUT_MS = 300000;
 const HEADER_VALUES = ['ID', 'スタンド番号', 'ステータス', 'メモ', '最終更新日', '作業依頼済み', '作業依頼進捗', '履歴', '現在径', '使用開始日', '溶射状態', '納入予定日', '組替指示期限', '使用終了日', '運用3セット対象', '次回組み込み予定'];
 const STATUS_COLUMN_INDEX = 3;
 const CURRENT_DIAMETER_COLUMN_INDEX = 9;
@@ -1709,6 +1711,109 @@ function initializeRollManagementView() {
     action: 'initialize-roll-management-view',
     sheetName: result.sheetName,
     rowCount: result.rowCount
+  };
+}
+
+function handleRolesSheetEdit(e) {
+  const range = e && e.range;
+  const sheet = range && range.getSheet ? range.getSheet() : null;
+
+  if (!sheet || sheet.getName() !== SHEET_NAME) {
+    return;
+  }
+
+  const lastEditedRow = range.getLastRow();
+  const firstEditedColumn = range.getColumn();
+  const lastEditedColumn = range.getLastColumn();
+  const overlapsRolesDataRows = lastEditedRow >= 2;
+  const overlapsRolesColumns = firstEditedColumn <= HEADER_VALUES.length && lastEditedColumn >= 1;
+
+  if (!overlapsRolesDataRows || !overlapsRolesColumns) {
+    return;
+  }
+
+  const documentLock = LockService.getDocumentLock();
+  const lock = documentLock || LockService.getScriptLock();
+
+  try {
+    lock.waitLock(ROLES_EDIT_TRIGGER_LOCK_TIMEOUT_MS);
+    Logger.log('handleRolesSheetEdit: refreshing views for range ' + range.getA1Notation());
+
+    try {
+      const result = refreshRollManagementView();
+      Logger.log('handleRolesSheetEdit: roll management view updated: ' + JSON.stringify(result));
+    } catch (error) {
+      Logger.log('handleRolesSheetEdit: roll management view update failed: ' + error.toString());
+    }
+
+    try {
+      const result = refreshFieldRollManagementView();
+      Logger.log('handleRolesSheetEdit: field roll management view updated: ' + JSON.stringify(result));
+    } catch (error) {
+      Logger.log('handleRolesSheetEdit: field roll management view update failed: ' + error.toString());
+    }
+  } catch (error) {
+    Logger.log('handleRolesSheetEdit: lock wait or refresh failed: ' + error.toString());
+  } finally {
+    if (lock && lock.hasLock()) {
+      lock.releaseLock();
+    }
+  }
+}
+
+function installRolesSheetEditTrigger() {
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const cleanup = removeDuplicateRolesEditTriggers();
+  const existingTrigger = ScriptApp.getProjectTriggers().find(function(trigger) {
+    return trigger.getHandlerFunction() === ROLES_EDIT_TRIGGER_HANDLER
+      && trigger.getEventType() === ScriptApp.EventType.ON_EDIT
+      && trigger.getTriggerSourceId() === ss.getId();
+  });
+
+  if (existingTrigger) {
+    Logger.log('installRolesSheetEditTrigger: existing trigger kept; removedDuplicates=' + cleanup.removedCount);
+    return {
+      installed: false,
+      existing: true,
+      removedDuplicates: cleanup.removedCount,
+      handler: ROLES_EDIT_TRIGGER_HANDLER
+    };
+  }
+
+  const trigger = ScriptApp.newTrigger(ROLES_EDIT_TRIGGER_HANDLER)
+    .forSpreadsheet(ss)
+    .onEdit()
+    .create();
+  Logger.log('installRolesSheetEditTrigger: installed trigger id=' + trigger.getUniqueId());
+  return {
+    installed: true,
+    existing: false,
+    removedDuplicates: cleanup.removedCount,
+    handler: ROLES_EDIT_TRIGGER_HANDLER,
+    triggerId: trigger.getUniqueId()
+  };
+}
+
+function removeDuplicateRolesEditTriggers() {
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const matchingTriggers = ScriptApp.getProjectTriggers().filter(function(trigger) {
+    return trigger.getHandlerFunction() === ROLES_EDIT_TRIGGER_HANDLER
+      && trigger.getEventType() === ScriptApp.EventType.ON_EDIT
+      && trigger.getTriggerSourceId() === ss.getId();
+  });
+  let removedCount = 0;
+
+  matchingTriggers.slice(1).forEach(function(trigger) {
+    ScriptApp.deleteTrigger(trigger);
+    removedCount += 1;
+    Logger.log('removeDuplicateRolesEditTriggers: removed trigger id=' + trigger.getUniqueId());
+  });
+
+  Logger.log('removeDuplicateRolesEditTriggers: found=' + matchingTriggers.length + ', removed=' + removedCount);
+  return {
+    foundCount: matchingTriggers.length,
+    removedCount: removedCount,
+    keptCount: matchingTriggers.length > 0 ? 1 : 0
   };
 }
 
