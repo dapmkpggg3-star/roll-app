@@ -3,6 +3,7 @@ const ROLL_MANAGEMENT_VIEW_SHEET_NAME = 'ロール管理表';
 const STAND_MASTER_SHEET_NAME = 'StandMaster';
 const INPUT_SHEET_NAMES = ['入力シート', 'Input', '入力'];
 const SPREADSHEET_ID = '1X07qQa7u9YPLvErT0D48goT5wYmvcpgNjqzK3FhRFeA';
+const SCRIPT_VERSION = 'three-set-fields-v1';
 const HEADER_VALUES = ['ID', 'スタンド番号', 'ステータス', 'メモ', '最終更新日', '作業依頼済み', '作業依頼進捗', '履歴', '現在径', '使用開始日', '溶射状態', '納入予定日', '組替指示期限', '使用終了日', '運用3セット対象', '次回組み込み予定'];
 const STATUS_COLUMN_INDEX = 3;
 const CURRENT_DIAMETER_COLUMN_INDEX = 9;
@@ -343,6 +344,17 @@ function doGet(e) {
         .createTextOutput(JSON.stringify({ success: false, error: error.toString() }))
         .setMimeType(ContentService.MimeType.JSON);
     }
+  } else if (action === 'debug-three-set-fields') {
+    try {
+      return ContentService
+        .createTextOutput(JSON.stringify(getThreeSetFieldsDebugState()))
+        .setMimeType(ContentService.MimeType.JSON);
+    } catch (error) {
+      Logger.log('doGet debug-three-set-fields error: ' + error.toString());
+      return ContentService
+        .createTextOutput(JSON.stringify({ success: false, error: error.toString() }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
   } else if (action === 'debug-update-status-dropdown') {
     try {
       const result = applyStatusDropdowns(getSheet());
@@ -420,6 +432,7 @@ function doPost(e) {
       }
 
       Logger.log('ROLL_DEBUG_GAS_DO_POST_RECEIVED roles.length=' + roles.length);
+      logThreeSetFieldsPostDebug(roles);
       Logger.log('doPost save: writing ' + roles.length + ' roles');
 
       const writtenRoleCount = writeRoles(roles);
@@ -2198,7 +2211,9 @@ function compareFieldRollUpdatedAtDesc(a, b) {
 }
 
 function normalizeBooleanForFieldRollManagement(value) {
-  return value === true || String(value || '').trim().toLowerCase() === 'true';
+  if (value === true || value === 1) return true;
+  const text = String(value === undefined || value === null ? '' : value).trim().toLowerCase();
+  return text === 'true' || text === '1';
 }
 
 function buildAdditionalRollRows(entries, selectedKeys, exceptionReasons) {
@@ -2364,6 +2379,7 @@ function applyFieldRollManagementFormatting(sheet, result, positions) {
 
 function writeRoles(roles) {
   const sheet = getSheet();
+  ensureRolesColumnCapacity(sheet);
   Logger.log('writeRoles: clearing sheet contents');
   sheet.clearContents();
   applyStatusDropdowns(sheet);
@@ -2371,24 +2387,7 @@ function writeRoles(roles) {
   const sortedRoles = sortRolesByStandRoleForSheet(roles);
   const rows = sortedRoles.map((role, index) => {
     try {
-      return [
-        role.id || '',
-        role.name || '',
-        role.status || '',
-        role.memo || '',
-        role.updatedAt || '',
-        role.requestSent === true,
-        JSON.stringify(normalizeWorkProgressForSheet(role)),
-        JSON.stringify(normalizeHistoryForSheet(role)),
-        normalizeCurrentDiameterForSheet(role.currentDiameter),
-        normalizeUseStartDateForSheet(role.useStartDate),
-        normalizeCoatingStatusForSheet(role.coatingStatus, role.status),
-        normalizeDateInputValueForSheet(role.orderExpectedDeliveryDate),
-        normalizeTextForSheet(role.assemblyInstructionDue),
-        normalizeDateInputValueForSheet(role.useEndDate),
-        role.isActiveThreeSet === true,
-        role.isActiveThreeSet === true && role.nextAssemblyPlanned === true
-      ];
+      return buildRoleRowForSheet(role);
     } catch (err) {
       Logger.log('writeRoles error at row ' + index + ': ' + err.toString());
       return null;
@@ -2427,6 +2426,96 @@ function writeRoles(roles) {
 
   Logger.log('writeRoles: complete');
   return rows.length;
+}
+
+function buildRoleRowForSheet(role) {
+  const isActiveThreeSet = normalizeBooleanForFieldRollManagement(role && role.isActiveThreeSet);
+  const nextAssemblyPlanned = isActiveThreeSet
+    && normalizeBooleanForFieldRollManagement(role && role.nextAssemblyPlanned);
+
+  return [
+    role && role.id || '',
+    role && role.name || '',
+    role && role.status || '',
+    role && role.memo || '',
+    role && role.updatedAt || '',
+    Boolean(role && role.requestSent === true),
+    JSON.stringify(normalizeWorkProgressForSheet(role || {})),
+    JSON.stringify(normalizeHistoryForSheet(role || {})),
+    normalizeCurrentDiameterForSheet(role && role.currentDiameter),
+    normalizeUseStartDateForSheet(role && role.useStartDate),
+    normalizeCoatingStatusForSheet(role && role.coatingStatus, role && role.status),
+    normalizeDateInputValueForSheet(role && role.orderExpectedDeliveryDate),
+    normalizeTextForSheet(role && role.assemblyInstructionDue),
+    normalizeDateInputValueForSheet(role && role.useEndDate),
+    isActiveThreeSet,
+    nextAssemblyPlanned
+  ];
+}
+
+function getThreeSetFieldsDebugState() {
+  const sheet = getSheet();
+  const maxColumns = sheet.getMaxColumns();
+  const expectedRow = buildRoleRowForSheet({
+    id: 'debug',
+    name: '#debug',
+    isActiveThreeSet: true,
+    nextAssemblyPlanned: true
+  });
+
+  return {
+    success: true,
+    scriptVersion: SCRIPT_VERSION,
+    webAppUrl: getWebAppUrlForThreeSetDebug(),
+    spreadsheetId: SPREADSHEET_ID,
+    rolesSheetName: sheet.getName(),
+    HEADER_VALUES: HEADER_VALUES.slice(),
+    headerValues: HEADER_VALUES.slice(),
+    headerLength: HEADER_VALUES.length,
+    rolesSheetLastColumn: sheet.getLastColumn(),
+    rolesSheetMaxColumns: maxColumns,
+    o1: maxColumns >= 15 ? sheet.getRange(1, 15).getValue() : '',
+    p1: maxColumns >= 16 ? sheet.getRange(1, 16).getValue() : '',
+    supportsThreeSetFields: HEADER_VALUES.length === 16
+      && HEADER_VALUES[14] === '運用3セット対象'
+      && HEADER_VALUES[15] === '次回組み込み予定'
+      && expectedRow.length === 16,
+    expectedWriteRowLength: expectedRow.length,
+    expectedActiveThreeSetValue: expectedRow[14],
+    expectedNextAssemblyPlannedValue: expectedRow[15]
+  };
+}
+
+function getWebAppUrlForThreeSetDebug() {
+  try {
+    return ScriptApp.getService().getUrl() || '';
+  } catch (error) {
+    return '';
+  }
+}
+
+function logThreeSetFieldsPostDebug(roles) {
+  const target = (Array.isArray(roles) ? roles : []).find(function(role) {
+    return String(role && role.name || '').trim() === '#2-13';
+  });
+
+  if (!target) {
+    Logger.log('THREE_SET_FIELDS_POST_DEBUG #2-13 not found');
+    return;
+  }
+
+  const row = buildRoleRowForSheet(target);
+  Logger.log('THREE_SET_FIELDS_POST_DEBUG ' + JSON.stringify({
+    id: target.id,
+    name: target.name,
+    isActiveThreeSet: target.isActiveThreeSet,
+    isActiveThreeSetType: typeof target.isActiveThreeSet,
+    nextAssemblyPlanned: target.nextAssemblyPlanned,
+    nextAssemblyPlannedType: typeof target.nextAssemblyPlanned,
+    writeRowLength: row.length,
+    writeColumnO: row[14],
+    writeColumnP: row[15]
+  }));
 }
 
 function sortRolesByStandRoleForSheet(roles) {
@@ -2478,22 +2567,18 @@ function addRoleFromInputArea() {
   const status = String(inputValues.status || '').trim() || DEFAULT_STATUS;
   const memo = String(inputValues.memo || '').trim();
   const now = new Date().toISOString();
-  const row = [
-    nextId,
-    roleName,
-    status,
-    memo,
-    now,
-    false,
-    JSON.stringify(normalizeWorkProgressForSheet({})),
-    JSON.stringify([]),
-    '',
-    '',
-    '',
-    '',
-    '',
-    ''
-  ];
+  const row = buildRoleRowForSheet({
+    id: nextId,
+    name: roleName,
+    status: status,
+    memo: memo,
+    updatedAt: now,
+    requestSent: false,
+    workProgress: {},
+    history: [],
+    isActiveThreeSet: false,
+    nextAssemblyPlanned: false
+  });
 
   sheet.getRange(sheet.getLastRow() + 1, 1, 1, HEADER_VALUES.length).setValues([row]);
   sortRolesSheet();
@@ -2620,6 +2705,7 @@ function clearRoleInputValues(sheet, ranges) {
 }
 
 function ensureRolesHeader(sheet) {
+  ensureRolesColumnCapacity(sheet);
   const currentHeader = sheet.getRange(1, 1, 1, HEADER_VALUES.length).getValues()[0];
   const needsHeader = HEADER_VALUES.some(function(header, index) {
     return String(currentHeader[index] || '') !== header;
@@ -2627,6 +2713,14 @@ function ensureRolesHeader(sheet) {
 
   if (needsHeader) {
     sheet.getRange(1, 1, 1, HEADER_VALUES.length).setValues([HEADER_VALUES]);
+  }
+}
+
+function ensureRolesColumnCapacity(sheet) {
+  const missingColumnCount = HEADER_VALUES.length - sheet.getMaxColumns();
+  if (missingColumnCount > 0) {
+    sheet.insertColumnsAfter(sheet.getMaxColumns(), missingColumnCount);
+    Logger.log('ensureRolesColumnCapacity: added ' + missingColumnCount + ' columns');
   }
 }
 

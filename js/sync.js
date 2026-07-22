@@ -1023,6 +1023,28 @@ function getSortedVerificationSnapshots(roleList) {
         });
 }
 
+function getFirstRoleVerificationDifference(expectedRole, actualRole) {
+    const fields = Array.from(new Set([
+        ...Object.keys(expectedRole || {}),
+        ...Object.keys(actualRole || {})
+    ])).sort();
+
+    for (const field of fields) {
+        const localValue = expectedRole ? expectedRole[field] : undefined;
+        const remoteValue = actualRole ? actualRole[field] : undefined;
+        if (stableStringify(localValue) !== stableStringify(remoteValue)) {
+            return {
+                role: expectedRole && (expectedRole.name || expectedRole.id) || actualRole && (actualRole.name || actualRole.id) || '',
+                field,
+                local: localValue,
+                remote: remoteValue
+            };
+        }
+    }
+
+    return null;
+}
+
 function verifySavedRoles(expectedRoles, actualRoles) {
     const expected = getSortedVerificationSnapshots(expectedRoles);
     const actual = getSortedVerificationSnapshots(actualRoles);
@@ -1037,9 +1059,11 @@ function verifySavedRoles(expectedRoles, actualRoles) {
     for (let index = 0; index < expected.length; index += 1) {
         if (stableStringify(expected[index]) !== stableStringify(actual[index])) {
             const roleName = expected[index].name || expected[index].id || `${index + 1}件目`;
+            const difference = getFirstRoleVerificationDifference(expected[index], actual[index]);
+            console.error('SYNC_ROLE_FIELD_MISMATCH', difference);
             throw createSyncError(
                 '同期後確認',
-                `保存後のデータが一致しません。対象:${roleName}。通信確認後、再度同期してください。`
+                `保存後のデータが一致しません。${JSON.stringify(difference || { role: roleName })}`
             );
         }
     }
