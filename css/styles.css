@@ -4654,6 +4654,48 @@ body.workshop-board-mode .table-container {
     gap: 8px;
 }
 
+.three-set-assignment-field {
+    display: grid;
+    gap: 10px;
+    margin: 0;
+    padding: 12px 14px;
+    border: 1px solid #cbd5e1;
+    border-radius: 10px;
+    background: #f8fafc;
+}
+
+.three-set-assignment-field legend {
+    padding: 0 6px;
+    color: #334155;
+    font-size: 0.92rem;
+    font-weight: 900;
+}
+
+.three-set-assignment-option {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    color: #1e293b;
+    font-weight: 800;
+}
+
+.three-set-assignment-option input {
+    width: 20px;
+    height: 20px;
+    margin: 0;
+}
+
+.three-set-assignment-option input:disabled + span {
+    color: #94a3b8;
+}
+
+.three-set-assignment-field p {
+    margin: 0;
+    color: #64748b;
+    font-size: 0.82rem;
+    line-height: 1.5;
+}
+
 .diameter-change-reason-field {
     display: none;
     gap: 8px;

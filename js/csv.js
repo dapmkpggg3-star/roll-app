@@ -70,6 +70,12 @@ function importCsv(event) {
             const assemblyInstructionDueIndex = header.findIndex(cell =>
                 cell.includes('assemblyinstructiondue') || cell.includes('組替指示期限')
             );
+            const isActiveThreeSetIndex = header.findIndex(cell =>
+                cell.includes('isactivethreeset') || cell.includes('運用3セット対象')
+            );
+            const nextAssemblyPlannedIndex = header.findIndex(cell =>
+                cell.includes('nextassemblyplanned') || cell.includes('次回組み込み予定')
+            );
             const importedRoles = [];
             for (let i = startIndex; i < rows.length; i++) {
                 const row = rows[i];
@@ -88,6 +94,11 @@ function importCsv(event) {
                 const assemblyInstructionDue = assemblyInstructionDueIndex >= 0
                     ? String(row[assemblyInstructionDueIndex] || '').trim()
                     : String(hasStatusColumn ? (row[6] || '') : '').trim();
+                const isActiveThreeSet = isActiveThreeSetIndex >= 0
+                    && String(row[isActiveThreeSetIndex] || '').trim().toLowerCase() === 'true';
+                const nextAssemblyPlanned = isActiveThreeSet
+                    && nextAssemblyPlannedIndex >= 0
+                    && String(row[nextAssemblyPlannedIndex] || '').trim().toLowerCase() === 'true';
                 if (!name) {
                     continue;
                 }
@@ -95,7 +106,7 @@ function importCsv(event) {
                 if (!validStatuses.includes(status)) {
                     continue;
                 }
-                importedRoles.push({ id: isNaN(rawId) ? null : rawId, name, status, memo, updatedAt, orderExpectedDeliveryDate, assemblyInstructionDue, history: [] });
+                importedRoles.push({ id: isNaN(rawId) ? null : rawId, name, status, memo, updatedAt, orderExpectedDeliveryDate, assemblyInstructionDue, isActiveThreeSet, nextAssemblyPlanned, history: [] });
             }
             if (importedRoles.length === 0) {
                 alert('有効なロールデータがありません');
@@ -133,6 +144,8 @@ function exportCsv() {
     const headers = ['ID', 'スタンド番号', 'ステータス', 'メモ', '最終更新日'];
     headers.push('納入予定日');
     headers.push('組替指示期限');
+    headers.push('運用3セット対象');
+    headers.push('次回組み込み予定');
     const rows = roles.map(role => [
         role.id,
         role.name,
@@ -140,7 +153,9 @@ function exportCsv() {
         role.memo || '',
         role.updatedAt,
         role.orderExpectedDeliveryDate || '',
-        role.assemblyInstructionDue || ''
+        role.assemblyInstructionDue || '',
+        role.isActiveThreeSet === true,
+        role.isActiveThreeSet === true && role.nextAssemblyPlanned === true
     ]);
     const csv = [headers, ...rows]
         .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))

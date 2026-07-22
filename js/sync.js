@@ -669,6 +669,8 @@ function normalizeRole(role) {
         assemblyInstructionDue: typeof normalizeAssemblyInstructionDue === 'function'
             ? normalizeAssemblyInstructionDue(role.assemblyInstructionDue)
             : String(role.assemblyInstructionDue || '').trim(),
+        isActiveThreeSet: role && role.isActiveThreeSet === true,
+        nextAssemblyPlanned: role && role.isActiveThreeSet === true && role.nextAssemblyPlanned === true,
         currentDiameter: normalizeCurrentDiameter(role.currentDiameter),
         workProgress: progress,
         history: history,
@@ -742,6 +744,12 @@ function mergeRemoteAndLocalRoles(remoteRoles, localRoles) {
             }
             if (!localRole.assemblyInstructionDue && remoteRole.assemblyInstructionDue) {
                 localRole.assemblyInstructionDue = remoteRole.assemblyInstructionDue;
+            }
+            if (!Object.prototype.hasOwnProperty.call(role, 'isActiveThreeSet')) {
+                localRole.isActiveThreeSet = remoteRole.isActiveThreeSet === true;
+            }
+            if (!Object.prototype.hasOwnProperty.call(role, 'nextAssemblyPlanned')) {
+                localRole.nextAssemblyPlanned = localRole.isActiveThreeSet === true && remoteRole.nextAssemblyPlanned === true;
             }
             if (!Object.prototype.hasOwnProperty.call(role, 'coatingStatus') && remoteRole.coatingStatus) {
                 localRole.coatingStatus = remoteRole.coatingStatus;
@@ -996,6 +1004,8 @@ function getRoleVerificationSnapshot(role) {
         useEndDate: String(normalized.useEndDate ?? ''),
         orderExpectedDeliveryDate: String(normalized.orderExpectedDeliveryDate ?? ''),
         assemblyInstructionDue: String(normalized.assemblyInstructionDue ?? ''),
+        isActiveThreeSet: normalized.isActiveThreeSet === true,
+        nextAssemblyPlanned: normalized.nextAssemblyPlanned === true,
         updatedAt: String(normalized.updatedAt ?? ''),
         requestSent: normalized.requestSent === true,
         workProgress: normalized.workProgress || {},

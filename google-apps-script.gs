@@ -3,7 +3,7 @@ const ROLL_MANAGEMENT_VIEW_SHEET_NAME = 'ロール管理表';
 const STAND_MASTER_SHEET_NAME = 'StandMaster';
 const INPUT_SHEET_NAMES = ['入力シート', 'Input', '入力'];
 const SPREADSHEET_ID = '1X07qQa7u9YPLvErT0D48goT5wYmvcpgNjqzK3FhRFeA';
-const HEADER_VALUES = ['ID', 'スタンド番号', 'ステータス', 'メモ', '最終更新日', '作業依頼済み', '作業依頼進捗', '履歴', '現在径', '使用開始日', '溶射状態', '納入予定日', '組替指示期限', '使用終了日'];
+const HEADER_VALUES = ['ID', 'スタンド番号', 'ステータス', 'メモ', '最終更新日', '作業依頼済み', '作業依頼進捗', '履歴', '現在径', '使用開始日', '溶射状態', '納入予定日', '組替指示期限', '使用終了日', '運用3セット対象', '次回組み込み予定'];
 const STATUS_COLUMN_INDEX = 3;
 const CURRENT_DIAMETER_COLUMN_INDEX = 9;
 const USE_START_DATE_COLUMN_INDEX = 10;
@@ -216,21 +216,12 @@ const FIELD_ROLL_MANAGEMENT_VIEW_HEADERS = [
 ];
 const FIELD_ROLL_MANAGEMENT_STANDS = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17];
 const FIELD_ROLL_MANAGEMENT_ROLE_DEFINITIONS = [
-  { label: '使用中', statuses: ['オンライン'], reason: 'オンライン重複', sortType: 'online' },
-  {
-    label: '次回使用',
-    statuses: ['新品予備（組込完了）', '新品予備（組替可能）', '新品予備保管'],
-    reason: '次回使用候補が複数',
-    sortType: 'next'
-  },
-  {
-    label: '再生工程',
-    statuses: ['中古予備（バラシ前）', '改削行き（搬出可能）', '改削中'],
-    reason: '再生工程ロールが複数',
-    sortType: 'rework'
-  }
+  { label: '使用中' },
+  { label: '次回組み込み' },
+  { label: '改削待ち' }
 ];
 const FIELD_ROLL_MANAGEMENT_DIRECT_EXCEPTION_STATUSES = [
+  '新品予備保管',
   '発注済み（納入待ち）',
   '廃却待ち（ラック保管）',
   '廃棄'
@@ -607,7 +598,9 @@ function fetchRoles() {
       coatingStatus: normalizeCoatingStatusForSheet(row[10], row[2]),
       orderExpectedDeliveryDate: normalizeDateInputValueForSheet(row[11]),
       assemblyInstructionDue: normalizeTextForSheet(row[12]),
-      useEndDate: normalizeDateInputValueForSheet(row[13])
+      useEndDate: normalizeDateInputValueForSheet(row[13]),
+      isActiveThreeSet: normalizeBooleanForFieldRollManagement(row[14]),
+      nextAssemblyPlanned: normalizeBooleanForFieldRollManagement(row[15])
     };
   }).filter(row => row.name && String(row.name).trim() !== '');
   
@@ -2132,64 +2125,56 @@ function buildFieldRollManagementRows(roles) {
 
 function selectPrimaryRollsForStand(entries) {
   const result = { exceptionReasons: {} };
+  const activeEntries = entries.filter(function(entry) {
+    return normalizeBooleanForFieldRollManagement(entry.role && entry.role.isActiveThreeSet);
+  });
+  const selectedKeys = new Set();
+  const onlineEntries = activeEntries.filter(function(entry) {
+    return String(entry.role && entry.role.status || '').trim() === 'オンライン';
+  }).sort(function(a, b) {
+    const dateComparison = compareFieldRollDatesDesc(a.role && a.role.useStartDate, b.role && b.role.useStartDate);
+    return dateComparison !== 0 ? dateComparison : compareFieldRollRoleIds(a.role, b.role);
+  });
 
-  FIELD_ROLL_MANAGEMENT_ROLE_DEFINITIONS.forEach(function(definition) {
-    const candidates = entries.filter(function(entry) {
-      return definition.statuses.indexOf(String(entry.role && entry.role.status || '').trim()) >= 0;
-    }).sort(function(a, b) {
-      return compareFieldRollCandidates(a.role, b.role, definition);
-    });
+  result['使用中'] = onlineEntries.length > 0 ? onlineEntries[0] : null;
+  if (result['使用中']) selectedKeys.add(result['使用中'].key);
+  onlineEntries.slice(1).forEach(function(entry) {
+    result.exceptionReasons[entry.key] = 'オンライン重複';
+  });
 
-    result[definition.label] = candidates.length > 0 ? candidates[0] : null;
-    candidates.slice(1).forEach(function(entry) {
-      result.exceptionReasons[entry.key] = definition.reason;
-    });
+  const plannedEntries = activeEntries.filter(function(entry) {
+    return !selectedKeys.has(entry.key)
+      && normalizeBooleanForFieldRollManagement(entry.role && entry.role.nextAssemblyPlanned);
+  }).sort(function(a, b) {
+    const updatedComparison = compareFieldRollUpdatedAtDesc(a.role && a.role.updatedAt, b.role && b.role.updatedAt);
+    return updatedComparison !== 0 ? updatedComparison : compareFieldRollRoleIds(a.role, b.role);
+  });
+
+  result['次回組み込み'] = plannedEntries.length > 0 ? plannedEntries[0] : null;
+  if (result['次回組み込み']) selectedKeys.add(result['次回組み込み'].key);
+  plannedEntries.slice(1).forEach(function(entry) {
+    result.exceptionReasons[entry.key] = '次回組み込み指定が複数';
+  });
+
+  const waitingEntries = activeEntries.filter(function(entry) {
+    return !selectedKeys.has(entry.key) && !result.exceptionReasons[entry.key];
+  }).sort(function(a, b) {
+    return compareFieldRollRoleIds(a.role, b.role);
+  });
+
+  result['改削待ち'] = waitingEntries.length > 0 ? waitingEntries[0] : null;
+  if (result['改削待ち']) selectedKeys.add(result['改削待ち'].key);
+  waitingEntries.slice(1).forEach(function(entry) {
+    result.exceptionReasons[entry.key] = activeEntries.length > 3
+      ? '運用3セット指定が4本以上'
+      : '運用3セット内（役割未確定）';
   });
 
   return result;
 }
 
-function compareFieldRollCandidates(a, b, definition) {
-  const statusA = String(a && a.status || '').trim();
-  const statusB = String(b && b.status || '').trim();
-  const statusOrderA = definition.statuses.indexOf(statusA);
-  const statusOrderB = definition.statuses.indexOf(statusB);
-
-  if (statusOrderA !== statusOrderB) {
-    return statusOrderA - statusOrderB;
-  }
-
-  if (definition.sortType === 'online') {
-    const useStartComparison = compareFieldRollDatesDesc(a && a.useStartDate, b && b.useStartDate);
-    if (useStartComparison !== 0) return useStartComparison;
-  } else if (definition.sortType === 'next') {
-    const dueComparison = compareFieldRollDatesAsc(a && a.assemblyInstructionDue, b && b.assemblyInstructionDue);
-    if (dueComparison !== 0) return dueComparison;
-    const arrivalComparison = compareFieldRollDatesAsc(
-      parseWorkProgress(a && a.workProgress).arrivalDate,
-      parseWorkProgress(b && b.workProgress).arrivalDate
-    );
-    if (arrivalComparison !== 0) return arrivalComparison;
-  } else if (definition.sortType === 'rework') {
-    const dispatchComparison = compareFieldRollDatesDesc(
-      parseWorkProgress(a && a.workProgress).dispatchDate,
-      parseWorkProgress(b && b.workProgress).dispatchDate
-    );
-    if (dispatchComparison !== 0) return dispatchComparison;
-    const updatedComparison = compareFieldRollUpdatedAtDesc(a && a.updatedAt, b && b.updatedAt);
-    if (updatedComparison !== 0) return updatedComparison;
-  }
-
+function compareFieldRollRoleIds(a, b) {
   return String(a && a.name || '').localeCompare(String(b && b.name || ''), 'ja', { numeric: true });
-}
-
-function compareFieldRollDatesAsc(a, b) {
-  const normalizedA = normalizeRollManagementViewDate(a);
-  const normalizedB = normalizeRollManagementViewDate(b);
-  if (normalizedA && normalizedB) return normalizedA.localeCompare(normalizedB);
-  if (normalizedA) return -1;
-  if (normalizedB) return 1;
-  return 0;
 }
 
 function compareFieldRollDatesDesc(a, b) {
@@ -2212,6 +2197,10 @@ function compareFieldRollUpdatedAtDesc(a, b) {
   return 0;
 }
 
+function normalizeBooleanForFieldRollManagement(value) {
+  return value === true || String(value || '').trim().toLowerCase() === 'true';
+}
+
 function buildAdditionalRollRows(entries, selectedKeys, exceptionReasons) {
   return entries.filter(function(entry) {
     return !selectedKeys.has(entry.key);
@@ -2227,7 +2216,9 @@ function buildAdditionalRollRows(entries, selectedKeys, exceptionReasons) {
       reason = '対象スタンド外';
     }
     if (!reason) {
-      reason = '基本3セット外';
+      reason = normalizeBooleanForFieldRollManagement(role.isActiveThreeSet)
+        ? '運用3セット内（役割未確定）'
+        : '運用3セット外';
     }
 
     const row = buildFieldRollManagementDisplayRow(role, standInfo.label, reason);
@@ -2287,8 +2278,8 @@ function applyFieldRollManagementFormatting(sheet, result, positions) {
   const lastRow = Math.max(positions.additionalHeaderRow, positions.additionalStartRow + additionalRowCount - 1);
   const roleColors = {
     '使用中': '#eaf5e4',
-    '次回使用': '#eaf3fb',
-    '再生工程': '#fff3e6'
+    '次回組み込み': '#eaf3fb',
+    '改削待ち': '#fff3e6'
   };
 
   sheet.setFrozenRows(3);
@@ -2319,7 +2310,7 @@ function applyFieldRollManagementFormatting(sheet, result, positions) {
   FIELD_ROLL_MANAGEMENT_STANDS.forEach(function(standNumber, index) {
     const bottomRow = positions.mainStartRow + index * 3 + 2;
     sheet.getRange(bottomRow, 1, 1, columnCount).setBorder(
-      null, null, true, null, null, null, '#64748b', SpreadsheetApp.BorderStyle.SOLID_MEDIUM
+      null, null, true, null, null, null, '#334155', SpreadsheetApp.BorderStyle.SOLID_THICK
     );
   });
 
@@ -2331,7 +2322,8 @@ function applyFieldRollManagementFormatting(sheet, result, positions) {
           || item.reason.indexOf('廃却') >= 0
           || item.reason === '廃棄'
           || item.reason.indexOf('対象スタンド外') >= 0
-          || item.reason.indexOf('基本3セット外') >= 0;
+          || item.reason.indexOf('運用3セット指定') >= 0
+          || item.reason.indexOf('役割未確定') >= 0;
         return new Array(columnCount).fill(isAlert ? '#fce8e6' : '#fffdf5');
       }))
       .setBorder(true, true, true, true, true, true, '#d6c9c6', SpreadsheetApp.BorderStyle.SOLID);
@@ -2362,7 +2354,7 @@ function applyFieldRollManagementFormatting(sheet, result, positions) {
     if (item.plannedArrival) sheet.getRange(positions.additionalStartRow + index, 5).setFontColor(ROLL_MANAGEMENT_VIEW_PLANNED_FONT_COLOR);
   });
 
-  [72, 92, 112, 92, 102, 82, 102, 102, 174, 230].forEach(function(width, index) {
+  [78, 112, 124, 100, 110, 88, 110, 110, 190, 270].forEach(function(width, index) {
     sheet.setColumnWidth(index + 1, width);
   });
   sheet.setRowHeight(1, 30);
@@ -2393,7 +2385,9 @@ function writeRoles(roles) {
         normalizeCoatingStatusForSheet(role.coatingStatus, role.status),
         normalizeDateInputValueForSheet(role.orderExpectedDeliveryDate),
         normalizeTextForSheet(role.assemblyInstructionDue),
-        normalizeDateInputValueForSheet(role.useEndDate)
+        normalizeDateInputValueForSheet(role.useEndDate),
+        role.isActiveThreeSet === true,
+        role.isActiveThreeSet === true && role.nextAssemblyPlanned === true
       ];
     } catch (err) {
       Logger.log('writeRoles error at row ' + index + ': ' + err.toString());

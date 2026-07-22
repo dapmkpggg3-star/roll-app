@@ -2709,6 +2709,8 @@ function loadLocalRoles() {
             useEndDate: normalizeDateInputValue(role.useEndDate),
             orderExpectedDeliveryDate: normalizeDateInputValue(role.orderExpectedDeliveryDate),
             assemblyInstructionDue: normalizeAssemblyInstructionDue(role.assemblyInstructionDue),
+            isActiveThreeSet: role.isActiveThreeSet === true,
+            nextAssemblyPlanned: role.isActiveThreeSet === true && role.nextAssemblyPlanned === true,
             dispatchDate: workProgress.dispatchDate || normalizeDateInputValue(role.dispatchDate),
             currentDiameter: normalizeCurrentDiameter(role.currentDiameter),
             workProgress,
@@ -2732,10 +2734,7 @@ function fixOnlineDuplicates() {
     Object.values(groups).forEach(groupRoles => {
         const onlineRoles = groupRoles.filter(r => r.status === 'オンライン').sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
         if (onlineRoles.length > 1) {
-            for (let i = 1; i < onlineRoles.length; i++) {
-                addRoleHistoryEntry(onlineRoles[i], 'status', 'ステータス変更', onlineRoles[i].status, '中古予備（バラシ前）', new Date().toISOString(), { skipOperator: true });
-                onlineRoles[i].status = '中古予備（バラシ前）';
-            }
+            console.warn('オンライン重複を検出しました。ステータスは自動変更せず保持します。', onlineRoles.map(role => role.name));
         }
     });
     saveLocalRoles();
@@ -2743,6 +2742,114 @@ function fixOnlineDuplicates() {
 
 function getGroup(name) {
     return String(name || '').split('-')[0];
+}
+
+function updateThreeSetAssignmentFieldState() {
+    const activeInput = document.getElementById('role-is-active-three-set');
+    const nextInput = document.getElementById('role-next-assembly-planned');
+
+    if (!activeInput || !nextInput) return;
+    if (!activeInput.checked) nextInput.checked = false;
+}
+
+function getOtherActiveThreeSetCount(roleName, currentRoleId = null) {
+    const standKey = getStandKey(roleName);
+    if (!standKey) return 0;
+    return roles.filter(role => {
+        return String(role && role.id) !== String(currentRoleId)
+            && getStandKey(role && role.name) === standKey
+            && role.isActiveThreeSet === true;
+    }).length;
+}
+
+function handleNextAssemblyPlannedChange() {
+    const activeInput = document.getElementById('role-is-active-three-set');
+    const nextInput = document.getElementById('role-next-assembly-planned');
+    const nameInput = document.getElementById('role-name');
+    if (!activeInput || !nextInput || !nextInput.checked || activeInput.checked) return;
+
+    const roleName = nameInput ? nameInput.value.trim() : '';
+    if (roleName && getOtherActiveThreeSetCount(roleName, editingId) >= 3) {
+        nextInput.checked = false;
+        alert('先に運用3セット対象を変更してください');
+        return;
+    }
+    activeInput.checked = true;
+}
+
+function resolveThreeSetAssignmentForSave(roleName, isActiveThreeSet, nextAssemblyPlanned, currentRoleId = null) {
+    let resolvedActive = isActiveThreeSet === true;
+    const resolvedNext = nextAssemblyPlanned === true;
+
+    if (resolvedNext && !resolvedActive) {
+        if (getOtherActiveThreeSetCount(roleName, currentRoleId) >= 3) {
+            alert('先に運用3セット対象を変更してください');
+            return null;
+        }
+        resolvedActive = true;
+        const activeInput = document.getElementById('role-is-active-three-set');
+        if (activeInput) activeInput.checked = true;
+    }
+
+    return validateThreeSetAssignment(roleName, resolvedActive, resolvedNext, currentRoleId)
+        ? { isActiveThreeSet: resolvedActive, nextAssemblyPlanned: resolvedNext }
+        : null;
+}
+
+function validateThreeSetAssignment(roleName, isActiveThreeSet, nextAssemblyPlanned, currentRoleId = null) {
+    if (nextAssemblyPlanned && !isActiveThreeSet) {
+        alert('次回組み込み予定を指定する場合は、運用3セット対象にも指定してください');
+        return false;
+    }
+
+    if (!isActiveThreeSet) return true;
+    const standKey = getStandKey(roleName);
+    if (!standKey) {
+        alert('運用3セットを指定するにはスタンド番号が必要です');
+        return false;
+    }
+
+    const otherActiveCount = getOtherActiveThreeSetCount(roleName, currentRoleId);
+    if (otherActiveCount >= 3) {
+        alert('同じスタンドの運用3セット対象は最大3本です。先に旧ロールの指定を解除してください');
+        return false;
+    }
+    return true;
+}
+
+function validateOnlineAssignment(roleName, roleStatus, currentRole = null) {
+    if (roleStatus !== ONLINE_STATUS) return true;
+    const standKey = getStandKey(roleName);
+    const hasOtherOnline = roles.some(role => {
+        return (!currentRole || String(role.id) !== String(currentRole.id))
+            && getStandKey(role && role.name) === standKey
+            && normalizeRoleStatusValue(role && role.status) === ONLINE_STATUS;
+    });
+    if (!hasOtherOnline) return true;
+
+    const keepsExistingOnlineAssignment = currentRole
+        && normalizeRoleStatusValue(currentRole.status) === ONLINE_STATUS
+        && getStandKey(currentRole.name) === standKey;
+    if (keepsExistingOnlineAssignment) return true;
+
+    alert('このスタンドには既にオンラインのロールがあります');
+    return false;
+}
+
+function clearOtherNextAssemblyPlans(targetRole, changedAt) {
+    if (!targetRole || targetRole.nextAssemblyPlanned !== true) return [];
+    const standKey = getStandKey(targetRole.name);
+    const changedRoles = [];
+
+    roles.forEach(role => {
+        if (!role || String(role.id) === String(targetRole.id)) return;
+        if (getStandKey(role.name) !== standKey || role.nextAssemblyPlanned !== true) return;
+        role.nextAssemblyPlanned = false;
+        role.updatedAt = changedAt;
+        addRoleHistoryEntry(role, 'nextAssemblyPlanned', '次回組み込み予定解除', '指定', '解除', changedAt);
+        changedRoles.push(role);
+    });
+    return changedRoles;
 }
 
 function autoMoveUsedStandbyToReworkReadyForNewInstalled(sourceRole, changedAt = new Date().toISOString()) {
@@ -7382,6 +7489,8 @@ function addRole() {
         ? normalizeDateInputValue(document.getElementById('role-use-end-date').value)
         : '';
     const roleMemo = document.getElementById('role-memo').value.trim();
+    let isActiveThreeSet = document.getElementById('role-is-active-three-set').checked;
+    let nextAssemblyPlanned = document.getElementById('role-next-assembly-planned').checked;
     
     if (!roleName) {
         alert('スタンド番号を入力してください');
@@ -7399,6 +7508,13 @@ function addRole() {
         alert('このスタンド番号は既に登録されています');
         return;
     }
+    if (!validateOnlineAssignment(roleName, roleStatus)) {
+        return;
+    }
+    const resolvedThreeSetAssignment = resolveThreeSetAssignmentForSave(roleName, isActiveThreeSet, nextAssemblyPlanned);
+    if (!resolvedThreeSetAssignment) return;
+    isActiveThreeSet = resolvedThreeSetAssignment.isActiveThreeSet;
+    nextAssemblyPlanned = resolvedThreeSetAssignment.nextAssemblyPlanned;
     const newRole = {
         id: nextId++,
         name: roleName,
@@ -7408,6 +7524,8 @@ function addRole() {
         currentDiameter: roleCurrentDiameter,
         orderExpectedDeliveryDate: roleOrderExpectedDeliveryDate,
         assemblyInstructionDue: roleAssemblyInstructionDue,
+        isActiveThreeSet,
+        nextAssemblyPlanned,
         dispatchDate: roleDispatchDate,
         useStartDate: roleUseStartDate,
         useEndDate: roleUseEndDate,
@@ -7422,21 +7540,12 @@ function addRole() {
     };
     addRoleHistoryEntry(newRole, 'create', '新規追加', '-', roleStatus, newRole.updatedAt);
     addRoleHistoryEntry(newRole, 'useEndDate', '使用終了日変更', '', roleUseEndDate, newRole.updatedAt);
+    addRoleHistoryEntry(newRole, 'isActiveThreeSet', '運用3セット指定', '対象外', isActiveThreeSet ? '対象' : '対象外', newRole.updatedAt);
+    addRoleHistoryEntry(newRole, 'nextAssemblyPlanned', '次回組み込み予定指定', '解除', nextAssemblyPlanned ? '指定' : '解除', newRole.updatedAt);
     setUseStartDateIfNeeded(newRole, newRole.updatedAt);
     
-    // オンライン重複制御
-    if (roleStatus === 'オンライン') {
-        const group = getGroup(roleName);
-        roles.forEach(r => {
-            if (getGroup(r.name) === group && r.status === 'オンライン') {
-                addRoleHistoryEntry(r, 'status', 'ステータス変更', r.status, '中古予備（バラシ前）');
-                r.status = '中古予備（バラシ前）';
-                r.updatedAt = new Date().toISOString();
-            }
-        });
-    }
-    
     roles.push(newRole);
+    clearOtherNextAssemblyPlans(newRole, newRole.updatedAt);
     const autoChangedRoles = autoMoveUsedStandbyToReworkReadyForNewInstalled(newRole, newRole.updatedAt);
     updatedRoleId = newRole.id;
     saveLocalRoles();
@@ -7453,6 +7562,9 @@ function addRole() {
     updateInboundPlanPreview();
     document.getElementById('role-order-expected-delivery-date').value = '';
     document.getElementById('role-assembly-instruction-due').value = '';
+    document.getElementById('role-is-active-three-set').checked = false;
+    document.getElementById('role-next-assembly-planned').checked = false;
+    updateThreeSetAssignmentFieldState();
     document.getElementById('role-memo').value = '';
     setRoleFormOpen(false);
     renderRoles();
@@ -7492,6 +7604,9 @@ function editRole(id) {
     updateInboundPlanPreview();
     document.getElementById('role-order-expected-delivery-date').value = getRoleOrderExpectedDeliveryDate(role);
     document.getElementById('role-assembly-instruction-due').value = normalizeAssemblyInstructionDueDateInput(getRoleAssemblyInstructionDue(role));
+    document.getElementById('role-is-active-three-set').checked = role.isActiveThreeSet === true;
+    document.getElementById('role-next-assembly-planned').checked = role.isActiveThreeSet === true && role.nextAssemblyPlanned === true;
+    updateThreeSetAssignmentFieldState();
     document.getElementById('role-memo').value = role.memo || '';
     
     setEditModeUi(role);
@@ -7526,6 +7641,8 @@ function updateRole() {
         : null;
     const enteredUseEndDate = normalizeDateInputValue(document.getElementById('role-use-end-date').value);
     const roleMemo = document.getElementById('role-memo').value.trim();
+    let isActiveThreeSet = document.getElementById('role-is-active-three-set').checked;
+    let nextAssemblyPlanned = document.getElementById('role-next-assembly-planned').checked;
     
     if (!roleName) {
         alert('スタンド番号を入力してください');
@@ -7547,6 +7664,8 @@ function updateRole() {
     const beforeArrivalDate = getRoleArrivalDate(role);
     const beforeOrderExpectedDeliveryDate = getRoleOrderExpectedDeliveryDate(role);
     const beforeAssemblyInstructionDue = getRoleAssemblyInstructionDue(role);
+    const beforeIsActiveThreeSet = role.isActiveThreeSet === true;
+    const beforeNextAssemblyPlanned = role.nextAssemblyPlanned === true;
     const beforeAssemblyInstructionDueDate = normalizeAssemblyInstructionDueDateInput(beforeAssemblyInstructionDue);
     const roleAssemblyInstructionDue = isAssemblyInstructionDueAllowedStatus(roleStatus)
         ? (roleAssemblyInstructionDueInput || (!beforeAssemblyInstructionDueDate ? beforeAssemblyInstructionDue : ''))
@@ -7569,21 +7688,17 @@ function updateRole() {
         alert('このスタンド番号は既に登録されています');
         return;
     }
+    if (!validateOnlineAssignment(roleName, roleStatus, role)) {
+        return;
+    }
+    const resolvedThreeSetAssignment = resolveThreeSetAssignmentForSave(roleName, isActiveThreeSet, nextAssemblyPlanned, editingId);
+    if (!resolvedThreeSetAssignment) return;
+    isActiveThreeSet = resolvedThreeSetAssignment.isActiveThreeSet;
+    nextAssemblyPlanned = resolvedThreeSetAssignment.nextAssemblyPlanned;
     const effectiveUseStartDate = normalizeDateInputValue(roleStatus === ONLINE_STATUS ? roleUseStartDate : beforeUseStartDate);
     if (effectiveUseStartDate && roleUseEndDate && roleUseEndDate < effectiveUseStartDate) {
         alert('使用終了日は使用開始日以降の日付を入力してください');
         return;
-    }
-    
-    if (roleStatus === 'オンライン') {
-        const group = getGroup(roleName);
-        roles.forEach(r => {
-            if (r.id !== editingId && getGroup(r.name) === group && r.status === 'オンライン') {
-                addRoleHistoryEntry(r, 'status', 'ステータス変更', r.status, '中古予備（バラシ前）');
-                r.status = '中古予備（バラシ前）';
-                r.updatedAt = new Date().toISOString();
-            }
-        });
     }
     
     role.name = roleName;
@@ -7593,6 +7708,8 @@ function updateRole() {
     role.currentDiameter = roleCurrentDiameter;
     role.orderExpectedDeliveryDate = roleOrderExpectedDeliveryDate;
     role.assemblyInstructionDue = roleAssemblyInstructionDue;
+    role.isActiveThreeSet = isActiveThreeSet;
+    role.nextAssemblyPlanned = nextAssemblyPlanned;
     role.dispatchDate = roleDispatchDate;
     role.useStartDate = roleStatus === ONLINE_STATUS ? roleUseStartDate : beforeUseStartDate;
     role.useEndDate = roleUseEndDate;
@@ -7624,6 +7741,9 @@ function updateRole() {
     addRoleHistoryEntry(role, 'arrivalDate', '搬入日変更', formatDateForDisplay(beforeArrivalDate), formatDateForDisplay(roleArrivalDate), role.updatedAt);
     addRoleHistoryEntry(role, 'orderExpectedDeliveryDate', '納入予定日変更', formatOrderExpectedDeliveryDateForHistory(beforeOrderExpectedDeliveryDate), formatOrderExpectedDeliveryDateForHistory(roleOrderExpectedDeliveryDate), role.updatedAt);
     addRoleHistoryEntry(role, 'assemblyInstructionDue', '組替指示期限変更', formatAssemblyInstructionDueForHistory(beforeAssemblyInstructionDue), formatAssemblyInstructionDueForHistory(roleAssemblyInstructionDue), role.updatedAt);
+    addRoleHistoryEntry(role, 'isActiveThreeSet', isActiveThreeSet ? '運用3セット指定' : '運用3セット解除', beforeIsActiveThreeSet ? '対象' : '対象外', isActiveThreeSet ? '対象' : '対象外', role.updatedAt);
+    addRoleHistoryEntry(role, 'nextAssemblyPlanned', nextAssemblyPlanned ? '次回組み込み予定指定' : '次回組み込み予定解除', beforeNextAssemblyPlanned ? '指定' : '解除', nextAssemblyPlanned ? '指定' : '解除', role.updatedAt);
+    clearOtherNextAssemblyPlans(role, role.updatedAt);
     const autoChangedRoles = autoMoveUsedStandbyToReworkReadyForNewInstalled(role, role.updatedAt);
     const shouldAppendWorkHistory = beforeCurrentDiameter !== roleCurrentDiameter && diameterChangeReason === '改削';
     const workHistoryEvent = shouldAppendWorkHistory
@@ -7690,6 +7810,9 @@ function cancelEdit() {
     updateInboundPlanPreview();
     document.getElementById('role-order-expected-delivery-date').value = '';
     document.getElementById('role-assembly-instruction-due').value = '';
+    document.getElementById('role-is-active-three-set').checked = false;
+    document.getElementById('role-next-assembly-planned').checked = false;
+    updateThreeSetAssignmentFieldState();
     document.getElementById('role-memo').value = '';
     setEditModeUi(null);
     renderRoles();

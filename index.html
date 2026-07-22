@@ -305,6 +305,18 @@
                         <label for="role-assembly-instruction-due" class="assembly-instruction-due-label">組替指示期限</label>
                         <input type="date" id="role-assembly-instruction-due">
                     </div>
+                    <fieldset class="three-set-assignment-field">
+                        <legend>現場用3セット指定</legend>
+                        <label class="three-set-assignment-option" for="role-is-active-three-set">
+                            <input type="checkbox" id="role-is-active-three-set" onchange="updateThreeSetAssignmentFieldState()">
+                            <span>運用3セット対象</span>
+                        </label>
+                        <label class="three-set-assignment-option" for="role-next-assembly-planned">
+                            <input type="checkbox" id="role-next-assembly-planned" onchange="handleNextAssemblyPlannedChange()">
+                            <span>次回組み込み予定</span>
+                        </label>
+                        <p>次回組み込み予定は同じスタンドで1本だけ、運用3セット対象は最大3本です。</p>
+                    </fieldset>
                     <textarea id="role-memo" placeholder="メモを入力...(改行可)" style="flex: 1; min-height: 40px; padding: 12px 15px; border: 2px solid #e0e0e0; border-radius: 6px; font-size: 1rem; resize: vertical;"></textarea>
                     </div>
                     <input id="csv-import-input" type="file" accept=".csv,text/csv" style="display:none" onchange="importCsv(event)">
