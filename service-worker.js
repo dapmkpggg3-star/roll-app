@@ -1,10 +1,13 @@
-const CACHE_NAME = 'roll-app-v45';
+const CACHE_NAME = 'roll-app-v46';
 const CACHE_PREFIX = 'roll-app-';
 const urlsToCache = [
   '/roll-app/',
   '/roll-app/index.html',
   '/roll-app/manifest.json',
   '/roll-app/404.html'
+  ,'/roll-app/js/config/default-config.js'
+  ,'/roll-app/js/data-services/data-service.js'
+  ,'/roll-app/js/auth/auth-service.js'
 ];
 
 // Service Worker インストール

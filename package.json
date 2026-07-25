@@ -1,0 +1,16 @@
+{
+  "name": "roll-app-local-prototype",
+  "private": true,
+  "engines": {
+    "node": "22.x"
+  },
+  "scripts": {
+    "start:microsoft-local": "node scripts/local-prototype-server.js",
+    "start:swa": "swa start . --api-location api",
+    "test": "npm --prefix api test",
+    "reset:local-data": "npm --prefix api run reset-local-data"
+  },
+  "devDependencies": {
+    "@azure/static-web-apps-cli": "^2.0.8"
+  }
+}

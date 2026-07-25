@@ -1,4 +1,4 @@
-const SHEETS_ENDPOINT = 'https://script.google.com/macros/s/AKfycbyN0_AoU1dcaXzCO3ICRma2pFJyz2HvCSnwe_RAJMpaOlE53Gj5SugtDFoV78KHf9x9/exec';
+const SHEETS_ENDPOINT = window.ROLL_APP_CONFIG.googleEndpoint || '';
 const DELETED_ROLE_IDS_KEY = 'deletedRoleIds';
 const LAST_SUCCESSFUL_SYNC_COUNT_KEY = 'lastSuccessfulSyncRoleCount';
 const SYNC_COUNT_DROP_ABORT_RATIO = 0.3;
@@ -96,7 +96,9 @@ function getStandMaster(standKey) {
 }
 
 function isRemoteConfigured() {
-    return SHEETS_ENDPOINT.trim().length > 0;
+    return window.RollDataService
+        ? window.RollDataService.isConfigured()
+        : SHEETS_ENDPOINT.trim().length > 0;
 }
 
 function normalizeRoleIdForDelete(id) {
@@ -810,6 +812,20 @@ async function fetchData() {
         return;
     }
     try {
+        if (window.RollDataService && !window.RollDataService.isGoogleMode()) {
+            const data = await window.RollDataService.getRoles();
+            validateFetchResponse(data);
+            setSyncDiagnosticRemoteRoles(data.roles);
+            const deletedRoleIds = getDeletedRoleIds();
+            roles = data.roles.map(normalizeRole).filter(role => !isRoleMarkedDeleted(role, deletedRoleIds));
+            fixOnlineDuplicates();
+            saveLocalRoles();
+            const ids = roles.map(r => Number(r.id) || 0);
+            nextId = ids.length > 0 ? Math.max(...ids) + 1 : 1;
+            renderRoles();
+            setSyncMessage('MicrosoftローカルAPIから架空データを読み込みました。');
+            return roles;
+        }
         const url = `${SHEETS_ENDPOINT}?action=fetch&t=${Date.now()}`;
         const response = await fetch(url, {
             method: 'GET',
@@ -850,6 +866,11 @@ async function fetchStandMaster() {
     }
 
     try {
+        if (window.RollDataService && !window.RollDataService.isGoogleMode()) {
+            const data = await window.RollDataService.getMasterData();
+            lastStandMasterFetchAt = new Date().toISOString();
+            return setStandMasterRows(data.standMaster || []);
+        }
         const url = `${SHEETS_ENDPOINT}?action=fetchStandMaster&t=${Date.now()}`;
         const response = await fetch(url, {
             method: 'GET',
@@ -873,6 +894,17 @@ async function saveData(roleList = roles) {
     }
 
     try {
+        if (window.RollDataService && !window.RollDataService.isGoogleMode()) {
+            const rolesToSend = Array.isArray(roleList) ? roleList.map(normalizeRole) : [];
+            if (rolesToSend.length === 0) {
+                setSyncMessage('同期を中止しました。0件送信は禁止されています。', true);
+                return false;
+            }
+            const result = await window.RollDataService.saveRoles(rolesToSend);
+            lastSavedRemoteRoleCount = result.roles.length;
+            setSyncMessage('MicrosoftローカルAPIへ架空データを保存しました。');
+            return result;
+        }
         lastSavedRemoteRoleCount = null;
         const rolesToSend = Array.isArray(roleList) ? roleList.map(normalizeRole) : [];
         console.log('saveRemoteRoles: Sending data to', SHEETS_ENDPOINT);
@@ -947,6 +979,13 @@ async function saveData(roleList = roles) {
 }
 
 async function fetchRemoteRolesForGuard(actionLabel = '同期前データ確認') {
+    if (window.RollDataService && !window.RollDataService.isGoogleMode()) {
+        const data = await window.RollDataService.getRoles();
+        validateFetchResponse(data);
+        const remoteRoles = data.roles.map(normalizeRole);
+        setSyncDiagnosticRemoteRoles(remoteRoles);
+        return remoteRoles;
+    }
     const url = `${SHEETS_ENDPOINT}?action=fetch&t=${Date.now()}`;
     const response = await fetch(url, {
         method: 'GET',

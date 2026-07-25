@@ -135,7 +135,8 @@ function applyResponsiveLayoutMode() {
 
 // ログイン状態チェック
 function checkLoginStatus() {
-    const isLoggedIn = localStorage.getItem('isLoggedIn') === 'true';
+    const authState = window.RollAuth ? window.RollAuth.getState() : null;
+    const isLoggedIn = authState ? authState.isLoggedIn : localStorage.getItem('isLoggedIn') === 'true';
     const loginScreen = document.getElementById('login-screen');
     const mainScreen = document.getElementById('main-screen');
 
@@ -157,6 +158,11 @@ function checkLoginStatus() {
 
 // ログイン関数
 function login() {
+    if (window.RollAuth && window.RollAuth.isMicrosoftMode()) {
+        window.RollAuth.login('user');
+        checkLoginStatus();
+        return;
+    }
     const password = document.getElementById('password-input').value;
     if (password === CORRECT_PASSWORD) {
         localStorage.setItem('isLoggedIn', 'true');
@@ -172,6 +178,9 @@ function login() {
 // ログアウト関数
 function logout() {
     if (confirm('ログアウトしますか？')) {
+        if (window.RollAuth && window.RollAuth.isMicrosoftMode()) {
+            window.RollAuth.logout();
+        }
         localStorage.removeItem('isLoggedIn');
         checkLoginStatus();
     }
@@ -1423,6 +1432,10 @@ async function fetchCuttingMaster() {
     }
 
     try {
+        if (window.RollDataService && !window.RollDataService.isGoogleMode()) {
+            const data = await window.RollDataService.getMasterData();
+            return setCuttingMasterRows(data.cuttingMaster || []);
+        }
         const url = `${SHEETS_ENDPOINT}?action=fetchCuttingMaster&t=${Date.now()}`;
         const response = await fetch(url, { method: 'GET' });
         const data = await response.json();

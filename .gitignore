@@ -19,3 +19,14 @@ Thumbs.db
 # Build
 dist/
 build/
+
+# Microsoft local prototype data and machine-specific settings
+api/local-data/
+local-data/
+js/config/runtime-config.js
+.env
+.env.*
+!.env.example
+local.settings.json
+*.local.json
+swa-local*.log

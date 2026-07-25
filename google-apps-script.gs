@@ -2,7 +2,9 @@ const SHEET_NAME = 'Roles';
 const ROLL_MANAGEMENT_VIEW_SHEET_NAME = 'ロール管理表';
 const STAND_MASTER_SHEET_NAME = 'StandMaster';
 const INPUT_SHEET_NAMES = ['入力シート', 'Input', '入力'];
-const SPREADSHEET_ID = '1X07qQa7u9YPLvErT0D48goT5wYmvcpgNjqzK3FhRFeA';
+// Set SPREADSHEET_ID in Apps Script > Project Settings > Script Properties.
+// Keeping the real ID outside Git prevents accidental disclosure.
+const SPREADSHEET_ID = PropertiesService.getScriptProperties().getProperty('SPREADSHEET_ID');
 const SCRIPT_VERSION = 'three-set-fields-v1';
 const ROLES_EDIT_TRIGGER_HANDLER = 'handleRolesSheetEdit';
 const ROLES_EDIT_TRIGGER_LOCK_TIMEOUT_MS = 300000;
