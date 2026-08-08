@@ -1,5 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
 const safety = require('../js/online-safety');
 
 function role(id, name, status, active = true, extra = {}) {
@@ -112,4 +113,41 @@ test('removing, moving, or deleting the only online role is detected', () => {
 
 test('full-width stand names normalize correctly', () => {
     assert.equal(safety.getStandKey('＃3-14'), '3');
+});
+
+function getFunctionSource(source, functionName, nextFunctionName) {
+    const start = source.indexOf(`function ${functionName}(`);
+    const end = source.indexOf(`\nfunction ${nextFunctionName}(`, start);
+    assert.notEqual(start, -1, `${functionName} must exist`);
+    assert.notEqual(end, -1, `${nextFunctionName} must follow ${functionName}`);
+    return source.slice(start, end);
+}
+
+test('Google edit flow gives old and new history the same exchange context', () => {
+    const appSource = fs.readFileSync(require.resolve('../js/app.js'), 'utf8');
+    const updateRoleSource = getFunctionSource(appSource, 'updateRole', 'cancelEdit');
+
+    assert.match(updateRoleSource, /exchangeId:\s*`online-exchange-\$\{changedAt\}-\$\{prepared\.oldRole\.id\}-\$\{prepared\.newRole\.id\}`/);
+    assert.match(updateRoleSource, /exchangeHistoryOptions\s*=\s*exchangeContext\s*\?\s*\{\s*exchangeId:\s*exchangeContext\.exchangeId,\s*force:\s*true\s*\}/);
+    assert.match(updateRoleSource, /addRoleHistoryEntry\(exchangeContext\.oldRole,\s*'onlineExchange',[\s\S]*?changedAt,\s*exchangeHistoryOptions\)/);
+    assert.match(updateRoleSource, /addRoleHistoryEntry\(role,\s*'onlineExchange',[\s\S]*?changedAt,\s*exchangeHistoryOptions\)/);
+});
+
+test('Google edit flow validates the cloned roles before one local save and one sync', () => {
+    const appSource = fs.readFileSync(require.resolve('../js/app.js'), 'utf8');
+    const updateRoleSource = getFunctionSource(appSource, 'updateRole', 'cancelEdit');
+    const countCalls = name => (updateRoleSource.match(new RegExp(`\\b${name}\\s*\\(`, 'g')) || []).length;
+
+    assert.equal(countCalls('prepareAutomaticOnlineAssignment'), 1);
+    assert.equal(countCalls('validateLastOnlineRemoval'), 1);
+    assert.equal(countCalls('saveLocalRoles'), 1);
+    assert.equal(countCalls('syncRoles'), 1);
+
+    const validationIndex = updateRoleSource.indexOf('validateLastOnlineRemoval(');
+    const replaceIndex = updateRoleSource.indexOf('roles = rolesAfterEdit;');
+    const saveIndex = updateRoleSource.indexOf('saveLocalRoles();');
+    const syncIndex = updateRoleSource.indexOf('syncRoles();');
+    assert.ok(validationIndex < replaceIndex, 'final state must be validated before replacing roles');
+    assert.ok(replaceIndex < saveIndex, 'roles must be replaced before the single local save');
+    assert.ok(saveIndex < syncIndex, 'local save must precede the single Google sync');
 });
