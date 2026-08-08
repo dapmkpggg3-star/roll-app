@@ -120,6 +120,14 @@ function importCsv(event) {
                     maxId = role.id;
                 }
             });
+            const onlineAnomalies = window.RollOnlineSafety.findNewOnlineAnomalies(roles, importedRoles);
+            if (onlineAnomalies.length > 0) {
+                const details = onlineAnomalies
+                    .map(item => `#${item.standKey}st: ${item.onlineLabel}（オンライン${item.onlineCount}本）`)
+                    .join('\n');
+                alert(`CSVインポートを停止しました。オンライン異常が新たに発生します。\n${details}`);
+                return;
+            }
             roles = importedRoles;
             nextId = maxId + 1;
             fixOnlineDuplicates();

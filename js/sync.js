@@ -3,6 +3,24 @@ const DELETED_ROLE_IDS_KEY = 'deletedRoleIds';
 const LAST_SUCCESSFUL_SYNC_COUNT_KEY = 'lastSuccessfulSyncRoleCount';
 const SYNC_COUNT_DROP_ABORT_RATIO = 0.3;
 let syncDiagnosticRemoteRoles = null;
+
+function getOnlineAssignmentAnomalies(roleList) {
+    if (!window.RollOnlineSafety) return [];
+    return window.RollOnlineSafety.diagnoseAllStandOnlineStates(roleList)
+        .filter(item => item.roleCount > 0
+            && (item.onlineState !== 'normal' || item.threeSetOnlineState === 'outside'));
+}
+
+function reportOnlineAssignmentAnomalies(roleList, contextLabel = '同期データ') {
+    const anomalies = getOnlineAssignmentAnomalies(roleList);
+    if (anomalies.length === 0) return [];
+    const details = anomalies
+        .map(item => `#${item.standKey}st ${item.threeSetOnlineLabel || item.onlineLabel}（オンライン${item.onlineCount}本／3セット対象${item.activeThreeSetCount}本）`)
+        .join('、');
+    setSyncMessage(`${contextLabel}にオンライン異常があります。${details}。自動修正せず、手動で確認してください。`, true);
+    console.warn('ONLINE_ASSIGNMENT_ANOMALY', { contextLabel, anomalies });
+    return anomalies;
+}
 let standMasterRows = [];
 let standMasterByStand = new Map();
 let lastStandMasterFetchAt = null;
@@ -835,7 +853,9 @@ async function fetchData() {
         const ids = roles.map(r => Number(r.id) || 0);
         nextId = ids.length > 0 ? Math.max(...ids) + 1 : 1;
         renderRoles();
-        setSyncMessage('スプレッドシートからデータを読み込みました。');
+        if (reportOnlineAssignmentAnomalies(roles, 'Google Sheets取得データ').length === 0) {
+            setSyncMessage('スプレッドシートからデータを読み込みました。');
+        }
     } catch (error) {
         console.error('loadRemoteRoles error:', error);
         setSyncMessage((error.message || 'スプレッドシート同期に失敗しました。') + ' ブラウザ内のデータは残っています。', true);
@@ -1211,7 +1231,9 @@ async function syncRoles() {
                 remoteRoles: savedRemoteRoles,
                 mergedRoles: roles
             });
-            setSyncMessage('スプレッドシートと同期しました。');
+            if (reportOnlineAssignmentAnomalies(roles, '同期結果').length === 0) {
+                setSyncMessage('スプレッドシートと同期しました。');
+            }
         } else {
             setSyncMessage('スプレッドシートと同期できませんでした。ブラウザ内には保存されています。', true);
         }

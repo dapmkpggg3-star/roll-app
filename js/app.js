@@ -2667,7 +2667,7 @@ function addRoleHistoryEntry(role, type, label, beforeValue, afterValue, at = ne
     const beforeText = String(beforeValue || '');
     const afterText = String(afterValue || '');
 
-    if (beforeText === afterText) {
+    if (beforeText === afterText && !options.force) {
         return;
     }
 
@@ -2682,6 +2682,9 @@ function addRoleHistoryEntry(role, type, label, beforeValue, afterValue, at = ne
 
     if (options.reason) {
         entry.reason = String(options.reason);
+    }
+    if (options.exchangeId) {
+        entry.exchangeId = String(options.exchangeId);
     }
 
     const operator = getHistoryOperator();
@@ -3116,6 +3119,14 @@ function updateStatusPreview(selectEl) {
     ];
     const previewEl = document.getElementById('role-status-preview');
     const selectedStatus = selectEl.value;
+
+    if (selectedStatus === ONLINE_STATUS && editingId !== null) {
+        const editingRole = roles.find(role => String(role.id) === String(editingId));
+        if (editingRole && normalizeRoleStatusValue(editingRole.status) !== ONLINE_STATUS) {
+            const useStartInput = document.getElementById('role-use-start-date');
+            if (useStartInput) useStartInput.value = getTodayDateString();
+        }
+    }
 
     selectEl.classList.toggle('status-empty', !selectedStatus);
     if (!previewEl) {
@@ -3641,8 +3652,9 @@ function ensureOrderedWaitingSummaryCard() {
 }
 
 function getStandKey(roleName) {
-    const match = String(roleName || '').match(/#?(\d+)(?:-|$)/);
-    return match ? match[1] : '';
+    return window.RollOnlineSafety
+        ? window.RollOnlineSafety.getStandKey(roleName)
+        : '';
 }
 
 function isWatchStandMatched(role) {
@@ -7461,6 +7473,19 @@ if (standNumber >= 2 && standNumber <= 5) {
     });
 }
 
+const ONLINE_DIRECT_REMOVAL_BLOCK_MESSAGE = '次に使用するロールをオンラインへ変更してください';
+
+function cloneRolesForSafety(roleList = roles) {
+    return JSON.parse(JSON.stringify(Array.isArray(roleList) ? roleList : []));
+}
+
+function validateLastOnlineRemoval(beforeRoles, afterRoles, changedRoleId) {
+    const violation = window.RollOnlineSafety.wouldRemoveLastOnline(beforeRoles, afterRoles, changedRoleId);
+    if (!violation) return true;
+    alert(ONLINE_DIRECT_REMOVAL_BLOCK_MESSAGE);
+    return false;
+}
+
 function addRole() {
     if (warnIfOperatorMissing()) {
         return;
@@ -7653,10 +7678,12 @@ function updateRole() {
         return;
     }
     
-    const role = roles.find(r => String(r.id) === String(editingId));
+    let role = roles.find(r => String(r.id) === String(editingId));
     if (!role) return;
     const beforeName = role.name;
     const beforeStatus = role.status || '';
+    const startsAutomaticOnlineAssignment = normalizeRoleStatusValue(beforeStatus) !== ONLINE_STATUS
+        && roleStatus === ONLINE_STATUS;
     const beforeCoatingStatus = normalizeCoatingStatusValue(role.coatingStatus, role.status, role.name);
     const beforeMemo = role.memo || '';
     const beforeCurrentDiameter = normalizeCurrentDiameter(role.currentDiameter);
@@ -7688,8 +7715,22 @@ function updateRole() {
         alert('このスタンド番号は既に登録されています');
         return;
     }
-    if (!validateOnlineAssignment(roleName, roleStatus, role)) {
+    if (startsAutomaticOnlineAssignment) {
+        const targetStandKey = getStandKey(roleName);
+        const existingOnlineCount = roles.filter(item => String(item.id) !== String(editingId)
+            && getStandKey(item && item.name) === targetStandKey
+            && window.RollOnlineSafety.isOnline(item)).length;
+        if (existingOnlineCount >= 2) {
+            alert('オンラインが重複しています。先に異常を解消してください');
+            return;
+        }
+    }
+    if (!startsAutomaticOnlineAssignment && !validateOnlineAssignment(roleName, roleStatus, role)) {
         return;
+    }
+    if (startsAutomaticOnlineAssignment) {
+        isActiveThreeSet = true;
+        nextAssemblyPlanned = false;
     }
     const resolvedThreeSetAssignment = resolveThreeSetAssignmentForSave(roleName, isActiveThreeSet, nextAssemblyPlanned, editingId);
     if (!resolvedThreeSetAssignment) return;
@@ -7700,7 +7741,54 @@ function updateRole() {
         alert('使用終了日は使用開始日以降の日付を入力してください');
         return;
     }
-    
+
+    const changedAt = new Date().toISOString();
+    let rolesAfterEdit;
+    let candidateRole;
+    let exchangeContext = null;
+    if (startsAutomaticOnlineAssignment) {
+        const originalRoles = roles;
+        let prepared;
+        try {
+            prepared = window.RollOnlineSafety.prepareAutomaticOnlineAssignment(originalRoles, {
+                newRoleId: editingId,
+                newRoleName: roleName,
+                oldStatus: USED_STANDBY_STATUS,
+                useEndDate: getTodayDateString(),
+                useStartDate: roleUseStartDate || getTodayDateString(),
+                updatedAt: changedAt
+            });
+        } catch (error) {
+            alert(error.message);
+            return;
+        }
+        rolesAfterEdit = prepared.roles;
+        candidateRole = prepared.newRole;
+        if (prepared.oldRole) {
+            const originalOldRole = originalRoles.find(item => String(item.id) === String(prepared.oldRole.id));
+            exchangeContext = {
+                oldRole: prepared.oldRole,
+                beforeOldStatus: originalOldRole.status,
+                beforeOldUseEndDate: normalizeDateInputValue(originalOldRole.useEndDate),
+                exchangeId: `online-exchange-${changedAt}-${prepared.oldRole.id}-${prepared.newRole.id}`
+            };
+        }
+    } else {
+        rolesAfterEdit = cloneRolesForSafety();
+        candidateRole = rolesAfterEdit.find(item => String(item.id) === String(editingId));
+    }
+    if (candidateRole) {
+        candidateRole.name = roleName;
+        candidateRole.status = roleStatus;
+        candidateRole.isActiveThreeSet = isActiveThreeSet;
+        candidateRole.nextAssemblyPlanned = nextAssemblyPlanned;
+    }
+    if (!validateLastOnlineRemoval(roles, rolesAfterEdit, editingId)) {
+        return;
+    }
+
+    roles = rolesAfterEdit;
+    role = candidateRole;
     role.name = roleName;
     role.status = roleStatus;
     role.coatingStatus = roleCoatingStatus;
@@ -7711,9 +7799,9 @@ function updateRole() {
     role.isActiveThreeSet = isActiveThreeSet;
     role.nextAssemblyPlanned = nextAssemblyPlanned;
     role.dispatchDate = roleDispatchDate;
-    role.useStartDate = roleStatus === ONLINE_STATUS ? roleUseStartDate : beforeUseStartDate;
-    role.useEndDate = roleUseEndDate;
-    role.updatedAt = new Date().toISOString();
+    role.useStartDate = roleStatus === ONLINE_STATUS ? (roleUseStartDate || getTodayDateString()) : beforeUseStartDate;
+    role.useEndDate = startsAutomaticOnlineAssignment ? '' : roleUseEndDate;
+    role.updatedAt = changedAt;
     role.workProgress = normalizeWorkProgress({
         ...role,
         workProgress: {
@@ -7728,13 +7816,19 @@ function updateRole() {
             roleName: entry.roleName === beforeName ? roleName : entry.roleName
         }));
     }
-    addRoleHistoryEntry(role, 'status', 'ステータス変更', beforeStatus, roleStatus, role.updatedAt);
+    const exchangeHistoryOptions = exchangeContext ? { exchangeId: exchangeContext.exchangeId, force: true } : {};
+    if (exchangeContext) {
+        addRoleHistoryEntry(exchangeContext.oldRole, 'status', 'ステータス変更', exchangeContext.beforeOldStatus, USED_STANDBY_STATUS, changedAt, exchangeHistoryOptions);
+        addRoleHistoryEntry(exchangeContext.oldRole, 'useEndDate', '使用終了日設定', exchangeContext.beforeOldUseEndDate, getTodayDateString(), changedAt, exchangeHistoryOptions);
+        addRoleHistoryEntry(exchangeContext.oldRole, 'onlineExchange', 'オンライン交代', exchangeContext.oldRole.name, role.name, changedAt, exchangeHistoryOptions);
+    }
+    addRoleHistoryEntry(role, 'status', 'ステータス変更', beforeStatus, roleStatus, role.updatedAt, exchangeHistoryOptions);
     addRoleHistoryEntry(role, 'coatingStatus', '溶射状態変更', getCoatingStatusLabel(beforeCoatingStatus), getCoatingStatusLabel(roleCoatingStatus), role.updatedAt);
     const autoUseStartDateSet = setUseStartDateIfNeeded(role, role.updatedAt);
     if (!autoUseStartDateSet) {
-        addRoleHistoryEntry(role, 'useStartDate', '使用開始日変更', formatUseStartDate(beforeUseStartDate), formatUseStartDate(role.useStartDate), role.updatedAt);
+        addRoleHistoryEntry(role, 'useStartDate', exchangeContext ? '使用開始日設定' : '使用開始日変更', formatUseStartDate(beforeUseStartDate), formatUseStartDate(role.useStartDate), role.updatedAt, exchangeHistoryOptions);
     }
-    addRoleHistoryEntry(role, 'useEndDate', '使用終了日変更', beforeUseEndDate, role.useEndDate, role.updatedAt);
+    addRoleHistoryEntry(role, 'useEndDate', '使用終了日変更', beforeUseEndDate, role.useEndDate, role.updatedAt, exchangeHistoryOptions);
     addRoleHistoryEntry(role, 'memo', 'メモ変更', beforeMemo, roleMemo, role.updatedAt);
     addRoleHistoryEntry(role, 'diameter', '現在径変更', formatCurrentDiameter(beforeCurrentDiameter), formatCurrentDiameter(roleCurrentDiameter), role.updatedAt);
     addRoleHistoryEntry(role, 'dispatchDate', '搬出日変更', formatDateForDisplay(beforeDispatchDate), formatDateForDisplay(roleDispatchDate), role.updatedAt);
@@ -7742,7 +7836,10 @@ function updateRole() {
     addRoleHistoryEntry(role, 'orderExpectedDeliveryDate', '納入予定日変更', formatOrderExpectedDeliveryDateForHistory(beforeOrderExpectedDeliveryDate), formatOrderExpectedDeliveryDateForHistory(roleOrderExpectedDeliveryDate), role.updatedAt);
     addRoleHistoryEntry(role, 'assemblyInstructionDue', '組替指示期限変更', formatAssemblyInstructionDueForHistory(beforeAssemblyInstructionDue), formatAssemblyInstructionDueForHistory(roleAssemblyInstructionDue), role.updatedAt);
     addRoleHistoryEntry(role, 'isActiveThreeSet', isActiveThreeSet ? '運用3セット指定' : '運用3セット解除', beforeIsActiveThreeSet ? '対象' : '対象外', isActiveThreeSet ? '対象' : '対象外', role.updatedAt);
-    addRoleHistoryEntry(role, 'nextAssemblyPlanned', nextAssemblyPlanned ? '次回組み込み予定指定' : '次回組み込み予定解除', beforeNextAssemblyPlanned ? '指定' : '解除', nextAssemblyPlanned ? '指定' : '解除', role.updatedAt);
+    addRoleHistoryEntry(role, 'nextAssemblyPlanned', nextAssemblyPlanned ? '次回組み込み予定指定' : '次回組み込み予定解除', beforeNextAssemblyPlanned ? '指定' : '解除', nextAssemblyPlanned ? '指定' : '解除', role.updatedAt, exchangeHistoryOptions);
+    if (exchangeContext) {
+        addRoleHistoryEntry(role, 'onlineExchange', 'オンライン交代', exchangeContext.oldRole.name, role.name, changedAt, exchangeHistoryOptions);
+    }
     clearOtherNextAssemblyPlans(role, role.updatedAt);
     const autoChangedRoles = autoMoveUsedStandbyToReworkReadyForNewInstalled(role, role.updatedAt);
     const shouldAppendWorkHistory = beforeCurrentDiameter !== roleCurrentDiameter && diameterChangeReason === '改削';
@@ -7948,11 +8045,16 @@ function completeWorkProgressStep(roleId, stepKey, options = {}) {
 }
 
 function deleteRole(id) {
-    warnIfOperatorMissing();
+    if (warnIfOperatorMissing()) return;
     const target = roles.find(r => String(r.id) === String(id));
 
     if (!target) {
         alert('削除対象が見つかりません');
+        return;
+    }
+
+    const rolesAfterDelete = roles.filter(r => String(r.id) !== String(id));
+    if (!validateLastOnlineRemoval(roles, rolesAfterDelete, id)) {
         return;
     }
 

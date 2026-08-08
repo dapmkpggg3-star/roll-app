@@ -1732,12 +1732,21 @@ function handleRolesSheetEdit(e) {
     return;
   }
 
+  ensureRolesHeader(sheet);
+
   const documentLock = LockService.getDocumentLock();
   const lock = documentLock || LockService.getScriptLock();
 
   try {
     lock.waitLock(ROLES_EDIT_TRIGGER_LOCK_TIMEOUT_MS);
     Logger.log('handleRolesSheetEdit: refreshing views for range ' + range.getA1Notation());
+    const onlineDiagnostics = diagnoseFieldStandOnlineStates(fetchRoles()).filter(function(item) {
+      return item.roleCount > 0
+        && (item.onlineState !== 'normal' || item.threeSetOnlineState === 'outside');
+    });
+    if (onlineDiagnostics.length > 0) {
+      Logger.log('handleRolesSheetEdit: online anomalies=' + JSON.stringify(onlineDiagnostics));
+    }
 
     try {
       const result = refreshRollManagementView();
@@ -2212,10 +2221,20 @@ function buildFieldRollManagementRows(roles) {
       if (selected) {
         selectedKeys.add(selected.key);
       }
+      let mainRoleLabel = roleIndex === 0 && selections.onlineDisplayState !== 'normal'
+        ? (selections.onlineDisplayState === 'missing'
+          ? 'オンライン未設定'
+          : (selections.onlineDisplayState === 'duplicate'
+            ? 'オンライン重複'
+            : 'オンラインが運用3セット対象外'))
+        : definition.label;
+      if (roleIndex === 0 && selections.activeThreeSetCount !== 3) {
+        mainRoleLabel += ' / 3セット設定未完了';
+      }
       mainRows.push(buildFieldRollManagementDisplayRow(
         selected ? selected.role : null,
         roleIndex === 0 ? '#' + standNumber + 'st' : '',
-        definition.label
+        mainRoleLabel
       ));
     });
 
@@ -2247,12 +2266,21 @@ function selectPrimaryRollsForStand(entries) {
     return normalizeBooleanForFieldRollManagement(entry.role && entry.role.isActiveThreeSet);
   });
   const selectedKeys = new Set();
-  const onlineEntries = activeEntries.filter(function(entry) {
+  result.activeThreeSetCount = activeEntries.length;
+  const onlineEntries = entries.filter(function(entry) {
     return String(entry.role && entry.role.status || '').trim() === 'オンライン';
   }).sort(function(a, b) {
     const dateComparison = compareFieldRollDatesDesc(a.role && a.role.useStartDate, b.role && b.role.useStartDate);
     return dateComparison !== 0 ? dateComparison : compareFieldRollRoleIds(a.role, b.role);
   });
+
+  result.onlineState = onlineEntries.length === 1
+    ? 'normal'
+    : (onlineEntries.length === 0 ? 'missing' : 'duplicate');
+  result.onlineDisplayState = result.onlineState === 'normal'
+    && !normalizeBooleanForFieldRollManagement(onlineEntries[0].role && onlineEntries[0].role.isActiveThreeSet)
+      ? 'outside'
+      : result.onlineState;
 
   result['使用中'] = onlineEntries.length > 0 ? onlineEntries[0] : null;
   if (result['使用中']) selectedKeys.add(result['使用中'].key);
@@ -2319,6 +2347,40 @@ function normalizeBooleanForFieldRollManagement(value) {
   if (value === true || value === 1) return true;
   const text = String(value === undefined || value === null ? '' : value).trim().toLowerCase();
   return text === 'true' || text === '1';
+}
+
+function diagnoseFieldStandOnlineStates(roles) {
+  const roleList = Array.isArray(roles) ? roles : [];
+  return FIELD_ROLL_MANAGEMENT_STANDS.map(function(standNumber) {
+    const standRoles = roleList.filter(function(role) {
+      return getRollManagementViewStandInfo(role && role.name).number === standNumber;
+    });
+    const activeRoles = standRoles.filter(function(role) {
+      return normalizeBooleanForFieldRollManagement(role && role.isActiveThreeSet);
+    });
+    const onlineRoles = standRoles.filter(function(role) {
+      return String(role && role.status || '').trim() === 'オンライン';
+    });
+    const onlineCount = onlineRoles.length;
+    const onlineRoleIsActiveThreeSet = onlineCount === 1
+      && normalizeBooleanForFieldRollManagement(onlineRoles[0] && onlineRoles[0].isActiveThreeSet);
+    return {
+      standNumber: standNumber,
+      roleCount: standRoles.length,
+      activeThreeSetCount: activeRoles.length,
+      threeSetConfigured: activeRoles.length === 3,
+      onlineCount: onlineCount,
+      onlineState: onlineCount === 1 ? 'normal' : (onlineCount === 0 ? 'missing' : 'duplicate'),
+      onlineLabel: onlineCount === 1 ? '正常' : (onlineCount === 0 ? 'オンライン未設定' : 'オンライン重複'),
+      onlineRoleIsActiveThreeSet: onlineRoleIsActiveThreeSet,
+      threeSetOnlineState: onlineCount === 1
+        ? (onlineRoleIsActiveThreeSet ? 'normal' : 'outside')
+        : 'not-applicable',
+      threeSetOnlineLabel: onlineCount === 1 && !onlineRoleIsActiveThreeSet
+        ? 'オンラインが運用3セット対象外'
+        : ''
+    };
+  });
 }
 
 function buildAdditionalRollRows(entries, selectedKeys, exceptionReasons) {
@@ -2422,7 +2484,10 @@ function applyFieldRollManagementFormatting(sheet, result, positions) {
     .setVerticalAlignment('middle');
   sheet.getRange(positions.mainStartRow, 1, mainRowCount, columnCount)
     .setBackgrounds(result.mainRows.map(function(item) {
-      const color = item.empty ? '#f8fafc' : (roleColors[item.values[1]] || '#ffffff');
+      const isOnlineAlert = item.values[1].indexOf('オンライン未設定') >= 0
+        || item.values[1].indexOf('オンライン重複') >= 0
+        || item.values[1].indexOf('オンラインが運用3セット対象外') >= 0;
+      const color = isOnlineAlert ? '#fce8e6' : (item.empty ? '#f8fafc' : (roleColors[item.values[1]] || '#ffffff'));
       return new Array(columnCount).fill(color);
     }))
     .setBorder(true, true, true, true, true, true, '#cbd5e1', SpreadsheetApp.BorderStyle.SOLID);
@@ -2432,6 +2497,16 @@ function applyFieldRollManagementFormatting(sheet, result, positions) {
     sheet.getRange(bottomRow, 1, 1, columnCount).setBorder(
       null, null, true, null, null, null, '#334155', SpreadsheetApp.BorderStyle.SOLID_THICK
     );
+  });
+
+  result.mainRows.forEach(function(item, index) {
+    if (item.values[1].indexOf('オンライン未設定') >= 0
+      || item.values[1].indexOf('オンライン重複') >= 0
+      || item.values[1].indexOf('オンラインが運用3セット対象外') >= 0) {
+      sheet.getRange(positions.mainStartRow + index, 1, 1, columnCount)
+        .setFontColor('#9c0006')
+        .setFontWeight('bold');
+    }
   });
 
   if (additionalRowCount > 0) {
@@ -2819,6 +2894,9 @@ function ensureRolesHeader(sheet) {
   if (needsHeader) {
     sheet.getRange(1, 1, 1, HEADER_VALUES.length).setValues([HEADER_VALUES]);
   }
+  sheet.getRange(1, 3).setNote('オンラインを通常編集で外すと、対象スタンドがオンライン未設定になる危険があります。交代はアプリの「オンライン交代」を使用してください。');
+  sheet.getRange(1, 15).setNote('運用3セット対象のオンラインからチェックを外すと、オンライン未設定になる危険があります。現場表の警告を確認してください。');
+  sheet.getRange(1, 16).setNote('次回組み込み予定はオンライン交代時に解除されます。オンライン状態はステータス列と運用3セット列で決まります。');
 }
 
 function ensureRolesColumnCapacity(sheet) {
