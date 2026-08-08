@@ -3,6 +3,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const store = require('../api/src/lib/store');
 const { validateRolesPayload } = require('../api/src/lib/role-schema');
+const { validateRolesOnlineTransition } = require('../api/src/lib/online-safety');
 
 const root = path.resolve(__dirname, '..');
 const port = Number(process.env.PORT || 4280);
@@ -40,6 +41,7 @@ async function handleApi(request, response, pathname) {
   if (pathname === '/api/roles' && request.method === 'POST') {
     try {
       const roles = validateRolesPayload(await readJson(request));
+      validateRolesOnlineTransition(await store.getRoles(), roles);
       await store.saveRoles(roles);
       return json(response, 200, { success: true, roles, savedCount: roles.length, storage: 'local-prototype-file' });
     } catch (error) {
