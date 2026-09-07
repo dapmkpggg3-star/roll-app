@@ -34,6 +34,20 @@ test('explicit day-maintenance availability works without a shift team', () => {
     assert.equal(slots[0].id, 'sample-1|dayMaintenance');
 });
 
+test('after-production slots are opt-in', () => {
+    const row = {
+        date: 'sample-1',
+        shift1Team: 'A',
+        shift3Team: '',
+        productionByTeam: { A: 1, B: 0 }
+    };
+    assert.equal(schedule.buildAvailableSlots(row, SLOT_TYPES).length, 0);
+    assert.equal(
+        schedule.buildAvailableSlots(row, SLOT_TYPES, { includeAfterProduction: true })[0].id,
+        'sample-1|afterShift1|A'
+    );
+});
+
 test('first production team follows shift order', () => {
     assert.equal(schedule.firstProductionTeam({
         shift1Team: 'B',
