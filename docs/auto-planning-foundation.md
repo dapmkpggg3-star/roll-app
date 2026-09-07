@@ -12,6 +12,7 @@ Company-specific production amounts, equipment identifiers, thresholds, dates, p
 - Detect a change between consecutive production sizes.
 - Rank eligible maintenance slots.
 - Prefer the same team as the next production run when configured.
+- Consider configurable benefits from combining required work in a joint-maintenance slot.
 - Return warnings instead of silently accepting exceptions.
 
 ## Private configuration responsibilities
@@ -20,6 +21,7 @@ Company-specific production amounts, equipment identifiers, thresholds, dates, p
 - Shift times and staffing rules.
 - Production amounts and operating calendar.
 - Work duration, workload, and capacity values.
+- Ranking weights used to compare eligible work slots.
 - Caliber limits and roll replacement thresholds.
 - Prices, vendors, roll identifiers, and maintenance history.
 
