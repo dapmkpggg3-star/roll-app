@@ -46,6 +46,19 @@
             });
         }
 
+        if (row && row.dayMaintenanceAvailable === true && !shift1Team) {
+            slots.push({
+                id: `${row.date}|dayMaintenance`,
+                date: row.date,
+                shift: 'dayMaintenance',
+                team: normalizeTeam(row.dayMaintenanceTeam),
+                type: slotTypes.DAY_MAINTENANCE,
+                productionActive: false,
+                jointMaintenance: row.jointMaintenance === true,
+                requiredCompanionWorkCount: companionCount
+            });
+        }
+
         if (shift3Team && productionForTeam(row, shift3Team) === 0) {
             slots.push({
                 id: `${row.date}|shift3|${shift3Team}`,
