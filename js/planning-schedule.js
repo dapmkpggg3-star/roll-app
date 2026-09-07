@@ -27,8 +27,9 @@
             .filter(work => work && work.type !== 'sizeChange').length;
     }
 
-    function buildAvailableSlots(row, slotTypes) {
+    function buildAvailableSlots(row, slotTypes, options) {
         const slots = [];
+        const settings = { includeAfterProduction: false, ...(options || {}) };
         const shift1Team = normalizeTeam(row && row.shift1Team);
         const shift3Team = normalizeTeam(row && row.shift3Team);
         const companionCount = countRequiredCompanionWork(row);
@@ -66,6 +67,32 @@
                 shift: 'shift3',
                 team: shift3Team,
                 type: slotTypes.STOPPED_SHIFT,
+                productionActive: false,
+                jointMaintenance: false,
+                requiredCompanionWorkCount: companionCount
+            });
+        }
+
+        if (settings.includeAfterProduction && shift1Team && productionForTeam(row, shift1Team) > 0) {
+            slots.push({
+                id: `${row.date}|afterShift1|${shift1Team}`,
+                date: row.date,
+                shift: 'shift1',
+                team: shift1Team,
+                type: slotTypes.AFTER_PRODUCTION,
+                productionActive: false,
+                jointMaintenance: false,
+                requiredCompanionWorkCount: companionCount
+            });
+        }
+
+        if (settings.includeAfterProduction && shift3Team && productionForTeam(row, shift3Team) > 0) {
+            slots.push({
+                id: `${row.date}|afterShift3|${shift3Team}`,
+                date: row.date,
+                shift: 'shift3',
+                team: shift3Team,
+                type: slotTypes.AFTER_PRODUCTION,
                 productionActive: false,
                 jointMaintenance: false,
                 requiredCompanionWorkCount: companionCount
