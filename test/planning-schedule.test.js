@@ -23,6 +23,17 @@ test('available slots are built only for assigned teams without production', () 
     assert.deepEqual(slots.map(slot => slot.id), ['sample-1|shift3|B']);
 });
 
+test('explicit day-maintenance availability works without a shift team', () => {
+    const slots = schedule.buildAvailableSlots({
+        date: 'sample-1',
+        shift1Team: '',
+        shift3Team: 'A',
+        productionByTeam: { A: 1, B: 0 },
+        dayMaintenanceAvailable: true
+    }, SLOT_TYPES);
+    assert.equal(slots[0].id, 'sample-1|dayMaintenance');
+});
+
 test('first production team follows shift order', () => {
     assert.equal(schedule.firstProductionTeam({
         shift1Team: 'B',
