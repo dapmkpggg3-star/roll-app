@@ -44,6 +44,10 @@
             singleCrewSizeChangeAddOnStands: [],
             preferStoppedShift: true,
             preferSameTeam: true,
+            stoppedShiftWeight: 2,
+            dayMaintenanceWeight: 0,
+            sameTeamWeight: 1,
+            jointMaintenanceWeight: 0,
             ...config
         };
 
@@ -95,13 +99,21 @@
 
             let score = 0;
             const warnings = [];
-            if (settings.preferStoppedShift && slot.type === SLOT_TYPES.STOPPED_SHIFT) score += 100;
+            if (settings.preferStoppedShift && slot.type === SLOT_TYPES.STOPPED_SHIFT) {
+                score += Number(settings.stoppedShiftWeight || 0);
+            }
             if (slot.type === SLOT_TYPES.DAY_MAINTENANCE) warnings.push('日中作業として確認が必要です');
+            if (slot.type === SLOT_TYPES.DAY_MAINTENANCE) {
+                score += Number(settings.dayMaintenanceWeight || 0);
+            }
+            if (slot.jointMaintenance === true && Number(slot.requiredCompanionWorkCount || 0) > 0) {
+                score += Number(settings.jointMaintenanceWeight || 0) * Number(slot.requiredCompanionWorkCount);
+            }
 
             const slotTeam = normalizeTeam(slot.team);
             const targetTeam = normalizeTeam(nextProductionTeam);
             if (settings.preferSameTeam && slotTeam && targetTeam) {
-                if (slotTeam === targetTeam) score += 30;
+                if (slotTeam === targetTeam) score += Number(settings.sameTeamWeight || 0);
                 else warnings.push('次の生産班による再確認が必要です');
             }
             return { eligible: true, score, warnings };
