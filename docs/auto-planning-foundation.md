@@ -13,6 +13,10 @@ Company-specific production amounts, equipment identifiers, thresholds, dates, p
 - Rank eligible maintenance slots.
 - Prefer the same team as the next production run when configured.
 - Consider configurable benefits from combining required work in a joint-maintenance slot.
+- Count production runs by assigned team and shift.
+- Forecast the first production run that would exceed a configurable caliber limit.
+- Return the latest safe maintenance slot before that run.
+- Accept a configurable caliber sequence or an explicit next-caliber override.
 - Return warnings instead of silently accepting exceptions.
 
 ## Private configuration responsibilities
@@ -26,3 +30,5 @@ Company-specific production amounts, equipment identifiers, thresholds, dates, p
 - Prices, vendors, roll identifiers, and maintenance history.
 
 The first application phase should present recommendations with reasons and require a human to approve them. It should not automatically publish or confirm a production plan.
+
+Caliber state is supplied at runtime with generic fields such as `maxRuns`, `usedRuns`, `currentCaliber`, and `caliberSequence`. Actual equipment names, limits, current positions, and production figures stay outside these public modules.
