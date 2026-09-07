@@ -12,6 +12,7 @@
     <link rel="icon" type="image/png" sizes="192x192" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect fill='%23667eea' width='192' height='192'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' font-size='96' fill='white' font-family='Arial'>📋</text></svg>">
     <title>ロール管理アプリ</title>
     <link rel="stylesheet" href="css/styles.css?v=20260805-online-safety">
+    <link rel="stylesheet" href="css/planning-view.css?v=20260907-auto-planning">
 </head>
 <body>
     <div id="app-update-notice" class="app-update-notice" hidden>
@@ -152,6 +153,24 @@
                     </div>
                     <div id="three-set-management-cards" class="three-set-management-cards" role="tablist" aria-label="3セット維持管理分類"></div>
                     <div id="three-set-management-detail" class="three-set-management-detail"></div>
+                </section>
+                <section id="auto-planning-panel" class="auto-planning-panel is-collapsed" aria-live="polite">
+                    <div class="auto-planning-header">
+                        <div>
+                            <h2>自動計画案</h2>
+                            <p>生産予定と使用直数から、サイズ替・カリバ替の候補を確認します。</p>
+                        </div>
+                        <button type="button" id="auto-planning-toggle" class="auto-planning-toggle" aria-expanded="false" aria-controls="auto-planning-body">自動計画案 ▼</button>
+                    </div>
+                    <div id="auto-planning-body" class="auto-planning-body" hidden>
+                        <div class="auto-planning-summary" aria-label="自動計画案サマリー">
+                            <div class="auto-planning-summary-card"><span>サイズ替</span><strong id="auto-planning-size-count">0</strong></div>
+                            <div class="auto-planning-summary-card"><span>カリバ替</span><strong id="auto-planning-caliber-count">0</strong></div>
+                            <div class="auto-planning-summary-card is-risk"><span>要確認</span><strong id="auto-planning-risk-count">0</strong></div>
+                        </div>
+                        <p id="auto-planning-empty" class="auto-planning-empty">生産予定を読み込むと、ここに計画候補が表示されます。</p>
+                        <div id="auto-planning-list" class="auto-planning-list"></div>
+                    </div>
                 </section>
                 <div class="action-dashboard-grid" aria-label="優先確認ダッシュボード">
                     <div id="incomplete-work-dashboard" class="incomplete-work-dashboard is-collapsed" aria-live="polite">
@@ -407,6 +426,10 @@
         <button type="button" id="pageScrollToggleBtn" class="page-scroll-btn" onclick="scrollPageByCurrentPosition()" aria-label="ページ下部へ移動">↓ 下へ</button>
     </div>
 
+    <script src="js/planning-rules.js?v=20260907-auto-planning"></script>
+    <script src="js/planning-schedule.js?v=20260907-auto-planning"></script>
+    <script src="js/planning-calibers.js?v=20260907-auto-planning"></script>
+    <script src="js/planning-view.js?v=20260907-auto-planning"></script>
     <script src="js/online-safety.js?v=20260805-online-safety"></script>
     <script src="js/sync.js?v=20260805-online-safety"></script>
 <script src="js/csv.js?v=20260805-online-safety"></script>

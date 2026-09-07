@@ -1,0 +1,162 @@
+.auto-planning-panel {
+  margin: 18px 0;
+  padding: 18px;
+  border: 1px solid #d9e2f0;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #f8fbff 0%, #f3f7ff 100%);
+  box-shadow: 0 8px 24px rgba(38, 72, 120, 0.08);
+}
+
+.auto-planning-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.auto-planning-header h2 {
+  margin: 0 0 4px;
+  color: #22395b;
+}
+
+.auto-planning-header p {
+  margin: 0;
+  color: #60718a;
+}
+
+.auto-planning-toggle {
+  flex: 0 0 auto;
+  min-height: 42px;
+  padding: 9px 14px;
+  border: 0;
+  border-radius: 10px;
+  background: #315f9e;
+  color: #fff;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.auto-planning-body {
+  margin-top: 16px;
+}
+
+.auto-planning-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.auto-planning-summary-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #fff;
+  color: #33445e;
+}
+
+.auto-planning-summary-card strong {
+  font-size: 1.5rem;
+  color: #315f9e;
+}
+
+.auto-planning-summary-card.is-risk strong {
+  color: #b54708;
+}
+
+.auto-planning-empty {
+  margin: 0;
+  padding: 16px;
+  border: 1px dashed #aebed4;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.75);
+  color: #60718a;
+  text-align: center;
+}
+
+.auto-planning-list {
+  display: grid;
+  gap: 10px;
+}
+
+.auto-planning-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  padding: 13px 14px;
+  border-left: 5px solid #4b78b6;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.auto-planning-item.is-danger,
+.auto-planning-item.is-warning {
+  border-left-color: #d97706;
+  background: #fffaf0;
+}
+
+.auto-planning-item-main,
+.auto-planning-item-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.auto-planning-item-meta {
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  color: #60718a;
+  font-size: 0.9rem;
+}
+
+.auto-planning-kind,
+.auto-planning-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: #eaf2ff;
+  color: #315f9e;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.auto-planning-item.is-danger .auto-planning-status,
+.auto-planning-item.is-warning .auto-planning-status {
+  background: #fff0d5;
+  color: #9a4c00;
+}
+
+@media (max-width: 767px) {
+  .auto-planning-panel {
+    padding: 14px;
+  }
+
+  .auto-planning-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .auto-planning-toggle {
+    width: 100%;
+  }
+
+  .auto-planning-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .auto-planning-item {
+    grid-template-columns: 1fr;
+  }
+
+  .auto-planning-item-main,
+  .auto-planning-item-meta {
+    align-items: flex-start;
+    justify-content: flex-start;
+  }
+}
