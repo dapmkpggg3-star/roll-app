@@ -12,7 +12,7 @@
     <link rel="icon" type="image/png" sizes="192x192" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect fill='%23667eea' width='192' height='192'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' font-size='96' fill='white' font-family='Arial'>📋</text></svg>">
     <title>ロール管理アプリ</title>
     <link rel="stylesheet" href="css/styles.css?v=20260805-online-safety">
-    <link rel="stylesheet" href="css/planning-view.css?v=20260907-auto-planning">
+    <link rel="stylesheet" href="css/planning-view.css?v=20260908-excel-import">
 </head>
 <body>
     <div id="app-update-notice" class="app-update-notice" hidden>
@@ -158,17 +158,32 @@
                     <div class="auto-planning-header">
                         <div>
                             <h2>自動計画案</h2>
-                            <p>生産予定と使用直数から、サイズ替・カリバ替の候補を確認します。</p>
+                            <p>生産予定Excelを端末内で読み取り、サイズ替の候補を確認します。</p>
                         </div>
                         <button type="button" id="auto-planning-toggle" class="auto-planning-toggle" aria-expanded="false" aria-controls="auto-planning-body">自動計画案 ▼</button>
                     </div>
                     <div id="auto-planning-body" class="auto-planning-body" hidden>
+                        <div id="auto-planning-drop-zone" class="auto-planning-drop-zone" tabindex="0" role="button" aria-controls="auto-planning-file" aria-describedby="auto-planning-privacy">
+                            <input id="auto-planning-file" type="file" accept=".xlsx,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel.sheet.macroEnabled.12" hidden>
+                            <div class="auto-planning-drop-icon" aria-hidden="true">📄</div>
+                            <div class="auto-planning-drop-copy">
+                                <strong>生産予定Excelをここへドロップ</strong>
+                                <span>スマホ・タブレットは「Excelを選択」を押してください</span>
+                            </div>
+                            <button type="button" id="auto-planning-file-button" class="auto-planning-file-button">Excelを選択</button>
+                        </div>
+                        <p id="auto-planning-privacy" class="auto-planning-privacy">ファイルと生産量は外部へ送信せず、この端末内だけで処理します。</p>
+                        <div id="auto-planning-import-status" class="auto-planning-import-status" aria-live="polite"></div>
+                        <div id="auto-planning-source-summary" class="auto-planning-source-summary" hidden>
+                            <span id="auto-planning-source-detail"></span>
+                            <button type="button" id="auto-planning-clear" class="auto-planning-clear">読み込み解除</button>
+                        </div>
                         <div class="auto-planning-summary" aria-label="自動計画案サマリー">
                             <div class="auto-planning-summary-card"><span>サイズ替</span><strong id="auto-planning-size-count">0</strong></div>
-                            <div class="auto-planning-summary-card"><span>カリバ替</span><strong id="auto-planning-caliber-count">0</strong></div>
+                            <div class="auto-planning-summary-card"><span>カリバ替（未接続）</span><strong id="auto-planning-caliber-count">—</strong></div>
                             <div class="auto-planning-summary-card is-risk"><span>要確認</span><strong id="auto-planning-risk-count">0</strong></div>
                         </div>
-                        <p id="auto-planning-empty" class="auto-planning-empty">生産予定を読み込むと、ここに計画候補が表示されます。</p>
+                        <p id="auto-planning-empty" class="auto-planning-empty">上の枠へExcelをドロップすると、計画候補が表示されます。</p>
                         <div id="auto-planning-list" class="auto-planning-list"></div>
                     </div>
                 </section>
@@ -426,10 +441,11 @@
         <button type="button" id="pageScrollToggleBtn" class="page-scroll-btn" onclick="scrollPageByCurrentPosition()" aria-label="ページ下部へ移動">↓ 下へ</button>
     </div>
 
-    <script src="js/planning-rules.js?v=20260907-auto-planning"></script>
-    <script src="js/planning-schedule.js?v=20260907-auto-planning"></script>
-    <script src="js/planning-calibers.js?v=20260907-auto-planning"></script>
-    <script src="js/planning-view.js?v=20260907-auto-planning"></script>
+    <script src="js/planning-rules.js?v=20260908-excel-import"></script>
+    <script src="js/planning-schedule.js?v=20260908-excel-import"></script>
+    <script src="js/planning-calibers.js?v=20260908-excel-import"></script>
+    <script src="js/planning-view.js?v=20260908-excel-import"></script>
+    <script src="js/planning-import.js?v=20260908-excel-import"></script>
     <script src="js/online-safety.js?v=20260805-online-safety"></script>
     <script src="js/sync.js?v=20260805-online-safety"></script>
 <script src="js/csv.js?v=20260805-online-safety"></script>

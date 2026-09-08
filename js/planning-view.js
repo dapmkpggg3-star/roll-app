@@ -15,6 +15,23 @@
         return text || fallback;
     }
 
+    function displayShift(value) {
+        const token = String(value == null ? '' : value).trim();
+        const labels = {
+            shift1: 'Ⅰ勤',
+            shift3: 'Ⅲ勤',
+            dayMaintenance: '常昼',
+            afterShift1: 'Ⅰ勤生産後',
+            afterShift3: 'Ⅲ勤生産後'
+        };
+        return labels[token] || token;
+    }
+
+    function displaySlot(slot) {
+        if (!slot) return '候補枠なし';
+        return `${displayValue(slot.date, '')} ${displayShift(slot.shift)}`.trim();
+    }
+
     function buildPlanningViewModel(input) {
         const sizeChanges = asArray(input && input.sizeChanges);
         const caliberChanges = asArray(input && input.caliberChanges);
@@ -30,7 +47,7 @@
                 kindLabel: 'サイズ替',
                 title: `${displayValue(change.fromSize, '未設定')} → ${displayValue(change.toSize, '未設定')}`,
                 dueDate: displayValue(change.toDate, '日付未設定'),
-                slotLabel: slot ? `${displayValue(slot.date, '')} ${displayValue(slot.shift, '')}`.trim() : '候補枠なし',
+                slotLabel: displaySlot(slot),
                 status: slot ? 'candidate' : 'warning',
                 statusLabel: slot ? '候補あり' : '要確認'
             });
@@ -49,7 +66,7 @@
                 title: [displayValue(entry && entry.equipmentId, '設備未設定'), displayValue(entry && entry.size, '')]
                     .filter(Boolean).join(' '),
                 dueDate: deadline ? displayValue(deadline.date, '日付未設定') : '計画期間内は上限未到達',
-                slotLabel: slot ? `${displayValue(slot.date, '')} ${displayValue(slot.shift, '')}`.trim() : '候補枠なし',
+                slotLabel: displaySlot(slot),
                 status: hasRisk ? 'danger' : isDue ? 'candidate' : 'normal',
                 statusLabel: hasRisk ? '安全枠なし' : isDue ? '候補あり' : '経過観察'
             });
@@ -57,6 +74,9 @@
 
         return {
             generatedAt: input && input.generatedAt,
+            capabilities: {
+                caliberConnected: Boolean(input && input.caliberConnected)
+            },
             summary: {
                 sizeChangeCount: sizeChanges.length,
                 caliberChangeCount: caliberChanges.filter(item => item && item.status === 'slotFound').length,
@@ -84,7 +104,9 @@
         const caliberCount = document.getElementById('auto-planning-caliber-count');
         const riskCount = document.getElementById('auto-planning-risk-count');
         if (sizeCount) sizeCount.textContent = String(model.summary.sizeChangeCount);
-        if (caliberCount) caliberCount.textContent = String(model.summary.caliberChangeCount);
+        if (caliberCount) caliberCount.textContent = model.capabilities.caliberConnected
+            ? String(model.summary.caliberChangeCount)
+            : '—';
         if (riskCount) riskCount.textContent = String(model.summary.riskCount);
         if (!list || !empty) return model;
 
@@ -150,5 +172,5 @@
         document.addEventListener('DOMContentLoaded', initialize);
     }
 
-    return { buildPlanningViewModel, render, setData, setOpen, toggle, initialize };
+    return { buildPlanningViewModel, displayShift, displaySlot, render, setData, setOpen, toggle, initialize };
 });
