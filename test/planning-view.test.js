@@ -16,7 +16,13 @@ test('view model summarizes size and caliber recommendations', () => {
     });
     assert.deepEqual(model.summary, { sizeChangeCount: 1, caliberChangeCount: 1, riskCount: 0 });
     assert.equal(model.items[0].statusLabel, '候補あり');
-    assert.equal(model.items[1].slotLabel, 'sample-4 dayMaintenance');
+    assert.equal(model.items[1].slotLabel, 'sample-4 常昼');
+});
+
+test('internal shift names are shown as workplace labels', () => {
+    assert.equal(view.displayShift('shift1'), 'Ⅰ勤');
+    assert.equal(view.displayShift('shift3'), 'Ⅲ勤');
+    assert.equal(view.displayShift('dayMaintenance'), '常昼');
 });
 
 test('missing safe slots are counted as risks', () => {
