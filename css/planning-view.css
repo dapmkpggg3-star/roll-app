@@ -40,6 +40,111 @@
   margin-top: 16px;
 }
 
+.auto-planning-drop-zone {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 8px;
+  padding: 16px;
+  border: 2px dashed #8fa8c9;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.82);
+  color: #33445e;
+  cursor: pointer;
+  transition: border-color 0.16s ease, background 0.16s ease, transform 0.16s ease;
+}
+
+.auto-planning-drop-zone:hover,
+.auto-planning-drop-zone:focus-visible,
+.auto-planning-drop-zone.is-dragging {
+  border-color: #315f9e;
+  background: #eef5ff;
+  outline: none;
+}
+
+.auto-planning-drop-zone.is-dragging {
+  transform: translateY(-1px);
+}
+
+.auto-planning-drop-icon {
+  font-size: 2rem;
+}
+
+.auto-planning-drop-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.auto-planning-drop-copy span,
+.auto-planning-privacy {
+  color: #60718a;
+  font-size: 0.88rem;
+}
+
+.auto-planning-file-button,
+.auto-planning-clear {
+  min-height: 40px;
+  padding: 8px 13px;
+  border: 1px solid #315f9e;
+  border-radius: 9px;
+  background: #fff;
+  color: #315f9e;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.auto-planning-file-button:hover,
+.auto-planning-clear:hover {
+  background: #eaf2ff;
+}
+
+.auto-planning-privacy {
+  margin: 0 0 10px;
+}
+
+.auto-planning-import-status {
+  min-height: 0;
+  margin-bottom: 10px;
+  padding: 0;
+  border-radius: 10px;
+  font-weight: 700;
+}
+
+.auto-planning-import-status:not(:empty) {
+  padding: 10px 12px;
+  background: #eef5ff;
+  color: #315f9e;
+}
+
+.auto-planning-import-status.is-success {
+  background: #eaf8ef;
+  color: #216e39;
+}
+
+.auto-planning-import-status.is-error {
+  background: #fff0ee;
+  color: #a63b32;
+}
+
+.auto-planning-source-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid #c9d8eb;
+  border-radius: 10px;
+  background: #fff;
+  color: #33445e;
+}
+
+.auto-planning-source-summary[hidden] {
+  display: none;
+}
+
 .auto-planning-summary {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -148,6 +253,20 @@
 
   .auto-planning-summary {
     grid-template-columns: 1fr;
+  }
+
+  .auto-planning-drop-zone {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .auto-planning-file-button {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+
+  .auto-planning-source-summary {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .auto-planning-item {
