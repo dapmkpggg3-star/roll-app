@@ -8,9 +8,16 @@ The review panel is intentionally split into independent files so it can be revi
 - `js/planning-schedule.js`
 - `js/planning-calibers.js`
 - `js/planning-view.js`
+- `js/planning-import.js`
 - `css/planning-view.css`
 
-Load the stylesheet after the existing application stylesheet. Load the four scripts in the order above before the existing application entry script.
+Load the stylesheet after the existing application stylesheet. Load the five scripts in the order above before the existing application entry script.
+
+## Local Excel import
+
+`planning-import.js` reads `.xlsx` and `.xlsm` files entirely in the browser. It does not send the workbook or production amounts to GitHub, GAS, Google Sheets, or another server. Imported values remain in memory and are cleared by reloading the page or pressing the clear button.
+
+The importer finds month sheets whose names contain `生産予定`, reads the consecutive day table, converts it to the generic schedule shape, and passes size-change recommendations to the planning view. It also reads matching `ロールカリバ替予定` sheets only to identify companion work in the candidate window. Caliber recommendations are shown as unconnected until their separate runtime settings are connected.
 
 ## Required element IDs
 
