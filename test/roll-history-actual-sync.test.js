@@ -63,6 +63,48 @@ test('actual dispatch replaces the planned dispatch in the next cycle row', () =
     assert.equal(plan.conflicts[0].reason, 'paired-row-has-different-actual');
 });
 
+test('correcting dispatch overwrites the same open cycle instead of the next planned row', () => {
+    const gas = loadGasFunctions();
+    const rows = [
+        cycle(438, {
+            dispatchDate: field('2025-10-03'),
+            arrivalDate: field('2025-12-22'),
+            currentDiameter: field(338),
+            useStartDate: field('2026-04-18'),
+            useEndDate: field('2026-07-07')
+        }),
+        cycle(439, {
+            dispatchDate: field('2026-08-21'),
+            arrivalDate: field('2026-10-01', { planned: true }),
+            useStartDate: field('2027-01-01', { planned: true }),
+            useEndDate: field('2027-05-01', { planned: true })
+        }),
+        cycle(440, {
+            dispatchDate: field('2027-07-01', { planned: true }),
+            arrivalDate: field('2027-09-01', { planned: true }),
+            useStartDate: field('2027-11-01', { planned: true }),
+            useEndDate: field('2028-02-01', { planned: true })
+        })
+    ];
+    const plan = gas.planRollHistoryActualWrites(rows, {
+        dispatchDate: '2026-08-22',
+        arrivalDate: '',
+        currentDiameter: 338,
+        useStartDate: '2026-06-08',
+        useEndDate: '2026-07-07'
+    });
+
+    assert.deepEqual(
+        JSON.parse(JSON.stringify(plan.writes)),
+        [{
+            field: 'dispatchDate',
+            rowNumber: 439,
+            value: '2026-08-22'
+        }]
+    );
+    assert.equal(plan.writes.some((write) => write.rowNumber === 440), false);
+});
+
 test('a different actual on the paired cycle row is never overwritten', () => {
     const gas = loadGasFunctions();
     const rows = [cycle(324, {
