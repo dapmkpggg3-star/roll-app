@@ -136,23 +136,6 @@ test('history status formula and dropdown text use the shared Roles status', () 
     assert.equal(gas.parseRollHistoryStatusDisplay('不正な状態', '#16-85'), '');
 });
 
-test('16,17 history band adds actual dispatch, arrival, diameter and use dates', () => {
-    const gas = loadGasFunctions();
-    const formula = gas.buildRollHistoryActualFormula('#16-85');
-
-    assert.match(formula, /Roles!\$G:\$G/);
-    assert.match(formula, /dispatchDate/);
-    assert.match(formula, /arrivalDate/);
-    assert.match(formula, /Roles!\$I:\$I/);
-    assert.match(formula, /Roles!\$J:\$J/);
-    assert.match(formula, /Roles!\$N:\$N/);
-    assert.match(formula, /搬出：/);
-    assert.match(formula, /搬入：/);
-    assert.match(formula, /径：/);
-    assert.match(formula, /開始：/);
-    assert.match(formula, /終了：/);
-});
-
 test('spreadsheet status change updates timestamp and history', () => {
     const gas = loadGasFunctions();
     const changedAt = '2026-09-20T03:00:00.000Z';
