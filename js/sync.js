@@ -723,11 +723,64 @@ function getRoleMergeKey(role) {
     return `name:${String(role && role.name ? role.name : '').trim()}`;
 }
 
+function getRoleUpdatedAtTimestamp(role) {
+    const value = role && role.updatedAt;
+    const timestamp = value ? new Date(value).getTime() : NaN;
+    return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+function shouldPreferRemoteRole(remoteRole, localRole) {
+    const remoteTimestamp = getRoleUpdatedAtTimestamp(remoteRole);
+    const localTimestamp = getRoleUpdatedAtTimestamp(localRole);
+
+    if (remoteTimestamp === null) return false;
+    if (localTimestamp === null) return true;
+    return remoteTimestamp > localTimestamp;
+}
+
+function mergeRoleVersions(remoteRole, localRole) {
+    const remoteWins = shouldPreferRemoteRole(remoteRole, localRole);
+    const primarySource = remoteWins ? remoteRole : localRole;
+    const secondarySource = remoteWins ? localRole : remoteRole;
+    const mergedRole = normalizeRole(primarySource);
+    const secondaryRole = normalizeRole(secondarySource);
+    const fallbackFields = [
+        'coatingStatus',
+        'useStartDate',
+        'useEndDate',
+        'orderExpectedDeliveryDate',
+        'assemblyInstructionDue',
+        'isActiveThreeSet',
+        'nextAssemblyPlanned',
+        'currentDiameter',
+        'workProgress',
+        'requestSent'
+    ];
+
+    fallbackFields.forEach(field => {
+        if (!Object.prototype.hasOwnProperty.call(primarySource || {}, field)
+            && Object.prototype.hasOwnProperty.call(secondarySource || {}, field)) {
+            mergedRole[field] = secondaryRole[field];
+        }
+    });
+
+    mergedRole.history = mergeRoleHistory(remoteRole && remoteRole.history, localRole && localRole.history);
+    mergedRole.requestSent = mergedRole.requestSent === true
+        || Boolean(mergedRole.workProgress && mergedRole.workProgress.vendorSentAt);
+
+    return {
+        role: mergedRole,
+        source: remoteWins ? 'remote' : 'local'
+    };
+}
+
 function mergeRemoteAndLocalRoles(remoteRoles, localRoles) {
     const mergedMap = new Map();
+    const remoteSourceMap = new Map();
     const deletedRoleIds = getDeletedRoleIds();
     const seenKeys = new Set();
     const duplicateKeys = [];
+    const conflictResolutions = [];
 
     remoteRoles.forEach(role => {
         const normalized = normalizeRole(role);
@@ -740,6 +793,7 @@ function mergeRemoteAndLocalRoles(remoteRoles, localRoles) {
         }
         seenKeys.add(key);
         mergedMap.set(key, normalized);
+        remoteSourceMap.set(key, role);
     });
 
     localRoles.forEach(role => {
@@ -750,33 +804,21 @@ function mergeRemoteAndLocalRoles(remoteRoles, localRoles) {
         const remoteRole = mergedMap.get(key);
         if (remoteRole) {
             duplicateKeys.push({ source: 'local', key, role: getRollDebugSnapshot(localRole) });
-            localRole.history = mergeRoleHistory(remoteRole.history, localRole.history);
-            if (!localRole.useStartDate && remoteRole.useStartDate) {
-                localRole.useStartDate = remoteRole.useStartDate;
-            }
-            if (!Object.prototype.hasOwnProperty.call(role, 'useEndDate') && remoteRole.useEndDate) {
-                localRole.useEndDate = remoteRole.useEndDate;
-            }
-            if (!localRole.orderExpectedDeliveryDate && remoteRole.orderExpectedDeliveryDate) {
-                localRole.orderExpectedDeliveryDate = remoteRole.orderExpectedDeliveryDate;
-            }
-            if (!localRole.assemblyInstructionDue && remoteRole.assemblyInstructionDue) {
-                localRole.assemblyInstructionDue = remoteRole.assemblyInstructionDue;
-            }
-            if (!Object.prototype.hasOwnProperty.call(role, 'isActiveThreeSet')) {
-                localRole.isActiveThreeSet = remoteRole.isActiveThreeSet === true;
-            }
-            if (!Object.prototype.hasOwnProperty.call(role, 'nextAssemblyPlanned')) {
-                localRole.nextAssemblyPlanned = localRole.isActiveThreeSet === true && remoteRole.nextAssemblyPlanned === true;
-            }
-            if (!Object.prototype.hasOwnProperty.call(role, 'coatingStatus') && remoteRole.coatingStatus) {
-                localRole.coatingStatus = remoteRole.coatingStatus;
-            }
+            const resolution = mergeRoleVersions(remoteSourceMap.get(key) || remoteRole, role);
+            mergedMap.set(key, resolution.role);
+            conflictResolutions.push({
+                key,
+                source: resolution.source,
+                remoteUpdatedAt: remoteRole.updatedAt || '',
+                localUpdatedAt: localRole.updatedAt || ''
+            });
         } else if (seenKeys.has(key)) {
             duplicateKeys.push({ source: 'local', key, role: getRollDebugSnapshot(localRole) });
+            mergedMap.set(key, localRole);
+        } else {
+            mergedMap.set(key, localRole);
         }
         seenKeys.add(key);
-        mergedMap.set(key, localRole);
     });
 
     const mergedRoles = Array.from(mergedMap.values());
@@ -785,7 +827,8 @@ function mergeRemoteAndLocalRoles(remoteRoles, localRoles) {
         localLength: localRoles.length,
         mergedLength: mergedRoles.length,
         deletedRoleIdsLength: deletedRoleIds.length,
-        duplicateKeys
+        duplicateKeys,
+        conflictResolutions
     });
     return mergedRoles;
 }
