@@ -105,6 +105,108 @@ test('correcting dispatch overwrites the same open cycle instead of the next pla
     assert.equal(plan.writes.some((write) => write.rowNumber === 440), false);
 });
 
+test('diameter and use dates stay on the same row until use end is actual', () => {
+    const gas = loadGasFunctions();
+    const rows = [
+        cycle(438, {
+            dispatchDate: field('2025-10-03'),
+            arrivalDate: field('2025-12-22'),
+            currentDiameter: field(338),
+            useStartDate: field('2026-04-18'),
+            useEndDate: field('2026-07-07')
+        }),
+        cycle(439, {
+            dispatchDate: field('2026-08-21'),
+            arrivalDate: field('2026-10-01'),
+            currentDiameter: field(335, { planned: true }),
+            useStartDate: field('2027-01-01', { planned: true }),
+            useEndDate: field('2027-05-01', { planned: true })
+        }),
+        cycle(440, {
+            dispatchDate: field('2027-07-01', { planned: true }),
+            arrivalDate: field('2027-09-01', { planned: true }),
+            useStartDate: field('2027-11-01', { planned: true }),
+            useEndDate: field('2028-02-01', { planned: true })
+        })
+    ];
+    const plan = gas.planRollHistoryActualWrites(rows, {
+        dispatchDate: '2026-08-21',
+        arrivalDate: '2026-10-01',
+        currentDiameter: 334.8,
+        useStartDate: '2027-01-05',
+        useEndDate: '2027-05-10'
+    });
+
+    assert.deepEqual(
+        JSON.parse(JSON.stringify(plan.writes)),
+        [
+            { field: 'currentDiameter', rowNumber: 439, value: 334.8 },
+            { field: 'useStartDate', rowNumber: 439, value: '2027-01-05' },
+            { field: 'useEndDate', rowNumber: 439, value: '2027-05-10' }
+        ]
+    );
+    assert.equal(plan.writes.some((write) => write.rowNumber === 440), false);
+});
+
+test('an actual use end closes the row and the next dispatch uses the following row', () => {
+    const gas = loadGasFunctions();
+    const rows = [
+        cycle(439, {
+            dispatchDate: field('2026-08-21'),
+            arrivalDate: field('', { blank: true }),
+            useStartDate: field('', { blank: true }),
+            useEndDate: field('2026-11-30')
+        }),
+        cycle(440, {
+            dispatchDate: field('2027-01-10', { planned: true }),
+            arrivalDate: field('2027-03-01', { planned: true }),
+            useStartDate: field('2027-04-01', { planned: true }),
+            useEndDate: field('2027-08-01', { planned: true })
+        })
+    ];
+    const plan = gas.planRollHistoryActualWrites(rows, {
+        dispatchDate: '2026-12-15',
+        arrivalDate: '',
+        currentDiameter: '',
+        useStartDate: '',
+        useEndDate: ''
+    });
+
+    assert.deepEqual(
+        JSON.parse(JSON.stringify(plan.writes)),
+        [{ field: 'dispatchDate', rowNumber: 440, value: '2026-12-15' }]
+    );
+});
+
+test('correcting an open-cycle use start overwrites its row instead of a later plan', () => {
+    const gas = loadGasFunctions();
+    const rows = [
+        cycle(439, {
+            dispatchDate: field('2026-08-21'),
+            arrivalDate: field('2026-10-01'),
+            currentDiameter: field(334.8),
+            useStartDate: field('2027-01-05'),
+            useEndDate: field('2027-05-10', { planned: true })
+        }),
+        cycle(440, {
+            useStartDate: field('2027-11-01', { planned: true }),
+            useEndDate: field('2028-02-01', { planned: true })
+        })
+    ];
+    const plan = gas.planRollHistoryActualWrites(rows, {
+        dispatchDate: '2026-08-21',
+        arrivalDate: '2026-10-01',
+        currentDiameter: 334.8,
+        useStartDate: '2027-01-06',
+        useEndDate: ''
+    });
+
+    assert.deepEqual(
+        JSON.parse(JSON.stringify(plan.writes)),
+        [{ field: 'useStartDate', rowNumber: 439, value: '2027-01-06' }]
+    );
+});
+
 test('a different actual on the paired cycle row is never overwritten', () => {
     const gas = loadGasFunctions();
     const rows = [cycle(324, {
