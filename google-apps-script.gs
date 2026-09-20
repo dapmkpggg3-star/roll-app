@@ -3,7 +3,7 @@ const ROLL_MANAGEMENT_VIEW_SHEET_NAME = 'ロール管理表';
 const STAND_MASTER_SHEET_NAME = 'StandMaster';
 const INPUT_SHEET_NAMES = ['入力シート', 'Input', '入力'];
 const SPREADSHEET_ID = '1X07qQa7u9YPLvErT0D48goT5wYmvcpgNjqzK3FhRFeA';
-const SCRIPT_VERSION = 'roll-history-cycle-close-on-use-end-v4';
+const SCRIPT_VERSION = 'roll-history-incomplete-cycle-warning-v5';
 const ROLES_EDIT_TRIGGER_HANDLER = 'handleRolesSheetEdit';
 const ROLES_EDIT_TRIGGER_LOCK_TIMEOUT_MS = 300000;
 const HEADER_VALUES = ['ID', 'スタンド番号', 'ステータス', 'メモ', '最終更新日', '作業依頼済み', '作業依頼進捗', '履歴', '現在径', '使用開始日', '溶射状態', '納入予定日', '組替指示期限', '使用終了日', '運用3セット対象', '次回組み込み予定'];
@@ -246,6 +246,21 @@ const ROLL_HISTORY_STATUS_OPERATOR = { id: 'sheet', name: 'スプレッドシー
 const ROLL_HISTORY_ACTUAL_SHEET_NAME = '16,17';
 const ROLL_HISTORY_ACTUAL_FONT_COLOR = '#000000';
 const ROLL_HISTORY_PLANNED_FONT_COLORS = ['#ff0000', '#0000ff', '#1f4e78', '#7f8c8d'];
+const ROLL_HISTORY_INCOMPLETE_WARNING_COLOR = '#fff2cc';
+const ROLL_HISTORY_INCOMPLETE_WARNING_NOTE_PREFIX = 'ROLL_HISTORY_INCOMPLETE|';
+const ROLL_HISTORY_INCOMPLETE_REQUIRED_FIELDS = [
+  'dispatchDate',
+  'arrivalDate',
+  'currentDiameter',
+  'useStartDate'
+];
+const ROLL_HISTORY_ACTUAL_FIELD_LABELS = {
+  dispatchDate: '搬出日',
+  arrivalDate: '搬入日',
+  currentDiameter: 'ロール径',
+  useStartDate: '使用開始日',
+  useEndDate: '使用終了日'
+};
 const ROLL_HISTORY_ACTUAL_FIELD_DEFINITIONS = {
   dispatchDate: { offset: 2, width: 3, pairField: 'arrivalDate' },
   arrivalDate: { offset: 5, width: 3, pairField: 'dispatchDate' },
@@ -2913,6 +2928,118 @@ function getRollHistoryOpenCycleRow(cycleRows) {
   return rows[lastCompletedIndex + 1] || null;
 }
 
+function rollHistoryCycleRowHasActualValues(cycleRow) {
+  if (!cycleRow || !cycleRow.fields) return false;
+  return Object.keys(ROLL_HISTORY_ACTUAL_FIELD_DEFINITIONS).some(function(fieldName) {
+    const field = cycleRow.fields[fieldName];
+    return field && !field.isBlank && !field.planned && field.value !== '' && field.value !== undefined;
+  });
+}
+
+function getRollHistoryCurrentEditableCycleRow(cycleRows) {
+  const rows = Array.isArray(cycleRows) ? cycleRows : [];
+  const openCycleRow = getRollHistoryOpenCycleRow(rows);
+  if (openCycleRow && rollHistoryCycleRowHasActualValues(openCycleRow)) return openCycleRow;
+  const latestCompletedRow = rows.slice().reverse().find(function(row) {
+    const useEndField = row && row.fields && row.fields.useEndDate;
+    return useEndField && !useEndField.isBlank && !useEndField.planned && useEndField.value !== '';
+  });
+  return latestCompletedRow || openCycleRow || null;
+}
+
+function getRollHistoryIncompleteActualFieldNames(cycleRow) {
+  const useEndField = cycleRow && cycleRow.fields && cycleRow.fields.useEndDate;
+  if (!useEndField || useEndField.isBlank || useEndField.planned || useEndField.value === '') return [];
+  return ROLL_HISTORY_INCOMPLETE_REQUIRED_FIELDS.filter(function(fieldName) {
+    const field = cycleRow.fields[fieldName];
+    return !field || field.isBlank || field.planned || field.value === '' || field.value === undefined;
+  });
+}
+
+function encodeRollHistoryIncompleteWarningState(state) {
+  return Utilities.base64EncodeWebSafe(
+    Utilities.newBlob(JSON.stringify(state || {})).getBytes()
+  );
+}
+
+function decodeRollHistoryIncompleteWarningState(note) {
+  const firstLine = String(note || '').split('\n')[0];
+  if (firstLine.indexOf(ROLL_HISTORY_INCOMPLETE_WARNING_NOTE_PREFIX) !== 0) return null;
+  try {
+    const encoded = firstLine.slice(ROLL_HISTORY_INCOMPLETE_WARNING_NOTE_PREFIX.length);
+    return JSON.parse(Utilities.newBlob(Utilities.base64DecodeWebSafe(encoded)).getDataAsString());
+  } catch (error) {
+    Logger.log('decodeRollHistoryIncompleteWarningState failed: ' + error.toString());
+    return null;
+  }
+}
+
+function getRollHistoryCycleRowFromSheet(sheet, definition, rowNumber) {
+  const blockRange = sheet.getRange(
+    rowNumber,
+    definition.startColumn,
+    1,
+    definition.endColumn - definition.startColumn + 1
+  );
+  const rows = buildRollHistoryCycleRows(
+    rowNumber,
+    blockRange.getDisplayValues(),
+    blockRange.getFontColors()
+  );
+  return rows[0] || null;
+}
+
+function updateRollHistoryIncompleteCycleWarning(sheet, definition, cycleRow) {
+  if (!sheet || !definition || !cycleRow) return { missingFields: [], warnedRanges: [] };
+  const missingFields = getRollHistoryIncompleteActualFieldNames(cycleRow);
+  const missingSet = new Set(missingFields);
+  const missingLabels = missingFields.map(function(fieldName) {
+    return ROLL_HISTORY_ACTUAL_FIELD_LABELS[fieldName] || fieldName;
+  });
+  const warningMessage = '⚠ 使用終了済みですが、' + missingLabels.join('・') + 'の実績が未入力です。';
+  const warnedRanges = [];
+
+  ROLL_HISTORY_INCOMPLETE_REQUIRED_FIELDS.forEach(function(fieldName) {
+    const fieldDefinition = ROLL_HISTORY_ACTUAL_FIELD_DEFINITIONS[fieldName];
+    const range = sheet.getRange(
+      cycleRow.rowNumber,
+      definition.startColumn + fieldDefinition.offset,
+      1,
+      fieldDefinition.width
+    );
+    const firstCell = range.getCell(1, 1);
+    const existingNote = String(firstCell.getNote() || '');
+    const savedState = decodeRollHistoryIncompleteWarningState(existingNote);
+
+    if (missingSet.has(fieldName)) {
+      const state = savedState || {
+        backgrounds: range.getBackgrounds(),
+        note: existingNote
+      };
+      firstCell.setNote(
+        ROLL_HISTORY_INCOMPLETE_WARNING_NOTE_PREFIX
+          + encodeRollHistoryIncompleteWarningState(state)
+          + '\n'
+          + warningMessage
+      );
+      range.setBackground(ROLL_HISTORY_INCOMPLETE_WARNING_COLOR);
+      warnedRanges.push(range.getA1Notation());
+      return;
+    }
+
+    if (savedState) {
+      if (Array.isArray(savedState.backgrounds)) range.setBackgrounds(savedState.backgrounds);
+      firstCell.setNote(String(savedState.note || ''));
+    }
+  });
+
+  return {
+    missingFields: missingFields,
+    missingLabels: missingLabels,
+    warnedRanges: warnedRanges
+  };
+}
+
 function rollHistoryCycleRowMatchesSnapshot(row, actualSnapshot, excludedFieldName) {
   if (!row || !row.fields || !actualSnapshot) return false;
   return Object.keys(ROLL_HISTORY_ACTUAL_FIELD_DEFINITIONS).some(function(fieldName) {
@@ -3064,7 +3191,7 @@ function syncRollHistoryActualsFromRoles16_17(roles, roleNames) {
   }));
 
   const definitions = getRollHistoryStatusDefinitions(sheet);
-  const result = { sheetName: sheet.getName(), written: [], unchanged: [], conflicts: [], skipped: [] };
+  const result = { sheetName: sheet.getName(), written: [], unchanged: [], conflicts: [], warnings: [], skipped: [] };
   definitions.forEach(function(definition) {
     const role = roleMap.get(definition.roleName);
     if (!role) return;
@@ -3102,6 +3229,20 @@ function syncRollHistoryActualsFromRoles16_17(roles, roleNames) {
         rowNumber: item.rowNumber,
         reason: item.reason
       });
+    });
+    if (plan.writes.length > 0) SpreadsheetApp.flush();
+    Array.from(new Set(plan.writes.map(function(write) { return write.rowNumber; }))).forEach(function(rowNumber) {
+      const cycleRow = getRollHistoryCycleRowFromSheet(sheet, definition, rowNumber);
+      const warning = updateRollHistoryIncompleteCycleWarning(sheet, definition, cycleRow);
+      if (warning.missingFields.length > 0) {
+        result.warnings.push({
+          roleName: definition.roleName,
+          rowNumber: rowNumber,
+          missingFields: warning.missingFields,
+          missingLabels: warning.missingLabels,
+          ranges: warning.warnedRanges
+        });
+      }
     });
   });
   Logger.log('syncRollHistoryActualsFromRoles16_17: ' + JSON.stringify(result));
@@ -3243,10 +3384,10 @@ function handleRollHistoryActualEdit(e) {
     blockRange.getDisplayValues(),
     blockRange.getFontColors()
   );
-  const openCycleRow = getRollHistoryOpenCycleRow(cycleRows);
-  if (!openCycleRow
-    || range.getRow() > openCycleRow.rowNumber
-    || range.getLastRow() < openCycleRow.rowNumber) {
+  const editableCycleRow = getRollHistoryCurrentEditableCycleRow(cycleRows);
+  if (!editableCycleRow
+    || range.getRow() > editableCycleRow.rowNumber
+    || range.getLastRow() < editableCycleRow.rowNumber) {
     return { handled: false };
   }
 
@@ -3260,7 +3401,7 @@ function handleRollHistoryActualEdit(e) {
     const field = getRollHistoryActualValueFromSheet(
       sheet,
       definition,
-      openCycleRow.rowNumber,
+      editableCycleRow.rowNumber,
       fieldName
     );
     if (!field.isBlank && (field.value === '' || field.value === undefined)) {
@@ -3285,27 +3426,45 @@ function handleRollHistoryActualEdit(e) {
       updates,
       new Date().toISOString()
     );
-    if (!result.changed) {
-      return { handled: true, updated: false, reason: 'unchanged', fields: fieldNames };
-    }
-
-    updateChangedRolesRows(result.roles, result.updatedRoleNames);
+    if (result.changed) updateChangedRolesRows(result.roles, result.updatedRoleNames);
     actualRanges.forEach(function(actualRange) {
       actualRange.setFontColor(ROLL_HISTORY_ACTUAL_FONT_COLOR);
     });
     SpreadsheetApp.flush();
+    const refreshedCycleRow = getRollHistoryCycleRowFromSheet(
+      sheet,
+      definition,
+      editableCycleRow.rowNumber
+    );
+    const incompleteWarning = updateRollHistoryIncompleteCycleWarning(
+      sheet,
+      definition,
+      refreshedCycleRow
+    );
+    SpreadsheetApp.flush();
 
-    try {
-      refreshRollManagementView();
-      refreshFieldRollManagementView();
-    } catch (refreshError) {
-      Logger.log('handleRollHistoryActualEdit view refresh failed: ' + refreshError.toString());
+    if (result.changed) {
+      try {
+        refreshRollManagementView();
+        refreshFieldRollManagementView();
+      } catch (refreshError) {
+        Logger.log('handleRollHistoryActualEdit view refresh failed: ' + refreshError.toString());
+      }
     }
 
-    sheet.getParent().toast(definition.roleName + ' の実績をアプリへ反映しました。', 'ロール管理連動', 5);
+    if (incompleteWarning.missingFields.length > 0) {
+      sheet.getParent().toast(
+        definition.roleName + '：' + incompleteWarning.missingLabels.join('・') + 'の実績が未入力です。',
+        '反映完了・不足項目あり',
+        8
+      );
+    } else {
+      sheet.getParent().toast(definition.roleName + ' の実績をアプリへ反映しました。', 'ロール管理連動', 5);
+    }
     return {
       handled: true,
-      updated: true,
+      updated: result.changed,
+      reason: result.changed ? '' : 'unchanged',
       roleName: definition.roleName,
       fields: result.changedFields
     };
@@ -3346,11 +3505,11 @@ function syncRollHistoryActualsToRoles16_17() {
       blockRange.getDisplayValues(),
       blockRange.getFontColors()
     );
-    const openCycleRow = getRollHistoryOpenCycleRow(cycleRows);
-    if (!openCycleRow) return;
+    const editableCycleRow = getRollHistoryCurrentEditableCycleRow(cycleRows);
+    if (!editableCycleRow) return;
     const updates = {};
     Object.keys(ROLL_HISTORY_ACTUAL_FIELD_DEFINITIONS).forEach(function(fieldName) {
-      const field = openCycleRow.fields[fieldName];
+      const field = editableCycleRow.fields[fieldName];
       if (field && !field.isBlank && !field.planned && field.value !== '') {
         updates[fieldName] = field.value;
       }
