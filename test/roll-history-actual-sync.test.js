@@ -207,6 +207,87 @@ test('correcting an open-cycle use start overwrites its row instead of a later p
     );
 });
 
+test('a completed cycle reports missing actual fields but a planned end does not', () => {
+    const gas = loadGasFunctions();
+    const completed = cycle(439, {
+        dispatchDate: field('2026-08-21'),
+        arrivalDate: field('2026-10-01', { planned: true }),
+        currentDiameter: field('', { blank: true }),
+        useStartDate: field('', { blank: true }),
+        useEndDate: field('2027-05-10')
+    });
+    const planned = cycle(440, {
+        dispatchDate: field('2027-07-01'),
+        useEndDate: field('2028-02-01', { planned: true })
+    });
+
+    assert.deepEqual(
+        JSON.parse(JSON.stringify(gas.getRollHistoryIncompleteActualFieldNames(completed))),
+        ['arrivalDate', 'currentDiameter', 'useStartDate']
+    );
+    assert.deepEqual(
+        JSON.parse(JSON.stringify(gas.getRollHistoryIncompleteActualFieldNames(planned))),
+        []
+    );
+});
+
+test('a completed cycle with all five actuals has no warning', () => {
+    const gas = loadGasFunctions();
+    const completed = cycle(439, {
+        dispatchDate: field('2026-08-21'),
+        arrivalDate: field('2026-10-01'),
+        currentDiameter: field(334.8),
+        useStartDate: field('2027-01-05'),
+        useEndDate: field('2027-05-10')
+    });
+
+    assert.deepEqual(
+        JSON.parse(JSON.stringify(gas.getRollHistoryIncompleteActualFieldNames(completed))),
+        []
+    );
+});
+
+test('the latest completed row stays editable until the next row has an actual', () => {
+    const gas = loadGasFunctions();
+    const completed = cycle(439, {
+        dispatchDate: field('2026-08-21'),
+        arrivalDate: field('', { blank: true }),
+        currentDiameter: field('', { blank: true }),
+        useStartDate: field('', { blank: true }),
+        useEndDate: field('2026-11-30')
+    });
+    const nextPlan = cycle(440, {
+        dispatchDate: field('2027-01-10', { planned: true }),
+        useEndDate: field('2027-08-01', { planned: true })
+    });
+
+    assert.equal(
+        gas.getRollHistoryCurrentEditableCycleRow([completed, nextPlan]).rowNumber,
+        439
+    );
+});
+
+test('the following row becomes editable as soon as it has a black actual', () => {
+    const gas = loadGasFunctions();
+    const completed = cycle(439, {
+        dispatchDate: field('2026-08-21'),
+        arrivalDate: field('2026-10-01'),
+        currentDiameter: field(334.8),
+        useStartDate: field('2027-01-05'),
+        useEndDate: field('2027-05-10')
+    });
+    const nextCycle = cycle(440, {
+        dispatchDate: field('2027-07-01'),
+        arrivalDate: field('2027-09-01', { planned: true }),
+        useEndDate: field('2028-02-01', { planned: true })
+    });
+
+    assert.equal(
+        gas.getRollHistoryCurrentEditableCycleRow([completed, nextCycle]).rowNumber,
+        440
+    );
+});
+
 test('a different actual on the paired cycle row is never overwritten', () => {
     const gas = loadGasFunctions();
     const rows = [cycle(324, {
