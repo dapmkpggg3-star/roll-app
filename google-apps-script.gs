@@ -3,7 +3,7 @@ const ROLL_MANAGEMENT_VIEW_SHEET_NAME = 'ロール管理表';
 const STAND_MASTER_SHEET_NAME = 'StandMaster';
 const INPUT_SHEET_NAMES = ['入力シート', 'Input', '入力'];
 const SPREADSHEET_ID = '1X07qQa7u9YPLvErT0D48goT5wYmvcpgNjqzK3FhRFeA';
-const SCRIPT_VERSION = 'roll-history-actual-cycle-correction-v2';
+const SCRIPT_VERSION = 'roll-history-actual-two-way-sync-v3';
 const ROLES_EDIT_TRIGGER_HANDLER = 'handleRolesSheetEdit';
 const ROLES_EDIT_TRIGGER_LOCK_TIMEOUT_MS = 300000;
 const HEADER_VALUES = ['ID', 'スタンド番号', 'ステータス', 'メモ', '最終更新日', '作業依頼済み', '作業依頼進捗', '履歴', '現在径', '使用開始日', '溶射状態', '納入予定日', '組替指示期限', '使用終了日', '運用3セット対象', '次回組み込み予定'];
@@ -1747,7 +1747,10 @@ function handleRolesSheetEdit(e) {
   }
 
   if (sheet.getName() !== SHEET_NAME) {
-    handleRollHistoryStatusEdit(e);
+    const actualResult = handleRollHistoryActualEdit(e);
+    if (!actualResult || !actualResult.handled) {
+      handleRollHistoryStatusEdit(e);
+    }
     return;
   }
 
@@ -3080,6 +3083,274 @@ function syncRollHistoryActualsFromRoles16_17(roles, roleNames) {
 
 function syncRollHistoryActuals16_17() {
   return syncRollHistoryActualsFromRoles16_17(fetchRoles());
+}
+
+function getRollHistoryActualEditedFieldNames(definition, range) {
+  if (!definition || !range) return [];
+  const firstEditedColumn = range.getColumn();
+  const lastEditedColumn = range.getLastColumn();
+  return Object.keys(ROLL_HISTORY_ACTUAL_FIELD_DEFINITIONS).filter(function(fieldName) {
+    const fieldDefinition = ROLL_HISTORY_ACTUAL_FIELD_DEFINITIONS[fieldName];
+    const firstFieldColumn = definition.startColumn + fieldDefinition.offset;
+    const lastFieldColumn = firstFieldColumn + fieldDefinition.width - 1;
+    return firstEditedColumn <= lastFieldColumn && lastEditedColumn >= firstFieldColumn;
+  });
+}
+
+function getRollHistoryActualValueFromSheet(sheet, definition, rowNumber, fieldName) {
+  const fieldDefinition = ROLL_HISTORY_ACTUAL_FIELD_DEFINITIONS[fieldName];
+  const range = sheet.getRange(
+    rowNumber,
+    definition.startColumn + fieldDefinition.offset,
+    1,
+    fieldDefinition.width
+  );
+  const cells = range.getDisplayValues()[0];
+  const colors = range.getFontColors()[0];
+  const isBlank = cells.every(function(value) {
+    return String(value == null ? '' : value).trim() === '';
+  });
+  const value = fieldName === 'currentDiameter'
+    ? parseRollHistoryDiameterCell(cells[0])
+    : parseRollHistoryDateCells(cells);
+  return {
+    value: value,
+    isBlank: isBlank,
+    planned: !isBlank && isRollHistoryPlannedField(cells, colors),
+    range: range
+  };
+}
+
+function getRoleRollHistoryActualValue(role, fieldName) {
+  const progress = parseWorkProgress(role && role.workProgress);
+  if (fieldName === 'dispatchDate' || fieldName === 'arrivalDate') {
+    return normalizeRollHistoryActualDate(progress[fieldName]);
+  }
+  if (fieldName === 'currentDiameter') {
+    return parseRollHistoryDiameterCell(role && role.currentDiameter);
+  }
+  return normalizeRollHistoryActualDate(role && role[fieldName]);
+}
+
+function applyRollHistoryActualChangeToRoles(roles, roleName, updates, changedAt) {
+  const roleList = JSON.parse(JSON.stringify(Array.isArray(roles) ? roles : []));
+  const normalizedRoleName = String(roleName || '').trim();
+  const target = roleList.find(function(role) {
+    return String(role && role.name || '').trim() === normalizedRoleName;
+  });
+  if (!target) throw new Error(normalizedRoleName + ' がRolesに見つかりません。');
+
+  const labels = {
+    dispatchDate: '搬出日変更（ロール管理表）',
+    arrivalDate: '搬入日変更（ロール管理表）',
+    currentDiameter: '現在径変更（ロール管理表）',
+    useStartDate: '使用開始日変更（ロール管理表）',
+    useEndDate: '使用終了日変更（ロール管理表）'
+  };
+  const eventAt = String(changedAt || new Date().toISOString());
+  const progress = parseWorkProgress(target.workProgress);
+  const changedFields = [];
+
+  Object.keys(updates || {}).forEach(function(fieldName) {
+    if (!Object.prototype.hasOwnProperty.call(ROLL_HISTORY_ACTUAL_FIELD_DEFINITIONS, fieldName)) return;
+    const nextValue = updates[fieldName];
+    const beforeValue = getRoleRollHistoryActualValue(target, fieldName);
+    const sameValue = beforeValue === '' && nextValue === ''
+      ? true
+      : rollHistoryActualValuesEqual(fieldName, beforeValue, nextValue);
+    if (sameValue) return;
+
+    if (fieldName === 'dispatchDate' || fieldName === 'arrivalDate') {
+      progress[fieldName] = nextValue;
+    } else {
+      target[fieldName] = nextValue;
+    }
+    appendRollHistoryStatusEntry(
+      target,
+      fieldName,
+      labels[fieldName] || fieldName + '変更（ロール管理表）',
+      beforeValue,
+      nextValue,
+      eventAt
+    );
+    changedFields.push(fieldName);
+  });
+
+  if (changedFields.length === 0) {
+    return { changed: false, roles: roleList, updatedRoleNames: [], changedFields: [] };
+  }
+  target.workProgress = progress;
+  target.updatedAt = eventAt;
+  return {
+    changed: true,
+    roles: roleList,
+    updatedRoleNames: [normalizedRoleName],
+    changedFields: changedFields
+  };
+}
+
+function handleRollHistoryActualEdit(e) {
+  const range = e && e.range;
+  const sheet = range && range.getSheet ? range.getSheet() : null;
+  if (!sheet || sheet.getName() !== ROLL_HISTORY_ACTUAL_SHEET_NAME) return { handled: false };
+
+  const definitions = getRollHistoryStatusDefinitions(sheet);
+  const definition = definitions.find(function(candidate) {
+    const blockEndRow = getRollHistoryActualBlockEndRow(candidate, definitions, sheet.getLastRow());
+    return range.getRow() >= candidate.roleIdRow
+      && range.getLastRow() <= blockEndRow
+      && range.getColumn() <= candidate.endColumn
+      && range.getLastColumn() >= candidate.startColumn;
+  });
+  if (!definition) return { handled: false };
+
+  const blockEndRow = getRollHistoryActualBlockEndRow(definition, definitions, sheet.getLastRow());
+  const blockRange = sheet.getRange(
+    definition.roleIdRow,
+    definition.startColumn,
+    blockEndRow - definition.roleIdRow + 1,
+    definition.endColumn - definition.startColumn + 1
+  );
+  const cycleRows = buildRollHistoryCycleRows(
+    definition.roleIdRow,
+    blockRange.getDisplayValues(),
+    blockRange.getFontColors()
+  );
+  const openCycleRow = getRollHistoryOpenCycleRow(cycleRows);
+  if (!openCycleRow
+    || range.getRow() > openCycleRow.rowNumber
+    || range.getLastRow() < openCycleRow.rowNumber) {
+    return { handled: false };
+  }
+
+  const fieldNames = getRollHistoryActualEditedFieldNames(definition, range);
+  if (fieldNames.length === 0) return { handled: false };
+
+  const updates = {};
+  const actualRanges = [];
+  const invalidFields = [];
+  fieldNames.forEach(function(fieldName) {
+    const field = getRollHistoryActualValueFromSheet(
+      sheet,
+      definition,
+      openCycleRow.rowNumber,
+      fieldName
+    );
+    if (!field.isBlank && (field.value === '' || field.value === undefined)) {
+      invalidFields.push(fieldName);
+      return;
+    }
+    updates[fieldName] = field.isBlank ? '' : field.value;
+    actualRanges.push(field.range);
+  });
+
+  if (invalidFields.length > 0) {
+    sheet.getParent().toast('年月日を3セルすべて入力するか、3セルすべて削除してください。', '実績の入力が未完了です', 8);
+    return { handled: true, updated: false, reason: 'incomplete-actual', fields: invalidFields };
+  }
+
+  const lock = LockService.getDocumentLock() || LockService.getScriptLock();
+  try {
+    lock.waitLock(ROLES_EDIT_TRIGGER_LOCK_TIMEOUT_MS);
+    const result = applyRollHistoryActualChangeToRoles(
+      fetchRoles(),
+      definition.roleName,
+      updates,
+      new Date().toISOString()
+    );
+    if (!result.changed) {
+      return { handled: true, updated: false, reason: 'unchanged', fields: fieldNames };
+    }
+
+    updateChangedRolesRows(result.roles, result.updatedRoleNames);
+    actualRanges.forEach(function(actualRange) {
+      actualRange.setFontColor(ROLL_HISTORY_ACTUAL_FONT_COLOR);
+    });
+    SpreadsheetApp.flush();
+
+    try {
+      refreshRollManagementView();
+      refreshFieldRollManagementView();
+    } catch (refreshError) {
+      Logger.log('handleRollHistoryActualEdit view refresh failed: ' + refreshError.toString());
+    }
+
+    sheet.getParent().toast(definition.roleName + ' の実績をアプリへ反映しました。', 'ロール管理連動', 5);
+    return {
+      handled: true,
+      updated: true,
+      roleName: definition.roleName,
+      fields: result.changedFields
+    };
+  } catch (error) {
+    Logger.log('handleRollHistoryActualEdit failed: ' + error.toString());
+    sheet.getParent().toast(error.message || String(error), '実績の反映に失敗しました', 10);
+    return { handled: true, updated: false, reason: error.message || String(error) };
+  } finally {
+    if (lock && lock.hasLock()) lock.releaseLock();
+  }
+}
+
+function syncRollHistoryActualsToRoles16_17() {
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const sheet = ss.getSheetByName(ROLL_HISTORY_ACTUAL_SHEET_NAME);
+  if (!sheet) throw new Error(ROLL_HISTORY_ACTUAL_SHEET_NAME + ' シートが見つかりません。');
+
+  const definitions = getRollHistoryStatusDefinitions(sheet);
+  let roles = fetchRoles();
+  const roleMap = new Map(roles.map(function(role) {
+    return [String(role && role.name || '').trim(), role];
+  }));
+  const updatedRoleNames = [];
+  const changedFields = [];
+
+  definitions.forEach(function(definition) {
+    const role = roleMap.get(definition.roleName);
+    if (!role || !normalizeBooleanForFieldRollManagement(role.isActiveThreeSet)) return;
+    const blockEndRow = getRollHistoryActualBlockEndRow(definition, definitions, sheet.getLastRow());
+    const blockRange = sheet.getRange(
+      definition.roleIdRow,
+      definition.startColumn,
+      blockEndRow - definition.roleIdRow + 1,
+      definition.endColumn - definition.startColumn + 1
+    );
+    const cycleRows = buildRollHistoryCycleRows(
+      definition.roleIdRow,
+      blockRange.getDisplayValues(),
+      blockRange.getFontColors()
+    );
+    const openCycleRow = getRollHistoryOpenCycleRow(cycleRows);
+    if (!openCycleRow) return;
+    const updates = {};
+    Object.keys(ROLL_HISTORY_ACTUAL_FIELD_DEFINITIONS).forEach(function(fieldName) {
+      const field = openCycleRow.fields[fieldName];
+      if (field && !field.isBlank && !field.planned && field.value !== '') {
+        updates[fieldName] = field.value;
+      }
+    });
+    const result = applyRollHistoryActualChangeToRoles(
+      roles,
+      definition.roleName,
+      updates,
+      new Date().toISOString()
+    );
+    if (!result.changed) return;
+    roles = result.roles;
+    updatedRoleNames.push(definition.roleName);
+    changedFields.push({ roleName: definition.roleName, fields: result.changedFields });
+  });
+
+  if (updatedRoleNames.length > 0) {
+    updateChangedRolesRows(roles, updatedRoleNames);
+    SpreadsheetApp.flush();
+    refreshRollManagementView();
+    refreshFieldRollManagementView();
+  }
+  return {
+    success: true,
+    updatedRoleNames: updatedRoleNames,
+    changedFields: changedFields
+  };
 }
 
 function initializeRollHistoryStatusSync() {
