@@ -3,7 +3,7 @@ const ROLL_MANAGEMENT_VIEW_SHEET_NAME = 'ロール管理表';
 const STAND_MASTER_SHEET_NAME = 'StandMaster';
 const INPUT_SHEET_NAMES = ['入力シート', 'Input', '入力'];
 const SPREADSHEET_ID = '1X07qQa7u9YPLvErT0D48goT5wYmvcpgNjqzK3FhRFeA';
-const SCRIPT_VERSION = 'roll-history-status-sync-v1';
+const SCRIPT_VERSION = 'roll-history-actual-sync-v1';
 const ROLES_EDIT_TRIGGER_HANDLER = 'handleRolesSheetEdit';
 const ROLES_EDIT_TRIGGER_LOCK_TIMEOUT_MS = 300000;
 const HEADER_VALUES = ['ID', 'スタンド番号', 'ステータス', 'メモ', '最終更新日', '作業依頼済み', '作業依頼進捗', '履歴', '現在径', '使用開始日', '溶射状態', '納入予定日', '組替指示期限', '使用終了日', '運用3セット対象', '次回組み込み予定'];
@@ -203,6 +203,9 @@ const ROLL_MANAGEMENT_VIEW_HEADER_BACKGROUND = '#1f4e78';
 const ROLL_MANAGEMENT_VIEW_HEADER_FONT_COLOR = '#ffffff';
 const ROLL_MANAGEMENT_VIEW_PLANNED_FONT_COLOR = '#7f8c8d';
 const ROLL_MANAGEMENT_VIEW_INBOUND_PLAN_DAYS = 25;
+const ROLL_HISTORY_ACTUAL_SYNC_SHEET_NAMES = ['16,17'];
+const ROLL_HISTORY_ACTUAL_NOTE_PREFIX = 'ROLL_ACTUAL_SYNC|';
+const ROLL_HISTORY_ACTUAL_SYNC_ROW_HEIGHT = 28;
 const FIELD_ROLL_MANAGEMENT_VIEW_SHEET_NAME = 'ロール管理表（現場）';
 const FIELD_ROLL_MANAGEMENT_VIEW_TITLE = '現場用 3セットロール管理表';
 const FIELD_ROLL_MANAGEMENT_VIEW_HEADERS = [
@@ -2686,7 +2689,8 @@ function importRollHistorySheetsFromSource() {
     destinationSpreadsheetName: destination.getName(),
     copiedSheets: copiedSheets,
     skippedSheets: skippedSheets,
-    statusSync: statusSync
+    statusSync: statusSync,
+    actualSync: statusSync.actualSync
   };
 }
 
@@ -2732,6 +2736,24 @@ function buildRollHistoryStatusFormula(roleName) {
   const escapedRoleName = String(roleName || '').replace(/"/g, '""');
   const prefix = (escapedRoleName + ROLL_HISTORY_STATUS_DISPLAY_SEPARATOR).replace(/"/g, '""');
   return '=IFERROR(LET(st,XLOOKUP("' + escapedRoleName + '",Roles!$B:$B,Roles!$C:$C,""),IF(st="","","' + prefix + '"&st)),"")';
+}
+
+function buildRollHistoryActualFormula(roleName) {
+  const escapedRoleName = String(roleName || '').replace(/"/g, '""');
+  return '=IFERROR(LET(' +
+    'r,MATCH("' + escapedRoleName + '",Roles!$B:$B,0),' +
+    'wp,INDEX(Roles!$G:$G,r),' +
+    'dia,INDEX(Roles!$I:$I,r),' +
+    'useStart,INDEX(Roles!$J:$J,r),' +
+    'useEnd,INDEX(Roles!$N:$N,r),' +
+    'dispatch,IFERROR(REGEXEXTRACT(wp,"""dispatchDate"":""([^""]*)"""),""),' +
+    'arrival,IFERROR(REGEXEXTRACT(wp,"""arrivalDate"":""([^""]*)"""),""),' +
+    '"搬出："&IF(dispatch="","－",SUBSTITUTE(dispatch,"-","/"))&"　"&' +
+    '"搬入："&IF(arrival="","－",SUBSTITUTE(arrival,"-","/"))&"　"&' +
+    '"径："&IF(dia="","－","φ"&TEXT(dia,"0.0"))&"　"&' +
+    '"開始："&IF(useStart="","－",IF(ISNUMBER(useStart),TEXT(useStart,"yyyy/mm/dd"),SUBSTITUTE(useStart,"-","/")))&"　"&' +
+    '"終了："&IF(useEnd="","－",IF(ISNUMBER(useEnd),TEXT(useEnd,"yyyy/mm/dd"),SUBSTITUTE(useEnd,"-","/")))' +
+    '),"")';
 }
 
 function buildRollHistoryStatusDefinitionsFromValues(values, lastColumn) {
@@ -2808,11 +2830,103 @@ function initializeRollHistoryStatusSync() {
     results.push(configureRollHistoryStatusBands(sheet, roleMap));
   });
 
+  const actualSync = initializeRollHistoryActualSync16_17();
+
   return {
     success: results.some(function(result) { return result.configured > 0; }),
     action: 'initialize-roll-history-status-sync',
+    sheets: results,
+    actualSync: actualSync
+  };
+}
+
+function initializeRollHistoryActualSync16_17() {
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const results = [];
+
+  ROLL_HISTORY_ACTUAL_SYNC_SHEET_NAMES.forEach(function(sheetName) {
+    const sheet = ss.getSheetByName(sheetName);
+    if (!sheet) {
+      results.push({ sheetName: sheetName, configured: 0, insertedRows: 0, missing: true });
+      return;
+    }
+
+    const groups = {};
+    getRollHistoryStatusDefinitions(sheet).forEach(function(definition) {
+      if (!groups[definition.bannerRow]) groups[definition.bannerRow] = [];
+      groups[definition.bannerRow].push(definition);
+    });
+
+    let configured = 0;
+    let insertedRows = 0;
+    const skipped = [];
+    Object.keys(groups).map(Number).sort(function(a, b) { return b - a; }).forEach(function(bannerRow) {
+      const definitions = groups[bannerRow];
+      const actualRow = bannerRow + 1;
+      const hasOwnedActualRow = definitions.some(function(definition) {
+        const note = String(sheet.getRange(actualRow, definition.startColumn).getNote() || '');
+        return note.indexOf(ROLL_HISTORY_ACTUAL_NOTE_PREFIX) === 0;
+      });
+
+      if (!hasOwnedActualRow) {
+        sheet.insertRowAfter(bannerRow);
+        insertedRows += 1;
+      }
+
+      definitions.forEach(function(definition) {
+        const result = configureRollHistoryActualBand(sheet, definition, actualRow);
+        if (result.configured) configured += 1;
+        if (result.reason) skipped.push({ roleName: definition.roleName, reason: result.reason });
+      });
+      sheet.setRowHeight(actualRow, ROLL_HISTORY_ACTUAL_SYNC_ROW_HEIGHT);
+    });
+
+    results.push({
+      sheetName: sheetName,
+      configured: configured,
+      insertedRows: insertedRows,
+      skipped: skipped.length,
+      skippedDetails: skipped
+    });
+  });
+
+  return {
+    success: results.some(function(result) { return result.configured > 0; }),
+    action: 'initialize-roll-history-actual-sync-16-17',
     sheets: results
   };
+}
+
+function configureRollHistoryActualBand(sheet, definition, actualRow) {
+  const columnCount = definition.endColumn - definition.startColumn + 1;
+  const bandRange = sheet.getRange(actualRow, definition.startColumn, 1, columnCount);
+  const topLeft = bandRange.getCell(1, 1);
+  const note = String(topLeft.getNote() || '');
+  const isOwnedBand = note.indexOf(ROLL_HISTORY_ACTUAL_NOTE_PREFIX) === 0;
+  const hasExistingContent = bandRange.getDisplayValues()[0].some(function(value) {
+    return String(value || '').trim() !== '';
+  });
+
+  if (hasExistingContent && !isOwnedBand) {
+    return { configured: false, reason: '実績行に既存データあり' };
+  }
+
+  if (bandRange.isPartOfMerge()) bandRange.breakApart();
+  bandRange.merge();
+  bandRange
+    .setHorizontalAlignment('center')
+    .setVerticalAlignment('middle')
+    .setWrap(false)
+    .setFontFamily('MS PGothic')
+    .setFontSize(11)
+    .setFontWeight('bold')
+    .setFontColor('#222222')
+    .setBackground('#eaf2f8')
+    .setBorder(true, true, true, true, false, false, '#7f8c8d', SpreadsheetApp.BorderStyle.SOLID);
+  topLeft
+    .setFormula(buildRollHistoryActualFormula(definition.roleName))
+    .setNote(ROLL_HISTORY_ACTUAL_NOTE_PREFIX + definition.roleName);
+  return { configured: true };
 }
 
 function configureRollHistoryStatusBands(sheet, roleMap) {
