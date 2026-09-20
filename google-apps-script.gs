@@ -3,7 +3,7 @@ const ROLL_MANAGEMENT_VIEW_SHEET_NAME = 'ロール管理表';
 const STAND_MASTER_SHEET_NAME = 'StandMaster';
 const INPUT_SHEET_NAMES = ['入力シート', 'Input', '入力'];
 const SPREADSHEET_ID = '1X07qQa7u9YPLvErT0D48goT5wYmvcpgNjqzK3FhRFeA';
-const SCRIPT_VERSION = 'roll-history-actual-two-way-sync-v3';
+const SCRIPT_VERSION = 'roll-history-cycle-close-on-use-end-v4';
 const ROLES_EDIT_TRIGGER_HANDLER = 'handleRolesSheetEdit';
 const ROLES_EDIT_TRIGGER_LOCK_TIMEOUT_MS = 300000;
 const HEADER_VALUES = ['ID', 'スタンド番号', 'ステータス', 'メモ', '最終更新日', '作業依頼済み', '作業依頼進捗', '履歴', '現在径', '使用開始日', '溶射状態', '納入予定日', '組替指示期限', '使用終了日', '運用3セット対象', '次回組み込み予定'];
@@ -2897,7 +2897,7 @@ function normalizeRollHistoryActualSnapshot(role) {
 
 function rollHistoryActualValuesEqual(fieldName, left, right) {
   if (left === '' || right === '' || left === undefined || right === undefined) return false;
-  if (fieldName === 'currentDiameter') return Math.abs(Number(left) - Number(right)) < 0.011;
+  if (fieldName === 'currentDiameter') return Math.abs(Number(left) - Number(right)) < 0.051;
   return String(left) === String(right);
 }
 
@@ -2913,6 +2913,22 @@ function getRollHistoryOpenCycleRow(cycleRows) {
   return rows[lastCompletedIndex + 1] || null;
 }
 
+function rollHistoryCycleRowMatchesSnapshot(row, actualSnapshot, excludedFieldName) {
+  if (!row || !row.fields || !actualSnapshot) return false;
+  return Object.keys(ROLL_HISTORY_ACTUAL_FIELD_DEFINITIONS).some(function(fieldName) {
+    if (fieldName === excludedFieldName || fieldName === 'useEndDate') return false;
+    const field = row.fields[fieldName];
+    const desiredValue = actualSnapshot[fieldName];
+    return field
+      && !field.isBlank
+      && !field.planned
+      && desiredValue !== ''
+      && desiredValue !== undefined
+      && desiredValue !== null
+      && rollHistoryActualValuesEqual(fieldName, field.value, desiredValue);
+  });
+}
+
 function planRollHistoryActualWrites(cycleRows, actualSnapshot) {
   const rows = Array.isArray(cycleRows) ? cycleRows : [];
   const writes = [];
@@ -2924,7 +2940,18 @@ function planRollHistoryActualWrites(cycleRows, actualSnapshot) {
     const desiredValue = actualSnapshot && actualSnapshot[fieldName];
     if (desiredValue === '' || desiredValue === undefined || desiredValue === null) return;
 
-    if ((fieldName === 'dispatchDate' || fieldName === 'arrivalDate') && openCycleRow) {
+    const openCycleField = openCycleRow && openCycleRow.fields[fieldName];
+    const openCycleHasThisActual = openCycleField
+      && !openCycleField.isBlank
+      && !openCycleField.planned;
+    const belongsToOpenCycle = openCycleRow && (
+      fieldName === 'dispatchDate'
+      || fieldName === 'arrivalDate'
+      || openCycleHasThisActual
+      || rollHistoryCycleRowMatchesSnapshot(openCycleRow, actualSnapshot, fieldName)
+    );
+
+    if (belongsToOpenCycle) {
       const openCycleField = openCycleRow.fields[fieldName];
       if (openCycleField && !openCycleField.planned
         && rollHistoryActualValuesEqual(fieldName, openCycleField.value, desiredValue)) {
