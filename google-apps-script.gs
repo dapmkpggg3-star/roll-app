@@ -3,7 +3,7 @@ const ROLL_MANAGEMENT_VIEW_SHEET_NAME = 'ロール管理表';
 const STAND_MASTER_SHEET_NAME = 'StandMaster';
 const INPUT_SHEET_NAMES = ['入力シート', 'Input', '入力'];
 const SPREADSHEET_ID = '1X07qQa7u9YPLvErT0D48goT5wYmvcpgNjqzK3FhRFeA';
-const SCRIPT_VERSION = 'roll-history-actual-cycle-sync-v1';
+const SCRIPT_VERSION = 'roll-history-actual-cycle-correction-v2';
 const ROLES_EDIT_TRIGGER_HANDLER = 'handleRolesSheetEdit';
 const ROLES_EDIT_TRIGGER_LOCK_TIMEOUT_MS = 300000;
 const HEADER_VALUES = ['ID', 'スタンド番号', 'ステータス', 'メモ', '最終更新日', '作業依頼済み', '作業依頼進捗', '履歴', '現在径', '使用開始日', '溶射状態', '納入予定日', '組替指示期限', '使用終了日', '運用3セット対象', '次回組み込み予定'];
@@ -2898,15 +2898,43 @@ function rollHistoryActualValuesEqual(fieldName, left, right) {
   return String(left) === String(right);
 }
 
+function getRollHistoryOpenCycleRow(cycleRows) {
+  const rows = Array.isArray(cycleRows) ? cycleRows : [];
+  let lastCompletedIndex = -1;
+  rows.forEach(function(row, index) {
+    const useEndField = row && row.fields && row.fields.useEndDate;
+    if (useEndField && !useEndField.isBlank && !useEndField.planned) {
+      lastCompletedIndex = index;
+    }
+  });
+  return rows[lastCompletedIndex + 1] || null;
+}
+
 function planRollHistoryActualWrites(cycleRows, actualSnapshot) {
   const rows = Array.isArray(cycleRows) ? cycleRows : [];
   const writes = [];
   const unchanged = [];
   const conflicts = [];
+  const openCycleRow = getRollHistoryOpenCycleRow(rows);
 
   Object.keys(ROLL_HISTORY_ACTUAL_FIELD_DEFINITIONS).forEach(function(fieldName) {
     const desiredValue = actualSnapshot && actualSnapshot[fieldName];
     if (desiredValue === '' || desiredValue === undefined || desiredValue === null) return;
+
+    if ((fieldName === 'dispatchDate' || fieldName === 'arrivalDate') && openCycleRow) {
+      const openCycleField = openCycleRow.fields[fieldName];
+      if (openCycleField && !openCycleField.planned
+        && rollHistoryActualValuesEqual(fieldName, openCycleField.value, desiredValue)) {
+        unchanged.push({ field: fieldName, rowNumber: openCycleRow.rowNumber, value: desiredValue });
+      } else {
+        writes.push({
+          field: fieldName,
+          rowNumber: openCycleRow.rowNumber,
+          value: desiredValue
+        });
+      }
+      return;
+    }
 
     const exactActual = rows.slice().reverse().find(function(row) {
       const field = row.fields[fieldName];
