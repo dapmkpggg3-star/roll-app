@@ -3,7 +3,7 @@ const ROLL_MANAGEMENT_VIEW_SHEET_NAME = 'ロール管理表';
 const STAND_MASTER_SHEET_NAME = 'StandMaster';
 const INPUT_SHEET_NAMES = ['入力シート', 'Input', '入力'];
 const SPREADSHEET_ID = '1X07qQa7u9YPLvErT0D48goT5wYmvcpgNjqzK3FhRFeA';
-const SCRIPT_VERSION = 'roll-history-status-only-v2';
+const SCRIPT_VERSION = 'roll-history-actual-cycle-sync-v1';
 const ROLES_EDIT_TRIGGER_HANDLER = 'handleRolesSheetEdit';
 const ROLES_EDIT_TRIGGER_LOCK_TIMEOUT_MS = 300000;
 const HEADER_VALUES = ['ID', 'スタンド番号', 'ステータス', 'メモ', '最終更新日', '作業依頼済み', '作業依頼進捗', '履歴', '現在径', '使用開始日', '溶射状態', '納入予定日', '組替指示期限', '使用終了日', '運用3セット対象', '次回組み込み予定'];
@@ -243,6 +243,16 @@ const ROLL_HISTORY_SHEET_NAMES = [
 const ROLL_HISTORY_STATUS_NOTE_PREFIX = 'ROLL_STATUS_SYNC|';
 const ROLL_HISTORY_STATUS_DISPLAY_SEPARATOR = '　ステータス：';
 const ROLL_HISTORY_STATUS_OPERATOR = { id: 'sheet', name: 'スプレッドシート' };
+const ROLL_HISTORY_ACTUAL_SHEET_NAME = '16,17';
+const ROLL_HISTORY_ACTUAL_FONT_COLOR = '#000000';
+const ROLL_HISTORY_PLANNED_FONT_COLORS = ['#ff0000', '#0000ff', '#1f4e78', '#7f8c8d'];
+const ROLL_HISTORY_ACTUAL_FIELD_DEFINITIONS = {
+  dispatchDate: { offset: 2, width: 3, pairField: 'arrivalDate' },
+  arrivalDate: { offset: 5, width: 3, pairField: 'dispatchDate' },
+  currentDiameter: { offset: 10, width: 1, pairField: 'arrivalDate' },
+  useStartDate: { offset: 11, width: 3, pairField: 'useEndDate' },
+  useEndDate: { offset: 14, width: 3, pairField: 'useStartDate' }
+};
 
 
 function doGet(e) {
@@ -1760,12 +1770,20 @@ function handleRolesSheetEdit(e) {
   try {
     lock.waitLock(ROLES_EDIT_TRIGGER_LOCK_TIMEOUT_MS);
     Logger.log('handleRolesSheetEdit: refreshing views for range ' + range.getA1Notation());
-    const onlineDiagnostics = diagnoseFieldStandOnlineStates(fetchRoles()).filter(function(item) {
+    const roles = fetchRoles();
+    const onlineDiagnostics = diagnoseFieldStandOnlineStates(roles).filter(function(item) {
       return item.roleCount > 0
         && (item.onlineState !== 'normal' || item.threeSetOnlineState === 'outside');
     });
     if (onlineDiagnostics.length > 0) {
       Logger.log('handleRolesSheetEdit: online anomalies=' + JSON.stringify(onlineDiagnostics));
+    }
+
+    try {
+      const actualSyncResult = syncRollHistoryActualsFromRoles16_17(roles);
+      Logger.log('handleRolesSheetEdit: history actuals updated: ' + JSON.stringify(actualSyncResult));
+    } catch (actualSyncError) {
+      Logger.log('handleRolesSheetEdit: history actual sync failed: ' + actualSyncError.toString());
     }
 
     try {
@@ -2792,6 +2810,250 @@ function getRollHistoryStatusDefinitions(sheet) {
   return buildRollHistoryStatusDefinitionsFromValues(values, lastColumn);
 }
 
+function normalizeRollHistoryActualDate(value) {
+  if (value === undefined || value === null || value === '') return '';
+  if (Object.prototype.toString.call(value) === '[object Date]' && !isNaN(value.getTime())) {
+    return [
+      String(value.getFullYear()).padStart(4, '0'),
+      String(value.getMonth() + 1).padStart(2, '0'),
+      String(value.getDate()).padStart(2, '0')
+    ].join('-');
+  }
+  const match = String(value).trim().match(/^(\d{4})[\/-](\d{1,2})[\/-](\d{1,2})(?:$|T)/);
+  if (!match) return '';
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(year, month - 1, day);
+  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) return '';
+  return [String(year).padStart(4, '0'), String(month).padStart(2, '0'), String(day).padStart(2, '0')].join('-');
+}
+
+function parseRollHistoryDateCells(cells) {
+  const parts = (Array.isArray(cells) ? cells : []).map(function(value) {
+    return String(value == null ? '' : value).replace(/予/g, '').trim();
+  });
+  if (parts.length === 1) return normalizeRollHistoryActualDate(parts[0]);
+  if (!parts[0] || !parts[1] || !parts[2]) return '';
+  return normalizeRollHistoryActualDate(parts[0] + '-' + parts[1] + '-' + parts[2]);
+}
+
+function parseRollHistoryDiameterCell(value) {
+  const normalized = String(value == null ? '' : value).replace(/予/g, '').replace(/,/g, '').trim();
+  if (!normalized) return '';
+  const match = normalized.match(/-?\d+(?:\.\d+)?/);
+  if (!match) return '';
+  const number = Number(match[0]);
+  return Number.isFinite(number) ? number : '';
+}
+
+function isRollHistoryPlannedField(cells, colors) {
+  const hasPlanText = (Array.isArray(cells) ? cells : []).some(function(value) {
+    return String(value == null ? '' : value).indexOf('予') >= 0;
+  });
+  const hasPlanColor = (Array.isArray(colors) ? colors : []).some(function(color) {
+    return ROLL_HISTORY_PLANNED_FONT_COLORS.indexOf(String(color || '').toLowerCase()) >= 0;
+  });
+  return hasPlanText || hasPlanColor;
+}
+
+function buildRollHistoryCycleRows(startRow, displayValues, fontColors) {
+  const rows = [];
+  (Array.isArray(displayValues) ? displayValues : []).forEach(function(row, rowIndex) {
+    const colors = (fontColors || [])[rowIndex] || [];
+    const fields = {};
+    Object.keys(ROLL_HISTORY_ACTUAL_FIELD_DEFINITIONS).forEach(function(fieldName) {
+      const definition = ROLL_HISTORY_ACTUAL_FIELD_DEFINITIONS[fieldName];
+      const cells = row.slice(definition.offset, definition.offset + definition.width);
+      const cellColors = colors.slice(definition.offset, definition.offset + definition.width);
+      const isBlank = cells.every(function(value) { return String(value == null ? '' : value).trim() === ''; });
+      fields[fieldName] = {
+        value: fieldName === 'currentDiameter'
+          ? parseRollHistoryDiameterCell(cells[0])
+          : parseRollHistoryDateCells(cells),
+        isBlank: isBlank,
+        planned: !isBlank && isRollHistoryPlannedField(cells, cellColors)
+      };
+    });
+    const hasContent = Object.keys(fields).some(function(fieldName) { return !fields[fieldName].isBlank; });
+    if (hasContent) rows.push({ rowNumber: Number(startRow) + rowIndex, fields: fields });
+  });
+  return rows;
+}
+
+function normalizeRollHistoryActualSnapshot(role) {
+  const progress = parseWorkProgress(role && role.workProgress);
+  return {
+    dispatchDate: normalizeRollHistoryActualDate(progress.dispatchDate),
+    arrivalDate: normalizeRollHistoryActualDate(progress.arrivalDate),
+    currentDiameter: parseRollHistoryDiameterCell(role && role.currentDiameter),
+    useStartDate: normalizeRollHistoryActualDate(role && role.useStartDate),
+    useEndDate: normalizeRollHistoryActualDate(role && role.useEndDate)
+  };
+}
+
+function rollHistoryActualValuesEqual(fieldName, left, right) {
+  if (left === '' || right === '' || left === undefined || right === undefined) return false;
+  if (fieldName === 'currentDiameter') return Math.abs(Number(left) - Number(right)) < 0.011;
+  return String(left) === String(right);
+}
+
+function planRollHistoryActualWrites(cycleRows, actualSnapshot) {
+  const rows = Array.isArray(cycleRows) ? cycleRows : [];
+  const writes = [];
+  const unchanged = [];
+  const conflicts = [];
+
+  Object.keys(ROLL_HISTORY_ACTUAL_FIELD_DEFINITIONS).forEach(function(fieldName) {
+    const desiredValue = actualSnapshot && actualSnapshot[fieldName];
+    if (desiredValue === '' || desiredValue === undefined || desiredValue === null) return;
+
+    const exactActual = rows.slice().reverse().find(function(row) {
+      const field = row.fields[fieldName];
+      return field && !field.planned && rollHistoryActualValuesEqual(fieldName, field.value, desiredValue);
+    });
+    if (exactActual) {
+      unchanged.push({ field: fieldName, rowNumber: exactActual.rowNumber, value: desiredValue });
+      return;
+    }
+
+    const definition = ROLL_HISTORY_ACTUAL_FIELD_DEFINITIONS[fieldName];
+    const pairFieldName = definition.pairField;
+    const pairValue = actualSnapshot && actualSnapshot[pairFieldName];
+    let targetRow = null;
+    if (pairValue !== '' && pairValue !== undefined && pairValue !== null) {
+      targetRow = rows.slice().reverse().find(function(row) {
+        const pairField = row.fields[pairFieldName];
+        return pairField && !pairField.planned
+          && rollHistoryActualValuesEqual(pairFieldName, pairField.value, pairValue);
+      }) || null;
+    }
+
+    if (targetRow) {
+      const targetField = targetRow.fields[fieldName];
+      if (targetField.isBlank || targetField.planned) {
+        writes.push({ field: fieldName, rowNumber: targetRow.rowNumber, value: desiredValue });
+      } else {
+        conflicts.push({
+          field: fieldName,
+          rowNumber: targetRow.rowNumber,
+          expected: desiredValue,
+          existing: targetField.value,
+          reason: 'paired-row-has-different-actual'
+        });
+      }
+      return;
+    }
+
+    const plannedRow = rows.find(function(row) {
+      return row.fields[fieldName] && row.fields[fieldName].planned;
+    });
+    if (plannedRow) {
+      writes.push({ field: fieldName, rowNumber: plannedRow.rowNumber, value: desiredValue });
+      return;
+    }
+
+    conflicts.push({
+      field: fieldName,
+      rowNumber: 0,
+      expected: desiredValue,
+      existing: '',
+      reason: 'no-safe-cycle-row'
+    });
+  });
+
+  return { writes: writes, unchanged: unchanged, conflicts: conflicts };
+}
+
+function getRollHistoryActualBlockEndRow(definition, definitions, lastRow) {
+  const nextDefinition = (definitions || []).filter(function(candidate) {
+    return candidate.startColumn === definition.startColumn && candidate.headerRow > definition.headerRow;
+  }).sort(function(left, right) { return left.headerRow - right.headerRow; })[0];
+  return nextDefinition ? nextDefinition.bannerRow - 1 : lastRow;
+}
+
+function writeRollHistoryActualValue(sheet, definition, write) {
+  const fieldDefinition = ROLL_HISTORY_ACTUAL_FIELD_DEFINITIONS[write.field];
+  const range = sheet.getRange(
+    write.rowNumber,
+    definition.startColumn + fieldDefinition.offset,
+    1,
+    fieldDefinition.width
+  );
+  if (write.field === 'currentDiameter') {
+    range.setValue(Number(write.value)).setFontColor(ROLL_HISTORY_ACTUAL_FONT_COLOR);
+  } else {
+    const parts = String(write.value).split('-').map(Number);
+    range.setValues([[parts[0], parts[1], parts[2]]]).setFontColor(ROLL_HISTORY_ACTUAL_FONT_COLOR);
+  }
+  return range.getA1Notation();
+}
+
+function syncRollHistoryActualsFromRoles16_17(roles, roleNames) {
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const sheet = ss.getSheetByName(ROLL_HISTORY_ACTUAL_SHEET_NAME);
+  if (!sheet) throw new Error(ROLL_HISTORY_ACTUAL_SHEET_NAME + ' シートが見つかりません。');
+
+  const requestedNames = new Set((roleNames || []).map(function(name) { return String(name || '').trim(); }));
+  const roleMap = new Map((Array.isArray(roles) ? roles : fetchRoles()).filter(function(role) {
+    const standNumber = getRollManagementViewStandInfo(role && role.name).number;
+    const roleName = String(role && role.name || '').trim();
+    return (standNumber === 16 || standNumber === 17)
+      && normalizeBooleanForFieldRollManagement(role && role.isActiveThreeSet)
+      && (requestedNames.size === 0 || requestedNames.has(roleName));
+  }).map(function(role) {
+    return [String(role.name || '').trim(), role];
+  }));
+
+  const definitions = getRollHistoryStatusDefinitions(sheet);
+  const result = { sheetName: sheet.getName(), written: [], unchanged: [], conflicts: [], skipped: [] };
+  definitions.forEach(function(definition) {
+    const role = roleMap.get(definition.roleName);
+    if (!role) return;
+    const endRow = getRollHistoryActualBlockEndRow(definition, definitions, sheet.getLastRow());
+    const rowCount = Math.max(endRow - definition.roleIdRow + 1, 0);
+    if (rowCount <= 0) {
+      result.skipped.push({ roleName: definition.roleName, reason: '履歴行なし' });
+      return;
+    }
+    const columnCount = definition.endColumn - definition.startColumn + 1;
+    const blockRange = sheet.getRange(definition.roleIdRow, definition.startColumn, rowCount, columnCount);
+    const cycleRows = buildRollHistoryCycleRows(
+      definition.roleIdRow,
+      blockRange.getDisplayValues(),
+      blockRange.getFontColors()
+    );
+    const plan = planRollHistoryActualWrites(cycleRows, normalizeRollHistoryActualSnapshot(role));
+    plan.writes.forEach(function(write) {
+      result.written.push({
+        roleName: definition.roleName,
+        field: write.field,
+        value: write.value,
+        range: writeRollHistoryActualValue(sheet, definition, write)
+      });
+    });
+    plan.unchanged.forEach(function(item) {
+      result.unchanged.push({ roleName: definition.roleName, field: item.field, value: item.value, rowNumber: item.rowNumber });
+    });
+    plan.conflicts.forEach(function(item) {
+      result.conflicts.push({
+        roleName: definition.roleName,
+        field: item.field,
+        expected: item.expected,
+        existing: item.existing,
+        rowNumber: item.rowNumber,
+        reason: item.reason
+      });
+    });
+  });
+  Logger.log('syncRollHistoryActualsFromRoles16_17: ' + JSON.stringify(result));
+  return result;
+}
+
+function syncRollHistoryActuals16_17() {
+  return syncRollHistoryActualsFromRoles16_17(fetchRoles());
+}
+
 function initializeRollHistoryStatusSync() {
   const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
   const roleMap = new Map(fetchRoles().map(function(role) {
@@ -2948,6 +3210,13 @@ function handleRollHistoryStatusEdit(e) {
     updateChangedRolesRows(result.roles, result.updatedRoleNames);
     SpreadsheetApp.flush();
     restoreFormula();
+
+    try {
+      const actualSyncResult = syncRollHistoryActualsFromRoles16_17(result.roles, result.updatedRoleNames);
+      Logger.log('handleRollHistoryStatusEdit: history actuals updated: ' + JSON.stringify(actualSyncResult));
+    } catch (actualSyncError) {
+      Logger.log('handleRollHistoryStatusEdit: history actual sync failed: ' + actualSyncError.toString());
+    }
 
     try {
       refreshRollManagementView();
@@ -3440,6 +3709,14 @@ function writeRoles(roles) {
   Logger.log('ROLL_DEBUG_GAS_WRITE_BEFORE_SET_VALUES values.length=' + values.length + ', expectedColumns=' + HEADER_VALUES.length + ', invalidColumnRows=' + JSON.stringify(invalidColumnRows));
   sheet.getRange(1, 1, values.length, HEADER_VALUES.length).setValues(values);
   applySheetFormatting(sheet, rows.length);
+
+  try {
+    SpreadsheetApp.flush();
+    const actualSyncResult = syncRollHistoryActualsFromRoles16_17(fetchRoles());
+    Logger.log('writeRoles: history actuals updated: ' + JSON.stringify(actualSyncResult));
+  } catch (actualSyncError) {
+    Logger.log('writeRoles: history actual sync failed: ' + actualSyncError.toString());
+  }
 
   try {
     const viewResult = refreshRollManagementView();
