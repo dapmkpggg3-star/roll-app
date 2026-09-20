@@ -35,4 +35,6 @@ The migration copies whole sheets so the original history layout and formulas ar
 
 Do not add a separate actuals summary row under a status band. Dispatch, arrival, diameter, use start, and use end belong in the existing historical cycle columns. Actual values and planned values must remain distinguishable there, and completed history must not keep following the mutable current-state cells in `Roles`.
 
+For the active three-set rolls on stands 16 and 17, application and `Roles` saves call `syncRollHistoryActualsFromRoles16_17()`. The sync writes confirmed values into the existing cycle row in black. A planned value in that row is replaced by the confirmed value; an existing different black actual is never overwritten. Such a mismatch is returned in `conflicts` for manual review. Run `syncRollHistoryActuals16_17()` when a manual full rescan is needed.
+
 If the sheets already exist, running `initializeRollHistoryStatusSync()` again is safe: it only reconfigures bands owned by the status integration and skips rows containing unrelated data.
