@@ -33,4 +33,6 @@ setRollHistorySourceSpreadsheetId('SOURCE_SPREADSHEET_ID');
 
 The migration copies whole sheets so the original history layout and formulas are retained. `Roles` remains the shared application data source. Status edits from either the application or a paired stand sheet use `updatedAt` conflict resolution; the newest edit wins and both history logs are retained. Assigning a new `オンライン` roll from a paired stand sheet also retires the old online roll in the same locked update.
 
+The `16,17` history sheet also shows the current dispatch date, arrival date, diameter, use start date, and use end date in a separate actuals band directly below each status band. These values are read from `Roles`, so application edits appear without overwriting the imported historical rows.
+
 If the sheets already exist, running `initializeRollHistoryStatusSync()` again is safe: it only reconfigures bands owned by the status integration and skips rows containing unrelated data.
