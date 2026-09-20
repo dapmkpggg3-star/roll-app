@@ -167,3 +167,62 @@ test('cycle rows distinguish blue or red plans from black actuals', () => {
     assert.equal(rows[0].fields.useStartDate.value, '');
     assert.equal(rows[0].fields.useStartDate.planned, true);
 });
+
+test('sheet-side dispatch correction updates the role work progress and history', () => {
+    const gas = loadGasFunctions();
+    const roles = [{
+        id: 69,
+        name: '#17-90',
+        updatedAt: '2026-09-20T13:55:55.824Z',
+        workProgress: { dispatchDate: '2026-08-22', arrivalDate: '' },
+        history: []
+    }];
+    const result = gas.applyRollHistoryActualChangeToRoles(
+        roles,
+        '#17-90',
+        { dispatchDate: '2026-08-21' },
+        '2026-09-20T14:10:00.000Z'
+    );
+
+    assert.equal(result.changed, true);
+    assert.deepEqual(JSON.parse(JSON.stringify(result.changedFields)), ['dispatchDate']);
+    assert.equal(result.roles[0].workProgress.dispatchDate, '2026-08-21');
+    assert.equal(result.roles[0].updatedAt, '2026-09-20T14:10:00.000Z');
+    assert.equal(result.roles[0].history[0].before, '2026-08-22');
+    assert.equal(result.roles[0].history[0].after, '2026-08-21');
+    assert.equal(result.roles[0].history[0].operator.name, 'スプレッドシート');
+    assert.equal(roles[0].workProgress.dispatchDate, '2026-08-22');
+});
+
+test('sheet-side actual synchronization supports all five fields and clearing dates', () => {
+    const gas = loadGasFunctions();
+    const roles = [{
+        id: 69,
+        name: '#17-90',
+        currentDiameter: 338,
+        useStartDate: '2026-04-18',
+        useEndDate: '2026-07-07',
+        workProgress: { dispatchDate: '2026-08-21', arrivalDate: '2026-10-20' },
+        history: []
+    }];
+    const result = gas.applyRollHistoryActualChangeToRoles(
+        roles,
+        '#17-90',
+        {
+            dispatchDate: '',
+            arrivalDate: '2026-10-21',
+            currentDiameter: 335.5,
+            useStartDate: '2027-01-05',
+            useEndDate: '2027-05-10'
+        },
+        '2026-09-20T14:20:00.000Z'
+    );
+    const role = result.roles[0];
+
+    assert.equal(role.workProgress.dispatchDate, '');
+    assert.equal(role.workProgress.arrivalDate, '2026-10-21');
+    assert.equal(role.currentDiameter, 335.5);
+    assert.equal(role.useStartDate, '2027-01-05');
+    assert.equal(role.useEndDate, '2027-05-10');
+    assert.equal(role.history.length, 5);
+});
