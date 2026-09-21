@@ -457,12 +457,12 @@ test('two-digit history years are normalized to 2000-based app dates', () => {
     assert.equal(gas.parseRollHistoryDateCells(['2026', '8', '21']), '2026-08-21');
 });
 
-test('stands 2 through 5 protect the combined diameter cell from synchronization', () => {
+test('stands 2 through 5 protect their two-roll actual fields from synchronization', () => {
     const gas = loadGasFunctions();
 
     assert.deepEqual(
         JSON.parse(JSON.stringify(gas.getRollHistoryActualFieldNamesForStand(2))),
-        ['dispatchDate', 'arrivalDate', 'useStartDate', 'useEndDate']
+        []
     );
     assert.deepEqual(
         JSON.parse(JSON.stringify(gas.getRollHistoryActualFieldNamesForStand(6))),
@@ -470,7 +470,7 @@ test('stands 2 through 5 protect the combined diameter cell from synchronization
     );
 });
 
-test('protected diameter is neither written nor warned as missing for stand 2', () => {
+test('protected two-roll actuals are neither written nor warned as missing for stand 2', () => {
     const gas = loadGasFunctions();
     const completed = cycle(12, {
         dispatchDate: field('2026-08-21'),
@@ -491,17 +491,17 @@ test('protected diameter is neither written nor warned as missing for stand 2', 
         gas.getRollHistoryActualFieldNamesForStand(2)
     );
 
-    assert.equal(plan.writes.some((write) => write.field === 'currentDiameter'), false);
+    assert.deepEqual(JSON.parse(JSON.stringify(plan.writes)), []);
     assert.deepEqual(
         JSON.parse(JSON.stringify(gas.getRollHistoryIncompleteActualFieldNames(completed, 2))),
         []
     );
 });
 
-test('diameter-only changes on stands 2 through 5 do not trigger a history-sheet scan', () => {
+test('actual-only changes on stands 2 through 5 do not trigger a history-sheet scan', () => {
     const gas = loadGasFunctions();
-    const before = [{ name: '#2-11', currentDiameter: 392, isActiveThreeSet: true, workProgress: {} }];
-    const after = [{ name: '#2-11', currentDiameter: 390, isActiveThreeSet: true, workProgress: {} }];
+    const before = [{ name: '#2-11', currentDiameter: 392, isActiveThreeSet: true, workProgress: { dispatchDate: '2026-08-21' } }];
+    const after = [{ name: '#2-11', currentDiameter: 390, isActiveThreeSet: true, workProgress: { dispatchDate: '2026-08-22' } }];
 
     assert.deepEqual(
         JSON.parse(JSON.stringify(gas.getRollHistoryActualChangedRoleNames(before, after))),
