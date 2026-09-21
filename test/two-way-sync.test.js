@@ -126,6 +126,40 @@ test('history sheet block detection finds both stands and their roll IDs', () =>
     );
 });
 
+test('vertical and horizontal component labels normalize to one roll set', () => {
+    const gas = loadGasFunctions();
+
+    assert.equal(gas.normalizeRollHistoryRoleName('2-11-DS'), '#2-11');
+    assert.equal(gas.normalizeRollHistoryRoleName('2-11-WS'), '#2-11');
+    assert.equal(gas.normalizeRollHistoryRoleName('3-11-上'), '#3-11');
+    assert.equal(gas.normalizeRollHistoryRoleName('3-11-下'), '#3-11');
+    assert.equal(gas.normalizeRollHistoryRoleName('6-上-49'), '#6-49');
+    assert.equal(gas.normalizeRollHistoryRoleName('6-下-49'), '#6-49');
+    assert.equal(gas.normalizeRollHistoryRoleName('＃２－１１－ＤＳ'), '#2-11');
+    assert.equal(gas.normalizeRollHistoryRoleName('#3-11'), '#3-11');
+});
+
+test('history block detection treats DS WS and upper lower rows as one set', () => {
+    const gas = loadGasFunctions();
+    const rows = [
+        new Array(38).fill(''),
+        ['#2st', ...new Array(17).fill(''), '#3st'],
+        new Array(38).fill(''),
+        new Array(38).fill(''),
+        ['2-11-DS', ...new Array(17).fill(''), '3-11-上'],
+        ['2-11-WS', ...new Array(17).fill(''), '3-11-下']
+    ];
+
+    const definitions = gas.buildRollHistoryStatusDefinitionsFromValues(rows, 38);
+    assert.deepEqual(
+        JSON.parse(JSON.stringify(definitions.map(item => ({ roleName: item.roleName, standNumber: item.standNumber })))),
+        [
+            { roleName: '#2-11', standNumber: 2 },
+            { roleName: '#3-11', standNumber: 3 }
+        ]
+    );
+});
+
 test('history status formula and dropdown text use the shared Roles status', () => {
     const gas = loadGasFunctions();
     assert.equal(
