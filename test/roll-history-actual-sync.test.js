@@ -457,20 +457,22 @@ test('two-digit history years are normalized to 2000-based app dates', () => {
     assert.equal(gas.parseRollHistoryDateCells(['2026', '8', '21']), '2026-08-21');
 });
 
-test('stands 2 through 5 protect their two-roll actual fields from synchronization', () => {
+test('every managed stand synchronizes the five actual fields by roll set', () => {
     const gas = loadGasFunctions();
 
     assert.deepEqual(
         JSON.parse(JSON.stringify(gas.getRollHistoryActualFieldNamesForStand(2))),
-        []
+        ['dispatchDate', 'arrivalDate', 'currentDiameter', 'useStartDate', 'useEndDate']
     );
     assert.deepEqual(
         JSON.parse(JSON.stringify(gas.getRollHistoryActualFieldNamesForStand(6))),
         ['dispatchDate', 'arrivalDate', 'currentDiameter', 'useStartDate', 'useEndDate']
     );
+    assert.deepEqual(JSON.parse(JSON.stringify(gas.getRollHistoryActualFieldNamesForStand(1))), []);
+    assert.deepEqual(JSON.parse(JSON.stringify(gas.getRollHistoryActualFieldNamesForStand(18))), []);
 });
 
-test('protected two-roll actuals are neither written nor warned as missing for stand 2', () => {
+test('stand 2 plans and validates actual fields as one DS WS roll set', () => {
     const gas = loadGasFunctions();
     const completed = cycle(12, {
         dispatchDate: field('2026-08-21'),
@@ -491,20 +493,23 @@ test('protected two-roll actuals are neither written nor warned as missing for s
         gas.getRollHistoryActualFieldNamesForStand(2)
     );
 
-    assert.deepEqual(JSON.parse(JSON.stringify(plan.writes)), []);
+    assert.deepEqual(
+        JSON.parse(JSON.stringify(plan.writes)),
+        [{ field: 'currentDiameter', rowNumber: 12, value: 390 }]
+    );
     assert.deepEqual(
         JSON.parse(JSON.stringify(gas.getRollHistoryIncompleteActualFieldNames(completed, 2))),
-        []
+        ['currentDiameter']
     );
 });
 
-test('actual-only changes on stands 2 through 5 do not trigger a history-sheet scan', () => {
+test('actual-only changes on stand 2 trigger its paired history-sheet scan', () => {
     const gas = loadGasFunctions();
     const before = [{ name: '#2-11', currentDiameter: 392, isActiveThreeSet: true, workProgress: { dispatchDate: '2026-08-21' } }];
     const after = [{ name: '#2-11', currentDiameter: 390, isActiveThreeSet: true, workProgress: { dispatchDate: '2026-08-22' } }];
 
     assert.deepEqual(
         JSON.parse(JSON.stringify(gas.getRollHistoryActualChangedRoleNames(before, after))),
-        []
+        ['#2-11']
     );
 });
