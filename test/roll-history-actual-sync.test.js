@@ -409,3 +409,102 @@ test('sheet-side actual synchronization supports all five fields and clearing da
     assert.equal(role.useEndDate, '2027-05-10');
     assert.equal(role.history.length, 5);
 });
+
+test('every managed stand maps to its paired history sheet', () => {
+    const gas = loadGasFunctions();
+    const expected = {
+        2: '2,3', 3: '2,3', 4: '4,5', 5: '4,5',
+        6: '6,7', 7: '6,7', 8: '8,9', 9: '8,9',
+        10: '10,11', 11: '10,11', 12: '12,13', 13: '12,13',
+        14: '14,15', 15: '14,15', 16: '16,17', 17: '16,17'
+    };
+
+    Object.entries(expected).forEach(([stand, sheetName]) => {
+        assert.equal(gas.getRollHistorySheetNameForStandNumber(Number(stand)), sheetName);
+    });
+    assert.equal(gas.getRollHistorySheetNameForStandNumber(1), '');
+    assert.equal(gas.getRollHistorySheetNameForStandNumber(18), '');
+});
+
+test('actual synchronization rejects a roll block that is narrower than five fields', () => {
+    const gas = loadGasFunctions();
+
+    assert.equal(gas.isRollHistoryActualDefinitionCompatible({ startColumn: 1, endColumn: 17 }), true);
+    assert.equal(gas.isRollHistoryActualDefinitionCompatible({ startColumn: 1, endColumn: 16 }), false);
+});
+
+test('app saves target only roles whose actual fields or three-set flag changed', () => {
+    const gas = loadGasFunctions();
+    const before = [
+        { name: '#2-11', currentDiameter: 410, isActiveThreeSet: true, workProgress: {} },
+        { name: '#17-90', currentDiameter: 338, isActiveThreeSet: true, workProgress: { dispatchDate: '2026-08-21' } }
+    ];
+    const after = [
+        { name: '#2-11', currentDiameter: 410, isActiveThreeSet: true, memo: 'changed', workProgress: {} },
+        { name: '#17-90', currentDiameter: 338, isActiveThreeSet: true, workProgress: { dispatchDate: '2026-08-22' } }
+    ];
+
+    assert.deepEqual(
+        JSON.parse(JSON.stringify(gas.getRollHistoryActualChangedRoleNames(before, after))),
+        ['#17-90']
+    );
+});
+
+test('two-digit history years are normalized to 2000-based app dates', () => {
+    const gas = loadGasFunctions();
+
+    assert.equal(gas.parseRollHistoryDateCells(['26', '8', '21']), '2026-08-21');
+    assert.equal(gas.parseRollHistoryDateCells(['2026', '8', '21']), '2026-08-21');
+});
+
+test('stands 2 through 5 protect the combined diameter cell from synchronization', () => {
+    const gas = loadGasFunctions();
+
+    assert.deepEqual(
+        JSON.parse(JSON.stringify(gas.getRollHistoryActualFieldNamesForStand(2))),
+        ['dispatchDate', 'arrivalDate', 'useStartDate', 'useEndDate']
+    );
+    assert.deepEqual(
+        JSON.parse(JSON.stringify(gas.getRollHistoryActualFieldNamesForStand(6))),
+        ['dispatchDate', 'arrivalDate', 'currentDiameter', 'useStartDate', 'useEndDate']
+    );
+});
+
+test('protected diameter is neither written nor warned as missing for stand 2', () => {
+    const gas = loadGasFunctions();
+    const completed = cycle(12, {
+        dispatchDate: field('2026-08-21'),
+        arrivalDate: field('2026-10-01'),
+        currentDiameter: field('', { blank: true }),
+        useStartDate: field('2027-01-05'),
+        useEndDate: field('2027-05-10')
+    });
+    const plan = gas.planRollHistoryActualWrites(
+        [completed],
+        {
+            dispatchDate: '2026-08-21',
+            arrivalDate: '2026-10-01',
+            currentDiameter: 390,
+            useStartDate: '2027-01-05',
+            useEndDate: '2027-05-10'
+        },
+        gas.getRollHistoryActualFieldNamesForStand(2)
+    );
+
+    assert.equal(plan.writes.some((write) => write.field === 'currentDiameter'), false);
+    assert.deepEqual(
+        JSON.parse(JSON.stringify(gas.getRollHistoryIncompleteActualFieldNames(completed, 2))),
+        []
+    );
+});
+
+test('diameter-only changes on stands 2 through 5 do not trigger a history-sheet scan', () => {
+    const gas = loadGasFunctions();
+    const before = [{ name: '#2-11', currentDiameter: 392, isActiveThreeSet: true, workProgress: {} }];
+    const after = [{ name: '#2-11', currentDiameter: 390, isActiveThreeSet: true, workProgress: {} }];
+
+    assert.deepEqual(
+        JSON.parse(JSON.stringify(gas.getRollHistoryActualChangedRoleNames(before, after))),
+        []
+    );
+});
