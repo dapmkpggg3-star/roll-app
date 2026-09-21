@@ -3,7 +3,7 @@ const ROLL_MANAGEMENT_VIEW_SHEET_NAME = 'ロール管理表';
 const STAND_MASTER_SHEET_NAME = 'StandMaster';
 const INPUT_SHEET_NAMES = ['入力シート', 'Input', '入力'];
 const SPREADSHEET_ID = '1X07qQa7u9YPLvErT0D48goT5wYmvcpgNjqzK3FhRFeA';
-const SCRIPT_VERSION = 'roll-history-incomplete-cycle-warning-v5';
+const SCRIPT_VERSION = 'roll-history-all-sheets-sync-v6';
 const ROLES_EDIT_TRIGGER_HANDLER = 'handleRolesSheetEdit';
 const ROLES_EDIT_TRIGGER_LOCK_TIMEOUT_MS = 300000;
 const HEADER_VALUES = ['ID', 'スタンド番号', 'ステータス', 'メモ', '最終更新日', '作業依頼済み', '作業依頼進捗', '履歴', '現在径', '使用開始日', '溶射状態', '納入予定日', '組替指示期限', '使用終了日', '運用3セット対象', '次回組み込み予定'];
@@ -243,7 +243,6 @@ const ROLL_HISTORY_SHEET_NAMES = [
 const ROLL_HISTORY_STATUS_NOTE_PREFIX = 'ROLL_STATUS_SYNC|';
 const ROLL_HISTORY_STATUS_DISPLAY_SEPARATOR = '　ステータス：';
 const ROLL_HISTORY_STATUS_OPERATOR = { id: 'sheet', name: 'スプレッドシート' };
-const ROLL_HISTORY_ACTUAL_SHEET_NAME = '16,17';
 const ROLL_HISTORY_ACTUAL_FONT_COLOR = '#000000';
 const ROLL_HISTORY_PLANNED_FONT_COLORS = ['#ff0000', '#0000ff', '#1f4e78', '#7f8c8d'];
 const ROLL_HISTORY_INCOMPLETE_WARNING_COLOR = '#fff2cc';
@@ -1781,6 +1780,12 @@ function handleRolesSheetEdit(e) {
 
   ensureRolesHeader(sheet);
   stampRolesSheetEditedAt(range);
+  const firstRoleRow = Math.max(range.getRow(), 2);
+  const editedRoleNames = firstRoleRow <= lastEditedRow
+    ? sheet.getRange(firstRoleRow, 2, lastEditedRow - firstRoleRow + 1, 1).getDisplayValues().map(function(row) {
+      return String(row[0] || '').trim();
+    }).filter(Boolean)
+    : [];
 
   const documentLock = LockService.getDocumentLock();
   const lock = documentLock || LockService.getScriptLock();
@@ -1798,7 +1803,7 @@ function handleRolesSheetEdit(e) {
     }
 
     try {
-      const actualSyncResult = syncRollHistoryActualsFromRoles16_17(roles);
+      const actualSyncResult = syncRollHistoryActualsFromRoles(roles, editedRoleNames);
       Logger.log('handleRolesSheetEdit: history actuals updated: ' + JSON.stringify(actualSyncResult));
     } catch (actualSyncError) {
       Logger.log('handleRolesSheetEdit: history actual sync failed: ' + actualSyncError.toString());
@@ -2738,6 +2743,37 @@ function getRollHistoryBaseSheetName(sheetName) {
   return ROLL_HISTORY_SHEET_NAMES.indexOf(normalizedName) >= 0 ? normalizedName : '';
 }
 
+function getRollHistorySheetNameForStandNumber(standNumber) {
+  const stand = Number(standNumber) || 0;
+  if (stand < 2 || stand > 17) return '';
+  const firstStand = stand % 2 === 0 ? stand : stand - 1;
+  const sheetName = firstStand + ',' + (firstStand + 1);
+  return ROLL_HISTORY_SHEET_NAMES.indexOf(sheetName) >= 0 ? sheetName : '';
+}
+
+function isRollHistoryActualDefinitionCompatible(definition) {
+  if (!definition) return false;
+  const requiredLastColumn = Object.keys(ROLL_HISTORY_ACTUAL_FIELD_DEFINITIONS).reduce(function(maxColumn, fieldName) {
+    const field = ROLL_HISTORY_ACTUAL_FIELD_DEFINITIONS[fieldName];
+    return Math.max(maxColumn, definition.startColumn + field.offset + field.width - 1);
+  }, definition.startColumn);
+  return requiredLastColumn <= definition.endColumn;
+}
+
+function getRollHistoryActualFieldNamesForStand(standNumber) {
+  const stand = Number(standNumber) || 0;
+  return Object.keys(ROLL_HISTORY_ACTUAL_FIELD_DEFINITIONS).filter(function(fieldName) {
+    return fieldName !== 'currentDiameter' || stand >= 6;
+  });
+}
+
+function getRollHistoryIncompleteRequiredFieldNamesForStand(standNumber) {
+  const allowedFieldNames = new Set(getRollHistoryActualFieldNamesForStand(standNumber));
+  return ROLL_HISTORY_INCOMPLETE_REQUIRED_FIELDS.filter(function(fieldName) {
+    return allowedFieldNames.has(fieldName);
+  });
+}
+
 function parseRollHistoryStandNumber(value) {
   const text = String(value == null ? '' : value).trim().replace(/Ｓ/g, 'S').replace(/Ｔ/g, 'T');
   const match = text.match(/^#?\s*(\d+)\s*(?:S\.?\s*T\.?|ST)$/i);
@@ -2853,6 +2889,7 @@ function parseRollHistoryDateCells(cells) {
   });
   if (parts.length === 1) return normalizeRollHistoryActualDate(parts[0]);
   if (!parts[0] || !parts[1] || !parts[2]) return '';
+  if (/^\d{1,2}$/.test(parts[0])) parts[0] = String(2000 + Number(parts[0]));
   return normalizeRollHistoryActualDate(parts[0] + '-' + parts[1] + '-' + parts[2]);
 }
 
@@ -2947,10 +2984,13 @@ function getRollHistoryCurrentEditableCycleRow(cycleRows) {
   return latestCompletedRow || openCycleRow || null;
 }
 
-function getRollHistoryIncompleteActualFieldNames(cycleRow) {
+function getRollHistoryIncompleteActualFieldNames(cycleRow, standNumber) {
   const useEndField = cycleRow && cycleRow.fields && cycleRow.fields.useEndDate;
   if (!useEndField || useEndField.isBlank || useEndField.planned || useEndField.value === '') return [];
-  return ROLL_HISTORY_INCOMPLETE_REQUIRED_FIELDS.filter(function(fieldName) {
+  const requiredFieldNames = standNumber === undefined || standNumber === null
+    ? ROLL_HISTORY_INCOMPLETE_REQUIRED_FIELDS
+    : getRollHistoryIncompleteRequiredFieldNamesForStand(standNumber);
+  return requiredFieldNames.filter(function(fieldName) {
     const field = cycleRow.fields[fieldName];
     return !field || field.isBlank || field.planned || field.value === '' || field.value === undefined;
   });
@@ -2991,7 +3031,8 @@ function getRollHistoryCycleRowFromSheet(sheet, definition, rowNumber) {
 
 function updateRollHistoryIncompleteCycleWarning(sheet, definition, cycleRow) {
   if (!sheet || !definition || !cycleRow) return { missingFields: [], warnedRanges: [] };
-  const missingFields = getRollHistoryIncompleteActualFieldNames(cycleRow);
+  const requiredFieldNames = getRollHistoryIncompleteRequiredFieldNamesForStand(definition.standNumber);
+  const missingFields = getRollHistoryIncompleteActualFieldNames(cycleRow, definition.standNumber);
   const missingSet = new Set(missingFields);
   const missingLabels = missingFields.map(function(fieldName) {
     return ROLL_HISTORY_ACTUAL_FIELD_LABELS[fieldName] || fieldName;
@@ -2999,7 +3040,7 @@ function updateRollHistoryIncompleteCycleWarning(sheet, definition, cycleRow) {
   const warningMessage = '⚠ 使用終了済みですが、' + missingLabels.join('・') + 'の実績が未入力です。';
   const warnedRanges = [];
 
-  ROLL_HISTORY_INCOMPLETE_REQUIRED_FIELDS.forEach(function(fieldName) {
+  requiredFieldNames.forEach(function(fieldName) {
     const fieldDefinition = ROLL_HISTORY_ACTUAL_FIELD_DEFINITIONS[fieldName];
     const range = sheet.getRange(
       cycleRow.rowNumber,
@@ -3040,9 +3081,12 @@ function updateRollHistoryIncompleteCycleWarning(sheet, definition, cycleRow) {
   };
 }
 
-function rollHistoryCycleRowMatchesSnapshot(row, actualSnapshot, excludedFieldName) {
+function rollHistoryCycleRowMatchesSnapshot(row, actualSnapshot, excludedFieldName, allowedFieldNames) {
   if (!row || !row.fields || !actualSnapshot) return false;
-  return Object.keys(ROLL_HISTORY_ACTUAL_FIELD_DEFINITIONS).some(function(fieldName) {
+  const targetFieldNames = Array.isArray(allowedFieldNames)
+    ? allowedFieldNames
+    : Object.keys(ROLL_HISTORY_ACTUAL_FIELD_DEFINITIONS);
+  return targetFieldNames.some(function(fieldName) {
     if (fieldName === excludedFieldName || fieldName === 'useEndDate') return false;
     const field = row.fields[fieldName];
     const desiredValue = actualSnapshot[fieldName];
@@ -3056,14 +3100,18 @@ function rollHistoryCycleRowMatchesSnapshot(row, actualSnapshot, excludedFieldNa
   });
 }
 
-function planRollHistoryActualWrites(cycleRows, actualSnapshot) {
+function planRollHistoryActualWrites(cycleRows, actualSnapshot, allowedFieldNames) {
   const rows = Array.isArray(cycleRows) ? cycleRows : [];
   const writes = [];
   const unchanged = [];
   const conflicts = [];
   const openCycleRow = getRollHistoryOpenCycleRow(rows);
 
-  Object.keys(ROLL_HISTORY_ACTUAL_FIELD_DEFINITIONS).forEach(function(fieldName) {
+  const targetFieldNames = Array.isArray(allowedFieldNames)
+    ? allowedFieldNames
+    : Object.keys(ROLL_HISTORY_ACTUAL_FIELD_DEFINITIONS);
+
+  targetFieldNames.forEach(function(fieldName) {
     const desiredValue = actualSnapshot && actualSnapshot[fieldName];
     if (desiredValue === '' || desiredValue === undefined || desiredValue === null) return;
 
@@ -3075,7 +3123,7 @@ function planRollHistoryActualWrites(cycleRows, actualSnapshot) {
       fieldName === 'dispatchDate'
       || fieldName === 'arrivalDate'
       || openCycleHasThisActual
-      || rollHistoryCycleRowMatchesSnapshot(openCycleRow, actualSnapshot, fieldName)
+      || rollHistoryCycleRowMatchesSnapshot(openCycleRow, actualSnapshot, fieldName, targetFieldNames)
     );
 
     if (belongsToOpenCycle) {
@@ -3169,32 +3217,36 @@ function writeRollHistoryActualValue(sheet, definition, write) {
     range.setValue(Number(write.value)).setFontColor(ROLL_HISTORY_ACTUAL_FONT_COLOR);
   } else {
     const parts = String(write.value).split('-').map(Number);
-    range.setValues([[parts[0], parts[1], parts[2]]]).setFontColor(ROLL_HISTORY_ACTUAL_FONT_COLOR);
+    const existingYearText = String(range.getCell(1, 1).getDisplayValue() || '').replace(/予/g, '').trim();
+    let usesTwoDigitYear = /^\d{1,2}$/.test(existingYearText);
+    if (!existingYearText && write.rowNumber > definition.roleIdRow) {
+      const previousYearValues = sheet.getRange(
+        definition.roleIdRow,
+        definition.startColumn + fieldDefinition.offset,
+        write.rowNumber - definition.roleIdRow,
+        1
+      ).getDisplayValues().map(function(row) {
+        return String(row[0] || '').replace(/予/g, '').trim();
+      }).filter(Boolean);
+      usesTwoDigitYear = previousYearValues.length > 0
+        && /^\d{1,2}$/.test(previousYearValues[previousYearValues.length - 1]);
+    }
+    range.setValues([[usesTwoDigitYear ? parts[0] % 100 : parts[0], parts[1], parts[2]]])
+      .setFontColor(ROLL_HISTORY_ACTUAL_FONT_COLOR);
   }
   return range.getA1Notation();
 }
 
-function syncRollHistoryActualsFromRoles16_17(roles, roleNames) {
-  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
-  const sheet = ss.getSheetByName(ROLL_HISTORY_ACTUAL_SHEET_NAME);
-  if (!sheet) throw new Error(ROLL_HISTORY_ACTUAL_SHEET_NAME + ' シートが見つかりません。');
-
-  const requestedNames = new Set((roleNames || []).map(function(name) { return String(name || '').trim(); }));
-  const roleMap = new Map((Array.isArray(roles) ? roles : fetchRoles()).filter(function(role) {
-    const standNumber = getRollManagementViewStandInfo(role && role.name).number;
-    const roleName = String(role && role.name || '').trim();
-    return (standNumber === 16 || standNumber === 17)
-      && normalizeBooleanForFieldRollManagement(role && role.isActiveThreeSet)
-      && (requestedNames.size === 0 || requestedNames.has(roleName));
-  }).map(function(role) {
-    return [String(role.name || '').trim(), role];
-  }));
-
+function syncRollHistoryActualsFromRolesSheet(sheet, roleMap) {
   const definitions = getRollHistoryStatusDefinitions(sheet);
   const result = { sheetName: sheet.getName(), written: [], unchanged: [], conflicts: [], warnings: [], skipped: [] };
   definitions.forEach(function(definition) {
     const role = roleMap.get(definition.roleName);
     if (!role) return;
+    if (!isRollHistoryActualDefinitionCompatible(definition)) {
+      result.skipped.push({ roleName: definition.roleName, reason: '実績欄の列幅不足' });
+      return;
+    }
     const endRow = getRollHistoryActualBlockEndRow(definition, definitions, sheet.getLastRow());
     const rowCount = Math.max(endRow - definition.roleIdRow + 1, 0);
     if (rowCount <= 0) {
@@ -3208,7 +3260,11 @@ function syncRollHistoryActualsFromRoles16_17(roles, roleNames) {
       blockRange.getDisplayValues(),
       blockRange.getFontColors()
     );
-    const plan = planRollHistoryActualWrites(cycleRows, normalizeRollHistoryActualSnapshot(role));
+    const plan = planRollHistoryActualWrites(
+      cycleRows,
+      normalizeRollHistoryActualSnapshot(role),
+      getRollHistoryActualFieldNamesForStand(definition.standNumber)
+    );
     plan.writes.forEach(function(write) {
       result.written.push({
         roleName: definition.roleName,
@@ -3245,12 +3301,120 @@ function syncRollHistoryActualsFromRoles16_17(roles, roleNames) {
       }
     });
   });
-  Logger.log('syncRollHistoryActualsFromRoles16_17: ' + JSON.stringify(result));
   return result;
+}
+
+function syncRollHistoryActualsFromRoles(roles, roleNames) {
+  const roleList = Array.isArray(roles) ? roles : fetchRoles();
+  const requestedNames = new Set((roleNames || []).map(function(name) { return String(name || '').trim(); }));
+  const roleMap = new Map(roleList.filter(function(role) {
+    const roleName = String(role && role.name || '').trim();
+    const standNumber = getRollManagementViewStandInfo(roleName).number;
+    return Boolean(getRollHistorySheetNameForStandNumber(standNumber))
+      && normalizeBooleanForFieldRollManagement(role && role.isActiveThreeSet)
+      && (requestedNames.size === 0 || requestedNames.has(roleName));
+  }).map(function(role) {
+    return [String(role.name || '').trim(), role];
+  }));
+  const targetSheetNames = Array.from(new Set(Array.from(roleMap.values()).map(function(role) {
+    return getRollHistorySheetNameForStandNumber(getRollManagementViewStandInfo(role && role.name).number);
+  }))).filter(Boolean).sort(function(left, right) {
+    return ROLL_HISTORY_SHEET_NAMES.indexOf(left) - ROLL_HISTORY_SHEET_NAMES.indexOf(right);
+  });
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const summary = {
+    sheetNames: targetSheetNames,
+    sheets: [],
+    written: [],
+    unchanged: [],
+    conflicts: [],
+    warnings: [],
+    skipped: []
+  };
+
+  targetSheetNames.forEach(function(sheetName) {
+    const sheet = ss.getSheetByName(sheetName);
+    if (!sheet) {
+      summary.skipped.push({ sheetName: sheetName, roleName: '', reason: 'シートなし' });
+      return;
+    }
+    const sheetResult = syncRollHistoryActualsFromRolesSheet(sheet, roleMap);
+    summary.sheets.push(sheetResult);
+    ['written', 'unchanged', 'conflicts', 'warnings', 'skipped'].forEach(function(key) {
+      sheetResult[key].forEach(function(item) {
+        summary[key].push(Object.assign({ sheetName: sheetName }, item));
+      });
+    });
+  });
+  Logger.log('syncRollHistoryActualsFromRoles: ' + JSON.stringify(summary));
+  return summary;
+}
+
+function syncRollHistoryActualsFromRoles16_17(roles, roleNames) {
+  const roleList = Array.isArray(roles) ? roles : fetchRoles();
+  const names = (roleNames || []).filter(function(name) {
+    const standNumber = getRollManagementViewStandInfo(name).number;
+    return standNumber === 16 || standNumber === 17;
+  });
+  const fallbackNames = names.length > 0 ? names : roleList.filter(function(role) {
+    const standNumber = getRollManagementViewStandInfo(role && role.name).number;
+    return standNumber === 16 || standNumber === 17;
+  }).map(function(role) { return role.name; });
+  return syncRollHistoryActualsFromRoles(roleList, fallbackNames);
 }
 
 function syncRollHistoryActuals16_17() {
   return syncRollHistoryActualsFromRoles16_17(fetchRoles());
+}
+
+function syncRollHistoryActualsAll() {
+  return syncRollHistoryActualsFromRoles(fetchRoles());
+}
+
+function diagnoseRollHistoryActualSyncLayouts() {
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const roles = fetchRoles();
+  const activeRoleNamesBySheet = new Map();
+  roles.forEach(function(role) {
+    if (!normalizeBooleanForFieldRollManagement(role && role.isActiveThreeSet)) return;
+    const sheetName = getRollHistorySheetNameForStandNumber(getRollManagementViewStandInfo(role && role.name).number);
+    if (!sheetName) return;
+    if (!activeRoleNamesBySheet.has(sheetName)) activeRoleNamesBySheet.set(sheetName, []);
+    activeRoleNamesBySheet.get(sheetName).push(String(role.name || '').trim());
+  });
+
+  const sheets = ROLL_HISTORY_SHEET_NAMES.map(function(sheetName) {
+    const sheet = ss.getSheetByName(sheetName);
+    if (!sheet) return { sheetName: sheetName, missing: true, safe: false };
+    const definitions = getRollHistoryStatusDefinitions(sheet);
+    const compatibleDefinitions = definitions.filter(isRollHistoryActualDefinitionCompatible);
+    const detectedRoleNames = new Set(compatibleDefinitions.map(function(definition) { return definition.roleName; }));
+    const expectedActiveRoleNames = activeRoleNamesBySheet.get(sheetName) || [];
+    const missingActiveRoleNames = expectedActiveRoleNames.filter(function(roleName) {
+      return !detectedRoleNames.has(roleName);
+    });
+    const incompatibleRoleNames = definitions.filter(function(definition) {
+      return !isRollHistoryActualDefinitionCompatible(definition);
+    }).map(function(definition) { return definition.roleName; });
+    return {
+      sheetName: sheetName,
+      missing: false,
+      definitionCount: definitions.length,
+      compatibleCount: compatibleDefinitions.length,
+      expectedActiveRoleNames: expectedActiveRoleNames,
+      missingActiveRoleNames: missingActiveRoleNames,
+      incompatibleRoleNames: incompatibleRoleNames,
+      protectedFields: sheetName === '2,3' || sheetName === '4,5' ? ['currentDiameter'] : [],
+      safe: missingActiveRoleNames.length === 0 && incompatibleRoleNames.length === 0
+    };
+  });
+  const result = {
+    success: sheets.every(function(sheet) { return sheet.safe; }),
+    scriptVersion: SCRIPT_VERSION,
+    sheets: sheets
+  };
+  Logger.log('diagnoseRollHistoryActualSyncLayouts: ' + JSON.stringify(result));
+  return result;
 }
 
 function getRollHistoryActualEditedFieldNames(definition, range) {
@@ -3360,7 +3524,7 @@ function applyRollHistoryActualChangeToRoles(roles, roleName, updates, changedAt
 function handleRollHistoryActualEdit(e) {
   const range = e && e.range;
   const sheet = range && range.getSheet ? range.getSheet() : null;
-  if (!sheet || sheet.getName() !== ROLL_HISTORY_ACTUAL_SHEET_NAME) return { handled: false };
+  if (!sheet || ROLL_HISTORY_SHEET_NAMES.indexOf(sheet.getName()) < 0) return { handled: false };
 
   const definitions = getRollHistoryStatusDefinitions(sheet);
   const definition = definitions.find(function(candidate) {
@@ -3371,6 +3535,10 @@ function handleRollHistoryActualEdit(e) {
       && range.getLastColumn() >= candidate.startColumn;
   });
   if (!definition) return { handled: false };
+  if (!isRollHistoryActualDefinitionCompatible(definition)) {
+    sheet.getParent().toast(definition.roleName + ' の実績欄配置を確認してください。', '連動対象外', 8);
+    return { handled: true, updated: false, reason: 'incompatible-layout' };
+  }
 
   const blockEndRow = getRollHistoryActualBlockEndRow(definition, definitions, sheet.getLastRow());
   const blockRange = sheet.getRange(
@@ -3391,7 +3559,22 @@ function handleRollHistoryActualEdit(e) {
     return { handled: false };
   }
 
-  const fieldNames = getRollHistoryActualEditedFieldNames(definition, range);
+  const editedFieldNames = getRollHistoryActualEditedFieldNames(definition, range);
+  const allowedFieldNames = new Set(getRollHistoryActualFieldNamesForStand(definition.standNumber));
+  const protectedFieldNames = editedFieldNames.filter(function(fieldName) {
+    return !allowedFieldNames.has(fieldName);
+  });
+  const fieldNames = editedFieldNames.filter(function(fieldName) {
+    return allowedFieldNames.has(fieldName);
+  });
+  if (protectedFieldNames.length > 0 && fieldNames.length === 0) {
+    sheet.getParent().toast(
+      '#2〜5のロール径欄は上下2本分のため、アプリ連動の対象外です。',
+      'ロール径を保護しました',
+      8
+    );
+    return { handled: true, updated: false, reason: 'protected-field', fields: protectedFieldNames };
+  }
   if (fieldNames.length === 0) return { handled: false };
 
   const updates = {};
@@ -3477,66 +3660,87 @@ function handleRollHistoryActualEdit(e) {
   }
 }
 
-function syncRollHistoryActualsToRoles16_17() {
+function syncRollHistoryActualsToRolesAll(sheetNames) {
   const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
-  const sheet = ss.getSheetByName(ROLL_HISTORY_ACTUAL_SHEET_NAME);
-  if (!sheet) throw new Error(ROLL_HISTORY_ACTUAL_SHEET_NAME + ' シートが見つかりません。');
-
-  const definitions = getRollHistoryStatusDefinitions(sheet);
   let roles = fetchRoles();
   const roleMap = new Map(roles.map(function(role) {
     return [String(role && role.name || '').trim(), role];
   }));
   const updatedRoleNames = [];
   const changedFields = [];
+  const sheetResults = [];
+  const changedAt = new Date().toISOString();
 
-  definitions.forEach(function(definition) {
-    const role = roleMap.get(definition.roleName);
-    if (!role || !normalizeBooleanForFieldRollManagement(role.isActiveThreeSet)) return;
-    const blockEndRow = getRollHistoryActualBlockEndRow(definition, definitions, sheet.getLastRow());
-    const blockRange = sheet.getRange(
-      definition.roleIdRow,
-      definition.startColumn,
-      blockEndRow - definition.roleIdRow + 1,
-      definition.endColumn - definition.startColumn + 1
-    );
-    const cycleRows = buildRollHistoryCycleRows(
-      definition.roleIdRow,
-      blockRange.getDisplayValues(),
-      blockRange.getFontColors()
-    );
-    const editableCycleRow = getRollHistoryCurrentEditableCycleRow(cycleRows);
-    if (!editableCycleRow) return;
-    const updates = {};
-    Object.keys(ROLL_HISTORY_ACTUAL_FIELD_DEFINITIONS).forEach(function(fieldName) {
-      const field = editableCycleRow.fields[fieldName];
-      if (field && !field.isBlank && !field.planned && field.value !== '') {
-        updates[fieldName] = field.value;
-      }
+  const targetSheetNames = (Array.isArray(sheetNames) && sheetNames.length > 0)
+    ? sheetNames.filter(function(sheetName) { return ROLL_HISTORY_SHEET_NAMES.indexOf(sheetName) >= 0; })
+    : ROLL_HISTORY_SHEET_NAMES.slice();
+
+  targetSheetNames.forEach(function(sheetName) {
+    const sheet = ss.getSheetByName(sheetName);
+    if (!sheet) {
+      sheetResults.push({ sheetName: sheetName, missing: true, checked: 0, updated: 0 });
+      return;
+    }
+    const definitions = getRollHistoryStatusDefinitions(sheet);
+    let checked = 0;
+    let updated = 0;
+    definitions.forEach(function(definition) {
+      const role = roleMap.get(definition.roleName);
+      if (!role || !normalizeBooleanForFieldRollManagement(role.isActiveThreeSet)) return;
+      if (!isRollHistoryActualDefinitionCompatible(definition)) return;
+      checked += 1;
+      const blockEndRow = getRollHistoryActualBlockEndRow(definition, definitions, sheet.getLastRow());
+      const blockRange = sheet.getRange(
+        definition.roleIdRow,
+        definition.startColumn,
+        blockEndRow - definition.roleIdRow + 1,
+        definition.endColumn - definition.startColumn + 1
+      );
+      const cycleRows = buildRollHistoryCycleRows(
+        definition.roleIdRow,
+        blockRange.getDisplayValues(),
+        blockRange.getFontColors()
+      );
+      const editableCycleRow = getRollHistoryCurrentEditableCycleRow(cycleRows);
+      if (!editableCycleRow) return;
+      const updates = {};
+      getRollHistoryActualFieldNamesForStand(definition.standNumber).forEach(function(fieldName) {
+        const field = editableCycleRow.fields[fieldName];
+        if (field && !field.isBlank && !field.planned && field.value !== '') {
+          updates[fieldName] = field.value;
+        }
+      });
+      const result = applyRollHistoryActualChangeToRoles(
+        roles,
+        definition.roleName,
+        updates,
+        changedAt
+      );
+      if (!result.changed) return;
+      roles = result.roles;
+      updated += 1;
+      updatedRoleNames.push(definition.roleName);
+      changedFields.push({ sheetName: sheetName, roleName: definition.roleName, fields: result.changedFields });
     });
-    const result = applyRollHistoryActualChangeToRoles(
-      roles,
-      definition.roleName,
-      updates,
-      new Date().toISOString()
-    );
-    if (!result.changed) return;
-    roles = result.roles;
-    updatedRoleNames.push(definition.roleName);
-    changedFields.push({ roleName: definition.roleName, fields: result.changedFields });
+    sheetResults.push({ sheetName: sheetName, missing: false, checked: checked, updated: updated });
   });
 
   if (updatedRoleNames.length > 0) {
-    updateChangedRolesRows(roles, updatedRoleNames);
+    updateChangedRolesRows(roles, Array.from(new Set(updatedRoleNames)));
     SpreadsheetApp.flush();
     refreshRollManagementView();
     refreshFieldRollManagementView();
   }
   return {
     success: true,
-    updatedRoleNames: updatedRoleNames,
-    changedFields: changedFields
+    updatedRoleNames: Array.from(new Set(updatedRoleNames)),
+    changedFields: changedFields,
+    sheets: sheetResults
   };
+}
+
+function syncRollHistoryActualsToRoles16_17() {
+  return syncRollHistoryActualsToRolesAll(['16,17']);
 }
 
 function initializeRollHistoryStatusSync() {
@@ -3697,7 +3901,7 @@ function handleRollHistoryStatusEdit(e) {
     restoreFormula();
 
     try {
-      const actualSyncResult = syncRollHistoryActualsFromRoles16_17(result.roles, result.updatedRoleNames);
+      const actualSyncResult = syncRollHistoryActualsFromRoles(result.roles, result.updatedRoleNames);
       Logger.log('handleRollHistoryStatusEdit: history actuals updated: ' + JSON.stringify(actualSyncResult));
     } catch (actualSyncError) {
       Logger.log('handleRollHistoryStatusEdit: history actual sync failed: ' + actualSyncError.toString());
@@ -4162,8 +4366,36 @@ function applyPairedRollManagementFormatting(sheet, definition, data, leftStartC
   sheet.setTabColor('#5b9bd5');
 }
 
+function getRollHistoryActualChangedRoleNames(beforeRoles, afterRoles) {
+  const beforeMap = new Map((Array.isArray(beforeRoles) ? beforeRoles : []).map(function(role) {
+    return [String(role && role.name || '').trim(), role];
+  }));
+  return (Array.isArray(afterRoles) ? afterRoles : []).filter(function(role) {
+    const roleName = String(role && role.name || '').trim();
+    if (!roleName || !getRollHistorySheetNameForStandNumber(getRollManagementViewStandInfo(roleName).number)) return false;
+    const beforeRole = beforeMap.get(roleName);
+    if (!beforeRole) return true;
+    const beforeSnapshot = normalizeRollHistoryActualSnapshot(beforeRole);
+    const afterSnapshot = normalizeRollHistoryActualSnapshot(role);
+    const standNumber = getRollManagementViewStandInfo(roleName).number;
+    const actualChanged = getRollHistoryActualFieldNamesForStand(standNumber).some(function(fieldName) {
+      const beforeValue = beforeSnapshot[fieldName];
+      const afterValue = afterSnapshot[fieldName];
+      if ((beforeValue === '' || beforeValue === undefined) && (afterValue === '' || afterValue === undefined)) return false;
+      return !rollHistoryActualValuesEqual(fieldName, beforeValue, afterValue);
+    });
+    return actualChanged
+      || normalizeBooleanForFieldRollManagement(beforeRole.isActiveThreeSet)
+        !== normalizeBooleanForFieldRollManagement(role.isActiveThreeSet);
+  }).map(function(role) {
+    return String(role.name || '').trim();
+  });
+}
+
 function writeRoles(roles) {
   const sheet = getSheet();
+  const previousRoles = fetchRoles();
+  const changedActualRoleNames = getRollHistoryActualChangedRoleNames(previousRoles, roles);
   ensureRolesColumnCapacity(sheet);
   Logger.log('writeRoles: clearing sheet contents');
   sheet.clearContents();
@@ -4197,7 +4429,9 @@ function writeRoles(roles) {
 
   try {
     SpreadsheetApp.flush();
-    const actualSyncResult = syncRollHistoryActualsFromRoles16_17(fetchRoles());
+    const actualSyncResult = changedActualRoleNames.length > 0
+      ? syncRollHistoryActualsFromRoles(sortedRoles, changedActualRoleNames)
+      : { sheetNames: [], written: [], unchanged: [], conflicts: [], warnings: [], skipped: [] };
     Logger.log('writeRoles: history actuals updated: ' + JSON.stringify(actualSyncResult));
   } catch (actualSyncError) {
     Logger.log('writeRoles: history actual sync failed: ' + actualSyncError.toString());
