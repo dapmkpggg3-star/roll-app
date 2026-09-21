@@ -2762,9 +2762,8 @@ function isRollHistoryActualDefinitionCompatible(definition) {
 
 function getRollHistoryActualFieldNamesForStand(standNumber) {
   const stand = Number(standNumber) || 0;
-  return Object.keys(ROLL_HISTORY_ACTUAL_FIELD_DEFINITIONS).filter(function(fieldName) {
-    return fieldName !== 'currentDiameter' || stand >= 6;
-  });
+  if (stand < 6) return [];
+  return Object.keys(ROLL_HISTORY_ACTUAL_FIELD_DEFINITIONS);
 }
 
 function getRollHistoryIncompleteRequiredFieldNamesForStand(standNumber) {
@@ -3311,6 +3310,7 @@ function syncRollHistoryActualsFromRoles(roles, roleNames) {
     const roleName = String(role && role.name || '').trim();
     const standNumber = getRollManagementViewStandInfo(roleName).number;
     return Boolean(getRollHistorySheetNameForStandNumber(standNumber))
+      && getRollHistoryActualFieldNamesForStand(standNumber).length > 0
       && normalizeBooleanForFieldRollManagement(role && role.isActiveThreeSet)
       && (requestedNames.size === 0 || requestedNames.has(roleName));
   }).map(function(role) {
@@ -3377,7 +3377,9 @@ function diagnoseRollHistoryActualSyncLayouts() {
   const activeRoleNamesBySheet = new Map();
   roles.forEach(function(role) {
     if (!normalizeBooleanForFieldRollManagement(role && role.isActiveThreeSet)) return;
-    const sheetName = getRollHistorySheetNameForStandNumber(getRollManagementViewStandInfo(role && role.name).number);
+    const standNumber = getRollManagementViewStandInfo(role && role.name).number;
+    if (getRollHistoryActualFieldNamesForStand(standNumber).length === 0) return;
+    const sheetName = getRollHistorySheetNameForStandNumber(standNumber);
     if (!sheetName) return;
     if (!activeRoleNamesBySheet.has(sheetName)) activeRoleNamesBySheet.set(sheetName, []);
     activeRoleNamesBySheet.get(sheetName).push(String(role.name || '').trim());
@@ -3404,7 +3406,9 @@ function diagnoseRollHistoryActualSyncLayouts() {
       expectedActiveRoleNames: expectedActiveRoleNames,
       missingActiveRoleNames: missingActiveRoleNames,
       incompatibleRoleNames: incompatibleRoleNames,
-      protectedFields: sheetName === '2,3' || sheetName === '4,5' ? ['currentDiameter'] : [],
+      protectedFields: sheetName === '2,3' || sheetName === '4,5'
+        ? Object.keys(ROLL_HISTORY_ACTUAL_FIELD_DEFINITIONS)
+        : [],
       safe: missingActiveRoleNames.length === 0 && incompatibleRoleNames.length === 0
     };
   });
@@ -3569,8 +3573,8 @@ function handleRollHistoryActualEdit(e) {
   });
   if (protectedFieldNames.length > 0 && fieldNames.length === 0) {
     sheet.getParent().toast(
-      '#2〜5のロール径欄は上下2本分のため、アプリ連動の対象外です。',
-      'ロール径を保護しました',
+      '#2〜5は上下2本分の実績が別々のため、実績欄はアプリ連動の対象外です。',
+      '上下2本分の実績を保護しました',
       8
     );
     return { handled: true, updated: false, reason: 'protected-field', fields: protectedFieldNames };
