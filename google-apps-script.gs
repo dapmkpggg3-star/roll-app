@@ -3,7 +3,7 @@ const ROLL_MANAGEMENT_VIEW_SHEET_NAME = 'ロール管理表';
 const STAND_MASTER_SHEET_NAME = 'StandMaster';
 const INPUT_SHEET_NAMES = ['入力シート', 'Input', '入力'];
 const SPREADSHEET_ID = '1X07qQa7u9YPLvErT0D48goT5wYmvcpgNjqzK3FhRFeA';
-const SCRIPT_VERSION = 'roll-history-all-sheets-sync-v6';
+const SCRIPT_VERSION = 'roll-set-one-record-sync-v7';
 const ROLES_EDIT_TRIGGER_HANDLER = 'handleRolesSheetEdit';
 const ROLES_EDIT_TRIGGER_LOCK_TIMEOUT_MS = 300000;
 const HEADER_VALUES = ['ID', 'スタンド番号', 'ステータス', 'メモ', '最終更新日', '作業依頼済み', '作業依頼進捗', '履歴', '現在径', '使用開始日', '溶射状態', '納入予定日', '組替指示期限', '使用終了日', '運用3セット対象', '次回組み込み予定'];
@@ -2762,7 +2762,7 @@ function isRollHistoryActualDefinitionCompatible(definition) {
 
 function getRollHistoryActualFieldNamesForStand(standNumber) {
   const stand = Number(standNumber) || 0;
-  if (stand < 6) return [];
+  if (stand < 2 || stand > 17) return [];
   return Object.keys(ROLL_HISTORY_ACTUAL_FIELD_DEFINITIONS);
 }
 
@@ -2774,14 +2774,20 @@ function getRollHistoryIncompleteRequiredFieldNamesForStand(standNumber) {
 }
 
 function parseRollHistoryStandNumber(value) {
-  const text = String(value == null ? '' : value).trim().replace(/Ｓ/g, 'S').replace(/Ｔ/g, 'T');
+  const rawText = String(value == null ? '' : value);
+  const text = (rawText.normalize ? rawText.normalize('NFKC') : rawText).trim();
   const match = text.match(/^#?\s*(\d+)\s*(?:S\.?\s*T\.?|ST)$/i);
   return match ? Number(match[1]) : 0;
 }
 
 function normalizeRollHistoryRoleName(value) {
-  const text = String(value == null ? '' : value).trim().replace(/＃/g, '#');
-  const match = text.match(/^#?\s*(\d+)\s*-\s*上\s*-\s*(\d+)$/);
+  const rawText = String(value == null ? '' : value);
+  const text = (rawText.normalize ? rawText.normalize('NFKC') : rawText).trim();
+  let match = text.match(/^#?\s*(\d+)\s*-\s*(?:上|下)\s*-\s*(\d+)$/i);
+  if (match) return '#' + Number(match[1]) + '-' + Number(match[2]);
+  match = text.match(/^#?\s*(\d+)\s*-\s*(\d+)\s*-\s*(?:DS|WS|上|下)$/i);
+  if (match) return '#' + Number(match[1]) + '-' + Number(match[2]);
+  match = text.match(/^#?\s*(\d+)\s*-\s*(\d+)$/);
   return match ? '#' + Number(match[1]) + '-' + Number(match[2]) : '';
 }
 
@@ -3406,9 +3412,7 @@ function diagnoseRollHistoryActualSyncLayouts() {
       expectedActiveRoleNames: expectedActiveRoleNames,
       missingActiveRoleNames: missingActiveRoleNames,
       incompatibleRoleNames: incompatibleRoleNames,
-      protectedFields: sheetName === '2,3' || sheetName === '4,5'
-        ? Object.keys(ROLL_HISTORY_ACTUAL_FIELD_DEFINITIONS)
-        : [],
+      protectedFields: [],
       safe: missingActiveRoleNames.length === 0 && incompatibleRoleNames.length === 0
     };
   });
@@ -3573,8 +3577,8 @@ function handleRollHistoryActualEdit(e) {
   });
   if (protectedFieldNames.length > 0 && fieldNames.length === 0) {
     sheet.getParent().toast(
-      '#2〜5は上下2本分の実績が別々のため、実績欄はアプリ連動の対象外です。',
-      '上下2本分の実績を保護しました',
+      'この欄は現在アプリ連動の対象外です。',
+      '実績欄を保護しました',
       8
     );
     return { handled: true, updated: false, reason: 'protected-field', fields: protectedFieldNames };
