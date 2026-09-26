@@ -2,8 +2,8 @@ const SHEET_NAME = 'Roles';
 const ROLL_MANAGEMENT_VIEW_SHEET_NAME = 'ロール管理表';
 const STAND_MASTER_SHEET_NAME = 'StandMaster';
 const INPUT_SHEET_NAMES = ['入力シート', 'Input', '入力'];
-const SPREADSHEET_ID = '1X07qQa7u9YPLvErT0D48goT5wYmvcpgNjqzK3FhRFeA';
-const SCRIPT_VERSION = 'roll-set-one-record-sync-v7';
+const ROLL_MANAGEMENT_SPREADSHEET_ID_PROPERTY = 'ROLL_MANAGEMENT_SPREADSHEET_ID';
+const SCRIPT_VERSION = 'script-properties-spreadsheet-id-v8';
 const ROLES_EDIT_TRIGGER_HANDLER = 'handleRolesSheetEdit';
 const ROLES_EDIT_TRIGGER_LOCK_TIMEOUT_MS = 300000;
 const HEADER_VALUES = ['ID', 'スタンド番号', 'ステータス', 'メモ', '最終更新日', '作業依頼済み', '作業依頼進捗', '履歴', '現在径', '使用開始日', '溶射状態', '納入予定日', '組替指示期限', '使用終了日', '運用3セット対象', '次回組み込み予定'];
@@ -267,6 +267,26 @@ const ROLL_HISTORY_ACTUAL_FIELD_DEFINITIONS = {
   useStartDate: { offset: 11, width: 3, pairField: 'useEndDate' },
   useEndDate: { offset: 14, width: 3, pairField: 'useStartDate' }
 };
+
+function getRollManagementSpreadsheetId_() {
+  const storedId = PropertiesService.getScriptProperties()
+    .getProperty(ROLL_MANAGEMENT_SPREADSHEET_ID_PROPERTY);
+  const normalizedId = normalizeSpreadsheetIdForRollHistory(storedId);
+
+  if (!normalizedId) {
+    throw new Error(
+      'Apps Scriptのスクリプト プロパティに '
+      + ROLL_MANAGEMENT_SPREADSHEET_ID_PROPERTY
+      + ' を設定してください。'
+    );
+  }
+
+  return normalizedId;
+}
+
+function openRollManagementSpreadsheet_() {
+  return SpreadsheetApp.openById(getRollManagementSpreadsheetId_());
+}
 
 
 function doGet(e) {
@@ -1016,7 +1036,7 @@ function roundCuttingHistoryNumber(value) {
 }
 
 function initializeStandMaster() {
-  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const ss = openRollManagementSpreadsheet_();
   let sheet = ss.getSheetByName(STAND_MASTER_SHEET_NAME);
   let createdSheet = false;
 
@@ -1070,7 +1090,7 @@ function initializeStandMaster() {
 }
 
 function initializeRollMasterSheets() {
-  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const ss = openRollManagementSpreadsheet_();
   const results = ROLL_MASTER_SHEET_DEFINITIONS.map(function(definition) {
     return initializeRollMasterSheet(ss, definition);
   });
@@ -1507,7 +1527,7 @@ function getRollMasterDefinitionByLegacyName(legacyName) {
 }
 
 function getRollMasterSheetForRead(definition) {
-  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const ss = openRollManagementSpreadsheet_();
   const sheet = ss.getSheetByName(definition.name)
     || (definition.legacyName ? ss.getSheetByName(definition.legacyName) : null);
 
@@ -1532,7 +1552,7 @@ function normalizeRollMasterBooleanValue(value) {
 
 function appendWorkHistoryEvent(event) {
   const definition = getRollMasterDefinitionByLegacyName('WorkHistory');
-  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const ss = openRollManagementSpreadsheet_();
   const sheetResult = getOrCreateRollMasterSheet(ss, definition);
   const sheet = sheetResult.sheet;
   const columnCount = getRollMasterColumnCount(definition);
@@ -1597,7 +1617,7 @@ function invalidateLatestCuttingHistoryForInputCorrection(event) {
 
 function invalidateLatestCuttingHistoryForInputCorrectionCore(event) {
   const definition = getRollMasterDefinitionByLegacyName('WorkHistory');
-  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const ss = openRollManagementSpreadsheet_();
   const sheetResult = getOrCreateRollMasterSheet(ss, definition);
   const sheet = sheetResult.sheet;
   ensureRollMasterSheetColumns(sheet, definition);
@@ -1846,7 +1866,7 @@ function stampRolesSheetEditedAt(range) {
 }
 
 function installRolesSheetEditTrigger() {
-  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const ss = openRollManagementSpreadsheet_();
   const cleanup = removeDuplicateRolesEditTriggers();
   const existingTrigger = ScriptApp.getProjectTriggers().find(function(trigger) {
     return trigger.getHandlerFunction() === ROLES_EDIT_TRIGGER_HANDLER
@@ -1879,7 +1899,7 @@ function installRolesSheetEditTrigger() {
 }
 
 function removeDuplicateRolesEditTriggers() {
-  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const ss = openRollManagementSpreadsheet_();
   const matchingTriggers = ScriptApp.getProjectTriggers().filter(function(trigger) {
     return trigger.getHandlerFunction() === ROLES_EDIT_TRIGGER_HANDLER
       && trigger.getEventType() === ScriptApp.EventType.ON_EDIT
@@ -1902,7 +1922,7 @@ function removeDuplicateRolesEditTriggers() {
 }
 
 function refreshRollManagementView() {
-  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const ss = openRollManagementSpreadsheet_();
   let sheet = ss.getSheetByName(ROLL_MANAGEMENT_VIEW_SHEET_NAME);
 
   if (!sheet) {
@@ -2213,7 +2233,7 @@ function initializeFieldRollManagementView() {
 }
 
 function refreshFieldRollManagementView() {
-  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const ss = openRollManagementSpreadsheet_();
   let sheet = ss.getSheetByName(FIELD_ROLL_MANAGEMENT_VIEW_SHEET_NAME);
 
   if (!sheet) {
@@ -2637,7 +2657,7 @@ function setRollHistorySourceSpreadsheetId(sourceSpreadsheetId) {
   if (!normalizedId) {
     throw new Error('移行元GoogleスプレッドシートIDを指定してください。');
   }
-  if (normalizedId === SPREADSHEET_ID) {
+  if (normalizedId === getRollManagementSpreadsheetId_()) {
     throw new Error('移行元と移行先が同じです。別のGoogleスプレッドシートを指定してください。');
   }
 
@@ -2659,12 +2679,12 @@ function previewRollHistoryMigration(sourceSpreadsheetId) {
   if (!normalizedId) {
     throw new Error('先に setRollHistorySourceSpreadsheetId を実行してください。');
   }
-  if (normalizedId === SPREADSHEET_ID) {
+  if (normalizedId === getRollManagementSpreadsheetId_()) {
     throw new Error('移行元と移行先が同じです。');
   }
 
   const source = SpreadsheetApp.openById(normalizedId);
-  const destination = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const destination = openRollManagementSpreadsheet_();
   const sourceSheetNames = source.getSheets().map(function(sheet) { return sheet.getName(); });
   const destinationSheetNames = destination.getSheets().map(function(sheet) { return sheet.getName(); });
   const sourceNameSet = new Set(sourceSheetNames);
@@ -2693,7 +2713,7 @@ function importRollHistorySheetsFromSource() {
   }
 
   const source = SpreadsheetApp.openById(preview.sourceSpreadsheetId);
-  const destination = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const destination = openRollManagementSpreadsheet_();
   const copiedSheets = [];
   const skippedSheets = [];
 
@@ -3327,7 +3347,7 @@ function syncRollHistoryActualsFromRoles(roles, roleNames) {
   }))).filter(Boolean).sort(function(left, right) {
     return ROLL_HISTORY_SHEET_NAMES.indexOf(left) - ROLL_HISTORY_SHEET_NAMES.indexOf(right);
   });
-  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const ss = openRollManagementSpreadsheet_();
   const summary = {
     sheetNames: targetSheetNames,
     sheets: [],
@@ -3378,7 +3398,7 @@ function syncRollHistoryActualsAll() {
 }
 
 function diagnoseRollHistoryActualSyncLayouts() {
-  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const ss = openRollManagementSpreadsheet_();
   const roles = fetchRoles();
   const activeRoleNamesBySheet = new Map();
   roles.forEach(function(role) {
@@ -3669,7 +3689,7 @@ function handleRollHistoryActualEdit(e) {
 }
 
 function syncRollHistoryActualsToRolesAll(sheetNames) {
-  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const ss = openRollManagementSpreadsheet_();
   let roles = fetchRoles();
   const roleMap = new Map(roles.map(function(role) {
     return [String(role && role.name || '').trim(), role];
@@ -3752,7 +3772,7 @@ function syncRollHistoryActualsToRoles16_17() {
 }
 
 function initializeRollHistoryStatusSync() {
-  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const ss = openRollManagementSpreadsheet_();
   const roleMap = new Map(fetchRoles().map(function(role) {
     return [String(role && role.name || '').trim(), role];
   }));
@@ -4066,7 +4086,7 @@ function initializePairedRollManagementViews() {
 function refreshPairedRollManagementViews(roles) {
   throw new Error('この簡易生成処理は廃止しました。最新Excelの履歴シートを使用してください。');
   /* istanbul ignore next */
-  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const ss = openRollManagementSpreadsheet_();
   const roleList = Array.isArray(roles) ? roles : fetchRoles();
   const standMasterByNumber = buildPairedRollStandMasterMap(fetchStandMaster());
   const cuttingMasterByNumber = buildPairedRollCuttingMasterMap(fetchCuttingMaster());
@@ -4502,7 +4522,7 @@ function getThreeSetFieldsDebugState() {
     success: true,
     scriptVersion: SCRIPT_VERSION,
     webAppUrl: getWebAppUrlForThreeSetDebug(),
-    spreadsheetId: SPREADSHEET_ID,
+    spreadsheetId: getRollManagementSpreadsheetId_(),
     rolesSheetName: sheet.getName(),
     HEADER_VALUES: HEADER_VALUES.slice(),
     headerValues: HEADER_VALUES.slice(),
@@ -4702,7 +4722,7 @@ function parseStandNumberForSort(value) {
 }
 
 function getInputSheet() {
-  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const ss = openRollManagementSpreadsheet_();
 
   for (var i = 0; i < INPUT_SHEET_NAMES.length; i++) {
     const sheet = ss.getSheetByName(INPUT_SHEET_NAMES[i]);
@@ -5150,7 +5170,7 @@ function applyStandGroupSeparators(sheet, dataRowCount, columnCount) {
 
 function getSheet() {
   try {
-    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const ss = openRollManagementSpreadsheet_();
     Logger.log('getSheet: opened spreadsheet: ' + ss.getName());
     
     let sheet = ss.getSheetByName(SHEET_NAME);
@@ -5170,7 +5190,7 @@ function getSheet() {
 
 function getStandMasterSheet() {
   try {
-    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const ss = openRollManagementSpreadsheet_();
     Logger.log('getStandMasterSheet: opened spreadsheet: ' + ss.getName());
 
     const sheet = ss.getSheetByName(STAND_MASTER_SHEET_NAME);

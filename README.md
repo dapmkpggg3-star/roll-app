@@ -129,6 +129,10 @@ roll-app/
 このアプリは、GitHub Pagesなどの静的サイトホスティングで公開できます。
 Google Sheets同期を使う場合は、Google Apps Script側の設定も必要です。
 
+Google Apps Scriptの「プロジェクトの設定」→「スクリプト プロパティ」に、
+`ROLL_MANAGEMENT_SPREADSHEET_ID`という名前で接続先GoogleスプレッドシートのIDを登録してください。
+会社用スプレッドシートのIDは公開リポジトリのコードへ直接記載しません。
+
 ## ライセンス
 
 MIT License
