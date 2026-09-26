@@ -3171,6 +3171,7 @@ body.workshop-board-mode .workshop-board {
 }
 
 body.workshop-board-mode #count-summary,
+body.workshop-board-mode #auto-planning-panel,
 body.workshop-board-mode #priority-risk-overview,
 body.workshop-board-mode #sync-diagnostic-panel,
 body.workshop-board-mode #purchase-confirmation-board,
