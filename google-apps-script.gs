@@ -253,6 +253,11 @@ const ROLL_HISTORY_INCOMPLETE_REQUIRED_FIELDS = [
   'currentDiameter',
   'useStartDate'
 ];
+const PLANNING_EXPORT_STATUS_PREFIX = 'ROLL_PLANNING_EXPORT_STATUS_';
+const PLANNING_DRAFT_NOTE_PREFIX = 'ROLL_PLANNING_DRAFT|';
+const PLANNING_GENERATED_NOTE_PREFIX = 'ROLL_PLANNING_GENERATED|';
+const PLANNING_DRAFT_FONT_COLOR = '#1f4e78';
+const PLANNING_DRAFT_BACKGROUND = '#d9eaf7';
 const ROLL_HISTORY_ACTUAL_FIELD_LABELS = {
   dispatchDate: '搬出日',
   arrivalDate: '搬入日',
@@ -453,6 +458,21 @@ function doGet(e) {
         .createTextOutput(JSON.stringify({ success: false, error: error.toString() }))
         .setMimeType(ContentService.MimeType.JSON);
     }
+  } else if (action === 'fetchplanningexportstatus') {
+    try {
+      const requestId = normalizePlanningRequestId_(params.requestId);
+      const status = getPlanningExportStatus_(requestId);
+      return ContentService
+        .createTextOutput(JSON.stringify(status
+          ? { success: true, status: status }
+          : { success: true, pending: true }))
+        .setMimeType(ContentService.MimeType.JSON);
+    } catch (error) {
+      Logger.log('doGet fetchPlanningExportStatus error: ' + error.toString());
+      return ContentService
+        .createTextOutput(JSON.stringify({ success: false, error: error.toString() }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
   } else if (action === '') {
     // テスト用レスポンス
     return ContentService
@@ -544,6 +564,23 @@ function doPost(e) {
           result: result
         }))
         .setMimeType(ContentService.MimeType.JSON);
+    } else if (action === 'writeplanningdraft') {
+      const requestId = normalizePlanningRequestId_(payload.requestId || (payload.plan && payload.plan.requestId));
+      try {
+        const result = writePlanningDraft_(payload.plan || {}, requestId);
+        storePlanningExportStatus_(requestId, result);
+        return ContentService
+          .createTextOutput(JSON.stringify({ success: true, result: result }))
+          .setMimeType(ContentService.MimeType.JSON);
+      } catch (planningError) {
+        storePlanningExportStatus_(requestId, {
+          requestId: requestId,
+          state: 'error',
+          error: planningError.toString(),
+          completedAt: new Date().toISOString()
+        });
+        throw planningError;
+      }
     }
 
     return ContentService
@@ -587,6 +624,312 @@ function updateCuttingMasterFromHistorySafely(source) {
       error: error.toString()
     };
   }
+}
+
+function normalizePlanningRequestId_(value) {
+  const normalized = String(value == null ? '' : value).trim();
+  if (!/^planning-[a-zA-Z0-9_-]{4,100}$/.test(normalized)) {
+    throw new Error('計画出力のリクエストIDが不正です。');
+  }
+  return normalized;
+}
+
+function planningExportStatusKey_(requestId) {
+  return PLANNING_EXPORT_STATUS_PREFIX + normalizePlanningRequestId_(requestId);
+}
+
+function storePlanningExportStatus_(requestId, status) {
+  const normalized = normalizePlanningRequestId_(requestId);
+  const value = Object.assign({}, status || {}, { requestId: normalized });
+  PropertiesService.getScriptProperties().setProperty(
+    planningExportStatusKey_(normalized),
+    JSON.stringify(value)
+  );
+  return value;
+}
+
+function getPlanningExportStatus_(requestId) {
+  const text = PropertiesService.getScriptProperties().getProperty(planningExportStatusKey_(requestId));
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    throw new Error('計画出力結果を読み取れませんでした。');
+  }
+}
+
+function normalizePlanningPeriod_(year, month) {
+  const normalizedYear = Number(year);
+  const normalizedMonth = Number(month);
+  if (!Number.isInteger(normalizedYear) || normalizedYear < 2000 || normalizedYear > 2100) {
+    throw new Error('計画年が不正です。');
+  }
+  if (!Number.isInteger(normalizedMonth) || normalizedMonth < 1 || normalizedMonth > 12) {
+    throw new Error('計画月が不正です。');
+  }
+  return { year: normalizedYear, month: normalizedMonth };
+}
+
+function planningSheetName_(period) {
+  return period.year + '.' + period.month + ' ロールカリバ替予定';
+}
+
+function parsePlanningSheetPeriod_(sheetName) {
+  const match = String(sheetName || '').normalize('NFKC')
+    .match(/^(\d{4})\s*[.\-/年]\s*(\d{1,2})(?:\s*月)?\s*ロールカリバ替予定$/);
+  if (!match) return null;
+  try {
+    return normalizePlanningPeriod_(Number(match[1]), Number(match[2]));
+  } catch (_) {
+    return null;
+  }
+}
+
+function planningPeriodNumber_(period) {
+  return period.year * 12 + period.month;
+}
+
+function previousPlanningPeriod_(period) {
+  return period.month === 1
+    ? { year: period.year - 1, month: 12 }
+    : { year: period.year, month: period.month - 1 };
+}
+
+function findPlanningTemplateSheet_(destination, period) {
+  const sources = [];
+  const configuredSourceId = PropertiesService.getScriptProperties()
+    .getProperty(ROLL_HISTORY_SOURCE_SPREADSHEET_ID_PROPERTY);
+  const normalizedSourceId = normalizeSpreadsheetIdForRollHistory(configuredSourceId);
+  if (normalizedSourceId && normalizedSourceId !== destination.getId()) {
+    sources.push(SpreadsheetApp.openById(normalizedSourceId));
+  }
+  sources.push(destination);
+
+  const previous = previousPlanningPeriod_(period);
+  const previousName = planningSheetName_(previous);
+  for (let sourceIndex = 0; sourceIndex < sources.length; sourceIndex += 1) {
+    const exact = sources[sourceIndex].getSheetByName(previousName);
+    if (exact) return { sheet: exact, period: previous };
+  }
+
+  const targetNumber = planningPeriodNumber_(period);
+  const candidates = [];
+  sources.forEach(function(source) {
+    source.getSheets().forEach(function(sheet) {
+      const sheetPeriod = parsePlanningSheetPeriod_(sheet.getName());
+      if (!sheetPeriod || planningPeriodNumber_(sheetPeriod) >= targetNumber) return;
+      candidates.push({ sheet: sheet, period: sheetPeriod });
+    });
+  });
+  candidates.sort(function(left, right) {
+    return planningPeriodNumber_(right.period) - planningPeriodNumber_(left.period);
+  });
+  if (!candidates.length) {
+    throw new Error('ロールカリバ替予定のひな形が見つかりません。移行元ExcelのGoogle Sheets変換版を確認してください。');
+  }
+  return candidates[0];
+}
+
+function readPlanningCarryForward_(template, templatePeriod, targetPeriod) {
+  const isNextMonth = planningPeriodNumber_(targetPeriod) === planningPeriodNumber_(templatePeriod) + 1;
+  if (!isNextMonth) return {};
+  const values = {};
+  ['E', 'H', 'K', 'M'].forEach(function(column) {
+    const sourceValues = template.getRange(column + '38:' + column + '68').getValues();
+    sourceValues.forEach(function(row, index) {
+      const value = row[0];
+      if (value !== '' && value != null) values[column + (index + 5)] = value;
+    });
+  });
+  return values;
+}
+
+function createPlanningDraftSheet_(destination, period) {
+  const template = findPlanningTemplateSheet_(destination, period);
+  const carryForward = readPlanningCarryForward_(template.sheet, template.period, period);
+  const sheet = template.sheet.copyTo(destination);
+  sheet.setName(planningSheetName_(period));
+  sheet.getRange('B5:M35').clearContent();
+  sheet.getRange('B38:M68').clearContent();
+  Object.keys(carryForward).forEach(function(a1) {
+    sheet.getRange(a1).setValue(carryForward[a1]);
+  });
+  return { sheet: sheet, templateSheetName: template.sheet.getName() };
+}
+
+function normalizePlanningCalendarRows_(rows, period) {
+  const result = {};
+  (Array.isArray(rows) ? rows : []).forEach(function(item) {
+    const dateMatch = String(item && item.date || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!dateMatch || Number(dateMatch[1]) !== period.year || Number(dateMatch[2]) !== period.month) return;
+    const day = Number(dateMatch[3]);
+    if (!Number.isInteger(day) || day < 1 || day > 31) return;
+    const size = String(item.size || '').normalize('NFKC').trim().toUpperCase();
+    const normalizedSize = size === 'STOP' || /休止|休み/.test(size)
+      ? '休止'
+      : (/^D\d+$/.test(size) ? size : '');
+    result[day] = {
+      day: day,
+      weekday: String(item.weekday || '').slice(0, 1),
+      size: normalizedSize,
+      operationAShift: /^(Ⅰ|Ⅲ)$/.test(String(item.operationAShift || '')) ? item.operationAShift : '',
+      operationBShift: /^(Ⅰ|Ⅲ)$/.test(String(item.operationBShift || '')) ? item.operationBShift : ''
+    };
+  });
+  return result;
+}
+
+function writePlanningCalendar_(sheet, rows, period) {
+  const normalized = normalizePlanningCalendarRows_(rows, period);
+  const dayCount = new Date(period.year, period.month, 0).getDate();
+  const basicValues = [];
+  const operationA = [];
+  const operationB = [];
+  for (let day = 1; day <= 31; day += 1) {
+    const item = day <= dayCount ? normalized[day] : null;
+    basicValues.push(item ? [item.day, item.weekday, item.size] : ['', '', '']);
+    operationA.push([item ? item.operationAShift : '']);
+    operationB.push([item ? item.operationBShift : '']);
+  }
+  sheet.getRange('B5:D35').setValues(basicValues);
+  sheet.getRange('G5:G35').setValues(operationA);
+  sheet.getRange('J5:J35').setValues(operationB);
+  sheet.getRange('E2').setValue(period.year);
+  sheet.getRange('G2').setValue(period.month);
+}
+
+function decodePlanningGeneratedNote_(note) {
+  const text = String(note || '');
+  if (text.indexOf(PLANNING_GENERATED_NOTE_PREFIX) !== 0) return null;
+  try {
+    return JSON.parse(text.slice(PLANNING_GENERATED_NOTE_PREFIX.length));
+  } catch (_) {
+    return null;
+  }
+}
+
+function clearGeneratedPlanningSuggestions_(sheet) {
+  let cleared = 0;
+  ['E', 'H', 'K'].forEach(function(column) {
+    for (let row = 5; row <= 35; row += 1) {
+      const cell = sheet.getRange(column + row);
+      const metadata = decodePlanningGeneratedNote_(cell.getNote());
+      if (!metadata) continue;
+      if (String(cell.getValue() == null ? '' : cell.getValue()) === String(metadata.generatedValue || '')) {
+        cell.setValue(metadata.previousValue == null ? '' : metadata.previousValue);
+        if (metadata.previousFontColor) cell.setFontColor(metadata.previousFontColor);
+        if (metadata.previousBackground) cell.setBackground(metadata.previousBackground);
+      }
+      cell.setNote(String(metadata.previousNote || ''));
+      cleared += 1;
+    }
+  });
+  return cleared;
+}
+
+function normalizePlanningSuggestions_(suggestions, period) {
+  const grouped = {};
+  (Array.isArray(suggestions) ? suggestions : []).forEach(function(item) {
+    const dateMatch = String(item && item.date || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!dateMatch || Number(dateMatch[1]) !== period.year || Number(dateMatch[2]) !== period.month) return;
+    const day = Number(dateMatch[3]);
+    const column = String(item.column || '').toUpperCase();
+    const text = String(item.text || '').trim().slice(0, 120);
+    if (!Number.isInteger(day) || day < 1 || day > 31 || ['E', 'H', 'K'].indexOf(column) < 0 || !text) return;
+    const a1 = column + (day + 4);
+    if (!grouped[a1]) grouped[a1] = [];
+    if (grouped[a1].indexOf(text) < 0) grouped[a1].push(text);
+  });
+  return grouped;
+}
+
+function writePlanningSuggestions_(sheet, suggestions, period, requestId) {
+  const grouped = normalizePlanningSuggestions_(suggestions, period);
+  let writtenCount = 0;
+  Object.keys(grouped).forEach(function(a1) {
+    const cell = sheet.getRange(a1);
+    const previousValue = cell.getValue();
+    const previousText = String(previousValue == null ? '' : previousValue).trim();
+    const generatedText = grouped[a1].join('\n');
+    const rowMatch = a1.match(/(\d+)$/);
+    const rowNumber = rowMatch ? Number(rowMatch[1]) : 0;
+    const existingRowWork = rowNumber
+      ? ['E', 'H', 'K'].map(function(column) { return String(sheet.getRange(column + rowNumber).getValue() || ''); }).join('\n')
+      : previousText;
+    if (/サイズ替/.test(existingRowWork) && /サイズ替/.test(generatedText)) return;
+    const generatedValue = previousText ? previousText + '\n' + generatedText : generatedText;
+    const metadata = {
+      requestId: requestId,
+      previousValue: previousValue == null ? '' : previousValue,
+      previousFontColor: cell.getFontColor(),
+      previousBackground: cell.getBackground(),
+      previousNote: cell.getNote(),
+      generatedValue: generatedValue
+    };
+    cell.setValue(generatedValue)
+      .setFontColor(PLANNING_DRAFT_FONT_COLOR)
+      .setBackground(PLANNING_DRAFT_BACKGROUND)
+      .setNote(PLANNING_GENERATED_NOTE_PREFIX + JSON.stringify(metadata));
+    writtenCount += 1;
+  });
+  return writtenCount;
+}
+
+function writePlanningDraft_(plan, requestId) {
+  const normalizedRequestId = normalizePlanningRequestId_(requestId);
+  const period = normalizePlanningPeriod_(plan && plan.year, plan && plan.month);
+  const expectedSheetName = planningSheetName_(period);
+  if (String(plan && plan.sheetName || expectedSheetName) !== expectedSheetName) {
+    throw new Error('計画シート名と対象年月が一致しません。');
+  }
+
+  const destination = openRollManagementSpreadsheet_();
+  let sheet = destination.getSheetByName(expectedSheetName);
+  let created = false;
+  let templateSheetName = '';
+  if (sheet) {
+    if (String(sheet.getRange('A1').getNote() || '').indexOf(PLANNING_DRAFT_NOTE_PREFIX) !== 0) {
+      throw new Error('同名シートが既にあり、自動計画案ではないため上書きしません: ' + expectedSheetName);
+    }
+  } else {
+    const createdSheet = createPlanningDraftSheet_(destination, period);
+    sheet = createdSheet.sheet;
+    templateSheetName = createdSheet.templateSheetName;
+    created = true;
+  }
+
+  const clearedSuggestionCount = clearGeneratedPlanningSuggestions_(sheet);
+  writePlanningCalendar_(sheet, plan.calendarRows, period);
+  const suggestionCount = writePlanningSuggestions_(sheet, plan.suggestions, period, normalizedRequestId);
+  const marker = {
+    year: period.year,
+    month: period.month,
+    sheetName: expectedSheetName,
+    requestId: normalizedRequestId,
+    updatedAt: new Date().toISOString()
+  };
+  sheet.getRange('A1').setNote(PLANNING_DRAFT_NOTE_PREFIX + JSON.stringify(marker));
+  sheet.getRange('N1')
+    .setValue(plan && plan.capabilities && plan.capabilities.caliberConnected
+      ? '自動計画案（要確認）'
+      : '自動計画案（カリバ替は要確認）')
+    .setFontColor(PLANNING_DRAFT_FONT_COLOR)
+    .setBackground(PLANNING_DRAFT_BACKGROUND)
+    .setFontWeight('bold');
+  SpreadsheetApp.flush();
+
+  return {
+    requestId: normalizedRequestId,
+    state: 'complete',
+    sheetName: expectedSheetName,
+    sheetUrl: destination.getUrl() + '#gid=' + sheet.getSheetId(),
+    created: created,
+    templateSheetName: templateSheetName,
+    suggestionCount: suggestionCount,
+    clearedSuggestionCount: clearedSuggestionCount,
+    caliberConnected: Boolean(plan && plan.capabilities && plan.capabilities.caliberConnected),
+    completedAt: new Date().toISOString()
+  };
 }
 
 function buildSaveDebugState(receivedRoleCount, writtenRoleCount, source) {

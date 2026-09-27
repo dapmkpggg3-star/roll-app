@@ -15,9 +15,10 @@ test('workshop board mode hides the automatic planning panel', () => {
     assert.match(workshopHiddenGroup[0], /body\.workshop-board-mode #auto-planning-panel/);
 });
 
-test('automatic planning remains available outside workshop board mode', () => {
+test('monthly sheet output remains available outside workshop board mode', () => {
     const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
 
     assert.match(html, /id="auto-planning-panel"/);
-    assert.match(html, /<h2>自動計画案<\/h2>/);
+    assert.match(html, /<h2>月次計画を作成<\/h2>/);
+    assert.match(html, /id="auto-planning-export"/);
 });

@@ -84,7 +84,8 @@
 }
 
 .auto-planning-file-button,
-.auto-planning-clear {
+.auto-planning-clear,
+.auto-planning-export {
   min-height: 40px;
   padding: 8px 13px;
   border: 1px solid #315f9e;
@@ -96,8 +97,38 @@
 }
 
 .auto-planning-file-button:hover,
-.auto-planning-clear:hover {
+.auto-planning-clear:hover,
+.auto-planning-export:hover {
   background: #eaf2ff;
+}
+
+.auto-planning-export {
+  width: 100%;
+  min-height: 48px;
+  margin-bottom: 8px;
+  background: #315f9e;
+  color: #fff;
+}
+
+.auto-planning-export:hover {
+  background: #244c83;
+}
+
+.auto-planning-export:disabled {
+  border-color: #aebed4;
+  background: #dfe7f2;
+  color: #6d7c91;
+  cursor: wait;
+}
+
+.auto-planning-export[hidden] {
+  display: none;
+}
+
+.auto-planning-output-note {
+  margin: 0;
+  color: #60718a;
+  font-size: 0.88rem;
 }
 
 .auto-planning-privacy {

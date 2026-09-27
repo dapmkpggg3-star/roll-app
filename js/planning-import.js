@@ -428,13 +428,21 @@
     }
 
     function clearImportedData(viewApi) {
-        if (viewApi && typeof viewApi.setData === 'function') viewApi.setData({}, { persist: false });
+        pendingExport = null;
         try { localStorage.removeItem('rollPlanningPreview'); } catch (_) {}
         setSummary(null);
         setStatus('', '');
         const input = typeof document !== 'undefined' ? document.getElementById('auto-planning-file') : null;
         if (input) input.value = '';
+        const exportButton = typeof document !== 'undefined' ? document.getElementById('auto-planning-export') : null;
+        if (exportButton) {
+            exportButton.hidden = true;
+            exportButton.disabled = true;
+            exportButton.textContent = 'スプレッドシートへ出力';
+        }
     }
+
+    let pendingExport = null;
 
     function initialize() {
         if (typeof document === 'undefined') return;
@@ -442,6 +450,7 @@
         const input = document.getElementById('auto-planning-file');
         const button = document.getElementById('auto-planning-file-button');
         const clearButton = document.getElementById('auto-planning-clear');
+        const exportButton = document.getElementById('auto-planning-export');
         if (!zone || !input || !button || zone.dataset.initialized === 'true') return;
         zone.dataset.initialized = 'true';
         const dependencies = {
@@ -456,15 +465,56 @@
             try {
                 const result = await importFile(file, dependencies);
                 if (!result) return;
-                if (!viewApi || typeof viewApi.setData !== 'function') throw new Error('表示モジュールを読み込めませんでした。');
+                const outputApi = globalThis.RollPlanningSheetOutput;
+                if (!outputApi || typeof outputApi.buildExportPayload !== 'function') throw new Error('計画出力モジュールを読み込めませんでした。');
                 try { localStorage.removeItem('rollPlanningPreview'); } catch (_) {}
-                viewApi.setData(result.planning, { persist: false });
-                viewApi.setOpen(true);
+                pendingExport = outputApi.buildExportPayload(result);
+                const today = new Date();
+                const targetNumber = pendingExport.year * 12 + pendingExport.month;
+                const currentNumber = today.getFullYear() * 12 + (today.getMonth() + 1);
+                if (targetNumber < currentNumber) {
+                    throw new Error(`このExcelの最新生産予定は${pendingExport.year}年${pendingExport.month}月です。過去月への誤出力を防ぐため、最新の生産予定Excelを選び直してください。`);
+                }
+                if (viewApi && typeof viewApi.setOpen === 'function') viewApi.setOpen(true);
                 setSummary(result);
-                setStatus(`読み込み完了：サイズ替候補 ${result.planning.sizeChanges.length}件（カリバ替は未接続）`, 'success');
+                if (exportButton) {
+                    exportButton.hidden = false;
+                    exportButton.disabled = false;
+                    exportButton.textContent = `${pendingExport.year}年${pendingExport.month}月をスプレッドシートへ出力`;
+                }
+                setStatus(`読み込み完了：${pendingExport.year}年${pendingExport.month}月／サイズ替候補 ${pendingExport.suggestions.length}件。内容はアプリ内ではなくスプレッドシートへ出力します。`, 'success');
             } catch (error) {
+                pendingExport = null;
+                if (exportButton) {
+                    exportButton.hidden = true;
+                    exportButton.disabled = true;
+                }
                 setSummary(null);
                 setStatus(error && error.message ? error.message : 'Excelを読み込めませんでした。', 'error');
+            }
+        }
+
+        async function exportToSheet() {
+            if (!pendingExport || !exportButton) return;
+            const gateway = globalThis.RollSheetGateway;
+            if (!gateway || typeof gateway.exportPlanningDraft !== 'function') {
+                setStatus('スプレッドシート連携を読み込めませんでした。画面を再読み込みしてください。', 'error');
+                return;
+            }
+            exportButton.disabled = true;
+            const normalLabel = exportButton.textContent;
+            exportButton.textContent = 'スプレッドシートへ出力中…';
+            setStatus('最新版 ロール管理へ計画案を作成しています…', '');
+            try {
+                const result = await gateway.exportPlanningDraft(pendingExport);
+                const linkText = result && result.sheetName ? result.sheetName : pendingExport.sheetName;
+                setStatus(`出力完了：${linkText}。カリバ替は未接続のため、現時点ではサイズ替候補までです。`, 'success');
+                exportButton.textContent = '同じ月を再出力（自動候補を更新）';
+            } catch (error) {
+                setStatus(error && error.message ? error.message : 'スプレッドシートへ出力できませんでした。', 'error');
+                exportButton.textContent = normalLabel;
+            } finally {
+                exportButton.disabled = false;
             }
         }
 
@@ -482,6 +532,10 @@
             }
         });
         input.addEventListener('change', () => process(input.files && input.files[0]));
+        if (exportButton) exportButton.addEventListener('click', event => {
+            event.stopPropagation();
+            exportToSheet();
+        });
         ['dragenter', 'dragover'].forEach(type => zone.addEventListener(type, event => {
             event.preventDefault();
             zone.classList.add('is-dragging');

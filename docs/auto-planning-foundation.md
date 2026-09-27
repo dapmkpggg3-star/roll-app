@@ -21,7 +21,9 @@ Company-specific production amounts, equipment identifiers, thresholds, dates, p
 - Consider an explicitly allowed after-production slot before the next shift.
 - Accept a configurable caliber sequence or an explicit next-caliber override.
 - Return warnings instead of silently accepting exceptions.
-- Render size-change, caliber-change, and no-safe-slot results in a collapsible review panel.
+- Build a sanitized monthly sheet payload without production amounts.
+- Preserve existing monthly-sheet layout by copying a trusted prior template.
+- Update exporter-owned suggestions idempotently without overwriting an unowned same-name sheet.
 
 ## Private configuration responsibilities
 
@@ -33,8 +35,8 @@ Company-specific production amounts, equipment identifiers, thresholds, dates, p
 - Caliber limits and roll replacement thresholds.
 - Prices, vendors, roll identifiers, and maintenance history.
 
-The first application phase should present recommendations with reasons and require a human to approve them. It should not automatically publish or confirm a production plan.
+The first application phase writes a clearly marked draft to Google Sheets and requires a human to review it. It does not confirm a production plan.
 
 Caliber state is supplied at runtime with generic fields such as `maxRuns`, `maxRunsBySize`, `usedRuns`, `currentCaliber`, and `caliberSequence`. Actual equipment names, limits, current positions, and production figures stay outside these public modules.
 
-`js/planning-view.js` is display-only. The application can pass a calculated result with `RollPlanningView.setData(result)`. The panel stores only the result supplied by the application and does not upload source production data.
+`js/planning-sheet-output.js` removes production amounts and limits output to the selected month's calendar and recommendations. The workbook itself is never uploaded.

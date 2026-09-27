@@ -136,7 +136,7 @@
         panel.classList.toggle('is-collapsed', !open);
         body.hidden = !open;
         button.setAttribute('aria-expanded', open ? 'true' : 'false');
-        button.textContent = open ? '自動計画案 ▲' : '自動計画案 ▼';
+        button.textContent = open ? '月次計画を作成 ▲' : '月次計画を作成 ▼';
         try { localStorage.setItem(OPEN_KEY, open ? 'true' : 'false'); } catch (_) {}
     }
 

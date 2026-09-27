@@ -571,6 +571,62 @@ function validateStandMasterFetchResponse(data) {
     }
 }
 
+function validatePlanningExportStatus(data, requestId) {
+    if (!data || data.success !== true || !data.status) {
+        const detail = data && data.error ? `詳細: ${data.error}` : '出力結果を確認できません。';
+        throw createSyncError('月次計画出力', detail);
+    }
+    if (String(data.status.requestId || '') !== String(requestId || '')) {
+        throw createSyncError('月次計画出力', '別の出力結果が返りました。もう一度実行してください。');
+    }
+    if (data.status.state === 'error') {
+        throw createSyncError('月次計画出力', data.status.error || 'Apps Script側でエラーが発生しました。');
+    }
+    return data.status;
+}
+
+async function fetchPlanningExportStatus(requestId) {
+    const url = `${SHEETS_ENDPOINT}?action=fetchPlanningExportStatus&requestId=${encodeURIComponent(requestId)}&t=${Date.now()}`;
+    const response = await fetch(url, { method: 'GET', cache: 'no-store' });
+    const data = await readJsonResponse(response, '月次計画出力結果の確認');
+    if (data && data.pending === true) return null;
+    return validatePlanningExportStatus(data, requestId);
+}
+
+async function exportPlanningDraft(plan) {
+    if (!isRemoteConfigured()) throw createSyncError('月次計画出力', 'スプレッドシート同期先が設定されていません。');
+    if (!plan || !plan.requestId || !plan.year || !plan.month) {
+        throw createSyncError('月次計画出力', '出力データが不足しています。Excelを読み込み直してください。');
+    }
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
+    try {
+        await fetch(SHEETS_ENDPOINT, {
+            method: 'POST',
+            mode: 'no-cors',
+            body: JSON.stringify({ action: 'writePlanningDraft', requestId: plan.requestId, plan }),
+            signal: controller.signal
+        });
+    } finally {
+        clearTimeout(timeoutId);
+    }
+
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+        await new Promise(resolve => setTimeout(resolve, attempt === 0 ? 900 : 600));
+        const status = await fetchPlanningExportStatus(plan.requestId);
+        if (status && status.state === 'complete') return status;
+    }
+    throw createSyncError('月次計画出力', '処理結果の確認が時間内に終わりませんでした。スプレッドシートを確認して、必要なら再出力してください。');
+}
+
+if (typeof globalThis !== 'undefined') {
+    globalThis.RollSheetGateway = {
+        exportPlanningDraft,
+        fetchPlanningExportStatus
+    };
+}
+
 function formatUseStartDateForSync(date) {
     const pad = number => String(number).padStart(2, '0');
     return `${date.getFullYear()}/${pad(date.getMonth() + 1)}/${pad(date.getDate())}`;
