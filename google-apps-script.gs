@@ -3,7 +3,7 @@ const ROLL_MANAGEMENT_VIEW_SHEET_NAME = 'ロール管理表';
 const STAND_MASTER_SHEET_NAME = 'StandMaster';
 const INPUT_SHEET_NAMES = ['入力シート', 'Input', '入力'];
 const ROLL_MANAGEMENT_SPREADSHEET_ID_PROPERTY = 'ROLL_MANAGEMENT_SPREADSHEET_ID';
-const SCRIPT_VERSION = 'revision-guard-template-v9';
+const SCRIPT_VERSION = 'revision-guard-history-v10';
 const ROLES_EDIT_TRIGGER_HANDLER = 'handleRolesSheetEdit';
 const ROLES_EDIT_TRIGGER_LOCK_TIMEOUT_MS = 300000;
 const HEADER_VALUES = ['ID', 'スタンド番号', 'ステータス', 'メモ', '最終更新日', '作業依頼済み', '作業依頼進捗', '履歴', '現在径', '使用開始日', '溶射状態', '納入予定日', '組替指示期限', '使用終了日', '運用3セット対象', '次回組み込み予定'];
@@ -534,7 +534,9 @@ function doPost(e) {
         storeLastSaveDebugState(debug);
         result = { requestId: requestId, state: 'complete', writtenRoleCount: writtenRoleCount };
       } catch (saveError) {
-        result = { requestId: requestId, state: 'error', error: saveError.message || String(saveError) };
+        result = { requestId: requestId, state: saveError.rolesSaved ? 'partial' : 'error',
+          rolesSaved: Boolean(saveError.rolesSaved), writtenRoleCount: saveError.writtenRoleCount || 0,
+          error: saveError.message || String(saveError) };
       }
       CacheService.getScriptCache().put('ROLL_SAVE_' + requestId, JSON.stringify(result), 600);
       return ContentService.createTextOutput(JSON.stringify({ success: result.state === 'complete', result: result }))
@@ -3623,7 +3625,9 @@ function writeRollHistoryActualValue(sheet, definition, write) {
     1,
     fieldDefinition.width
   );
-  if (write.field === 'currentDiameter') {
+  if (write.value === '') {
+    range.clearContent();
+  } else if (write.field === 'currentDiameter') {
     range.setValue(Number(write.value)).setFontColor(ROLL_HISTORY_ACTUAL_FONT_COLOR);
   } else {
     const parts = String(write.value).split('-').map(Number);
@@ -3647,7 +3651,37 @@ function writeRollHistoryActualValue(sheet, definition, write) {
   return range.getA1Notation();
 }
 
-function syncRollHistoryActualsFromRolesSheet(sheet, roleMap) {
+// A blank current value alone is not permission to erase historical actuals.
+// Only an explicit clear in the same role/status can clear the current cycle.
+function planRollHistoryExplicitClears_(cycleRows, beforeRole, afterRole, allowedFieldNames) {
+  const result = { writes: [], conflicts: [] };
+  if (!beforeRole || !afterRole || String(beforeRole.id) !== String(afterRole.id)
+    || beforeRole.status !== afterRole.status) return result;
+  const before = normalizeRollHistoryActualSnapshot(beforeRole);
+  const after = normalizeRollHistoryActualSnapshot(afterRole);
+  const current = getRollHistoryCurrentEditableCycleRow(cycleRows);
+  (allowedFieldNames || []).forEach(function(fieldName) {
+    if (before[fieldName] === '' || after[fieldName] !== '') return;
+    const field = current && current.fields[fieldName];
+    // A sheet editor may already have cleared the value before the app saves.
+    if (field && field.isBlank) return;
+    const pairName = ROLL_HISTORY_ACTUAL_FIELD_DEFINITIONS[fieldName].pairField;
+    const pair = current && pairName && current.fields[pairName];
+    const pairMatches = !pairName || before[pairName] === ''
+      || (pair && !pair.planned && rollHistoryActualValuesEqual(pairName, pair.value, before[pairName]));
+    if (field && !field.planned && pairMatches
+      && rollHistoryActualValuesEqual(fieldName, field.value, before[fieldName])) {
+      result.writes.push({ field: fieldName, rowNumber: current.rowNumber, value: '' });
+    } else {
+      result.conflicts.push({ field: fieldName, rowNumber: current ? current.rowNumber : 0,
+        expected: before[fieldName], existing: field ? field.value : '', reason: 'clear-target-not-confirmed' });
+    }
+  });
+  return result;
+}
+
+function syncRollHistoryActualsFromRolesSheet(sheet, roleMap, previousRoleMap, options) {
+  const dryRun = Boolean(options && options.dryRun);
   const definitions = getRollHistoryStatusDefinitions(sheet);
   const result = { sheetName: sheet.getName(), written: [], unchanged: [], conflicts: [], warnings: [], skipped: [] };
   definitions.forEach(function(definition) {
@@ -3675,12 +3709,17 @@ function syncRollHistoryActualsFromRolesSheet(sheet, roleMap) {
       normalizeRollHistoryActualSnapshot(role),
       getRollHistoryActualFieldNamesForStand(definition.standNumber)
     );
+    const clearPlan = planRollHistoryExplicitClears_(cycleRows,
+      previousRoleMap && previousRoleMap.get(definition.roleName), role,
+      getRollHistoryActualFieldNamesForStand(definition.standNumber));
+    plan.writes = plan.writes.concat(clearPlan.writes);
+    plan.conflicts = plan.conflicts.concat(clearPlan.conflicts);
     plan.writes.forEach(function(write) {
       result.written.push({
         roleName: definition.roleName,
         field: write.field,
         value: write.value,
-        range: writeRollHistoryActualValue(sheet, definition, write)
+        range: dryRun ? '' : writeRollHistoryActualValue(sheet, definition, write)
       });
     });
     plan.unchanged.forEach(function(item) {
@@ -3696,6 +3735,7 @@ function syncRollHistoryActualsFromRolesSheet(sheet, roleMap) {
         reason: item.reason
       });
     });
+    if (dryRun) return;
     if (plan.writes.length > 0) SpreadsheetApp.flush();
     Array.from(new Set(plan.writes.map(function(write) { return write.rowNumber; }))).forEach(function(rowNumber) {
       const cycleRow = getRollHistoryCycleRowFromSheet(sheet, definition, rowNumber);
@@ -3711,10 +3751,16 @@ function syncRollHistoryActualsFromRolesSheet(sheet, roleMap) {
       }
     });
   });
+  const detected = new Set(definitions.map(function(definition) { return definition.roleName; }));
+  roleMap.forEach(function(role, name) {
+    if (getRollHistorySheetNameForStandNumber(getRollManagementViewStandInfo(name).number) === sheet.getName()
+      && !detected.has(name)) result.skipped.push({ roleName: name, reason: 'ロールの履歴欄なし' });
+  });
   return result;
 }
 
-function syncRollHistoryActualsFromRoles(roles, roleNames) {
+function syncRollHistoryActualsFromRoles(roles, roleNames, previousRoles, options) {
+  const previousRoleMap = new Map((previousRoles || []).map(function(role) { return [String(role.name || '').trim(), role]; }));
   const roleList = Array.isArray(roles) ? roles : fetchRoles();
   const requestedNames = new Set((roleNames || []).map(function(name) { return String(name || '').trim(); }));
   const roleMap = new Map(roleList.filter(function(role) {
@@ -3749,7 +3795,7 @@ function syncRollHistoryActualsFromRoles(roles, roleNames) {
       summary.skipped.push({ sheetName: sheetName, roleName: '', reason: 'シートなし' });
       return;
     }
-    const sheetResult = syncRollHistoryActualsFromRolesSheet(sheet, roleMap);
+    const sheetResult = syncRollHistoryActualsFromRolesSheet(sheet, roleMap, previousRoleMap, options);
     summary.sheets.push(sheetResult);
     ['written', 'unchanged', 'conflicts', 'warnings', 'skipped'].forEach(function(key) {
       sheetResult[key].forEach(function(item) {
@@ -4857,10 +4903,78 @@ function saveRolesWithRevision_(roles, expectedRevision) {
   }
 }
 
+const ROLL_HISTORY_PENDING_PREFIX = 'ROLL_HISTORY_PENDING_';
+
+function readPendingRollHistoryReflections_() {
+  const properties = PropertiesService.getScriptProperties().getProperties();
+  return Object.keys(properties).filter(function(key) {
+    return key.indexOf(ROLL_HISTORY_PENDING_PREFIX) === 0;
+  }).map(function(key) {
+    const record = JSON.parse(properties[key]);
+    if (!record.beforeRole || !record.afterSnapshot) throw new Error('保留中の履歴反映記録を確認してください。');
+    return { key: key, beforeRole: record.beforeRole, afterSnapshot: record.afterSnapshot };
+  });
+}
+
+function rollHistorySnapshotsEqual_(left, right) {
+  return Object.keys(ROLL_HISTORY_ACTUAL_FIELD_DEFINITIONS).every(function(field) {
+    return left[field] === right[field];
+  });
+}
+
+function buildRollHistoryRetryContext_(previousRoles, nextRoles, pending) {
+  const previousById = new Map(previousRoles.map(function(role) { return [String(role.id), role]; }));
+  const nextById = new Map(nextRoles.map(function(role) { return [String(role.id), role]; }));
+  const previousForHistory = previousRoles.slice();
+  const retryNames = [];
+  (pending || []).forEach(function(item) {
+    const before = item.beforeRole;
+    const current = previousById.get(String(before.id));
+    const next = nextById.get(String(before.id));
+    if (!current || !next || current.name !== before.name || next.name !== current.name
+      || next.status !== current.status || !next.isActiveThreeSet) {
+      throw new Error('保留中の履歴反映があるため、このロールの削除・番号変更は先に反映を確認してください。');
+    }
+    const currentSnapshot = normalizeRollHistoryActualSnapshot(current);
+    if (!rollHistorySnapshotsEqual_(currentSnapshot, item.afterSnapshot)
+      && !rollHistorySnapshotsEqual_(currentSnapshot, normalizeRollHistoryActualSnapshot(before))) {
+      throw new Error('前回の未反映データが別途訂正されています。履歴表を確認するまで保存を停止します。');
+    }
+    const index = previousForHistory.findIndex(function(role) { return String(role.id) === String(before.id); });
+    previousForHistory[index] = before;
+    retryNames.push(before.name);
+  });
+  return { previousRoles: previousForHistory, retryNames: retryNames };
+}
+
+function storePendingRollHistoryReflections_(beforeRoles, afterRoles, names) {
+  const requested = new Set(names);
+  const beforeById = new Map(beforeRoles.map(function(role) { return [String(role.id), role]; }));
+  const properties = {}, keys = [];
+  afterRoles.forEach(function(role) {
+    if (!requested.has(role.name) || !role.isActiveThreeSet) return;
+    const before = beforeById.get(String(role.id)) || { id: role.id, name: role.name, status: role.status };
+    const snapshot = normalizeRollHistoryActualSnapshot(before);
+    const key = ROLL_HISTORY_PENDING_PREFIX + encodeURIComponent(String(role.id));
+    properties[key] = JSON.stringify({
+      beforeRole: { id: before.id, name: before.name, status: before.status,
+        currentDiameter: snapshot.currentDiameter, useStartDate: snapshot.useStartDate, useEndDate: snapshot.useEndDate,
+        workProgress: { dispatchDate: snapshot.dispatchDate, arrivalDate: snapshot.arrivalDate } },
+      afterSnapshot: normalizeRollHistoryActualSnapshot(role)
+    });
+    keys.push(key);
+  });
+  if (keys.length) PropertiesService.getScriptProperties().setProperties(properties);
+  return keys;
+}
+
 function writeRoles(roles) {
   const sheet = getSheet();
   const previousRoles = fetchRoles();
-  const changedActualRoleNames = getRollHistoryActualChangedRoleNames(previousRoles, roles);
+  const pending = readPendingRollHistoryReflections_();
+  const retry = buildRollHistoryRetryContext_(previousRoles, roles, pending);
+  const previousForHistory = retry.previousRoles;
+  const changedActualRoleNames = Array.from(new Set(getRollHistoryActualChangedRoleNames(previousRoles, roles).concat(retry.retryNames)));
   ensureRolesColumnCapacity(sheet);
   validateRolesForSave_(roles);
   const oldLastRow = sheet.getLastRow();
@@ -4882,21 +4996,42 @@ function writeRoles(roles) {
     });
   Logger.log('ROLL_DEBUG_GAS_WRITE_BEFORE_SET_VALUES values.length=' + values.length + ', expectedColumns=' + HEADER_VALUES.length + ', invalidColumnRows=' + JSON.stringify(invalidColumnRows));
   if (invalidColumnRows.length) throw new Error('保存する列数が一致しません。');
-  sheet.getRange(1, 1, values.length, HEADER_VALUES.length).setValues(values);
-  if (oldLastRow > values.length) {
-    sheet.getRange(values.length + 1, 1, oldLastRow - values.length, HEADER_VALUES.length).clearContent();
+  if (changedActualRoleNames.length > 0) {
+    const preflight = syncRollHistoryActualsFromRoles(sortedRoles, changedActualRoleNames, previousForHistory, { dryRun: true });
+    const problems = preflight.conflicts.concat(preflight.skipped);
+    if (problems.length > 0) {
+      throw new Error('履歴表の対応を確認できないため、保存せず停止しました。対象: '
+        + Array.from(new Set(problems.map(function(item) { return item.roleName || item.sheetName; }))).join('、'));
+    }
   }
-  applyStatusDropdowns(sheet);
-  applySheetFormatting(sheet, rows.length);
-
+  const pendingKeys = storePendingRollHistoryReflections_(previousForHistory, sortedRoles, changedActualRoleNames);
+  sheet.getRange(1, 1, values.length, HEADER_VALUES.length).setValues(values);
+  const reflectionFailures = [];
+  try {
+    if (oldLastRow > values.length) {
+      sheet.getRange(values.length + 1, 1, oldLastRow - values.length, HEADER_VALUES.length).clearContent();
+    }
+    applyStatusDropdowns(sheet);
+    applySheetFormatting(sheet, rows.length);
+  } catch (formatError) {
+    Logger.log('writeRoles: formatting failed: ' + formatError.toString());
+    reflectionFailures.push('管理データの行整理・書式設定に失敗しました');
+  }
   try {
     SpreadsheetApp.flush();
     const actualSyncResult = changedActualRoleNames.length > 0
-      ? syncRollHistoryActualsFromRoles(sortedRoles, changedActualRoleNames)
+      ? syncRollHistoryActualsFromRoles(sortedRoles, changedActualRoleNames, previousForHistory)
       : { sheetNames: [], written: [], unchanged: [], conflicts: [], warnings: [], skipped: [] };
     Logger.log('writeRoles: history actuals updated: ' + JSON.stringify(actualSyncResult));
+    if (actualSyncResult.conflicts.length || actualSyncResult.skipped.length) {
+      reflectionFailures.push('履歴表に競合・対象外の欄があります');
+    } else {
+      const properties = PropertiesService.getScriptProperties();
+      Array.from(new Set(pendingKeys.concat(pending.map(function(item) { return item.key; })))).forEach(function(key) { properties.deleteProperty(key); });
+    }
   } catch (actualSyncError) {
     Logger.log('writeRoles: history actual sync failed: ' + actualSyncError.toString());
+    reflectionFailures.push('履歴表への反映に失敗しました');
   }
 
   try {
@@ -4904,6 +5039,7 @@ function writeRoles(roles) {
     Logger.log('writeRoles: roll management view updated: ' + JSON.stringify(viewResult));
   } catch (error) {
     Logger.log('writeRoles: roll management view update failed: ' + error.toString());
+    reflectionFailures.push('管理一覧の更新に失敗しました');
   }
 
   try {
@@ -4911,8 +5047,15 @@ function writeRoles(roles) {
     Logger.log('writeRoles: field roll management view updated: ' + JSON.stringify(fieldViewResult));
   } catch (error) {
     Logger.log('writeRoles: field roll management view update failed: ' + error.toString());
+    reflectionFailures.push('現場用一覧の更新に失敗しました');
   }
 
+  if (reflectionFailures.length) {
+    const partialError = new Error('管理データは保存済みですが、' + reflectionFailures.join('。') + '。同期完了ではありません。シートを確認してください。');
+    partialError.rolesSaved = true;
+    partialError.writtenRoleCount = rows.length;
+    throw partialError;
+  }
   Logger.log('writeRoles: complete');
   return rows.length;
 }

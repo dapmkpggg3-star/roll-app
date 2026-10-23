@@ -8,7 +8,7 @@ const path = require('node:path');
 const sample = () => [{ id: 1, name: '#99-1', status: '改削中', updatedAt: '2031-01-01T00:00:00Z', memo: '', history: [] }];
 function harness() {
     let current = sample();
-    const writes = [], cache = new Map();
+    const writes = [], cache = new Map(), properties = new Map();
     let held = false, releases = 0;
     const context = vm.createContext({
         console, Logger: { log() {} },
@@ -19,6 +19,11 @@ function harness() {
         },
         LockService: { getScriptLock: () => ({ waitLock() { assert.equal(held, false); held = true; }, hasLock: () => held, releaseLock() { held = false; releases++; } }) },
         CacheService: { getScriptCache: () => ({ put: (key, value) => cache.set(key, value), get: key => cache.get(key) || null }) },
+        PropertiesService: { getScriptProperties: () => ({
+            getProperties: () => Object.fromEntries(properties),
+            setProperties: values => Object.entries(values).forEach(([key, value]) => properties.set(key, value)),
+            deleteProperty: key => properties.delete(key)
+        }) },
         ContentService: { MimeType: { JSON: 'json' }, createTextOutput: value => ({ value, setMimeType() { return JSON.parse(value); } }) }
     });
     vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'google-apps-script.gs'), 'utf8'), context);
@@ -113,6 +118,22 @@ test('client never treats a different request, conflict, or pending response as 
     assert.throws(() => c.validateRolesSaveStatus({ success: true, status: { requestId: 'other', state: 'complete' } }, requestId), /一致しません/);
     assert.throws(() => c.validateRolesSaveStatus({ success: true, status: { requestId, state: 'error', error: '競合' } }, requestId), /競合/);
     assert.equal(c.validateRolesSaveStatus({ success: true, status: { requestId, state: 'complete' } }, requestId).state, 'complete');
+    assert.throws(() => c.validateRolesSaveStatus({ success: true, status: { requestId, state: 'partial', error: '管理データは保存済みですが履歴表が未反映です。' } }, requestId), /一部未反映.*保存済み/);
+});
+
+test('POST reports partial reflection separately from a fully completed save', () => {
+    const h = harness(), gas = h.context;
+    gas.writeRoles = () => {
+        const error = new Error('管理データは保存済みですが履歴表が未反映です。');
+        error.rolesSaved = true; error.writtenRoleCount = 1; throw error;
+    };
+    const requestId = 'roles-partial-00000001';
+    const response = gas.doPost({ postData: { contents: JSON.stringify({ action: 'save', roles: sample(), expectedRevision: gas.rolesRevision_(sample()), requestId }) } });
+    assert.equal(response.success, false);
+    const result = gas.doGet({ parameter: { action: 'fetchSaveStatus', requestId } }).status;
+    assert.equal(result.state, 'partial');
+    assert.equal(result.rolesSaved, true);
+    assert.equal(result.writtenRoleCount, 1);
 });
 
 test('Roles writes preserve unrelated columns and clear only surplus managed rows', () => {
@@ -139,4 +160,75 @@ test('Roles writes preserve unrelated columns and clear only surplus managed row
     const bad = sample(); const circular = {}; circular.self = circular; bad[0].history = [circular];
     assert.throws(() => gas.writeRoles(bad), /circular/i);
     assert.equal(calls.length, 0);
+});
+
+function realWriteHarness() {
+    const h = harness(), gas = h.context, writes = [];
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'google-apps-script.gs'), 'utf8').match(/function writeRoles\(roles\) \{[\s\S]*?\n\}\n\nfunction buildRoleRowForSheet/)[0].replace(/\nfunction buildRoleRowForSheet$/, ''), gas);
+    gas.getSheet = () => ({ getLastRow: () => 2, getRange: (...args) => ({ setValues: values => writes.push({ args, values }) }) });
+    gas.ensureRolesColumnCapacity = () => {};
+    gas.applyStatusDropdowns = () => {};
+    gas.applySheetFormatting = () => {};
+    gas.SpreadsheetApp = { flush() {} };
+    gas.refreshRollManagementView = () => ({});
+    gas.refreshFieldRollManagementView = () => ({});
+    const before = [{ ...sample()[0], name: '#8-1', status: 'オンライン', isActiveThreeSet: true, useStartDate: '2031-01-02', useEndDate: '' }];
+    h.setCurrent(before);
+    return { ...h, writes, before, after: [{ ...before[0], useStartDate: '' }] };
+}
+
+test('history preflight conflicts stop a save before any Roles write', () => {
+    const h = realWriteHarness(), calls = [];
+    h.context.syncRollHistoryActualsFromRoles = (rows, names, previous, options) => {
+        calls.push(options);
+        assert.equal(previous[0].useStartDate, '2031-01-02');
+        return { conflicts: [{ roleName: '#8-1' }], skipped: [] };
+    };
+    assert.throws(() => h.context.writeRoles(h.after), /保存せず停止/);
+    assert.equal(h.writes.length, 0);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].dryRun, true);
+});
+
+test('runtime history failure after Roles save is not reported as success', () => {
+    const h = realWriteHarness();
+    h.context.syncRollHistoryActualsFromRoles = (rows, names, previous, options) => {
+        if (options && options.dryRun) return { conflicts: [], skipped: [] };
+        throw new Error('spreadsheet service unavailable');
+    };
+    assert.throws(() => h.context.writeRoles(h.after), error => {
+        assert.equal(error.rolesSaved, true);
+        assert.equal(error.writtenRoleCount, 1);
+        assert.match(error.message, /管理データは保存済み.*同期完了ではありません/);
+        return true;
+    });
+    assert.equal(h.writes.length, 1);
+});
+
+test('partial save retains the previous date so an unchanged retry can finish clearing it', () => {
+    const h = realWriteHarness();
+    let fail = true;
+    h.context.syncRollHistoryActualsFromRoles = (rows, names, previous, options) => {
+        assert.equal(previous[0].useStartDate, '2031-01-02');
+        assert.equal(rows[0].useStartDate, '');
+        assert.deepEqual(Array.from(names), ['#8-1']);
+        if (!options && fail) throw new Error('temporary failure');
+        return { conflicts: [], skipped: [] };
+    };
+    assert.throws(() => h.context.writeRoles(h.after), /保存済み/);
+    assert.equal(h.context.readPendingRollHistoryReflections_().length, 1);
+    h.setCurrent(h.after); // Roles was written, while history reflection failed.
+    fail = false;
+    assert.equal(h.context.writeRoles(h.after), 1);
+    assert.equal(h.context.readPendingRollHistoryReflections_().length, 0);
+});
+
+test('a pending reflection cannot silently consume a later independent correction', () => {
+    const h = realWriteHarness(), gas = h.context;
+    gas.storePendingRollHistoryReflections_(h.before, h.after, ['#8-1']);
+    const pending = gas.readPendingRollHistoryReflections_();
+    const external = [{ ...h.after[0], useStartDate: '2031-01-07' }];
+    assert.throws(() => gas.buildRollHistoryRetryContext_(external, external, pending), /別途訂正/);
+    assert.throws(() => gas.buildRollHistoryRetryContext_(h.after, [], pending), /削除・番号変更/);
+    assert.throws(() => gas.buildRollHistoryRetryContext_(h.after, [{ ...h.after[0], isActiveThreeSet: false }], pending), /保留中/);
 });

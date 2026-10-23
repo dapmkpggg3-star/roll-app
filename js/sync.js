@@ -991,6 +991,7 @@ function validateRolesSaveStatus(data, requestId) {
     if (data.pending === true) return null;
     const status = data.status;
     if (!status || status.requestId !== requestId) throw createSyncError('保存結果確認', '保存リクエストが一致しません。');
+    if (status.state === 'partial') throw createSyncError('一部未反映', status.error || '管理データは保存済みですが、履歴表への反映が完了していません。');
     if (status.state === 'error') throw createSyncError('同期', status.error || '保存できませんでした。');
     if (status.state !== 'complete') throw createSyncError('保存結果確認', '保存結果が未確定です。');
     return status;

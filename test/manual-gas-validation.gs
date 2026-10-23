@@ -73,6 +73,9 @@ function runValidationDateRoundTrip() {
   console.log('ROLL_VALIDATION_STAGE starting-read');
   const ss = validationSpreadsheet_();
   const originalRoles = fetchRoles();
+  if (readPendingRollHistoryReflections_().length) {
+    throw new Error('未反映の履歴があるため、検証を開始できません。先に反映状態を確認してください。');
+  }
   const revision = rolesRevision_(originalRoles);
   let target = null;
   for (const name of ROLL_HISTORY_SHEET_NAMES) {
@@ -140,11 +143,25 @@ function runValidationDateRoundTrip() {
     if (repeated.updated || repeatedRole.history.length !== after.history.length) {
       throw new Error('同じ訂正の再処理で履歴が増えました。');
     }
+    const beforeClear = fetchRoles();
+    const clearRoles = JSON.parse(JSON.stringify(beforeClear));
+    clearRoles.find(function(role) { return role.id === target.role.id; }).useStartDate = '';
+    const endBeforeClear = getRollHistoryActualValueFromSheet(target.sheet, target.definition, target.cycle.rowNumber, 'useEndDate');
+    saveRolesWithRevision_(clearRoles, rolesRevision_(beforeClear));
+    SpreadsheetApp.flush();
+    const cleared = getRollHistoryActualValueFromSheet(target.sheet, target.definition, target.cycle.rowNumber, 'useStartDate');
+    const endAfterClear = getRollHistoryActualValueFromSheet(target.sheet, target.definition, target.cycle.rowNumber, 'useEndDate');
+    if (!cleared.isBlank || endBeforeClear.value !== endAfterClear.value || endBeforeClear.planned !== endAfterClear.planned) {
+      throw new Error('空欄への訂正、または隣接する終了日の保護に失敗しました。');
+    }
+    if (readPendingRollHistoryReflections_().length) throw new Error('完了後に未反映記録が残っています。');
+    console.log('ROLL_VALIDATION_STAGE explicit-clear-verified');
     const afterCycles = buildRollHistoryCycleRows(target.definition.roleIdRow, range.getDisplayValues(), range.getFontColors());
     if (afterCycles.length !== target.count) throw new Error('日付訂正でサイクル行が増減しました。');
     result = { mode: 'LIVE_SERVER_DATE_ROUND_TRIP', roleName: target.role.name,
       sheet: target.sheet.getName(), range: fieldRange.getA1Notation(),
-      forward: true, reverse: true, duplicateHistoryPrevented: true, cycleRowsUnchanged: true };
+      forward: true, reverse: true, explicitClear: true, adjacentEndPreserved: true,
+      pendingReflectionCleared: true, duplicateHistoryPrevented: true, cycleRowsUnchanged: true };
   } finally {
     console.log('ROLL_VALIDATION_STAGE restoring');
     range.setValues(values).setFontColors(colors).setBackgrounds(backgrounds).setNotes(notes);
@@ -160,6 +177,8 @@ function runValidationDateRoundTrip() {
       || JSON.stringify(range.getNotes()) !== JSON.stringify(notes)) {
       throw new Error('検証後の履歴値・書式の復元確認に失敗しました。');
     }
+    // The copy has been verified back at its baseline; remove only this test's retry record.
+    PropertiesService.getScriptProperties().deleteProperty(ROLL_HISTORY_PENDING_PREFIX + encodeURIComponent(String(target.role.id)));
   }
   result.restored = true;
   console.log('ROLL_VALIDATION_RESULT ' + JSON.stringify(result));
@@ -192,5 +211,57 @@ function runValidationCycleAudit() {
     });
   });
   console.log('ROLL_VALIDATION_AUDIT_COUNT ' + result.length);
+  return result;
+}
+
+// Creates a calendar-only test draft in the private copy. This is not a production plan.
+// Configure ROLL_HISTORY_SOURCE_SPREADSHEET_ID to the read-only native template workbook.
+function runValidationPlanningDraft() {
+  const ss = validationSpreadsheet_();
+  const now = new Date();
+  const period = { year: Number(Utilities.formatDate(now, 'Asia/Tokyo', 'yyyy')),
+    month: Number(Utilities.formatDate(now, 'Asia/Tokyo', 'M')) };
+  if (ss.getSheetByName(planningSheetName_(period))) throw new Error('同月の検証シートが既にあります。上書きせず停止します。');
+  const template = findPlanningTemplateSheet_(ss, period);
+  const source = template.sheet;
+  const sourceValues = JSON.stringify(source.getRange('A1:AM70').getValues());
+  const dayCount = new Date(period.year, period.month, 0).getDate();
+  const plan = { year: period.year, month: period.month, calendarRows: [], suggestions: [], capabilities: { caliberConnected: false } };
+  for (let day = 1; day <= dayCount; day++) {
+    plan.calendarRows.push({ date: period.year + '-' + String(period.month).padStart(2, '0') + '-' + String(day).padStart(2, '0'),
+      weekday: '日月火水木金土'[new Date(Date.UTC(period.year, period.month - 1, day)).getUTCDay()], size: '' });
+  }
+  plan.suggestions.push({ date: plan.calendarRows[0].date, column: 'K', text: '検証用：作業指示ではありません' });
+  const first = writePlanningDraft_(plan, 'planning-validation-first-' + Date.now());
+  const sheet = ss.getSheetByName(first.sheetName);
+  const firstWork = sheet.getRange('K5').getValue();
+  const second = writePlanningDraft_(plan, 'planning-validation-repeat-' + Date.now());
+  if (second.created || sheet.getRange('K5').getValue() !== firstWork) throw new Error('再出力で提案またはシートが重複しました。');
+  const expectedCarry = readPlanningCarryForward_(source, template.period, period);
+  Object.keys(expectedCarry).forEach(function(a1) {
+    if (a1 !== 'K5' && sheet.getRange(a1).getValue() !== expectedCarry[a1]) throw new Error('繰越予定が一致しません: ' + a1);
+  });
+  const geometry = function(item) {
+    return JSON.stringify({ merges: item.getRange('A1:AM70').getMergedRanges().map(function(range) { return range.getA1Notation(); }).sort(),
+      columns: Array.from({ length: 39 }, function(_, i) { return item.getColumnWidth(i + 1); }),
+      rows: Array.from({ length: 70 }, function(_, i) { return item.getRowHeight(i + 1); }),
+      frozenRows: item.getFrozenRows(), frozenColumns: item.getFrozenColumns() });
+  };
+  if (geometry(source) !== geometry(sheet)) throw new Error('元表と結合・列幅・行高が一致しません。');
+  const originalDay = sheet.getRange('B5').getValue();
+  let rejected = false;
+  try {
+    sheet.getRange('B5').setValue('検証用手修正');
+    try { writePlanningDraft_(plan, 'planning-validation-conflict-' + Date.now()); }
+    catch (error) { if (!/手修正/.test(error.message)) throw error; rejected = true; }
+    if (!rejected || sheet.getRange('B5').getValue() !== '検証用手修正') throw new Error('手修正が保護されませんでした。');
+  } finally { sheet.getRange('B5').setValue(originalDay); }
+  if (sourceValues !== JSON.stringify(source.getRange('A1:AM70').getValues())) throw new Error('ひな形の内容が変化しています。');
+  sheet.getRange('N1').setValue('検証用の暦・出力確認。生産・作業指示には使わない');
+  const result = { mode: 'LIVE_PLANNING_TEMPLATE', sheetName: first.sheetName, sheetId: sheet.getSheetId(),
+    template: source.getName(), created: true, repeatedWithoutDuplicates: true, carryForwardPreserved: true,
+    mergesWidthsHeightsPreserved: true, manualCalendarEditRejected: rejected, sourceUnchanged: true,
+    actualProductionImported: false, printLayoutVerified: false };
+  console.log('ROLL_VALIDATION_RESULT ' + JSON.stringify(result));
   return result;
 }
