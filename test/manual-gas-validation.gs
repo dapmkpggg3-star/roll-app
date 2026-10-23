@@ -69,6 +69,8 @@ function runValidationStaleSave() {
 // Calls the edit handler explicitly; it does not prove an installed onEdit trigger
 // or the browser's POST/status-poll transport. Other editors must remain idle.
 function runValidationDateRoundTrip() {
+  const startedAt = Date.now();
+  console.log('ROLL_VALIDATION_STAGE starting-read');
   const ss = validationSpreadsheet_();
   const originalRoles = fetchRoles();
   const revision = rolesRevision_(originalRoles);
@@ -111,6 +113,10 @@ function runValidationDateRoundTrip() {
   const originalDate = normalizeRollHistoryActualDate(target.role.useStartDate);
   const parts = originalDate.split('-').map(Number);
   const changedDate = Utilities.formatDate(new Date(Date.UTC(parts[0], parts[1] - 1, parts[2] + 1)), 'UTC', 'yyyy-MM-dd');
+  if (Date.now() - startedAt > 60000) {
+    throw new Error('読み取りに時間がかかったため、復元時間を確保できません。変更せず停止します。');
+  }
+  console.log('ROLL_VALIDATION_STAGE before-write');
   let result;
   try {
     const changedRoles = JSON.parse(JSON.stringify(originalRoles));
@@ -119,6 +125,7 @@ function runValidationDateRoundTrip() {
     SpreadsheetApp.flush();
     const forward = getRollHistoryActualValueFromSheet(target.sheet, target.definition, target.cycle.rowNumber, 'useStartDate');
     if (forward.value !== changedDate) throw new Error('保存した開始日が元の履歴行に反映されませんでした。');
+    console.log('ROLL_VALIDATION_STAGE forward-verified');
     writeRollHistoryActualValue(target.sheet, target.definition,
       { field: 'useStartDate', rowNumber: target.cycle.rowNumber, value: originalDate });
     SpreadsheetApp.flush();
@@ -127,6 +134,7 @@ function runValidationDateRoundTrip() {
     if (!reverse.updated || normalizeRollHistoryActualDate(after.useStartDate) !== originalDate) {
       throw new Error('表側の日付訂正がRolesへ反映されませんでした。');
     }
+    console.log('ROLL_VALIDATION_STAGE reverse-verified');
     const repeated = handleRollHistoryActualEdit({ range: fieldRange });
     const repeatedRole = fetchRoles().find(function(role) { return role.id === target.role.id; });
     if (repeated.updated || repeatedRole.history.length !== after.history.length) {
@@ -138,6 +146,7 @@ function runValidationDateRoundTrip() {
       sheet: target.sheet.getName(), range: fieldRange.getA1Notation(),
       forward: true, reverse: true, duplicateHistoryPrevented: true, cycleRowsUnchanged: true };
   } finally {
+    console.log('ROLL_VALIDATION_STAGE restoring');
     range.setValues(values).setFontColors(colors).setBackgrounds(backgrounds).setNotes(notes);
     rolesRange.setValues(rolesValues);
     SpreadsheetApp.flush();
