@@ -27,6 +27,7 @@ function harness() {
         ContentService: { MimeType: { JSON: 'json' }, createTextOutput: value => ({ value, setMimeType() { return JSON.parse(value); } }) }
     });
     vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'google-apps-script.gs'), 'utf8'), context);
+    context.authenticateRollRequest_ = () => ({ id: 'google:fixture', email: 'fixture@example.test', role: 'admin' });
     context.fetchRoles = () => current;
     context.writeRoles = roles => { assert.equal(held, true); writes.push(roles); current = roles; return roles.length; };
     context.storeLastSaveDebugState = () => {};
@@ -71,12 +72,12 @@ test('missing revision, empty list, duplicate IDs or names never write', () => {
     assert.equal(h.writes.length, 0);
 });
 
-test('no-cors POST stores a correlated conflict result for the caller', () => {
+test('authenticated POST stores a correlated conflict result for the caller', () => {
     const h = harness(), gas = h.context;
     const requestId = 'roles-test-00000001';
     const response = gas.doPost({ postData: { contents: JSON.stringify({ action: 'save', roles: sample(), expectedRevision: 'stale', requestId }) } });
     assert.equal(response.success, false);
-    const status = gas.doGet({ parameter: { action: 'fetchSaveStatus', requestId } });
+    const status = gas.doPost({ postData: { contents: JSON.stringify({ action: 'fetchSaveStatus', requestId }) } });
     assert.equal(status.status.requestId, requestId);
     assert.equal(status.status.state, 'error');
     assert.match(status.status.error, /上書きせず停止/);
@@ -88,11 +89,11 @@ test('successful POST status belongs to that request; another request stays pend
     const requestId = 'roles-test-00000002';
     const response = gas.doPost({ postData: { contents: JSON.stringify({ action: 'save', roles: sample(), expectedRevision: gas.rolesRevision_(h.getCurrent()), requestId }) } });
     assert.equal(response.success, true);
-    assert.equal(gas.doGet({ parameter: { action: 'fetchSaveStatus', requestId } }).status.state, 'complete');
-    assert.equal(gas.doGet({ parameter: { action: 'fetchSaveStatus', requestId: 'roles-other-00000001' } }).pending, true);
+    assert.equal(gas.doPost({ postData: { contents: JSON.stringify({ action: 'fetchSaveStatus', requestId }) } }).status.state, 'complete');
+    assert.equal(gas.doPost({ postData: { contents: JSON.stringify({ action: 'fetchSaveStatus', requestId: 'roles-other-00000001' }) } }).pending, true);
 });
 
-test('legacy GET saves also require a matching revision', () => {
+test('legacy GET saves are denied', () => {
     const h = harness();
     const response = h.context.doGet({ parameter: { action: 'save', roles: encodeURIComponent(JSON.stringify(sample())) } });
     assert.equal(response.success, false);
@@ -130,7 +131,7 @@ test('POST reports partial reflection separately from a fully completed save', (
     const requestId = 'roles-partial-00000001';
     const response = gas.doPost({ postData: { contents: JSON.stringify({ action: 'save', roles: sample(), expectedRevision: gas.rolesRevision_(sample()), requestId }) } });
     assert.equal(response.success, false);
-    const result = gas.doGet({ parameter: { action: 'fetchSaveStatus', requestId } }).status;
+    const result = gas.doPost({ postData: { contents: JSON.stringify({ action: 'fetchSaveStatus', requestId }) } }).status;
     assert.equal(result.state, 'partial');
     assert.equal(result.rolesSaved, true);
     assert.equal(result.writtenRoleCount, 1);

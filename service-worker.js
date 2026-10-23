@@ -1,4 +1,4 @@
-const CACHE_NAME = 'roll-app-v54';
+const CACHE_NAME = 'roll-app-v55';
 const CACHE_PREFIX = 'roll-app-';
 const urlsToCache = [
   '/roll-app/',
@@ -57,7 +57,9 @@ self.addEventListener('activate', event => {
 
 // ネットワークリクエストのハンドリング - 常にネットワーク優先
 self.addEventListener('fetch', event => {
-  if (event.request.method === 'GET') {
+  const url = new URL(event.request.url);
+  const staticPath = url.pathname === '/roll-app/' || /\.(?:html|js|css|json|png|svg|ico)$/.test(url.pathname);
+  if (event.request.method === 'GET' && url.origin === self.location.origin && staticPath) {
     event.respondWith(
       fetch(event.request)
         .then(response => {

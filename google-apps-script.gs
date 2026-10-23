@@ -3,7 +3,7 @@ const ROLL_MANAGEMENT_VIEW_SHEET_NAME = 'ロール管理表';
 const STAND_MASTER_SHEET_NAME = 'StandMaster';
 const INPUT_SHEET_NAMES = ['入力シート', 'Input', '入力'];
 const ROLL_MANAGEMENT_SPREADSHEET_ID_PROPERTY = 'ROLL_MANAGEMENT_SPREADSHEET_ID';
-const SCRIPT_VERSION = 'revision-guard-print-v12';
+const SCRIPT_VERSION = 'authenticated-sync-v13';
 const ROLES_EDIT_TRIGGER_HANDLER = 'handleRolesSheetEdit';
 const ROLES_EDIT_TRIGGER_LOCK_TIMEOUT_MS = 300000;
 const HEADER_VALUES = ['ID', 'スタンド番号', 'ステータス', 'メモ', '最終更新日', '作業依頼済み', '作業依頼進捗', '履歴', '現在径', '使用開始日', '溶射状態', '納入予定日', '組替指示期限', '使用終了日', '運用3セット対象', '次回組み込み予定'];
@@ -294,7 +294,88 @@ function openRollManagementSpreadsheet_() {
 }
 
 
-function doGet(e) {
+// Authentication is an adapter boundary; business functions do not depend on the identity provider.
+// All public data access uses an authenticated POST. Never put tokens in URLs or logs.
+function rollJson_(value) {
+  return ContentService.createTextOutput(JSON.stringify(value)).setMimeType(ContentService.MimeType.JSON);
+}
+
+function doGet() {
+  return rollJson_({ success: false, code: 'AUTH_REQUIRED', error: 'ログインが必要です。最新版のアプリを利用してください。' });
+}
+
+function authenticateRollRequest_(token) {
+  const props = PropertiesService.getScriptProperties();
+  const projectId = props.getProperty('ROLL_AUTH_PROJECT_ID');
+  const apiKey = props.getProperty('ROLL_AUTH_WEB_API_KEY');
+  const usersText = props.getProperty('ROLL_AUTH_USERS');
+  if (!projectId || !apiKey || !usersText) throw new Error('認証設定が完了していません。管理者へ確認してください。');
+  let members;
+  try { members = JSON.parse(usersText); } catch (_) { throw new Error('利用者設定を確認してください。'); }
+  if (!members || Array.isArray(members) || typeof members !== 'object') throw new Error('利用者設定を確認してください。');
+  if (typeof token !== 'string' || token.length > 16000 || token.split('.').length !== 3) throw new Error('再ログインしてください。');
+  let claims;
+  try {
+    claims = JSON.parse(Utilities.newBlob(Utilities.base64DecodeWebSafe(token.split('.')[1])).getDataAsString());
+  } catch (_) { throw new Error('再ログインしてください。'); }
+  const now = Math.floor(Date.now() / 1000);
+  if (claims.aud !== projectId || claims.iss !== 'https://securetoken.google.com/' + projectId
+      || typeof claims.sub !== 'string' || !claims.sub || claims.sub.length > 128
+      || !Number.isFinite(claims.exp) || claims.exp <= now
+      || !Number.isFinite(claims.iat) || claims.iat > now + 60
+      || !Number.isFinite(claims.auth_time) || claims.auth_time > now + 60
+      || !claims.firebase || claims.firebase.sign_in_provider !== 'google.com') {
+    throw new Error('再ログインしてください。');
+  }
+  // This production account API validates the ID token. Decoding the claims alone never authorizes a request.
+  const response = UrlFetchApp.fetch('https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=' + encodeURIComponent(apiKey), {
+    method: 'post', contentType: 'application/json', payload: JSON.stringify({ idToken: token }), muteHttpExceptions: true
+  });
+  if (response.getResponseCode() !== 200) throw new Error('本人確認ができません。再ログインしてください。');
+  let result;
+  try { result = JSON.parse(response.getContentText()); } catch (_) { throw new Error('本人確認ができません。'); }
+  const user = result.users && result.users.length === 1 ? result.users[0] : null;
+  if (!user || user.localId !== claims.sub || user.disabled === true || user.emailVerified !== true
+      || !user.email || user.email !== claims.email
+      || (Number(user.validSince || 0) > claims.auth_time)) throw new Error('利用できないアカウントです。');
+  const role = Object.prototype.hasOwnProperty.call(members, user.localId) ? members[user.localId] : '';
+  if (['reader', 'editor', 'admin'].indexOf(role) < 0) throw new Error('このアカウントには利用許可がありません。');
+  return { id: 'google:' + user.localId, email: user.email, role: role };
+}
+
+function doPost(e) {
+  try {
+    const body = e && e.postData && e.postData.contents || '';
+    const payload = JSON.parse(body || '{}');
+    const principal = authenticateRollRequest_(payload.authToken);
+    const action = String(payload.action || '').trim().toLowerCase();
+    if (action === 'whoami') return rollJson_({ success: true, user: principal });
+    const reads = ['fetch', 'fetchstandmaster', 'fetchcuttingmaster', 'analyzecuttinghistory', 'fetchsavestatus', 'fetchplanningexportstatus'];
+    const writes = ['save', 'appendworkhistory', 'invalidatelatestcuttinghistoryforinputcorrection', 'writeplanningdraft'];
+    if (action === 'fetchsavestatus' || action === 'fetchplanningexportstatus') {
+      const requestId = action === 'fetchsavestatus' ? normalizeRolesSaveRequestId_(payload.requestId) : normalizePlanningRequestId_(payload.requestId);
+      const saved = action === 'fetchsavestatus' ? CacheService.getScriptCache().get('ROLL_SAVE_' + requestId) : null;
+      const status = action === 'fetchsavestatus' ? (saved ? JSON.parse(saved) : null) : getPlanningExportStatus_(requestId);
+      if (status && status.actorId !== principal.id) throw new Error('この保存結果を確認する権限がありません。');
+    }
+    // Pass only safe parameters to the legacy dispatcher; auth tokens are not logged there.
+    if (reads.indexOf(action) >= 0) return handleReadRequest_({ parameter: { action: action, requestId: payload.requestId || '' } });
+    if (action === 'debug-last-save' && principal.role === 'admin') return handleReadRequest_({ parameter: { action: action } });
+    if (writes.indexOf(action) >= 0 || (action === 'updatecuttingmasterfromhistory' && principal.role === 'admin')) {
+      if (principal.role === 'reader') throw new Error('編集権限がありません。');
+      delete payload.authToken;
+      payload.actorId = principal.id;
+      if (payload.event) payload.event = Object.assign({}, payload.event, { operator: principal.email });
+      return handleWriteRequest_({ postData: { contents: JSON.stringify(payload) } });
+    }
+    throw new Error('許可されていない操作です。');
+  } catch (error) {
+    // Never log request bodies, tokens or provider error responses.
+    return rollJson_({ success: false, code: 'REQUEST_DENIED', error: error.message || '操作を確認できません。' });
+  }
+}
+
+function handleReadRequest_(e) {
   const params = e && e.parameter ? e.parameter : {};
   Logger.log('doGet params: ' + JSON.stringify(params));
   const action = String(params.action || '').trim().toLowerCase();
@@ -502,7 +583,7 @@ function doGet(e) {
     .setMimeType(ContentService.MimeType.JSON);
 }
 
-function doPost(e) {
+function handleWriteRequest_(e) {
   try {
     const body = e && e.postData && e.postData.contents
       ? e.postData.contents
@@ -538,6 +619,7 @@ function doPost(e) {
           rolesSaved: Boolean(saveError.rolesSaved), writtenRoleCount: saveError.writtenRoleCount || 0,
           error: saveError.message || String(saveError) };
       }
+      result.actorId = payload.actorId;
       CacheService.getScriptCache().put('ROLL_SAVE_' + requestId, JSON.stringify(result), 600);
       return ContentService.createTextOutput(JSON.stringify({ success: result.state === 'complete', result: result }))
         .setMimeType(ContentService.MimeType.JSON);
@@ -580,6 +662,7 @@ function doPost(e) {
       const requestId = normalizePlanningRequestId_(payload.requestId || (payload.plan && payload.plan.requestId));
       try {
         const result = writePlanningDraft_(payload.plan || {}, requestId);
+        result.actorId = payload.actorId;
         storePlanningExportStatus_(requestId, result);
         return ContentService
           .createTextOutput(JSON.stringify({ success: true, result: result }))
@@ -588,6 +671,7 @@ function doPost(e) {
         storePlanningExportStatus_(requestId, {
           requestId: requestId,
           state: 'error',
+          actorId: payload.actorId,
           error: planningError.toString(),
           completedAt: new Date().toISOString()
         });

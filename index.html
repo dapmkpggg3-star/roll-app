@@ -11,10 +11,10 @@
     <link rel="manifest" href="manifest.json">
     <link rel="icon" type="image/png" sizes="192x192" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect fill='%23667eea' width='192' height='192'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' font-size='96' fill='white' font-family='Arial'>📋</text></svg>">
     <title>ロール管理アプリ</title>
-    <link rel="stylesheet" href="css/styles.css?v=20260805-online-safety">
+    <link rel="stylesheet" href="css/styles.css?v=20261023-simple-auth">
     <link rel="stylesheet" href="css/planning-view.css?v=20260927-sheet-output">
 </head>
-<body>
+<body class="simple-overview">
     <div id="app-update-notice" class="app-update-notice" hidden>
         <span>新しいバージョンがあります</span>
         <button type="button" id="app-update-reload-btn">更新</button>
@@ -24,11 +24,11 @@
         <div class="login-container">
             <div class="login-header">
                 <h1>🔐 ロール管理アプリ</h1>
-                <p>パスワードを入力してください</p>
+                <p>利用を許可されたGoogleアカウントでログインしてください</p>
             </div>
             <div class="login-form">
-                <input type="password" id="password-input" placeholder="パスワード" maxlength="20">
-                <button type="button" id="login-btn" onclick="login()">ログイン</button>
+                <button type="button" id="login-btn" onclick="login()">Googleでログイン</button>
+                <p id="login-status" role="status" aria-live="polite"></p>
             </div>
         </div>
     </div>
@@ -44,6 +44,7 @@
                         <option value="">選択してください</option>
                     </select>
                 </label>
+                <button type="button" id="detailModeBtn" onclick="toggleOverviewDetails()" aria-pressed="false">詳しい確認を開く</button>
                 <button type="button" id="tabletModeBtn" onclick="toggleTabletMode()" class="tablet-mode-btn" aria-pressed="false">タブレットモード OFF</button>
                 <button type="button" id="workshopBoardBtn" onclick="toggleWorkshopBoard()" class="workshop-board-btn" aria-pressed="false">工作課ボード</button>
                 <button type="button" id="sync-status-badge" class="sync-status-badge sync-status-warning" onclick="openSyncStatusPopup()" aria-haspopup="dialog">同期状態確認中</button>
@@ -248,7 +249,7 @@
 <option value="廃棄">廃棄</option>
                     </select>
                     <select id="sort-select" class="sort-select" onchange="changeSort(event)">
-                        <option value="updatedAtDesc">更新更新日時が新しい順</option>
+                        <option value="updatedAtDesc">更新日時が新しい順</option>
                         <option value="updatedAtAsc">更新日時が古い順</option>
                         <option value="name" selected>スタンド番号順</option>
                     </select>
@@ -436,6 +437,8 @@
         <button type="button" id="pageScrollToggleBtn" class="page-scroll-btn" onclick="scrollPageByCurrentPosition()" aria-label="ページ下部へ移動">↓ 下へ</button>
     </div>
 
+    <script src="js/deployment-config.js?v=20261023-auth"></script>
+    <script src="js/identity.js?v=20261023-auth"></script>
     <script src="js/planning-rules.js?v=20260908-excel-import"></script>
     <script src="js/planning-schedule.js?v=20260908-excel-import"></script>
     <script src="js/planning-calibers.js?v=20260908-excel-import"></script>
@@ -443,10 +446,9 @@
     <script src="js/planning-sheet-output.js?v=20260927-sheet-output"></script>
     <script src="js/planning-import.js?v=20260927-sheet-output"></script>
     <script src="js/online-safety.js?v=20260805-online-safety"></script>
-    <script src="js/sync.js?v=20261023-history-clear"></script>
+    <script src="js/sync.js?v=20261023-content-auth"></script>
 <script src="js/csv.js?v=20260805-online-safety"></script>
-<script src="js/app.js?v=20261023-revision-guard"></script>
+<script src="js/app.js?v=20261023-simple-auth"></script>
 
-        // ログイン状態チェック
 </body>
 </html>

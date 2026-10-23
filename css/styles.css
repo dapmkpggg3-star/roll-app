@@ -7342,3 +7342,26 @@ body.mobile-layout #role-table .card-actions-list .delete-btn {
 body.mobile-narrow-layout #role-table .card-actions-list {
   grid-template-columns: 1fr !important;
 }
+
+/* Everyday view keeps the 3-set action summary and roll list; details remain available. */
+body.simple-overview #count-summary,
+body.simple-overview #dashboard-display-settings,
+body.simple-overview #priority-risk-overview,
+body.simple-overview #sync-diagnostic-panel,
+body.simple-overview #auto-planning-panel,
+body.simple-overview .action-dashboard-grid,
+body.simple-overview #three-set-forecast-dashboard,
+body.simple-overview #rework-setup-dashboard,
+body.simple-overview #purchase-confirmation-board {
+    display: none !important;
+}
+#detailModeBtn { padding: 10px 14px; border: 1px solid #d1d5db; border-radius: 8px; cursor: pointer; }
+
+#login-status { line-height: 1.6; color: #991b1b; }
+body.read-only-account #toggleRoleFormBtn,
+body.read-only-account #role-form,
+body.read-only-account .actions-column,
+body.read-only-account .assembly-action-cell,
+body.read-only-account #auto-planning-export { display: none !important; }
+
+body:not(.authorized-admin) #adminModeBtn { display: none !important; }
