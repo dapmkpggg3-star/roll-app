@@ -49,3 +49,60 @@ test('Apps Script exposes idempotent monthly export and status actions', () => {
     assert.match(source, /同名シートが既にあり、自動計画案ではないため上書きしません/);
     assert.match(source, /clearGeneratedPlanningSuggestions_/);
 });
+
+test('recognizes original prefix, suffix and date-only month tab names', () => {
+    const gas = loadGasFunctions();
+    for (const name of ['2031.10 ロールカリバ替予定', 'ロール・カリバ替予定2031.10 ', '2031.10', '２０３１年１０月 ロール･カリバー替予定']) {
+        assert.deepEqual(JSON.parse(JSON.stringify(gas.parsePlanningSheetPeriod_(name))), { year: 2031, month: 10 });
+    }
+    for (const name of ['2031.13', '2031年度ロール(計画)', '生産予定31.10']) assert.equal(gas.parsePlanningSheetPeriod_(name), null);
+});
+
+function template(name, valid = true) {
+    return { getName: () => name, getRange: () => ({ getDisplayValues: () => [valid
+        ? ['日付', '曜日', 'サイズ', '操業A', '', '', '操業B', '', '', '常昼', '', 'CS']
+        : ['日付', '曜日', '別の表']] }) };
+}
+
+test('template selection validates layout and prefers destination for an equal month', () => {
+    const gas = loadGasFunctions();
+    const local = template('2031.9');
+    const source = template('ロール・カリバ替予定2031.9 ');
+    gas.PropertiesService = { getScriptProperties: () => ({ getProperty: () => 'valid_source_identifier_1234567890' }) };
+    gas.SpreadsheetApp = { openById: () => ({ getSheets: () => [source] }) };
+    const destination = { getId: () => 'destination', getSheets: () => [template('2031.10', false), local] };
+    assert.equal(gas.findPlanningTemplateSheet_(destination, { year: 2031, month: 11 }).sheet, local);
+    destination.getSheets = () => [template('2031.10', false)];
+    assert.equal(gas.findPlanningTemplateSheet_(destination, { year: 2031, month: 11 }).sheet, source);
+});
+
+test('invalid dates cannot create work outside February or the target month', () => {
+    const gas = loadGasFunctions(), period = { year: 2031, month: 2 };
+    assert.deepEqual(JSON.parse(JSON.stringify(gas.normalizePlanningSuggestions_([
+        { date: '2031-02-28', column: 'K', text: 'valid' },
+        { date: '2031-02-29', column: 'K', text: 'invalid' },
+        { date: '2031-03-01', column: 'K', text: 'other month' }
+    ], period))), { K32: ['valid'] });
+    assert.deepEqual(Object.keys(gas.normalizePlanningCalendarRows_([{ date: '2031-02-30', size: 'D10' }], period)), []);
+});
+
+test('carry forward does not fill nonexistent days of a shorter month', () => {
+    const gas = loadGasFunctions();
+    const sheet = { getRange: () => ({ getValues: () => Array.from({ length: 31 }, (_, i) => [i >= 27 ? 'work' : '']) }) };
+    const result = gas.readPlanningCarryForward_(sheet, { year: 2031, month: 1 }, { year: 2031, month: 2 });
+    assert.equal(result.E32, 'work');
+    assert.equal(result.E33, undefined);
+    assert.equal(result.M35, undefined);
+});
+
+test('calendar edits stop re-export before overwriting user changes', () => {
+    const gas = loadGasFunctions();
+    let changed = false, note = '';
+    const sheet = { getRange: range => ({ getNote: () => note, getValues: () => [[changed && range === 'G5:G35' ? 'Ⅲ' : 'original']] }) };
+    note = 'ROLL_PLANNING_DRAFT|' + JSON.stringify({ calendarSnapshot: gas.planningCalendarSnapshot_(sheet) });
+    assert.doesNotThrow(() => gas.assertPlanningCalendarUnchanged_(sheet));
+    changed = true;
+    assert.throws(() => gas.assertPlanningCalendarUnchanged_(sheet), /手修正/);
+    note = 'ROLL_PLANNING_DRAFT|{}';
+    assert.throws(() => gas.assertPlanningCalendarUnchanged_(sheet), /旧方式/);
+});

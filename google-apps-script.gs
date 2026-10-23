@@ -3,7 +3,7 @@ const ROLL_MANAGEMENT_VIEW_SHEET_NAME = 'ロール管理表';
 const STAND_MASTER_SHEET_NAME = 'StandMaster';
 const INPUT_SHEET_NAMES = ['入力シート', 'Input', '入力'];
 const ROLL_MANAGEMENT_SPREADSHEET_ID_PROPERTY = 'ROLL_MANAGEMENT_SPREADSHEET_ID';
-const SCRIPT_VERSION = 'script-properties-spreadsheet-id-v8';
+const SCRIPT_VERSION = 'revision-guard-template-v9';
 const ROLES_EDIT_TRIGGER_HANDLER = 'handleRolesSheetEdit';
 const ROLES_EDIT_TRIGGER_LOCK_TIMEOUT_MS = 300000;
 const HEADER_VALUES = ['ID', 'スタンド番号', 'ステータス', 'メモ', '最終更新日', '作業依頼済み', '作業依頼進捗', '履歴', '現在径', '使用開始日', '溶射状態', '納入予定日', '組替指示期限', '使用終了日', '運用3セット対象', '次回組み込み予定'];
@@ -304,12 +304,23 @@ function doGet(e) {
       const roles = fetchRoles();
       Logger.log('doGet fetch: returning ' + roles.length + ' roles');
       return ContentService
-        .createTextOutput(JSON.stringify({ success: true, roles: roles }))
+        .createTextOutput(JSON.stringify({ success: true, roles: roles, revision: rolesRevision_(roles) }))
         .setMimeType(ContentService.MimeType.JSON);
     } catch (error) {
       Logger.log('doGet fetch error: ' + error.toString());
       return ContentService
         .createTextOutput(JSON.stringify({ success: false, error: error.toString() }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+  } else if (action === 'fetchsavestatus') {
+    try {
+      const requestId = normalizeRolesSaveRequestId_(params.requestId);
+      const text = CacheService.getScriptCache().get('ROLL_SAVE_' + requestId);
+      return ContentService.createTextOutput(JSON.stringify(text
+        ? { success: true, status: JSON.parse(text) }
+        : { success: true, pending: true })).setMimeType(ContentService.MimeType.JSON);
+    } catch (error) {
+      return ContentService.createTextOutput(JSON.stringify({ success: false, error: String(error) }))
         .setMimeType(ContentService.MimeType.JSON);
     }
   } else if (action === 'fetchstandmaster') {
@@ -377,7 +388,7 @@ function doGet(e) {
       }
       
       Logger.log('doGet save: writing ' + roles.length + ' roles');
-      const writtenRoleCount = writeRoles(roles);
+      const writtenRoleCount = saveRolesWithRevision_(roles, params.expectedRevision);
       const debug = buildSaveDebugState(roles.length, writtenRoleCount, 'doGet');
       storeLastSaveDebugState(debug);
       Logger.log('doGet save: write complete');
@@ -515,19 +526,18 @@ function doPost(e) {
       logThreeSetFieldsPostDebug(roles);
       Logger.log('doPost save: writing ' + roles.length + ' roles');
 
-      const writtenRoleCount = writeRoles(roles);
-      const debug = buildSaveDebugState(roles.length, writtenRoleCount, 'doPost');
-      storeLastSaveDebugState(debug);
-
-      Logger.log('doPost save: write complete');
-
-      return ContentService
-        .createTextOutput(JSON.stringify({
-          success: true,
-          receivedRoleCount: debug.receivedRoleCount,
-          writtenRoleCount: debug.writtenRoleCount,
-          debug: debug
-        }))
+      const requestId = normalizeRolesSaveRequestId_(payload.requestId);
+      let result;
+      try {
+        const writtenRoleCount = saveRolesWithRevision_(roles, payload.expectedRevision);
+        const debug = buildSaveDebugState(roles.length, writtenRoleCount, 'doPost');
+        storeLastSaveDebugState(debug);
+        result = { requestId: requestId, state: 'complete', writtenRoleCount: writtenRoleCount };
+      } catch (saveError) {
+        result = { requestId: requestId, state: 'error', error: saveError.message || String(saveError) };
+      }
+      CacheService.getScriptCache().put('ROLL_SAVE_' + requestId, JSON.stringify(result), 600);
+      return ContentService.createTextOutput(JSON.stringify({ success: result.state === 'complete', result: result }))
         .setMimeType(ContentService.MimeType.JSON);
     } else if (action === 'appendworkhistory') {
       const event = appendWorkHistoryEvent(payload.event || {});
@@ -675,14 +685,21 @@ function planningSheetName_(period) {
 }
 
 function parsePlanningSheetPeriod_(sheetName) {
-  const match = String(sheetName || '').normalize('NFKC')
-    .match(/^(\d{4})\s*[.\-/年]\s*(\d{1,2})(?:\s*月)?\s*ロールカリバ替予定$/);
+  const text = String(sheetName || '').normalize('NFKC').replace(/[・･\s]/g, '').replace(/カリバー/g, 'カリバ');
+  const match = text.match(/^(\d{4})[.\-/年](\d{1,2})(?:月)?(?:ロールカリバ替予定)?$/)
+    || text.match(/^ロールカリバ替予定(\d{4})[.\-/年](\d{1,2})(?:月)?$/);
   if (!match) return null;
-  try {
-    return normalizePlanningPeriod_(Number(match[1]), Number(match[2]));
-  } catch (_) {
-    return null;
-  }
+  try { return normalizePlanningPeriod_(Number(match[1]), Number(match[2])); }
+  catch (_) { return null; }
+}
+
+// A date-only tab name is accepted only after checking the actual template layout.
+function isPlanningTemplateLayout_(sheet) {
+  const labels = sheet.getRange('B4:M4').getDisplayValues()[0];
+  const expected = { 0: '日付', 1: '曜日', 2: 'サイズ', 3: '操業A', 6: '操業B', 9: '常昼' };
+  return Object.keys(expected).every(function(index) {
+    return String(labels[Number(index)] || '').normalize('NFKC').replace(/\s/g, '') === expected[index];
+  });
 }
 
 function planningPeriodNumber_(period) {
@@ -696,33 +713,26 @@ function previousPlanningPeriod_(period) {
 }
 
 function findPlanningTemplateSheet_(destination, period) {
-  const sources = [];
+  // Prefer a recent destination sheet so adopted edits are not replaced by the migration source.
+  const sources = [destination];
   const configuredSourceId = PropertiesService.getScriptProperties()
     .getProperty(ROLL_HISTORY_SOURCE_SPREADSHEET_ID_PROPERTY);
   const normalizedSourceId = normalizeSpreadsheetIdForRollHistory(configuredSourceId);
   if (normalizedSourceId && normalizedSourceId !== destination.getId()) {
     sources.push(SpreadsheetApp.openById(normalizedSourceId));
   }
-  sources.push(destination);
-
-  const previous = previousPlanningPeriod_(period);
-  const previousName = planningSheetName_(previous);
-  for (let sourceIndex = 0; sourceIndex < sources.length; sourceIndex += 1) {
-    const exact = sources[sourceIndex].getSheetByName(previousName);
-    if (exact) return { sheet: exact, period: previous };
-  }
-
   const targetNumber = planningPeriodNumber_(period);
   const candidates = [];
-  sources.forEach(function(source) {
+  sources.forEach(function(source, sourceIndex) {
     source.getSheets().forEach(function(sheet) {
       const sheetPeriod = parsePlanningSheetPeriod_(sheet.getName());
-      if (!sheetPeriod || planningPeriodNumber_(sheetPeriod) >= targetNumber) return;
-      candidates.push({ sheet: sheet, period: sheetPeriod });
+      if (!sheetPeriod || planningPeriodNumber_(sheetPeriod) >= targetNumber || !isPlanningTemplateLayout_(sheet)) return;
+      candidates.push({ sheet: sheet, period: sheetPeriod, sourceIndex: sourceIndex });
     });
   });
   candidates.sort(function(left, right) {
-    return planningPeriodNumber_(right.period) - planningPeriodNumber_(left.period);
+    return planningPeriodNumber_(right.period) - planningPeriodNumber_(left.period)
+      || left.sourceIndex - right.sourceIndex;
   });
   if (!candidates.length) {
     throw new Error('ロールカリバ替予定のひな形が見つかりません。移行元ExcelのGoogle Sheets変換版を確認してください。');
@@ -738,7 +748,9 @@ function readPlanningCarryForward_(template, templatePeriod, targetPeriod) {
     const sourceValues = template.getRange(column + '38:' + column + '68').getValues();
     sourceValues.forEach(function(row, index) {
       const value = row[0];
-      if (value !== '' && value != null) values[column + (index + 5)] = value;
+      if (index < new Date(targetPeriod.year, targetPeriod.month, 0).getDate() && value !== '' && value != null) {
+        values[column + (index + 5)] = value;
+      }
     });
   });
   return values;
@@ -749,6 +761,7 @@ function createPlanningDraftSheet_(destination, period) {
   const carryForward = readPlanningCarryForward_(template.sheet, template.period, period);
   const sheet = template.sheet.copyTo(destination);
   sheet.setName(planningSheetName_(period));
+  clearGeneratedPlanningSuggestions_(sheet);
   sheet.getRange('B5:M35').clearContent();
   sheet.getRange('B38:M68').clearContent();
   Object.keys(carryForward).forEach(function(a1) {
@@ -763,7 +776,7 @@ function normalizePlanningCalendarRows_(rows, period) {
     const dateMatch = String(item && item.date || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
     if (!dateMatch || Number(dateMatch[1]) !== period.year || Number(dateMatch[2]) !== period.month) return;
     const day = Number(dateMatch[3]);
-    if (!Number.isInteger(day) || day < 1 || day > 31) return;
+    if (!Number.isInteger(day) || day < 1 || day > new Date(period.year, period.month, 0).getDate()) return;
     const size = String(item.size || '').normalize('NFKC').trim().toUpperCase();
     const normalizedSize = size === 'STOP' || /休止|休み/.test(size)
       ? '休止'
@@ -835,7 +848,7 @@ function normalizePlanningSuggestions_(suggestions, period) {
     const day = Number(dateMatch[3]);
     const column = String(item.column || '').toUpperCase();
     const text = String(item.text || '').trim().slice(0, 120);
-    if (!Number.isInteger(day) || day < 1 || day > 31 || ['E', 'H', 'K'].indexOf(column) < 0 || !text) return;
+    if (!Number.isInteger(day) || day < 1 || day > new Date(period.year, period.month, 0).getDate() || ['E', 'H', 'K'].indexOf(column) < 0 || !text) return;
     const a1 = column + (day + 4);
     if (!grouped[a1]) grouped[a1] = [];
     if (grouped[a1].indexOf(text) < 0) grouped[a1].push(text);
@@ -875,7 +888,35 @@ function writePlanningSuggestions_(sheet, suggestions, period, requestId) {
   return writtenCount;
 }
 
+function planningCalendarSnapshot_(sheet) {
+  return JSON.stringify(['B5:D35', 'G5:G35', 'J5:J35', 'E2', 'G2'].map(function(range) {
+    return sheet.getRange(range).getValues();
+  }));
+}
+
+function assertPlanningCalendarUnchanged_(sheet) {
+  const note = String(sheet.getRange('A1').getNote() || '');
+  let marker;
+  try { marker = JSON.parse(note.slice(PLANNING_DRAFT_NOTE_PREFIX.length)); } catch (_) {}
+  if (!marker || !marker.calendarSnapshot) {
+    throw new Error('旧方式の計画案です。手入力を保護するため再出力を停止しました。');
+  }
+  if (marker.calendarSnapshot !== planningCalendarSnapshot_(sheet)) {
+    throw new Error('計画案の日付・サイズ・班が手修正されています。上書きせず停止しました。');
+  }
+}
+
 function writePlanningDraft_(plan, requestId) {
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(30000);
+    return writePlanningDraftUnlocked_(plan, requestId);
+  } finally {
+    if (lock.hasLock()) lock.releaseLock();
+  }
+}
+
+function writePlanningDraftUnlocked_(plan, requestId) {
   const normalizedRequestId = normalizePlanningRequestId_(requestId);
   const period = normalizePlanningPeriod_(plan && plan.year, plan && plan.month);
   const expectedSheetName = planningSheetName_(period);
@@ -891,6 +932,7 @@ function writePlanningDraft_(plan, requestId) {
     if (String(sheet.getRange('A1').getNote() || '').indexOf(PLANNING_DRAFT_NOTE_PREFIX) !== 0) {
       throw new Error('同名シートが既にあり、自動計画案ではないため上書きしません: ' + expectedSheetName);
     }
+    assertPlanningCalendarUnchanged_(sheet);
   } else {
     const createdSheet = createPlanningDraftSheet_(destination, period);
     sheet = createdSheet.sheet;
@@ -906,6 +948,7 @@ function writePlanningDraft_(plan, requestId) {
     month: period.month,
     sheetName: expectedSheetName,
     requestId: normalizedRequestId,
+    calendarSnapshot: planningCalendarSnapshot_(sheet),
     updatedAt: new Date().toISOString()
   };
   sheet.getRange('A1').setNote(PLANNING_DRAFT_NOTE_PREFIX + JSON.stringify(marker));
@@ -2141,8 +2184,6 @@ function handleRolesSheetEdit(e) {
     return;
   }
 
-  ensureRolesHeader(sheet);
-  stampRolesSheetEditedAt(range);
   const firstRoleRow = Math.max(range.getRow(), 2);
   const editedRoleNames = firstRoleRow <= lastEditedRow
     ? sheet.getRange(firstRoleRow, 2, lastEditedRow - firstRoleRow + 1, 1).getDisplayValues().map(function(row) {
@@ -2150,11 +2191,12 @@ function handleRolesSheetEdit(e) {
     }).filter(Boolean)
     : [];
 
-  const documentLock = LockService.getDocumentLock();
-  const lock = documentLock || LockService.getScriptLock();
+  const lock = LockService.getScriptLock();
 
   try {
     lock.waitLock(ROLES_EDIT_TRIGGER_LOCK_TIMEOUT_MS);
+    ensureRolesHeader(sheet);
+    stampRolesSheetEditedAt(range);
     Logger.log('handleRolesSheetEdit: refreshing views for range ' + range.getA1Notation());
     const roles = fetchRoles();
     const onlineDiagnostics = diagnoseFieldStandOnlineStates(roles).filter(function(item) {
@@ -3971,7 +4013,7 @@ function handleRollHistoryActualEdit(e) {
     return { handled: true, updated: false, reason: 'incomplete-actual', fields: invalidFields };
   }
 
-  const lock = LockService.getDocumentLock() || LockService.getScriptLock();
+  const lock = LockService.getScriptLock();
   try {
     lock.waitLock(ROLES_EDIT_TRIGGER_LOCK_TIMEOUT_MS);
     const result = applyRollHistoryActualChangeToRoles(
@@ -4256,7 +4298,7 @@ function handleRollHistoryStatusEdit(e) {
     return { handled: true, updated: false, reason: 'invalid-status' };
   }
 
-  const lock = LockService.getDocumentLock() || LockService.getScriptLock();
+  const lock = LockService.getScriptLock();
   try {
     lock.waitLock(ROLES_EDIT_TRIGGER_LOCK_TIMEOUT_MS);
     const changedAt = new Date().toISOString();
@@ -4763,24 +4805,68 @@ function getRollHistoryActualChangedRoleNames(beforeRoles, afterRoles) {
   });
 }
 
+// The revision is computed from the values actually read, including unstamped sheet edits.
+function rolesRevision_(roles) {
+  function canonical(value) {
+    if (Array.isArray(value)) return value.map(canonical);
+    if (value && typeof value === 'object') {
+      const result = {};
+      Object.keys(value).sort().forEach(function(key) { result[key] = canonical(value[key]); });
+      return result;
+    }
+    return value;
+  }
+  const snapshot = JSON.parse(JSON.stringify(roles));
+  snapshot.sort(function(a, b) { return String(a.id).localeCompare(String(b.id)); });
+  return Utilities.base64EncodeWebSafe(Utilities.computeDigest(
+    Utilities.DigestAlgorithm.SHA_256, JSON.stringify(canonical(snapshot)), Utilities.Charset.UTF_8
+  ));
+}
+
+function normalizeRolesSaveRequestId_(value) {
+  const id = String(value || '');
+  if (!/^roles-[a-zA-Z0-9_-]{8,100}$/.test(id)) throw new Error('保存リクエストIDが不正です。アプリを更新してください。');
+  return id;
+}
+
+function validateRolesForSave_(roles) {
+  if (!Array.isArray(roles) || roles.length === 0) throw new Error('空のロール一覧は保存できません。');
+  const ids = new Set();
+  const names = new Set();
+  roles.forEach(function(role) {
+    const id = String(role == null || role.id == null ? '' : role.id).trim();
+    const name = String(role && role.name || '').trim();
+    if (!id || !name || ids.has(id) || names.has(name)) throw new Error('ロールIDまたは番号が空欄・重複しています。');
+    ids.add(id);
+    names.add(name);
+  });
+}
+
+function saveRolesWithRevision_(roles, expectedRevision) {
+  validateRolesForSave_(roles);
+  if (!expectedRevision) throw new Error('同期方式が更新されています。アプリを再読み込みしてください。');
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(30000);
+    if (rolesRevision_(fetchRoles()) !== String(expectedRevision)) {
+      throw new Error('取得後にスプレッドシートが更新されました。上書きせず停止しました。再度同期してください。');
+    }
+    return writeRoles(roles);
+  } finally {
+    if (lock.hasLock()) lock.releaseLock();
+  }
+}
+
 function writeRoles(roles) {
   const sheet = getSheet();
   const previousRoles = fetchRoles();
   const changedActualRoleNames = getRollHistoryActualChangedRoleNames(previousRoles, roles);
   ensureRolesColumnCapacity(sheet);
-  Logger.log('writeRoles: clearing sheet contents');
-  sheet.clearContents();
-  applyStatusDropdowns(sheet);
+  validateRolesForSave_(roles);
+  const oldLastRow = sheet.getLastRow();
 
   const sortedRoles = sortRolesByStandRoleForSheet(roles);
-  const rows = sortedRoles.map((role, index) => {
-    try {
-      return buildRoleRowForSheet(role);
-    } catch (err) {
-      Logger.log('writeRoles error at row ' + index + ': ' + err.toString());
-      return null;
-    }
-  }).filter(row => row);
+  const rows = sortedRoles.map(buildRoleRowForSheet);
 
   Logger.log('writeRoles: writing header and ' + rows.length + ' data rows');
   const values = [HEADER_VALUES].concat(rows);
@@ -4795,7 +4881,12 @@ function writeRoles(roles) {
       return row.length !== HEADER_VALUES.length;
     });
   Logger.log('ROLL_DEBUG_GAS_WRITE_BEFORE_SET_VALUES values.length=' + values.length + ', expectedColumns=' + HEADER_VALUES.length + ', invalidColumnRows=' + JSON.stringify(invalidColumnRows));
+  if (invalidColumnRows.length) throw new Error('保存する列数が一致しません。');
   sheet.getRange(1, 1, values.length, HEADER_VALUES.length).setValues(values);
+  if (oldLastRow > values.length) {
+    sheet.getRange(values.length + 1, 1, oldLastRow - values.length, HEADER_VALUES.length).clearContent();
+  }
+  applyStatusDropdowns(sheet);
   applySheetFormatting(sheet, rows.length);
 
   try {

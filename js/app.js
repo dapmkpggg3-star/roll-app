@@ -6530,8 +6530,8 @@ async function saveWorkshopBoardAssemblyDue(key) {
     workshopBoardEditingAssemblyDueKey = '';
     updateWorkshopBoard(roles);
 
-    if (typeof saveData === 'function') {
-        const ok = await saveData(roles);
+    if (typeof syncRoles === 'function') {
+        const ok = await syncRoles();
         if (!ok) {
             showToast('ブラウザ内に保存しました。スプレッドシート同期は未完了です');
             return;

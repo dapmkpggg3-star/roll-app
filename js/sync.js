@@ -986,7 +986,28 @@ async function fetchStandMaster() {
     }
 }
 
-async function saveData(roleList = roles) {
+function validateRolesSaveStatus(data, requestId) {
+    if (!data || data.success !== true) throw createSyncError('保存結果確認', data && data.error || '保存結果を取得できません。');
+    if (data.pending === true) return null;
+    const status = data.status;
+    if (!status || status.requestId !== requestId) throw createSyncError('保存結果確認', '保存リクエストが一致しません。');
+    if (status.state === 'error') throw createSyncError('同期', status.error || '保存できませんでした。');
+    if (status.state !== 'complete') throw createSyncError('保存結果確認', '保存結果が未確定です。');
+    return status;
+}
+
+async function waitForRolesSaveStatus(requestId) {
+    for (let attempt = 0; attempt < 12; attempt += 1) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        const response = await fetch(`${SHEETS_ENDPOINT}?action=fetchSaveStatus&requestId=${encodeURIComponent(requestId)}&t=${Date.now()}`,
+            { method: 'GET', cache: 'no-store' });
+        const status = validateRolesSaveStatus(await readJsonResponse(response, '保存結果確認'), requestId);
+        if (status) return status;
+    }
+    throw createSyncError('保存結果確認', '保存結果の確認が時間内に終わりませんでした。シートの状態を確認してください。');
+}
+
+async function saveData(roleList = roles, expectedRevision) {
     if (!isRemoteConfigured()) {
         return false;
     }
@@ -1028,8 +1049,12 @@ async function saveData(roleList = roles) {
             return false;
         }
 
+        if (!expectedRevision) {
+            throw createSyncError('同期', '同期先の更新版を確認できません。Apps Scriptの更新を確認してください。');
+        }
+        const requestId = `roles-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
         const payload = JSON.stringify({
-            action: 'save',
+            action: 'save', requestId, expectedRevision,
             roles: rolesToSend
         });
 
@@ -1047,7 +1072,7 @@ async function saveData(roleList = roles) {
             clearTimeout(timeoutId);
         }
 
-        await new Promise(resolve => setTimeout(resolve, 1200));
+        await waitForRolesSaveStatus(requestId);
 
         try {
             await fetchLastGasSaveDebug();
@@ -1077,6 +1102,7 @@ async function fetchRemoteRolesForGuard(actionLabel = '同期前データ確認'
     logStatusDebug('REMOTE_STATUS_BEFORE_NORMALIZE', data.roles);
     const remoteRoles = data.roles.map(normalizeRole);
     logStatusDebug('REMOTE_STATUS_AFTER_NORMALIZE', remoteRoles);
+    Object.defineProperty(remoteRoles, 'syncRevision', { value: data.revision || '' });
     setSyncDiagnosticRemoteRoles(remoteRoles);
     return remoteRoles;
 }
@@ -1090,7 +1116,7 @@ function loadStandMaster() {
 }
 
 function saveRemoteRoles() {
-    return saveData();
+    return syncRoles();
 }
 
 let isSyncing = false;
@@ -1313,7 +1339,7 @@ async function syncRoles() {
 
         setSyncMessage('スプレッドシートと同期中です...');
 
-        const ok = await saveData(sortedMergedRoles);
+        const ok = await saveData(sortedMergedRoles, remoteRoles.syncRevision);
 
         if (ok) {
             setSyncMessage('保存結果を確認しています...');
@@ -1333,12 +1359,14 @@ async function syncRoles() {
             if (reportOnlineAssignmentAnomalies(roles, '同期結果').length === 0) {
                 setSyncMessage('スプレッドシートと同期しました。');
             }
+            return true;
         } else {
             setSyncMessage('スプレッドシートと同期できませんでした。ブラウザ内には保存されています。', true);
         }
     } catch (error) {
         console.error('syncRoles error:', error);
         setSyncMessage((error.message || 'スプレッドシート同期に失敗しました。') + ' ブラウザ内のデータは残っています。', true);
+        return false;
     } finally {
         isSyncing = false;
         setSyncButtonBusy(false);
