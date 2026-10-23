@@ -1,5 +1,4 @@
 ﻿console.log("STATUS FILTER VERSION 6");
-const CORRECT_PASSWORD = '1234';
 const CURRENT_OPERATOR_KEY = 'currentOperator';
 const OPERATORS = [
     { id: 'hiwatashi', name: '樋渡' },
@@ -113,6 +112,21 @@ const DASHBOARD_VISIBILITY_OPTIONS = [
     }
 ];
 
+function applyOverviewDetails() {
+    const detailed = localStorage.getItem('overviewDetails') === 'true';
+    document.body.classList.toggle('simple-overview', !detailed);
+    const button = document.getElementById('detailModeBtn');
+    if (button) {
+        button.textContent = detailed ? '普段の表示に戻す' : '詳しい確認を開く';
+        button.setAttribute('aria-pressed', String(detailed));
+    }
+}
+
+function toggleOverviewDetails() {
+    localStorage.setItem('overviewDetails', String(localStorage.getItem('overviewDetails') !== 'true'));
+    applyOverviewDetails();
+}
+
 function getEffectiveViewportWidth() {
     const widths = [
         window.innerWidth,
@@ -135,13 +149,16 @@ function applyResponsiveLayoutMode() {
 
 // ログイン状態チェック
 function checkLoginStatus() {
-    const isLoggedIn = localStorage.getItem('isLoggedIn') === 'true';
+    const isLoggedIn = Boolean(globalThis.RollAuth && RollAuth.currentUser());
     const loginScreen = document.getElementById('login-screen');
     const mainScreen = document.getElementById('main-screen');
 
     if (isLoggedIn) {
+        applyAdminMode(false);
+        document.body.classList.toggle('authorized-admin', RollAuth.currentUser().role === 'admin');
         loginScreen.style.display = 'none';
         mainScreen.style.display = 'block';
+        document.body.classList.toggle('read-only-account', RollAuth.currentUser().role === 'reader');
         setupOperatorSelect();
         loadLocalRoles();
         renderRoles();
@@ -155,31 +172,30 @@ function checkLoginStatus() {
     }
 }
 
-// ログイン関数
-function login() {
-    const password = document.getElementById('password-input').value;
-    if (password === CORRECT_PASSWORD) {
-        localStorage.setItem('isLoggedIn', 'true');
+// Identity is confirmed by the backend; local flags never grant access.
+async function login() {
+    try {
+        await RollAuth.signIn();
         checkLoginStatus();
-        document.getElementById('password-input').value = ''; // パスワード入力クリア
-    } else {
-        alert('パスワードが間違っています');
-        document.getElementById('password-input').value = '';
-        document.getElementById('password-input').focus();
-    }
+    } catch (_) { /* The login panel displays the failure. */ }
 }
 
-// ログアウト関数
-function logout() {
-    if (confirm('ログアウトしますか？')) {
-        localStorage.removeItem('isLoggedIn');
-        checkLoginStatus();
-    }
+async function logout() {
+    const content = typeof getSyncContentState === 'function' ? getSyncContentState() : null;
+    const message = content && (content.pendingCount > 0 || content.phase === 'error')
+        ? '未反映の変更はこの端末に残ります。同じアカウントで再ログインして同期してください。ログアウトしますか？'
+        : 'ログアウトしますか？';
+    if (!confirm(message)) return;
+    await RollAuth.signOut();
+    document.querySelectorAll('.detail-modal').forEach(node => { node.classList.remove('is-open', 'show', 'active'); node.setAttribute('aria-hidden', 'true'); });
+    localStorage.removeItem('isLoggedIn');
+    setSyncContentPhase('unknown');
+    checkLoginStatus();
 }
 
-// Enterキーでログイン
 document.addEventListener('DOMContentLoaded', function() {
     applyResponsiveLayoutMode();
+    applyOverviewDetails();
     applyTabletModePreference();
     installSyncDiagnosticHeaderIntegration();
     updateSyncStatusBadge();
@@ -187,13 +203,7 @@ document.addEventListener('DOMContentLoaded', function() {
     setupCountSummaryToggle();
     setupDashboardDisplaySettings();
     resetCuttingAnomalyDashboardOpenState();
-    loadRemoteRoles();
-    Promise.all([loadStandMaster(), loadCuttingMaster()]).then(() => renderRoles());
-    document.getElementById('password-input').addEventListener('keypress', function(e) {
-        if (e.key === 'Enter') {
-            login();
-        }
-    });
+    // No remote reads before authenticated login.
     const roleStatusSelect = document.getElementById('role-status');
     const roleNameInput = document.getElementById('role-name');
     if (roleStatusSelect) {
@@ -870,18 +880,8 @@ function getSyncHeaderStatus(counts) {
     };
 }
 
-function getSyncPendingCount(counts) {
-    const comparableCounts = [
-        counts && Number.isFinite(counts.local) ? counts.local : null,
-        counts && Number.isFinite(counts.remote) ? counts.remote : null,
-        counts && Number.isFinite(counts.merged) ? counts.merged : null
-    ].filter(value => Number.isFinite(value));
-
-    if (comparableCounts.length <= 1) {
-        return 0;
-    }
-
-    return Math.max(...comparableCounts) - Math.min(...comparableCounts);
+function getSyncPendingCount() {
+    return typeof getSyncContentState === 'function' ? getSyncContentState().pendingCount : null;
 }
 
 function formatSyncHeaderCount(value) {
@@ -920,7 +920,7 @@ function updateSyncStatusBadge() {
     const status = getSyncHeaderStatus(counts);
 
     if (status.level === 'normal') {
-        setSyncStatusBadgeState('同期正常', 'sync-status-normal');
+        setSyncStatusBadgeState('反映確認済み', 'sync-status-normal');
         return;
     }
 
@@ -930,7 +930,7 @@ function updateSyncStatusBadge() {
     }
 
     const pendingCount = getSyncPendingCount(counts);
-    setSyncStatusBadgeState(pendingCount > 0 ? `未同期 ${pendingCount}件` : '未同期あり', 'sync-status-warning');
+    setSyncStatusBadgeState(status.statusText.replace('状態: ', ''), 'sync-status-warning');
 }
 
 function getSyncStatusPopupRows() {
@@ -938,10 +938,12 @@ function getSyncStatusPopupRows() {
     const pendingCount = getSyncPendingCount(counts);
 
     return [
-        ['Local', formatSyncHeaderCount(counts.local)],
-        ['Remote', formatSyncHeaderCount(counts.remote)],
-        ['Merged', formatSyncHeaderCount(counts.merged)],
-        ['未同期件数', `${pendingCount}件`],
+        ['反映状態', getSyncHeaderStatus(counts).detail],
+        ['最終内容確認', typeof getSyncContentState === 'function' && getSyncContentState().checkedAt ? new Date(getSyncContentState().checkedAt).toLocaleString('ja-JP') : '未確認'],
+        ['端末内の件数', formatSyncHeaderCount(counts.local)],
+        ['表の件数', formatSyncHeaderCount(counts.remote)],
+        ['照合後の件数', formatSyncHeaderCount(counts.merged)],
+        ['最終確認後の変更', pendingCount === null ? '未確認' : `${pendingCount}件`],
         ['最終同期日時', getLastSyncAtLabel()]
     ];
 }
@@ -1074,6 +1076,7 @@ if (backupKeys.length > 20) {
         tail5: roles.slice(-5).map(getDebugRoleSnapshot)
     });
     localStorage.setItem('roles', JSON.stringify(roles));
+    if (typeof refreshSyncContentDisplay === 'function') refreshSyncContentDisplay();
 }
 
 function normalizeWorkProgressStepState(value) {
@@ -1424,7 +1427,7 @@ async function fetchCuttingMaster() {
 
     try {
         const url = `${SHEETS_ENDPOINT}?action=fetchCuttingMaster&t=${Date.now()}`;
-        const response = await fetch(url, { method: 'GET' });
+        const response = await rollApiFetch(url, { method: 'GET' });
         const data = await response.json();
 
         if (!data || data.success !== true || !Array.isArray(data.cuttingMaster)) {
@@ -1614,9 +1617,9 @@ async function appendWorkHistoryEvent(event) {
     }
 
     try {
-        await fetch(SHEETS_ENDPOINT, {
+        await rollApiFetch(SHEETS_ENDPOINT, {
             method: 'POST',
-            mode: 'no-cors',
+            mode: 'cors',
             body: JSON.stringify({
                 action: 'appendWorkHistory',
                 event
@@ -1635,9 +1638,9 @@ async function invalidateLatestCuttingHistoryForInputCorrection(event) {
     }
 
     try {
-        await fetch(SHEETS_ENDPOINT, {
+        await rollApiFetch(SHEETS_ENDPOINT, {
             method: 'POST',
-            mode: 'no-cors',
+            mode: 'cors',
             body: JSON.stringify({
                 action: 'invalidateLatestCuttingHistoryForInputCorrection',
                 event
@@ -6530,8 +6533,8 @@ async function saveWorkshopBoardAssemblyDue(key) {
     workshopBoardEditingAssemblyDueKey = '';
     updateWorkshopBoard(roles);
 
-    if (typeof saveData === 'function') {
-        const ok = await saveData(roles);
+    if (typeof syncRoles === 'function') {
+        const ok = await syncRoles();
         if (!ok) {
             showToast('ブラウザ内に保存しました。スプレッドシート同期は未完了です');
             return;
@@ -8219,6 +8222,7 @@ function applyAdminMode(isAdminMode) {
 }
 
 function toggleAdminMode() {
+    if (!RollAuth.currentUser() || RollAuth.currentUser().role !== 'admin') { showToast('管理者権限が必要です'); return; }
     const isAdminMode = document.body.classList.contains('admin-mode');
 
     if (isAdminMode) {

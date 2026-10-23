@@ -513,3 +513,57 @@ test('actual-only changes on stand 2 trigger its paired history-sheet scan', () 
         ['#2-11']
     );
 });
+
+test('explicit start-date clear targets the same current cycle only', () => {
+    const gas = loadGasFunctions();
+    const before = { id: 1, status: 'オンライン', useStartDate: '2031-10-02', useEndDate: '' };
+    const after = { ...before, useStartDate: '' };
+    const rows = [cycle(12, { useStartDate: field('2031-10-02') })];
+    const plan = gas.planRollHistoryExplicitClears_(rows, before, after, ['useStartDate']);
+    assert.deepEqual(JSON.parse(JSON.stringify(plan)), {
+        writes: [{ field: 'useStartDate', rowNumber: 12, value: '' }], conflicts: []
+    });
+    // A blank snapshot without a known previous value never erases actuals.
+    assert.equal(gas.planRollHistoryExplicitClears_(rows, null, after, ['useStartDate']).writes.length, 0);
+});
+
+test('explicit clear never erases a different actual or planned date', () => {
+    const gas = loadGasFunctions();
+    const before = { id: 1, status: 'オンライン', useStartDate: '2031-10-02' };
+    for (const current of [field('2031-10-03'), field('2031-10-02', { planned: true })]) {
+        const plan = gas.planRollHistoryExplicitClears_([cycle(12, { useStartDate: current })], before,
+            { ...before, useStartDate: '' }, ['useStartDate']);
+        assert.equal(plan.writes.length, 0);
+        assert.equal(plan.conflicts.length, 1);
+    }
+});
+
+test('cycle transitions and other roll IDs cannot erase earlier actuals', () => {
+    const gas = loadGasFunctions();
+    const before = { id: 1, status: '中古予備（バラシ前）', useEndDate: '2031-10-02' };
+    const rows = [cycle(12, { useEndDate: field('2031-10-02') })];
+    for (const after of [{ ...before, status: 'オンライン', useEndDate: '' }, { ...before, id: 2, useEndDate: '' }]) {
+        assert.equal(gas.planRollHistoryExplicitClears_(rows, before, after, ['useEndDate']).writes.length, 0);
+    }
+});
+
+test('clearing a completed-cycle end checks the paired start date', () => {
+    const gas = loadGasFunctions();
+    const before = { id: 1, status: '中古予備（バラシ前）', useStartDate: '2031-09-01', useEndDate: '2031-10-02' };
+    const after = { ...before, useEndDate: '' };
+    const match = cycle(12, { useStartDate: field('2031-09-01'), useEndDate: field('2031-10-02') });
+    const mismatch = cycle(12, { useStartDate: field('2031-08-01'), useEndDate: field('2031-10-02') });
+    assert.equal(gas.planRollHistoryExplicitClears_([match], before, after, ['useEndDate']).writes.length, 1);
+    assert.equal(gas.planRollHistoryExplicitClears_([mismatch], before, after, ['useEndDate']).conflicts.length, 1);
+});
+
+test('blank actual writes clear content without touching formatting', () => {
+    const gas = loadGasFunctions(), calls = [];
+    const sheet = { getRange: (...args) => ({
+        clearContent() { calls.push(args); },
+        getA1Notation() { return 'L12:N12'; },
+        setValues() { throw new Error('blank dates must not be parsed as numbers'); }
+    }) };
+    assert.equal(gas.writeRollHistoryActualValue(sheet, { startColumn: 1 }, { rowNumber: 12, field: 'useStartDate', value: '' }), 'L12:N12');
+    assert.deepEqual(calls, [[12, 12, 1, 3]]);
+});

@@ -1,8 +1,46 @@
-const SHEETS_ENDPOINT = 'https://script.google.com/macros/s/AKfycbyN0_AoU1dcaXzCO3ICRma2pFJyz2HvCSnwe_RAJMpaOlE53Gj5SugtDFoV78KHf9x9/exec';
+const SHEETS_ENDPOINT = globalThis.ROLL_APP_CONFIG && globalThis.ROLL_APP_CONFIG.apiEndpoint || '';
 const DELETED_ROLE_IDS_KEY = 'deletedRoleIds';
 const LAST_SUCCESSFUL_SYNC_COUNT_KEY = 'lastSuccessfulSyncRoleCount';
 const SYNC_COUNT_DROP_ABORT_RATIO = 0.3;
 let syncDiagnosticRemoteRoles = null;
+let syncContentVerification = { phase: 'unknown', snapshot: null, checkedAt: '', error: '' };
+
+function syncContentSnapshot(roleList) {
+    return stableStringify(getSortedVerificationSnapshots(roleList));
+}
+
+function markSyncContentVerified(roleList) {
+    syncContentVerification = { phase: 'verified', snapshot: syncContentSnapshot(roleList),
+        checkedAt: new Date().toISOString(), error: '' };
+    refreshSyncContentDisplay();
+}
+
+function setSyncContentPhase(phase, error = '') {
+    syncContentVerification = { ...syncContentVerification, phase, error };
+    refreshSyncContentDisplay();
+}
+
+function refreshSyncContentDisplay() {
+    if (typeof updateSyncStatusBadge === 'function') updateSyncStatusBadge();
+}
+
+function getSyncContentState() {
+    const state = syncContentVerification;
+    const local = getLocalRolesForDiagnostic();
+    const pendingIds = new Set(getDeletedRoleIds());
+    if (state.snapshot !== null) {
+        const oldRows = JSON.parse(state.snapshot);
+        const baseline = new Map(oldRows.map(row => [row.id, stableStringify(row)]));
+        const current = new Map(getSortedVerificationSnapshots(local).map(row => [row.id, stableStringify(row)]));
+        new Set([...baseline.keys(), ...current.keys()]).forEach(id => {
+            if (baseline.get(id) !== current.get(id)) pendingIds.add(id);
+        });
+    }
+    const pendingCount = state.snapshot === null ? null : pendingIds.size;
+    return { ...state, pendingCount,
+        verified: state.phase === 'verified' && pendingCount === 0
+            && syncContentSnapshot(local) === state.snapshot };
+}
 
 function getOnlineAssignmentAnomalies(roleList) {
     if (!window.RollOnlineSafety) return [];
@@ -328,7 +366,7 @@ function logSyncSaveDebugCounts(savedRemoteRoleCount = lastSavedRemoteRoleCount)
 
 async function fetchLastGasSaveDebug() {
     const url = `${SHEETS_ENDPOINT}?action=debug-last-save&t=${Date.now()}`;
-    const response = await fetch(url, {
+    const response = await rollApiFetch(url, {
         method: 'GET',
         cache: 'no-store'
     });
@@ -408,21 +446,14 @@ function getSyncDiagnosticStatus(counts) {
         };
     }
 
-    if (counts.hasRemote && counts.local === counts.remote && counts.remote === mergedCount) {
-        return {
-            level: 'normal',
-            statusText: '状態: 正常',
-            detail: 'Local / Remote / Merged の件数が一致しています'
-        };
-    }
+    const content = getSyncContentState();
+    if (content.phase === 'error') return { level: 'danger', statusText: '状態: 反映未確認', detail: content.error };
+    if (content.phase === 'checking') return { level: 'warning', statusText: '状態: 反映確認中', detail: '保存結果と内容を照合しています' };
+    if (content.verified) return { level: 'normal', statusText: '状態: 反映確認済み', detail: '最終確認時点で日付・状態・履歴を含む内容が一致しています' };
+    return { level: 'warning', statusText: '状態: 未反映・未確認',
+        detail: content.pendingCount === null ? '内容の一致はまだ確認できていません'
+            : `最終確認後の変更: ${content.pendingCount}件。同期して確認してください` };
 
-    return {
-        level: 'warning',
-        statusText: '状態: 要確認',
-        detail: counts.hasRemote
-            ? `差分: ${diff}件。同期前に確認してください`
-            : 'Remote件数を取得中です'
-    };
 }
 
 function updateSyncDiagnosticPanel(options = {}) {
@@ -513,6 +544,7 @@ function normalizeCoatingStatusForSync(value, status) {
 }
 
 function setSyncMessage(message, isError = false) {
+    if (isError) setSyncContentPhase('error', message);
     const syncEl = document.getElementById('sync-message');
     if (syncEl) {
         syncEl.textContent = message;
@@ -587,7 +619,7 @@ function validatePlanningExportStatus(data, requestId) {
 
 async function fetchPlanningExportStatus(requestId) {
     const url = `${SHEETS_ENDPOINT}?action=fetchPlanningExportStatus&requestId=${encodeURIComponent(requestId)}&t=${Date.now()}`;
-    const response = await fetch(url, { method: 'GET', cache: 'no-store' });
+    const response = await rollApiFetch(url, { method: 'GET', cache: 'no-store' });
     const data = await readJsonResponse(response, '月次計画出力結果の確認');
     if (data && data.pending === true) return null;
     return validatePlanningExportStatus(data, requestId);
@@ -602,9 +634,9 @@ async function exportPlanningDraft(plan) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 30000);
     try {
-        await fetch(SHEETS_ENDPOINT, {
+        await rollApiFetch(SHEETS_ENDPOINT, {
             method: 'POST',
-            mode: 'no-cors',
+            mode: 'cors',
             body: JSON.stringify({ action: 'writePlanningDraft', requestId: plan.requestId, plan }),
             signal: controller.signal
         });
@@ -926,9 +958,10 @@ async function fetchData() {
         setSyncMessage('スプレッドシート同期先が設定されていません。設定を確認してください。', true);
         return;
     }
+    setSyncContentPhase('checking');
     try {
         const url = `${SHEETS_ENDPOINT}?action=fetch&t=${Date.now()}`;
-        const response = await fetch(url, {
+        const response = await rollApiFetch(url, {
             method: 'GET',
             cache: 'no-store'
         });
@@ -944,6 +977,14 @@ async function fetchData() {
         }
 
         const deletedRoleIds = getDeletedRoleIds();
+        // A renewed login or reload must not discard edits left on this device.
+        if (localStorage.getItem('roles') && Array.isArray(roles) && roles.length
+            && (syncContentSnapshot(roles) !== syncContentSnapshot(data.roles) || deletedRoleIds.length)) {
+            markSyncContentVerified(data.roles);
+            setSyncMessage('端末内と表の内容に違いがあります。端末内の変更を残しています。同期して確認してください。');
+            renderRoles();
+            return;
+        }
         roles = data.roles
             .map(normalizeRole)
             .filter(role => !isRoleMarkedDeleted(role, deletedRoleIds));
@@ -951,6 +992,7 @@ async function fetchData() {
         saveLocalRoles();
         const ids = roles.map(r => Number(r.id) || 0);
         nextId = ids.length > 0 ? Math.max(...ids) + 1 : 1;
+        markSyncContentVerified(data.roles);
         renderRoles();
         if (reportOnlineAssignmentAnomalies(roles, 'Google Sheets取得データ').length === 0) {
             setSyncMessage('スプレッドシートからデータを読み込みました。');
@@ -970,7 +1012,7 @@ async function fetchStandMaster() {
 
     try {
         const url = `${SHEETS_ENDPOINT}?action=fetchStandMaster&t=${Date.now()}`;
-        const response = await fetch(url, {
+        const response = await rollApiFetch(url, {
             method: 'GET',
             cache: 'no-store'
         });
@@ -986,7 +1028,29 @@ async function fetchStandMaster() {
     }
 }
 
-async function saveData(roleList = roles) {
+function validateRolesSaveStatus(data, requestId) {
+    if (!data || data.success !== true) throw createSyncError('保存結果確認', data && data.error || '保存結果を取得できません。');
+    if (data.pending === true) return null;
+    const status = data.status;
+    if (!status || status.requestId !== requestId) throw createSyncError('保存結果確認', '保存リクエストが一致しません。');
+    if (status.state === 'partial') throw createSyncError('一部未反映', status.error || '管理データは保存済みですが、履歴表への反映が完了していません。');
+    if (status.state === 'error') throw createSyncError('同期', status.error || '保存できませんでした。');
+    if (status.state !== 'complete') throw createSyncError('保存結果確認', '保存結果が未確定です。');
+    return status;
+}
+
+async function waitForRolesSaveStatus(requestId) {
+    for (let attempt = 0; attempt < 12; attempt += 1) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        const response = await rollApiFetch(`${SHEETS_ENDPOINT}?action=fetchSaveStatus&requestId=${encodeURIComponent(requestId)}&t=${Date.now()}`,
+            { method: 'GET', cache: 'no-store' });
+        const status = validateRolesSaveStatus(await readJsonResponse(response, '保存結果確認'), requestId);
+        if (status) return status;
+    }
+    throw createSyncError('保存結果確認', '保存結果の確認が時間内に終わりませんでした。シートの状態を確認してください。');
+}
+
+async function saveData(roleList = roles, expectedRevision) {
     if (!isRemoteConfigured()) {
         return false;
     }
@@ -1028,8 +1092,12 @@ async function saveData(roleList = roles) {
             return false;
         }
 
+        if (!expectedRevision) {
+            throw createSyncError('同期', '同期先の更新版を確認できません。Apps Scriptの更新を確認してください。');
+        }
+        const requestId = `roles-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
         const payload = JSON.stringify({
-            action: 'save',
+            action: 'save', requestId, expectedRevision,
             roles: rolesToSend
         });
 
@@ -1037,9 +1105,9 @@ async function saveData(roleList = roles) {
         const timeoutId = setTimeout(() => controller.abort(), 30000);
 
         try {
-            await fetch(SHEETS_ENDPOINT, {
+            await rollApiFetch(SHEETS_ENDPOINT, {
                 method: 'POST',
-                mode: 'no-cors',
+                mode: 'cors',
                 body: payload,
                 signal: controller.signal
             });
@@ -1047,7 +1115,7 @@ async function saveData(roleList = roles) {
             clearTimeout(timeoutId);
         }
 
-        await new Promise(resolve => setTimeout(resolve, 1200));
+        await waitForRolesSaveStatus(requestId);
 
         try {
             await fetchLastGasSaveDebug();
@@ -1067,7 +1135,7 @@ async function saveData(roleList = roles) {
 
 async function fetchRemoteRolesForGuard(actionLabel = '同期前データ確認') {
     const url = `${SHEETS_ENDPOINT}?action=fetch&t=${Date.now()}`;
-    const response = await fetch(url, {
+    const response = await rollApiFetch(url, {
         method: 'GET',
         cache: 'no-store'
     });
@@ -1077,6 +1145,7 @@ async function fetchRemoteRolesForGuard(actionLabel = '同期前データ確認'
     logStatusDebug('REMOTE_STATUS_BEFORE_NORMALIZE', data.roles);
     const remoteRoles = data.roles.map(normalizeRole);
     logStatusDebug('REMOTE_STATUS_AFTER_NORMALIZE', remoteRoles);
+    Object.defineProperty(remoteRoles, 'syncRevision', { value: data.revision || '' });
     setSyncDiagnosticRemoteRoles(remoteRoles);
     return remoteRoles;
 }
@@ -1090,7 +1159,7 @@ function loadStandMaster() {
 }
 
 function saveRemoteRoles() {
-    return saveData();
+    return syncRoles();
 }
 
 let isSyncing = false;
@@ -1209,6 +1278,7 @@ async function syncRoles() {
     }
 
     isSyncing = true;
+    setSyncContentPhase('checking');
     setSyncButtonBusy(true);
 
     try {
@@ -1313,7 +1383,7 @@ async function syncRoles() {
 
         setSyncMessage('スプレッドシートと同期中です...');
 
-        const ok = await saveData(sortedMergedRoles);
+        const ok = await saveData(sortedMergedRoles, remoteRoles.syncRevision);
 
         if (ok) {
             setSyncMessage('保存結果を確認しています...');
@@ -1324,6 +1394,7 @@ async function syncRoles() {
             clearDeletedRoleIds(pendingDeletedRoleIds);
             saveLastSuccessfulSyncCount(savedRemoteRoles.length);
             saveLastSyncAt();
+            markSyncContentVerified(savedRemoteRoles);
             renderRoles();
             updateSyncDiagnosticPanel({
                 localRoles: roles,
@@ -1331,16 +1402,20 @@ async function syncRoles() {
                 mergedRoles: roles
             });
             if (reportOnlineAssignmentAnomalies(roles, '同期結果').length === 0) {
-                setSyncMessage('スプレッドシートと同期しました。');
+                setSyncMessage(getSyncContentState().verified ? 'スプレッドシートへの反映を確認しました。' : '直前の保存は反映済みです。その後の変更が残っています。');
             }
+            return true;
         } else {
             setSyncMessage('スプレッドシートと同期できませんでした。ブラウザ内には保存されています。', true);
         }
     } catch (error) {
         console.error('syncRoles error:', error);
         setSyncMessage((error.message || 'スプレッドシート同期に失敗しました。') + ' ブラウザ内のデータは残っています。', true);
+        return false;
     } finally {
         isSyncing = false;
+        if (syncContentVerification.phase === 'checking') setSyncContentPhase('unknown');
+        refreshSyncContentDisplay();
         setSyncButtonBusy(false);
 
         if (isSyncQueued) {
