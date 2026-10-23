@@ -241,13 +241,25 @@ function runValidationPlanningDraft() {
   Object.keys(expectedCarry).forEach(function(a1) {
     if (a1 !== 'K5' && sheet.getRange(a1).getValue() !== expectedCarry[a1]) throw new Error('繰越予定が一致しません: ' + a1);
   });
-  const geometry = function(item) {
-    return JSON.stringify({ merges: item.getRange('A1:AM70').getMergedRanges().map(function(range) { return range.getA1Notation(); }).sort(),
+  const geometry = function(item, extendExpected) {
+    const merges = item.getRange('A1:AM70').getMergedRanges().map(function(range) { return range.getA1Notation(); });
+    const rows = Array.from({ length: 70 }, function(_, i) { return item.getRowHeight(i + 1); });
+    const templateDays = new Date(template.period.year, template.period.month, 0).getDate();
+    if (extendExpected) {
+      for (let day = templateDays + 1; day <= dayCount; day++) {
+        const row = day + 4;
+        ['E' + row + ':F' + row, 'H' + row + ':I' + row, 'K' + row + ':L' + row].forEach(function(a1) {
+          if (merges.indexOf(a1) < 0) merges.push(a1);
+        });
+        rows[row - 1] = rows[templateDays + 3];
+      }
+    }
+    return JSON.stringify({ merges: merges.sort(),
       columns: Array.from({ length: 39 }, function(_, i) { return item.getColumnWidth(i + 1); }),
-      rows: Array.from({ length: 70 }, function(_, i) { return item.getRowHeight(i + 1); }),
+      rows: rows,
       frozenRows: item.getFrozenRows(), frozenColumns: item.getFrozenColumns() });
   };
-  if (geometry(source) !== geometry(sheet)) throw new Error('元表と結合・列幅・行高が一致しません。');
+  if (geometry(source, true) !== geometry(sheet, false)) throw new Error('月末補完を除く元表の結合・列幅・行高が一致しません。');
   const originalDay = sheet.getRange('B5').getValue();
   let rejected = false;
   try {
@@ -260,8 +272,43 @@ function runValidationPlanningDraft() {
   sheet.getRange('N1').setValue('検証用の暦・出力確認。生産・作業指示には使わない');
   const result = { mode: 'LIVE_PLANNING_TEMPLATE', sheetName: first.sheetName, sheetId: sheet.getSheetId(),
     template: source.getName(), created: true, repeatedWithoutDuplicates: true, carryForwardPreserved: true,
-    mergesWidthsHeightsPreserved: true, manualCalendarEditRejected: rejected, sourceUnchanged: true,
+    layoutPreservedWithMonthEndExtension: true, manualCalendarEditRejected: rejected, sourceUnchanged: true,
     actualProductionImported: false, printLayoutVerified: false };
+  console.log('ROLL_VALIDATION_RESULT ' + JSON.stringify(result));
+  return result;
+}
+
+// Repairs only the calendar test draft created above; does not generate or adopt work orders.
+function runValidationPlanningMonthEnd() {
+  const ss = validationSpreadsheet_(), now = new Date();
+  const period = { year: Number(Utilities.formatDate(now, 'Asia/Tokyo', 'yyyy')),
+    month: Number(Utilities.formatDate(now, 'Asia/Tokyo', 'M')) };
+  const sheet = ss.getSheetByName(planningSheetName_(period));
+  if (!sheet || String(sheet.getRange('N1').getValue()).indexOf('検証用の暦・出力確認') !== 0) {
+    throw new Error('この検証で作成した暦シート以外は変更できません。');
+  }
+  const template = findPlanningTemplateSheet_(ss, period);
+  const sourceDays = new Date(template.period.year, template.period.month, 0).getDate();
+  const targetDays = new Date(period.year, period.month, 0).getDate();
+  const before = JSON.stringify(sheet.getRange('A1:AM70').getValues());
+  for (let day = sourceDays + 1; day <= targetDays; day++) {
+    ['F', 'I', 'L'].forEach(function(column) {
+      if (sheet.getRange(column + (day + 4)).getValue() !== '') throw new Error('結合予定の右セルに値があるため停止します。');
+    });
+  }
+  const expanded = extendPlanningCalendarRows_(sheet, template.period, period);
+  SpreadsheetApp.flush();
+  for (let day = sourceDays + 1; day <= targetDays; day++) {
+    const row = day + 4;
+    const merges = sheet.getRange('B' + row + ':M' + row).getMergedRanges().map(function(range) { return range.getA1Notation(); }).sort();
+    if (JSON.stringify(merges) !== JSON.stringify(['E' + row + ':F' + row, 'H' + row + ':I' + row, 'K' + row + ':L' + row])) {
+      throw new Error('月末の結合セルが一致しません。');
+    }
+    if (sheet.getRowHeight(row) !== sheet.getRowHeight(sourceDays + 4)) throw new Error('月末の行高が一致しません。');
+  }
+  if (before !== JSON.stringify(sheet.getRange('A1:AM70').getValues())) throw new Error('書式補完で既存値が変化しました。');
+  const result = { mode: 'LIVE_MONTH_END_FORMAT', expandedDays: expanded, valuesUnchanged: true,
+    pairedWorkCellsVerified: true, rowHeightsVerified: true, sheetId: sheet.getSheetId() };
   console.log('ROLL_VALIDATION_RESULT ' + JSON.stringify(result));
   return result;
 }

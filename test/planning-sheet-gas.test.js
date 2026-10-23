@@ -106,3 +106,59 @@ test('calendar edits stop re-export before overwriting user changes', () => {
     note = 'ROLL_PLANNING_DRAFT|{}';
     assert.throws(() => gas.assertPlanningCalendarUnchanged_(sheet), /旧方式/);
 });
+
+function calendarGeometry(extraMerge) {
+    const calls = [], merges = new Map();
+    const pairs = row => ['E' + row + ':F' + row, 'H' + row + ':I' + row, 'K' + row + ':L' + row];
+    const sheet = {
+        getRange: a1 => ({
+            getMergedRanges: () => {
+                const row = Number(a1.match(/\d+/)[0]);
+                const found = a1.startsWith('B')
+                    ? (row <= 34 ? pairs(row) : extraMerge ? [extraMerge] : [])
+                    : (merges.has(a1) ? [a1] : []);
+                return found.map(value => ({ getA1Notation: () => value }));
+            },
+            copyFormatToRange: (destination, ...args) => { assert.equal(destination, sheet); calls.push(['format', a1, ...args]); },
+            merge: () => { merges.set(a1, true); calls.push(['merge', a1]); },
+            setBorder: (...args) => calls.push(['border', a1, ...args])
+        }),
+        getRowHeight: () => 36,
+        setRowHeight: (...args) => calls.push(['height', ...args])
+    };
+    return { sheet, calls };
+}
+
+test('a 31-day draft gains the missing last day formatting and paired work cells', () => {
+    const gas = loadGasFunctions(), h = calendarGeometry();
+    assert.equal(gas.extendPlanningCalendarRows_(h.sheet, { year: 2031, month: 9 }, { year: 2031, month: 10 }), 1);
+    assert.deepEqual(h.calls, [
+        ['format', 'B34:M34', 2, 13, 35, 35],
+        ['merge', 'E35:F35'], ['merge', 'H35:I35'], ['merge', 'K35:L35'], ['height', 35, 36],
+        ['border', 'B35:M35', null, null, true, null, null, null]
+    ]);
+});
+
+test('a shorter or equal month does not rewrite existing calendar formatting', () => {
+    const gas = loadGasFunctions(), h = calendarGeometry();
+    assert.equal(gas.extendPlanningCalendarRows_(h.sheet, { year: 2031, month: 10 }, { year: 2031, month: 11 }), 0);
+    assert.equal(gas.extendPlanningCalendarRows_(h.sheet, { year: 2031, month: 10 }, { year: 2031, month: 12 }), 0);
+    assert.equal(h.calls.length, 0);
+});
+
+test('unexpected note-area merges stop calendar expansion before any format write', () => {
+    const gas = loadGasFunctions(), h = calendarGeometry('E35:M35');
+    assert.throws(() => gas.extendPlanningCalendarRows_(h.sheet, { year: 2031, month: 9 }, { year: 2031, month: 10 }), /別用途の結合/);
+    assert.equal(h.calls.length, 0);
+});
+
+test('February expansion preflights without edits then formats three missing days', () => {
+    const gas = loadGasFunctions(), h = calendarGeometry();
+    const from = { year: 2031, month: 2 }, to = { year: 2031, month: 3 };
+    assert.equal(gas.extendPlanningCalendarRows_(h.sheet, from, to, { dryRun: true }), 3);
+    assert.equal(h.calls.length, 0);
+    assert.equal(gas.extendPlanningCalendarRows_(h.sheet, from, to), 3);
+    assert.deepEqual(h.calls.filter(call => call[0] === 'format').map(call => call.slice(1)), [
+        ['B32:M32', 2, 13, 33, 33], ['B32:M32', 2, 13, 34, 34], ['B32:M32', 2, 13, 35, 35]
+    ]);
+});

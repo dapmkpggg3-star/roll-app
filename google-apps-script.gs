@@ -3,7 +3,7 @@ const ROLL_MANAGEMENT_VIEW_SHEET_NAME = 'ロール管理表';
 const STAND_MASTER_SHEET_NAME = 'StandMaster';
 const INPUT_SHEET_NAMES = ['入力シート', 'Input', '入力'];
 const ROLL_MANAGEMENT_SPREADSHEET_ID_PROPERTY = 'ROLL_MANAGEMENT_SPREADSHEET_ID';
-const SCRIPT_VERSION = 'revision-guard-history-v10';
+const SCRIPT_VERSION = 'revision-guard-print-v12';
 const ROLES_EDIT_TRIGGER_HANDLER = 'handleRolesSheetEdit';
 const ROLES_EDIT_TRIGGER_LOCK_TIMEOUT_MS = 300000;
 const HEADER_VALUES = ['ID', 'スタンド番号', 'ステータス', 'メモ', '最終更新日', '作業依頼済み', '作業依頼進捗', '履歴', '現在径', '使用開始日', '溶射状態', '納入予定日', '組替指示期限', '使用終了日', '運用3セット対象', '次回組み込み予定'];
@@ -704,6 +704,47 @@ function isPlanningTemplateLayout_(sheet) {
   });
 }
 
+// Bound spreadsheets expose printing here; the status app needs no planning screen.
+function onOpen() {
+  SpreadsheetApp.getUi().createMenu('ロール帳票')
+    .addItem('月間予定をPDF表示', 'showPlanningPrintPreview')
+    .addToUi();
+}
+
+function planningPrintUrl_(spreadsheetId, sheetId) {
+  if (!/^[A-Za-z0-9_-]{20,}$/.test(String(spreadsheetId || ''))
+      || !Number.isSafeInteger(sheetId) || sheetId < 0) {
+    throw new Error('印刷対象のシートを確認できません。');
+  }
+  // B1:M40: original monthly template's print area. No sharing change or OAuth token.
+  const parameters = {
+    format: 'pdf', size: 7, portrait: true, fitw: true,
+    gridlines: false, printtitle: false, sheetnames: false,
+    pagenum: 'UNDEFINED', fzr: false, attachment: false,
+    top_margin: 0.2, bottom_margin: 0, left_margin: 0.4, right_margin: 0,
+    gid: sheetId, r1: 0, c1: 1, r2: 40, c2: 13
+  };
+  return 'https://docs.google.com/spreadsheets/d/' + spreadsheetId + '/export?'
+    + Object.keys(parameters).map(function(key) {
+      return key + '=' + encodeURIComponent(parameters[key]);
+    }).join('&');
+}
+
+function showPlanningPrintPreview() {
+  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = spreadsheet && spreadsheet.getActiveSheet();
+  if (!sheet || !parsePlanningSheetPeriod_(sheet.getName()) || !isPlanningTemplateLayout_(sheet)) {
+    SpreadsheetApp.getUi().alert('ロールカリバ替予定の月間シートを開いてから実行してください。');
+    return;
+  }
+  const url = planningPrintUrl_(spreadsheet.getId(), sheet.getSheetId()).replace(/&/g, '&amp;');
+  const html = '<p>予定表の範囲（B1:M40）をA4縦で表示します。右側の参考図は含みません。</p>'
+    + '<p>自動計画案は採用済みではありません。印刷前に内容と改ページを確認してください。</p>'
+    + '<p><a target="_blank" rel="noopener" href="' + url + '">PDFを開く</a></p>';
+  SpreadsheetApp.getUi().showModelessDialog(
+    HtmlService.createHtmlOutput(html).setWidth(410).setHeight(200), '月間予定の印刷確認');
+}
+
 function planningPeriodNumber_(period) {
   return period.year * 12 + period.month;
 }
@@ -761,15 +802,55 @@ function readPlanningCarryForward_(template, templatePeriod, targetPeriod) {
 function createPlanningDraftSheet_(destination, period) {
   const template = findPlanningTemplateSheet_(destination, period);
   const carryForward = readPlanningCarryForward_(template.sheet, template.period, period);
+  extendPlanningCalendarRows_(template.sheet, template.period, period, { dryRun: true });
   const sheet = template.sheet.copyTo(destination);
   sheet.setName(planningSheetName_(period));
   clearGeneratedPlanningSuggestions_(sheet);
   sheet.getRange('B5:M35').clearContent();
   sheet.getRange('B38:M68').clearContent();
+  extendPlanningCalendarRows_(sheet, template.period, period);
   Object.keys(carryForward).forEach(function(a1) {
     sheet.getRange(a1).setValue(carryForward[a1]);
   });
   return { sheet: sheet, templateSheetName: template.sheet.getName() };
+}
+
+// A shorter month's last row may be an unmerged note area, not a calendar day.
+// Extend only a newly copied draft, preserving its values and the rest of the sheet.
+function extendPlanningCalendarRows_(sheet, templatePeriod, targetPeriod, options) {
+  const sourceDays = new Date(templatePeriod.year, templatePeriod.month, 0).getDate();
+  const targetDays = new Date(targetPeriod.year, targetPeriod.month, 0).getDate();
+  if (targetDays <= sourceDays) return 0;
+  const sourceRow = sourceDays + 4;
+  const expectedPairs = function(row) { return ['E' + row + ':F' + row, 'H' + row + ':I' + row, 'K' + row + ':L' + row]; };
+  const sourceMerges = sheet.getRange('B' + sourceRow + ':M' + sourceRow).getMergedRanges()
+    .map(function(range) { return range.getA1Notation(); }).sort();
+  if (JSON.stringify(sourceMerges) !== JSON.stringify(expectedPairs(sourceRow))) {
+    throw new Error('月末の日付欄の結合が想定と異なるため、書式の補完を停止しました。');
+  }
+  // Validate every target before changing any formatting or merges.
+  for (let day = sourceDays + 1; day <= targetDays; day++) {
+    const row = day + 4;
+    const allowed = expectedPairs(row);
+    const merges = sheet.getRange('B' + row + ':M' + row).getMergedRanges();
+    if (merges.some(function(range) { return allowed.indexOf(range.getA1Notation()) < 0; })) {
+      throw new Error('追加する日付欄に別用途の結合があります。自動で解除せず停止しました。');
+    }
+  }
+  if (options && options.dryRun) return targetDays - sourceDays;
+  for (let day = sourceDays + 1; day <= targetDays; day++) {
+    const row = day + 4;
+    sheet.getRange('B' + sourceRow + ':M' + sourceRow).copyFormatToRange(sheet, 2, 13, row, row);
+    expectedPairs(row).forEach(function(a1) {
+      const range = sheet.getRange(a1);
+      if (!range.getMergedRanges().length) range.merge();
+    });
+    sheet.setRowHeight(row, sheet.getRowHeight(sourceRow));
+  }
+  // The old bottom edge may live on the following row's top border in Excel.
+  sheet.getRange('B' + (targetDays + 4) + ':M' + (targetDays + 4))
+    .setBorder(null, null, true, null, null, null);
+  return targetDays - sourceDays;
 }
 
 function normalizePlanningCalendarRows_(rows, period) {
@@ -956,8 +1037,8 @@ function writePlanningDraftUnlocked_(plan, requestId) {
   sheet.getRange('A1').setNote(PLANNING_DRAFT_NOTE_PREFIX + JSON.stringify(marker));
   sheet.getRange('N1')
     .setValue(plan && plan.capabilities && plan.capabilities.caliberConnected
-      ? '自動計画案（要確認）'
-      : '自動計画案（カリバ替は要確認）')
+      ? '自動計画案（右側図・注記は転記元の参考情報）'
+      : '自動計画案（カリバ替未連携／右側図・注記は転記元の参考情報）')
     .setFontColor(PLANNING_DRAFT_FONT_COLOR)
     .setBackground(PLANNING_DRAFT_BACKGROUND)
     .setFontWeight('bold');
