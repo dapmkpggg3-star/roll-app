@@ -1,17 +1,10 @@
-const CACHE_NAME = 'roll-app-v52';
+const CACHE_NAME = 'roll-app-v58-planning-sheet-only';
 const CACHE_PREFIX = 'roll-app-';
 const urlsToCache = [
   '/roll-app/',
   '/roll-app/index.html',
   '/roll-app/manifest.json',
-  '/roll-app/404.html',
-  '/roll-app/css/planning-view.css',
-  '/roll-app/js/planning-rules.js',
-  '/roll-app/js/planning-schedule.js',
-  '/roll-app/js/planning-calibers.js',
-  '/roll-app/js/planning-sheet-output.js',
-  '/roll-app/js/planning-view.js',
-  '/roll-app/js/planning-import.js'
+  '/roll-app/404.html'
 ];
 
 // Service Worker インストール

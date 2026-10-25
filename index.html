@@ -12,7 +12,6 @@
     <link rel="icon" type="image/png" sizes="192x192" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect fill='%23667eea' width='192' height='192'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' font-size='96' fill='white' font-family='Arial'>📋</text></svg>">
     <title>ロール管理アプリ</title>
     <link rel="stylesheet" href="css/styles.css?v=20260805-online-safety">
-    <link rel="stylesheet" href="css/planning-view.css?v=20260927-sheet-output">
 </head>
 <body>
     <div id="app-update-notice" class="app-update-notice" hidden>
@@ -153,34 +152,6 @@
                     </div>
                     <div id="three-set-management-cards" class="three-set-management-cards" role="tablist" aria-label="3セット維持管理分類"></div>
                     <div id="three-set-management-detail" class="three-set-management-detail"></div>
-                </section>
-                <section id="auto-planning-panel" class="auto-planning-panel is-collapsed" aria-live="polite">
-                    <div class="auto-planning-header">
-                        <div>
-                            <h2>月次計画を作成</h2>
-                            <p>生産予定Excelを読み取り、最新版ロール管理へ計画案を出力します。</p>
-                        </div>
-                        <button type="button" id="auto-planning-toggle" class="auto-planning-toggle" aria-expanded="false" aria-controls="auto-planning-body">月次計画を作成 ▼</button>
-                    </div>
-                    <div id="auto-planning-body" class="auto-planning-body" hidden>
-                        <div id="auto-planning-drop-zone" class="auto-planning-drop-zone" tabindex="0" role="button" aria-controls="auto-planning-file" aria-describedby="auto-planning-privacy">
-                            <input id="auto-planning-file" type="file" accept=".xlsx,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel.sheet.macroEnabled.12" hidden>
-                            <div class="auto-planning-drop-icon" aria-hidden="true">📄</div>
-                            <div class="auto-planning-drop-copy">
-                                <strong>生産予定Excelをここへドロップ</strong>
-                                <span>スマホ・タブレットは「Excelを選択」を押してください</span>
-                            </div>
-                            <button type="button" id="auto-planning-file-button" class="auto-planning-file-button">Excelを選択</button>
-                        </div>
-                        <p id="auto-planning-privacy" class="auto-planning-privacy">Excelは端末内で処理し、生産量は送信しません。日付・サイズ・班・計画候補だけを最新版ロール管理へ出力します。</p>
-                        <div id="auto-planning-import-status" class="auto-planning-import-status" aria-live="polite"></div>
-                        <div id="auto-planning-source-summary" class="auto-planning-source-summary" hidden>
-                            <span id="auto-planning-source-detail"></span>
-                            <button type="button" id="auto-planning-clear" class="auto-planning-clear">読み込み解除</button>
-                        </div>
-                        <button type="button" id="auto-planning-export" class="auto-planning-export" hidden disabled>スプレッドシートへ出力</button>
-                        <p class="auto-planning-output-note">出力先：最新版 ロール管理（同じ月を再出力した場合は、同じシートを更新）</p>
-                    </div>
                 </section>
                 <div class="action-dashboard-grid" aria-label="優先確認ダッシュボード">
                     <div id="incomplete-work-dashboard" class="incomplete-work-dashboard is-collapsed" aria-live="polite">
@@ -436,12 +407,6 @@
         <button type="button" id="pageScrollToggleBtn" class="page-scroll-btn" onclick="scrollPageByCurrentPosition()" aria-label="ページ下部へ移動">↓ 下へ</button>
     </div>
 
-    <script src="js/planning-rules.js?v=20260908-excel-import"></script>
-    <script src="js/planning-schedule.js?v=20260908-excel-import"></script>
-    <script src="js/planning-calibers.js?v=20260908-excel-import"></script>
-    <script src="js/planning-view.js?v=20260908-excel-import"></script>
-    <script src="js/planning-sheet-output.js?v=20260927-sheet-output"></script>
-    <script src="js/planning-import.js?v=20260927-sheet-output"></script>
     <script src="js/online-safety.js?v=20260805-online-safety"></script>
     <script src="js/sync.js?v=20260927-sheet-output"></script>
 <script src="js/csv.js?v=20260805-online-safety"></script>
