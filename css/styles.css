@@ -7342,3 +7342,6 @@ body.mobile-layout #role-table .card-actions-list .delete-btn {
 body.mobile-narrow-layout #role-table .card-actions-list {
   grid-template-columns: 1fr !important;
 }
+
+/* Keep status totals available; only empty future-work task panels disappear. */
+#incomplete-work-dashboard.is-empty { display: none !important; }

@@ -3499,34 +3499,31 @@ function resetStatusFilter() {
         statusFilterSelect.value = 'all';
     }
 }
+
+
 function setSummaryFilter(filterValue) {
-    statusFilter = filterValue || 'all';
+    // Summary totals cover all rolls, independent of the previous search.
+    statusFilter = !filterValue || filterValue === 'all' ? 'allIncludingStored' : filterValue;
+    searchQuery = '';
+    memoOnlyFilter = false;
     watchStandFilter = null;
-
-    const statusFilterSelect = document.getElementById('status-filter');
-
-    if (statusFilterSelect) {
-        statusFilterSelect.value = statusFilter;
-    }
-
+    const statusSelect = document.getElementById('status-filter');
+    const searchInput = document.getElementById('role-search');
+    const memoInput = document.getElementById('memo-only-filter');
+    if (statusSelect) statusSelect.value = statusFilter;
+    if (searchInput) searchInput.value = '';
+    if (memoInput) memoInput.checked = false;
     renderRoles();
 }
 
 function showAllRoles() {
-    searchQuery = '';
-    watchStandFilter = null;
-    const searchInput = document.getElementById('role-search');
-    if (searchInput) {
-        searchInput.value = '';
-    }
-    resetStatusFilter();
-    renderRoles();
+    setSummaryFilter('all');
 }
 
 function isStatusMatched(role) {
     const status = normalizeRoleStatusValue(role.status);
 
-    if (statusFilter === 'all') {
+    if (statusFilter === 'all' || statusFilter === 'allIncludingStored') {
         return true;
     }
 
@@ -7133,7 +7130,7 @@ function getFilteredRoles() {
         const isNormallyHiddenStatus = role.status === NEW_STORAGE_STATUS
             || role.status === ORDERED_WAITING_STATUS
             || role.status === SCRAP_WAITING_STATUS;
-        if (isNormallyHiddenStatus && statusFilter !== role.status && !hasSearch && !memoOnlyFilter) {
+        if (isNormallyHiddenStatus && statusFilter !== 'allIncludingStored' && statusFilter !== role.status && !hasSearch && !memoOnlyFilter) {
             return false;
         }
         if (!hasSearch) {
@@ -8232,21 +8229,6 @@ function toggleAdminMode() {
     }
 }
 
-function setSummaryFilter(status) {
-    const statusFilter = document.getElementById('status-filter');
-    watchStandFilter = null;
 
-    if (!statusFilter) {
-        return;
-    }
-
-    statusFilter.value = status;
-
-    changeStatusFilter({
-        target: {
-            value: statusFilter.value
-        }
-    });
-}
 window.loadRoles = loadLocalRoles;
 window.login = login;

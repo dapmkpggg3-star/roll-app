@@ -1,4 +1,4 @@
-const CACHE_NAME = 'roll-app-v58-planning-sheet-only';
+const CACHE_NAME = 'roll-app-v59-summary-counts';
 const CACHE_PREFIX = 'roll-app-';
 const urlsToCache = [
   '/roll-app/',
