@@ -3,7 +3,8 @@ const CORRECT_PASSWORD = '1234';
 const CURRENT_OPERATOR_KEY = 'currentOperator';
 const OPERATORS = [
     { id: 'hiwatashi', name: '樋渡' },
-    { id: 'ohno', name: '大野' }
+    { id: 'ohno', name: '大野' },
+    { id: 'operator-kibata', name: '木畑' }
 ];
 const MOBILE_LAYOUT_MAX_WIDTH = 767;
 const MOBILE_NARROW_MAX_WIDTH = 360;
