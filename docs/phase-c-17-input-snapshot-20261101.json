@@ -400,6 +400,54 @@
       "exchangeDate": null,
       "exchangeDateEvidence": "unknown",
       "interpretation": "12/10は参考計画の最終記載日、12/18は組替指示期限。どちらも交換日ではない。"
+    },
+    "missingData": {
+      "currentCycleDecision": [
+        {
+          "code": "ACTUAL_CALIBER_CUMULATIVE_17_89",
+          "required": true,
+          "reason": "各カリバ最大6直に対する残量と次回交換候補の判定に必要"
+        },
+        {
+          "code": "POST_RETURN_DIAMETER_17_90",
+          "required": true,
+          "reason": "17-90をready spareへ進める径適合確認に必要"
+        },
+        {
+          "code": "ASSEMBLY_COMPLETION_17_90",
+          "required": true,
+          "reason": "新品予備（組替可能）から新品予備（組込完了）への実績確認に必要"
+        }
+      ],
+      "twelveMonthDecision": [
+        {
+          "code": "PRODUCTION_OR_CALIBER_PLAN_AFTER_2026_12_10",
+          "required": true,
+          "reason": "現在のplanned coverageが12/10までで、12か月先の使用順・交換時点を接続できない"
+        },
+        {
+          "code": "CYCLE_BY_CYCLE_CONFIRMED_OR_FORECAST_USAGE",
+          "required": true,
+          "reason": "各カリバ累計6直上限をサイクルごとに消費へ接続するため"
+        },
+        {
+          "code": "FUTURE_MACHINING_AND_ASSEMBLY_READINESS",
+          "required": true,
+          "reason": "径だけでなく改削戻り・組替完了が次回必要日に間に合うかを見るため"
+        }
+      ],
+      "optionalOrSupporting": [
+        {
+          "code": "MACHINING_TYPE_17_89_PRIOR_CYCLE",
+          "required": false,
+          "reason": "過去2.00mm減径の通常/フラット区分。実測320.11を現在径として使う限り直近判定は可能だが履歴分析精度向上に有用"
+        },
+        {
+          "code": "MACHINING_TYPE_17_90_LATEST",
+          "required": false,
+          "reason": "戻り後実測径が確定すれば直近径判定は可能。二重減径防止・分析精度向上に有用"
+        }
+      ]
     }
   },
   "plannedSchedule17_89": {
@@ -585,5 +633,14 @@
       "maxPerCaliber": 6,
       "note": "既知のplanned分だけを集計。actual cumulativeは未確認のため、実残量・最終可否は未判定。8+19は直数未定。"
     }
+  },
+  "futureProcurementReference": {
+    "rollId": "17-91",
+    "source": "16,17 history sheet",
+    "evidence": "budget_plan_only",
+    "note": "2026年度予算計上予定。Rolesに存在しないため、現在在庫・4セット目・使用可能予備として数えない。",
+    "diameterMm": 340,
+    "supplierReference": "寿産業",
+    "mustNotCountAsInventory": true
   }
 }
