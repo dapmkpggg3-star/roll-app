@@ -67,7 +67,7 @@ app.jsへ接続する前。
 - evidence入力
 - normal / shortage / incomplete
 - 290mm境界
-- 25日
+- #17 return lead: actual/explicit plan優先。+25日仮搬入/legacy30日をconfirmedへ使わない
 - planned/actual
 - D10 pair / D13
 - reason/advisory/guard canonical code
@@ -250,3 +250,14 @@ CaliberUsage等を後で導入する時だけ:
 targeted pass後にcheckpoint単位でfull suite。
 
 実ブラウザはautomated gate通過後だけ。
+
+
+## Gate 2.1 — #17 lead-time guard
+
+必須:
+- +25日仮搬入をPhase C returnDueへ使わない
+- legacy30日を使わない
+- actualReturnがあればactual優先
+- explicit return planがあればevidence付きで採用
+- 無ければunknown
+- historical recent median64 / max80はscenarioのみ
