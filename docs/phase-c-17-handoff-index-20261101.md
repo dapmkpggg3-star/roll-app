@@ -77,6 +77,12 @@ main / PR #14 / 本番GAS / 実Sheetsへ直接入れない。
 - optional情報
 - 17-91を在庫に数えない
 
+### 9
+`docs/phase-c-existing-module-reuse-map-20261101.md`
+- planning-calibers.jsの再利用境界
+- normalizeRunSize / buildProductionRunsは候補
+- nextCaliber / projectCaliberChangeは#17 Phase Cへ直接流用しない
+
 ## 2. 現在の#17結論
 
 ### confirmed
