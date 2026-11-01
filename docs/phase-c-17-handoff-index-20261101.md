@@ -98,6 +98,13 @@ main / PR #14 / 本番GAS / 実Sheetsへ直接入れない。
 - 基準日必須
 - D10 pair mismatchは自動補正しない
 
+### 12
+`docs/phase-c-ui-message-map-20261101.md`
+- core reason/advisoryの日本語表示
+- primary reason優先順位
+- スマホ初期表示はreason 1 + action 1 + supplement最大2
+- incompleteを安全表示しない
+
 ## 2. 現在の#17結論
 
 ### confirmed
