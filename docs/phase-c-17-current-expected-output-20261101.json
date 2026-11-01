@@ -14,7 +14,7 @@
   "primaryReason": "ACTUAL_CALIBER_CUMULATIVE_17_89",
   "reasons": [
     "ACTUAL_CALIBER_CUMULATIVE_17_89",
-    "LATEST_RETURN_DIAMETER_UNKNOWN_17_90",
+    "POST_RETURN_DIAMETER_17_90",
     "ASSEMBLY_COMPLETION_17_90",
     "NEXT_EXCHANGE_DATE_UNKNOWN",
     "PRODUCTION_OR_CALIBER_PLAN_AFTER_2026_12_10"
@@ -121,5 +121,14 @@
     "17-90 latest diameter=338.0 confirmed",
     "17-91 counted as inventory",
     "planned 59 shifts treated as actual"
-  ]
+  ],
+  "guards": [
+    "PLANNED_SCHEDULE_NOT_ACTUAL",
+    "EXCHANGE_DATE_NOT_DERIVED_FROM_LAST_PLAN_DATE"
+  ],
+  "codeCategories": {
+    "reason": "affects result",
+    "advisory": "does not change result by itself",
+    "guard": "forbids unsafe inference/conversion"
+  }
 }
