@@ -248,3 +248,33 @@ Phase C #17の実装完了と呼べるのは:
 - 338.0はhistorical/displayed valueとして保持可能
 - current forecast-ready diameterとは別フィールド
 - 今回戻り後径が入力されるまで径依存normal判定に使わない
+
+
+## K. 17-88次回改削の径面可否
+
+### K-01 次回1回の標準改削
+入力:
+- current diameter = 314.90
+- standard cut = 2.50
+- forecast minimum = 290
+- StandMaster scrap = 292
+
+期待:
+- predicted after cut = 312.40
+- diameter result = viable
+- shortage理由を出さない
+
+### K-02 径だけの参考残回数を予定へ昇格しない
+入力:
+- 314.90mm
+- 2.50mm standard cut
+- 290mm forecast floor
+
+参考計算:
+- 9回後 = 292.40mm
+- 10回後 = 289.90mm
+
+期待:
+- diameter-only referenceとして9を保持してもよい
+- 9回の改削・9サイクルが実行可能と確定しない
+- フラット加工/追加減径/日程/実使用を無視した年間normal判定に使わない
