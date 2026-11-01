@@ -7,6 +7,11 @@
 WORK再開時の正式プロンプト:
 `docs/work-resume-prompt-v2.2-20261101.md`
 
+Phase C設計凍結点 v1:
+`docs/phase-c-design-freeze-v1-20261101.md`
+
+Workはv46保全後、このfreeze manifestとhandoff indexを基準に実装する。
+
 ## 0. 最重要ゲート
 
 Phase C実装より先にWork保存版46をGitHub非本番ブランチへ保全する。
