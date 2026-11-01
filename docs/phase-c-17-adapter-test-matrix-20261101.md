@@ -302,3 +302,63 @@ Phase C #17の実装完了と呼べるのは:
 - 総合resultはincomplete
 - readiness attentionだけでshortageへ昇格しない
 - diameter lowだけでnormalへ昇格しない
+
+
+## M. #17カリバ累計上限
+
+### M-01 D10ペア6+17
+入力:
+- actual cumulative = 4
+- future planned = 2
+
+期待:
+- caliber 6 projected = 6
+- caliber 17 projected = 6
+- operation planned shifts = 2
+- 4として二重計上しない
+- 超過なし
+
+### M-02 D10ペア超過
+入力:
+- actual 5
+- planned future 2
+
+期待:
+- projected 7
+- PLAN_EXCEEDS_CALIBER_MAX warning
+
+### M-03 actual unknown
+入力:
+- actual = unknown
+- planned = 6
+
+期待:
+- remaining shifts = unknown
+- projected cumulative = unknown
+- planned 6をactual cumulativeへ置換しない
+
+### M-04 D13再使用
+入力:
+- caliber14 actual confirmed periods = 2 + 2
+
+期待:
+- cumulative = 4
+- remaining = 2
+
+### M-05 上限ちょうど
+入力:
+- cumulative = 6
+
+期待:
+- exhausted/limit reached
+- over-limitではない
+
+### M-06 SD345専用8+19
+期待:
+- 8/19はD10ペアとして同時使用
+- SD295通常ペアへ統合しない
+- 1チャージ=1直と仮定しない
+
+### M-07 D13へペアルールを流用しない
+期待:
+- D13各カリバを独立累計
