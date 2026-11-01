@@ -66,6 +66,7 @@ core内に日本語文言を埋め込みすぎない。
 | NO_READY_SPARE | 必要日に組込完了予備がない | 予備・組替・代替候補を確認 |
 | PLANNED_USAGE_EXCEEDS_CONFIRMED_CALIBER_MAX | カリバ使用計画が6直上限を超える | 使用カリバ・計画変更を確認 |
 | PAIR_USAGE_MISMATCH | D10ペアの累計直数が一致しない | 2本の実績を再確認 |
+| THREE_SET_STATE_CONFLICT | 3セットの登録状態に矛盾があります | ONLINE・予備・対象3本を確認 |
 
 ## 5. advisory map
 
