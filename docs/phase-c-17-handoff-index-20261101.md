@@ -90,6 +90,14 @@ main / PR #14 / 本番GAS / 実Sheetsへ直接入れない。
 - 将来hidden CaliberUsage sheetを追加候補
 - 0=確認済み未使用、blank=unknown、planned混在禁止
 
+### 11
+`docs/phase-c-caliber-usage-template-import-20261101.md`
+- 既存「カリバ使用状況_記入用.xlsx」のimport契約
+- 行番号固定にせず記入枠を検出
+- blank=unknown / 0=confirmed unused
+- 基準日必須
+- D10 pair mismatchは自動補正しない
+
 ## 2. 現在の#17結論
 
 ### confirmed
