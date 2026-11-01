@@ -257,3 +257,30 @@
 - machining lead = 25日ルール（実績returnがあれば実績優先）
 - dispatch/return/exchangeが未確認ならunknown
 - heuristicを表示補助に残す場合も、Phase Cの根拠付きresultとは別ラベルにする
+
+
+## 14. evidence coverage horizon
+
+Phase Cは「データがどこまで存在するか」と「交換日」を分離する。
+
+最低限:
+```js
+coverage: {
+  actualDataThrough: "YYYY-MM-DD" | null,
+  plannedCaliberScheduleThrough: "YYYY-MM-DD" | null,
+  assemblyInstructionDue: "YYYY-MM-DD" | null,
+  exchangeDate: "YYYY-MM-DD" | null,
+  exchangeDateEvidence: "actual_confirmed" | "planned_confirmed" | "unknown"
+}
+```
+
+#17現行fixture:
+- actualDataThrough = 2026-11-01
+- plannedCaliberScheduleThrough = 2026-12-10
+- assemblyInstructionDue = 2026-12-18
+- exchangeDate = unknown
+
+禁止:
+- planned schedule最終日をexchangeDateへ変換しない
+- assemblyInstructionDueをexchangeDateへ変換しない
+- coverageが存在するだけで12か月normalへ昇格しない
