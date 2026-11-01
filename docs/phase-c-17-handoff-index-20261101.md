@@ -83,6 +83,13 @@ main / PR #14 / 本番GAS / 実Sheetsへ直接入れない。
 - normalizeRunSize / buildProductionRunsは候補
 - nextCaliber / projectCaliberChangeは#17 Phase Cへ直接流用しない
 
+### 10
+`docs/phase-c-caliber-usage-persistence-20261101.md`
+- カリバ別actual累計の保存設計
+- Roles/Input/作業履歴へ無理に混ぜない
+- 将来hidden CaliberUsage sheetを追加候補
+- 0=確認済み未使用、blank=unknown、planned混在禁止
+
 ## 2. 現在の#17結論
 
 ### confirmed
