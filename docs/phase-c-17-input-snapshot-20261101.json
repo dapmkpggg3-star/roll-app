@@ -558,6 +558,32 @@
         "plannedShifts": 5
       }
     ],
-    "interpretation": "計画期間と計画直数。現在実績・累計・交換必要日へ自動変換しない。D10ペアは各カリバへ全直数を加算するが操業直数はペアを1回で数える。"
+    "interpretation": "計画期間と計画直数。現在実績・累計・交換必要日へ自動変換しない。D10ペアは各カリバへ全直数を加算するが操業直数はペアを1回で数える。",
+    "validationAgainstCaliberMax": {
+      "knownPlanWithinLimits": true,
+      "unknownItemsPreventFullValidation": true,
+      "perCaliber": {
+        "1": 6,
+        "2": 5,
+        "6": 6,
+        "7": 6,
+        "8": null,
+        "9": 6,
+        "10": 4,
+        "11": 5,
+        "12": 6,
+        "13": 6,
+        "14": 4,
+        "15": 5,
+        "17": 6,
+        "18": 6,
+        "19": null,
+        "20": 6,
+        "21": 4,
+        "22": 5
+      },
+      "maxPerCaliber": 6,
+      "note": "既知のplanned分だけを集計。actual cumulativeは未確認のため、実残量・最終可否は未判定。8+19は直数未定。"
+    }
   }
 }
