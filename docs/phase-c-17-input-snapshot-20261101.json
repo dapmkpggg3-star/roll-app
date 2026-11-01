@@ -1,0 +1,249 @@
+{
+  "schema": "phase-c-17-input-snapshot/v1",
+  "capturedAt": "2026-11-01",
+  "source": {
+    "spreadsheetTitle": "最新版 ロール管理",
+    "spreadsheetId": "1X07qQa7u9YPLvErT0D48goT5wYmvcpgNjqzK3FhRFeA",
+    "readOnly": true
+  },
+  "rules": {
+    "stand": "#17",
+    "machiningLeadDays": {
+      "value": 25,
+      "evidence": "rule_confirmed"
+    },
+    "standardMachiningReductionMm": {
+      "value": 2.5,
+      "evidence": "rule_confirmed",
+      "source": "改削マスタ"
+    },
+    "discardDiameter": {
+      "value": null,
+      "evidence": "conflict",
+      "candidates": [
+        {
+          "valueMm": 292,
+          "source": "StandMaster"
+        },
+        {
+          "valueMm": 290,
+          "source": "16,17履歴表"
+        }
+      ],
+      "resolutionRequired": true
+    }
+  },
+  "currentThreeSetState": {
+    "onlineRollId": "17-89",
+    "readySpareRollId": null,
+    "usedSpareRollId": "17-88",
+    "assemblyPossibleRollId": "17-90",
+    "note": "17-90は新品予備（組替可能）であり新品予備（組込完了）ではない。次回交換日が未確定のため、現時点ではshortageではなくreadiness確認が必要。"
+  },
+  "rolls": [
+    {
+      "rollId": "17-88",
+      "currentStatus": {
+        "value": "中古予備（バラシ前）",
+        "evidence": "actual_confirmed"
+      },
+      "activeThreeSet": true,
+      "recordedDiameterMm": {
+        "value": 314.9,
+        "evidence": "actual_confirmed"
+      },
+      "currentCycle": {
+        "useStartDate": {
+          "value": "2026-07-09",
+          "evidence": "actual_confirmed"
+        },
+        "useEndDate": {
+          "value": "2026-10-17",
+          "evidence": "actual_confirmed"
+        }
+      },
+      "machining": {
+        "status": {
+          "value": "not_started_current_cycle",
+          "evidence": "actual_confirmed_from_status"
+        },
+        "currentDispatchDate": {
+          "value": null,
+          "evidence": "actual_confirmed"
+        },
+        "currentReturnDate": {
+          "value": null,
+          "evidence": "unknown"
+        },
+        "machiningType": {
+          "value": null,
+          "evidence": "unknown"
+        }
+      },
+      "assembly": {
+        "dueDate": {
+          "value": "2026-12-18",
+          "evidence": "actual_confirmed"
+        },
+        "completedDate": {
+          "value": null,
+          "evidence": "unknown"
+        },
+        "readiness": {
+          "value": "not_ready",
+          "evidence": "actual_confirmed_from_status"
+        }
+      },
+      "caliberActualUsage": {
+        "value": null,
+        "unit": "shift",
+        "evidence": "unknown"
+      }
+    },
+    {
+      "rollId": "17-89",
+      "currentStatus": {
+        "value": "オンライン",
+        "evidence": "actual_confirmed"
+      },
+      "activeThreeSet": true,
+      "recordedDiameterMm": {
+        "value": 320.11,
+        "evidence": "actual_confirmed",
+        "note": "Roles表示は320.1、16,17履歴表の対応サイクルは320.11。丸め表示ではなく履歴表の実値を保持。"
+      },
+      "currentCycle": {
+        "useStartDate": {
+          "value": "2026-10-14",
+          "evidence": "actual_confirmed"
+        },
+        "useEndDate": {
+          "value": null,
+          "evidence": "actual_confirmed",
+          "note": "Rolesの現行サイクルは空欄。16,17履歴表の同じ行に残る2026-04-16は前サイクル値なので現行終了日に使わない。"
+        }
+      },
+      "priorMachiningCycle": {
+        "dispatchDate": {
+          "value": "2026-05-18",
+          "evidence": "actual_confirmed"
+        },
+        "returnDate": {
+          "value": "2026-07-10",
+          "evidence": "actual_confirmed"
+        },
+        "diameterBeforeMm": {
+          "value": 322.11,
+          "evidence": "actual_confirmed"
+        },
+        "diameterAfterMm": {
+          "value": 320.11,
+          "evidence": "actual_confirmed"
+        },
+        "actualReductionMm": {
+          "value": 2,
+          "evidence": "actual_confirmed"
+        },
+        "machiningDate": {
+          "value": null,
+          "evidence": "unknown"
+        },
+        "measurementDate": {
+          "value": null,
+          "evidence": "unknown"
+        },
+        "machiningType": {
+          "value": null,
+          "evidence": "unknown"
+        }
+      },
+      "caliberActualUsage": {
+        "value": null,
+        "unit": "shift",
+        "evidence": "unknown"
+      },
+      "plannedUsageReference": {
+        "value": 59,
+        "unit": "shift",
+        "evidence": "planned",
+        "mustNotPromoteToActual": true
+      }
+    },
+    {
+      "rollId": "17-90",
+      "currentStatus": {
+        "value": "新品予備（組替可能）",
+        "evidence": "actual_confirmed"
+      },
+      "activeThreeSet": true,
+      "recordedDiameterDisplayMm": {
+        "value": 338,
+        "evidence": "displayed_value"
+      },
+      "forecastDiameterMm": {
+        "value": null,
+        "evidence": "unknown_after_latest_machining",
+        "note": "10/26搬入後の実測径として確定した根拠は未確認。338.0を今回戻り後の実測値と推定しない。"
+      },
+      "previousUseCycle": {
+        "useStartDate": {
+          "value": "2026-06-08",
+          "evidence": "actual_confirmed"
+        },
+        "useEndDate": {
+          "value": "2026-07-07",
+          "evidence": "actual_confirmed"
+        }
+      },
+      "latestMachiningCycle": {
+        "dispatchDate": {
+          "value": "2026-08-21",
+          "evidence": "actual_confirmed_with_history_edits"
+        },
+        "returnDate": {
+          "value": "2026-10-26",
+          "evidence": "actual_confirmed"
+        },
+        "statusChangedToAssemblyPossibleDate": {
+          "value": "2026-10-30",
+          "evidence": "actual_confirmed"
+        },
+        "machiningType": {
+          "value": null,
+          "evidence": "unknown"
+        }
+      },
+      "assembly": {
+        "readiness": {
+          "value": "assembly_possible_not_completed",
+          "evidence": "actual_confirmed"
+        },
+        "dueDate": {
+          "value": null,
+          "evidence": "unknown"
+        },
+        "completedDate": {
+          "value": null,
+          "evidence": "actual_confirmed"
+        }
+      },
+      "caliberActualUsage": {
+        "value": null,
+        "unit": "shift",
+        "evidence": "unknown"
+      }
+    }
+  ],
+  "phaseCInputState": {
+    "overallResult": "incomplete",
+    "reasons": [
+      "DISCARD_DIAMETER_RULE_CONFLICT",
+      "CALIBER_ACTUAL_USAGE_UNKNOWN_17_89",
+      "FORECAST_DIAMETER_UNKNOWN_17_90",
+      "EXCHANGE_DATE_UNKNOWN",
+      "NO_READY_SPARE_CURRENTLY_INSTALLED"
+    ],
+    "shortageConfirmed": false,
+    "note": "ready spareが現在0であることは確認できるが、次回交換日が未確定なので現時点でNO_READY_SPARE shortageとは判定しない。"
+  }
+}
