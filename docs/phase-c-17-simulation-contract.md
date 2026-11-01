@@ -125,9 +125,34 @@
   },
 
   result: "normal" | "shortage" | "incomplete",
-  reasons: string[]
+  reasons: string[],
+
+  advisories: [
+    {
+      code: string,
+      severity: "info" | "attention",
+      message: string
+    }
+  ]
 }
 ```
+
+## 5.1 advisories の扱い
+
+`advisories` は実務上の準備・注意喚起であり、`result` と分離する。
+
+- ready spareが現在0でも、次回交換必要日が未確認なら shortage確定にしない。
+- 中古予備（バラシ前）と新品予備（組替可能）が同一スタンドにそろっている場合、固定3セット運用の次状態候補としてチョック組替を advisory で示せる。
+- advisoryが存在しても `result` は `incomplete` のままあり得る。
+- advisoryだけを根拠に本番指示、作業完了、交換日確定へ昇格しない。
+
+#17の現行fixtureでは最低限:
+- `READY_SPARE_COUNT_ZERO`
+- `CHOCK_SWAP_CANDIDATE_17_88_TO_17_90`
+- `NEXT_EXCHANGE_DATE_UNKNOWN`
+を保持する。
+
+目標状態は、17-89をオンラインのまま維持し、17-90を新品予備（組込完了）へ、17-88を次の改削・搬出工程へ進められる状態にすること。ただし実際の組替日時・担当・完了は別の実績データで確認する。
 
 ## 6. 判定順序
 
@@ -184,6 +209,8 @@
 9. unknownを0として扱わない
 10. #17の290mm年間見通し基準を他スタンドへ適用しない
 11. Phase C実装やテストがStandMasterの292mm登録値を自動変更しない
+12. 現行状態（17-89 online / 17-88 中古予備（バラシ前） / 17-90 新品予備（組替可能） / 次回交換日unknown）→ resultは `incomplete`、advisoryにREADY_SPARE_COUNT_ZEROとCHOCK_SWAP_CANDIDATEを出す。shortageにはしない
+13. 17-90が新品予備（組込完了）になっても次回交換日や実累計がunknownなら、ready spare不足理由は解消しても総合 `normal` へ自動昇格しない
 
 ## 11. 実装境界
 
