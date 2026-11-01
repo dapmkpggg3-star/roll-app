@@ -67,6 +67,7 @@ UIの主reasonにはしない。
 | PLANNED_SCHEDULE_NOT_ACTUAL | plannedをactualへ昇格しない |
 | EXCHANGE_DATE_NOT_DERIVED_FROM_LAST_PLAN_DATE | 最終計画日・組替期限・legacy固定月数を交換日にしない |
 | GENERIC_25_DAY_INBOUND_PLAN_NOT_PHASE_C17_LEAD | アプリの+25日仮搬入予定を#17の確定戻り日へ使わない |
+| DO_NOT_INVENT_DISPATCH_DATE | 搬出日未確認時にtoday+N等で日付を捏造しない |
 
 ## 7. deprecated aliases — 新規使用禁止
 
@@ -91,3 +92,28 @@ deprecated aliasを実装コード・新規テスト・UIへ追加しない。
 5. PRODUCTION_OR_CALIBER_PLAN_AFTER_2026_12_10
 
 READY_SPARE_COUNT_ZEROはadvisoryであり、交換必要日未確定の現時点ではshortage reasonではない。
+
+
+## 8. data requirement codes
+
+result reasonとは別に、不足データ一覧で使用するcode。
+
+| code | meaning |
+|---|---|
+| CYCLE_BY_CYCLE_CONFIRMED_OR_FORECAST_USAGE | 12か月の各サイクル使用量接続が必要 |
+| FUTURE_MACHINING_AND_ASSEMBLY_READINESS | 将来の戻り・組替準備接続が必要 |
+| MACHINING_TYPE_17_89_PRIOR_CYCLE | 17-89前回加工区分。補助情報 |
+| MACHINING_TYPE_17_90_LATEST | 17-90最新加工区分。補助情報 |
+
+## 9. event types
+
+state machineで使用。
+
+| code | meaning |
+|---|---|
+| ASSEMBLY_COMPLETED | チョック組替完了 |
+| DISPATCHED | 搬出・改削開始 |
+| REWORK_RETURNED | 改削戻り |
+| ONLINE_EXCHANGE | オンライン交代 |
+
+test case ID（例: STATE_001, CALIBER_001）はregistry対象外。
