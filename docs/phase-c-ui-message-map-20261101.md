@@ -56,7 +56,7 @@ core内に日本語文言を埋め込みすぎない。
 | code | reason表示 | action |
 |---|---|---|
 | ACTUAL_CALIBER_CUMULATIVE_17_89 | 17-89のカリバ累計が未確認 | 現在の累計直数を確認 |
-| POST_RETURN_DIAMETER_17_90 | 17-90の戻り後径が未確認 | 戻り後の実測径を確認 |
+| POST_RETURN_DIAMETER_17_90 | 17-90の今回戻り後径が未確認 | 338mmを使わず戻り後の実測径を確認 |
 | ASSEMBLY_COMPLETION_17_90 | 17-90はまだ組替可能の状態 | 組込完了を確認 |
 | NEXT_EXCHANGE_DATE_UNKNOWN | 次回ロール交換日が未確定 | 使用実績と次の生産予定を確認 |
 | PRODUCTION_OR_CALIBER_PLAN_AFTER_2026_12_10 | 12/10より先の使用予定が未接続 | 次の生産予定を接続 |
@@ -65,7 +65,6 @@ core内に日本語文言を埋め込みすぎない。
 | ASSEMBLY_OVERDUE | 組替完了が必要日に間に合わない | 工作との組替予定を確認 |
 | NO_READY_SPARE | 必要日に組込完了予備がない | 予備・組替・代替候補を確認 |
 | PLANNED_USAGE_EXCEEDS_CONFIRMED_CALIBER_MAX | カリバ使用計画が6直上限を超える | 使用カリバ・計画変更を確認 |
-| LATEST_RETURN_DIAMETER_UNKNOWN_17_90 | 17-90の今回戻り後径が未確認 | 338mmを使わず実測径を確認 |
 | PAIR_USAGE_MISMATCH | D10ペアの累計直数が一致しない | 2本の実績を再確認 |
 
 ## 5. advisory map
@@ -115,3 +114,13 @@ UI:
 - 338mmを戻り後実測として表示しない
 - 2027/1/14を確定次回交換日として表示しない
 - plannedを「実績」と書かない
+
+
+## 9. code category
+
+- `reasons[]`: 判定を止める／不足を確定する根拠。
+- `advisories[]`: 注意・準備候補。単独ではresultを変えない。
+- `guards[]`: planned→actual化やexchangeDate捏造など、禁止する変換ルール。
+
+同じ意味の別名codeを追加しない。
+17-90戻り後径のcanonical codeは `POST_RETURN_DIAMETER_17_90`。
