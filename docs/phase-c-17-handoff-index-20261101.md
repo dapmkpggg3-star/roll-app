@@ -119,6 +119,14 @@ main / PR #14 / 本番GAS / 実Sheetsへ直接入れない。
 - deprecated alias一覧
 - 新規実装はcanonical codeだけ使用
 
+### 15
+`docs/phase-c-work-test-runbook-20261101.md`
+- 保存版46保全からブラウザ確認までのGate
+- node --test基準
+- targeted→full regression→browser
+- Stop Conditions
+- Astra使用量節約
+
 ## 2. 現在の#17結論
 
 ### confirmed
