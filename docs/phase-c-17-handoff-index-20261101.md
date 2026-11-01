@@ -4,6 +4,9 @@
 対象: Work/Astra再開用
 このindexはChat側成果の入口。実装本体ではない。
 
+WORK再開時の正式プロンプト:
+`docs/work-resume-prompt-v2.2-20261101.md`
+
 ## 0. 最重要ゲート
 
 Phase C実装より先にWork保存版46をGitHub非本番ブランチへ保全する。
