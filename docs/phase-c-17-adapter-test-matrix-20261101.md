@@ -241,7 +241,7 @@ Phase C #17の実装完了と呼べるのは:
 期待:
 - `forecastDiameterMm = unknown`
 - `338.0`を今回戻り後実測値へ昇格しない
-- reasonに `LATEST_RETURN_DIAMETER_UNKNOWN_17_90` を保持
+- reasonに `POST_RETURN_DIAMETER_17_90` を保持
 
 ### J-02 過去径と現行径のevidence分離
 期待:
