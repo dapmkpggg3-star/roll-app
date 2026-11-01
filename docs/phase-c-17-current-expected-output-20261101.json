@@ -1,0 +1,125 @@
+{
+  "schema": "phase-c-17-expected-output/v1",
+  "capturedAt": "2026-11-01",
+  "stand": "#17",
+  "result": "incomplete",
+  "shortageConfirmed": false,
+  "normalConfirmed": false,
+  "onlineRollId": "17-89",
+  "readySpareRollId": null,
+  "nextCandidateRollId": "17-90",
+  "processingCandidateRollId": "17-88",
+  "exchangeDate": null,
+  "exchangeDateEvidence": "unknown",
+  "primaryReason": "ACTUAL_CALIBER_CUMULATIVE_17_89",
+  "reasons": [
+    "ACTUAL_CALIBER_CUMULATIVE_17_89",
+    "LATEST_RETURN_DIAMETER_UNKNOWN_17_90",
+    "ASSEMBLY_COMPLETION_17_90",
+    "NEXT_EXCHANGE_DATE_UNKNOWN",
+    "PRODUCTION_OR_CALIBER_PLAN_AFTER_2026_12_10"
+  ],
+  "advisories": [
+    "READY_SPARE_COUNT_ZERO",
+    "CHOCK_SWAP_CANDIDATE_17_88_TO_17_90",
+    "R17_88_NEXT_STANDARD_CUT_DIAMETER_VIABLE",
+    "R17_89_NEXT_STANDARD_CUT_DIAMETER_VIABLE"
+  ],
+  "coverage": {
+    "actualDataThrough": "2026-11-01",
+    "plannedCaliberScheduleThrough": "2026-12-10",
+    "assemblyInstructionDue": "2026-12-18"
+  },
+  "diameter": {
+    "17-88": {
+      "currentMm": 314.9,
+      "nextStandardCutMm": 2.5,
+      "predictedAfterNextStandardCutMm": 312.4,
+      "viableByDiameter": true
+    },
+    "17-89": {
+      "currentMm": 320.11,
+      "nextStandardCutMm": 2.5,
+      "predictedAfterNextStandardCutMm": 317.61,
+      "viableByDiameter": true
+    },
+    "17-90": {
+      "displayedHistoricalMm": 338,
+      "latestPostReturnMeasuredMm": null,
+      "evidence": "unknown",
+      "mustNotUseHistorical338AsLatest": true
+    }
+  },
+  "caliberRules": {
+    "maxCumulativeShiftsPerCaliber": 6,
+    "d10Pairs": [
+      [
+        "6",
+        "17"
+      ],
+      [
+        "7",
+        "18"
+      ],
+      [
+        "8",
+        "19"
+      ],
+      [
+        "9",
+        "20"
+      ],
+      [
+        "10",
+        "21"
+      ],
+      [
+        "11",
+        "22"
+      ]
+    ],
+    "d10SpecialPair": {
+      "calibers": [
+        "8",
+        "19"
+      ],
+      "steelGrade": "SD345"
+    },
+    "d13Independent": true
+  },
+  "plannedSchedule": {
+    "knownOperationShifts": 59,
+    "allKnownPerCaliberTotalsWithinMax": true,
+    "unknownPair": [
+      "8",
+      "19"
+    ],
+    "mustNotPromoteToActual": true
+  },
+  "futureProcurement": {
+    "rollId": "17-91",
+    "evidence": "budget_plan_only",
+    "countAsInventory": false
+  },
+  "ui": {
+    "judgment": "要確認",
+    "className": "is-check",
+    "useEndDate": "",
+    "onlineRoleName": "#17-89",
+    "nextCandidateName": "#17-90",
+    "reason": "17-89のカリバ累計が未確認",
+    "action": "現在の累計直数を確認",
+    "supplements": [
+      "17-88→17-90の組替候補あり",
+      "現在、組込完了予備は0セット"
+    ]
+  },
+  "forbiddenOutputs": [
+    "exchangeDate=2027-01-14",
+    "exchangeDate=2026-12-18",
+    "exchangeDate=2026-12-10",
+    "17-90 latest diameter=338.0 confirmed",
+    "17-91 counted as inventory",
+    "planned 59 shifts treated as actual"
+  ]
+}
