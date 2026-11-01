@@ -101,6 +101,21 @@
         "value": null,
         "unit": "shift",
         "evidence": "unknown"
+      },
+      "nextMachiningViability": {
+        "currentDiameterMm": 314.9,
+        "standardCutMm": 2.5,
+        "predictedAfterStandardCutMm": 312.4,
+        "forecastMinimumDiameterMm": 290,
+        "standMasterScrapDiameterMm": 292,
+        "result": "viable_by_diameter",
+        "evidence": "derived_from_confirmed_diameter_and_confirmed_cut_rule",
+        "note": "次回1回の標準改削は径面では可能。実際の改削区分・追加減径・日程は別確認。"
+      },
+      "diameterOnlyReference": {
+        "theoreticalRemainingStandardCutsTo290Floor": 9,
+        "evidence": "derived_reference_only",
+        "note": "314.9から2.5mmずつの標準改削のみを仮定した径だけの参考値。フラット加工・追加減径・異常加工は含まないため、12か月の確定サイクル数には使わない。"
       }
     },
     {
@@ -277,6 +292,11 @@
         "code": "NEXT_EXCHANGE_DATE_UNKNOWN",
         "severity": "info",
         "message": "17-89の次回ロール交換必要日は既存資料から確定できていない。"
+      },
+      {
+        "code": "R17_88_NEXT_STANDARD_CUT_DIAMETER_VIABLE",
+        "severity": "info",
+        "message": "17-88は314.9mm、標準改削2.5mm後312.4mm見込み。次回1回の改削は径面では可能。"
       }
     ],
     "targetNextState": {
