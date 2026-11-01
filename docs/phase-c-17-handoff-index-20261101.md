@@ -201,3 +201,20 @@ Roles:
 - 12/18 assembly deadlineをexchangeDate扱い
 - 12/10 planned coverage endをexchangeDate扱い
 - 17-91予算計画を現物扱い
+
+
+## 7. Machine-readable test vectors
+
+`docs/phase-c-17-test-vectors-20261101.json`
+- current fixture
+- diameter boundary
+- double-cut prevention
+- 25-day lead
+- ready spare
+- D10/D13 cumulative
+- pair mismatch
+- planned/actual guards
+- 17-90 diameter
+- 17-91 procurement
+- UI adapter
+- #16 regression
