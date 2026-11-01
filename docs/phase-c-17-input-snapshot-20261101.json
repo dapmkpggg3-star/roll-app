@@ -8,10 +8,6 @@
   },
   "rules": {
     "stand": "#17",
-    "machiningLeadDays": {
-      "value": 25,
-      "evidence": "rule_confirmed"
-    },
     "standardMachiningReductionMm": {
       "value": 2.5,
       "evidence": "rule_confirmed",
@@ -86,6 +82,34 @@
         "repeatedPeriodsAccumulate": true,
         "evidence": "confirmed_rule"
       }
+    },
+    "temporaryInboundPlanDays": {
+      "value": 25,
+      "evidence": "generic_app_display_rule",
+      "mustNotUseAsPhaseC17ConfirmedLead": true
+    },
+    "reworkLeadReference": {
+      "confirmedLeadDays": null,
+      "evidence": "no_confirmed_fixed_lead_for_17",
+      "historicalAll": {
+        "count": 22,
+        "minDays": 29,
+        "maxDays": 80,
+        "averageDays": 53.9,
+        "medianDays": 51.5
+      },
+      "historicalSince2024": {
+        "count": 10,
+        "minDays": 50,
+        "maxDays": 80,
+        "averageDays": 64.3,
+        "medianDays": 64
+      },
+      "scenarioReferenceDays": {
+        "recentMedian": 64,
+        "recentMax": 80
+      },
+      "sourceFile": "docs/phase-c-17-rework-lead-history-20261101.json"
     }
   },
   "currentThreeSetState": {
@@ -449,6 +473,10 @@
       {
         "code": "EXCHANGE_DATE_NOT_DERIVED_FROM_LAST_PLAN_DATE",
         "meaning": "計画最終日・組替期限・legacy固定月数から交換日を自動生成しない"
+      },
+      {
+        "code": "GENERIC_25_DAY_INBOUND_PLAN_NOT_PHASE_C17_LEAD",
+        "meaning": "既存アプリの+25日仮搬入予定を#17の確定戻り日・準備可能日へ使わない"
       }
     ],
     "reasonCodePolicy": {
