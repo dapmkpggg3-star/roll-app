@@ -311,6 +311,150 @@
         "returnDueDate": null,
         "guard": "DO_NOT_INVENT_DISPATCH_DATE"
       }
+    },
+    {
+      "id": "STATE_001",
+      "title": "assembly completion moves two rolls together in simulation",
+      "input": {
+        "online": "17-89",
+        "used": "17-88",
+        "assemblyPossible": "17-90",
+        "event": {
+          "type": "ASSEMBLY_COMPLETED",
+          "sourceUsed": "17-88",
+          "targetNewReady": "17-90",
+          "evidence": "simulated"
+        }
+      },
+      "expected": {
+        "online": "17-89",
+        "reworkReady": "17-88",
+        "readySpare": "17-90",
+        "used": null,
+        "assemblyPossible": null
+      }
+    },
+    {
+      "id": "STATE_002",
+      "title": "assembly due date alone does not change actual state",
+      "input": {
+        "used": "17-88",
+        "assemblyPossible": "17-90",
+        "assemblyInstructionDue": "2026-12-18",
+        "completed": false
+      },
+      "expected": {
+        "used": "17-88",
+        "assemblyPossible": "17-90",
+        "readySpare": null,
+        "stateMutation": false
+      }
+    },
+    {
+      "id": "STATE_003",
+      "title": "online exchange rotates installed spare and old online",
+      "input": {
+        "currentOnline": "17-89",
+        "installedReady": "17-90",
+        "exchangeDate": "2027-01-20",
+        "evidence": "simulated"
+      },
+      "expected": {
+        "online": "17-90",
+        "used": "17-89"
+      }
+    },
+    {
+      "id": "STATE_004",
+      "title": "unknown exchange date blocks simulated exchange",
+      "input": {
+        "currentOnline": "17-89",
+        "installedReady": "17-90",
+        "exchangeDate": null
+      },
+      "expected": {
+        "exchangeApplied": false,
+        "reason": "NEXT_EXCHANGE_DATE_UNKNOWN"
+      }
+    },
+    {
+      "id": "STATE_005",
+      "title": "rework ready without dispatch date does not become reworking",
+      "input": {
+        "rollId": "17-88",
+        "status": "改削行き（搬出可能）",
+        "dispatchDate": null
+      },
+      "expected": {
+        "status": "改削行き（搬出可能）",
+        "stateMutation": false
+      }
+    },
+    {
+      "id": "STATE_006",
+      "title": "rework actual return changes status but unknown diameter still blocks normal",
+      "input": {
+        "rollId": "17-88",
+        "status": "改削中",
+        "actualReturnDate": "2027-02-20",
+        "postReturnDiameterMm": null
+      },
+      "expected": {
+        "simulatedStatus": "新品予備（組替可能）",
+        "result": "incomplete",
+        "reasonsInclude": [
+          "READINESS_UNKNOWN"
+        ]
+      }
+    },
+    {
+      "id": "STATE_007",
+      "title": "multiple online rolls is state conflict",
+      "input": {
+        "activeThreeSet": [
+          {
+            "id": "17-88",
+            "status": "オンライン"
+          },
+          {
+            "id": "17-89",
+            "status": "オンライン"
+          },
+          {
+            "id": "17-90",
+            "status": "新品予備（組替可能）"
+          }
+        ]
+      },
+      "expected": {
+        "result": "incomplete",
+        "reasonsInclude": [
+          "THREE_SET_STATE_CONFLICT"
+        ],
+        "autoRepair": false
+      }
+    },
+    {
+      "id": "STATE_008",
+      "title": "active three-set count must be exactly three",
+      "input": {
+        "activeThreeSet": [
+          {
+            "id": "17-88",
+            "status": "オンライン"
+          },
+          {
+            "id": "17-89",
+            "status": "中古予備（バラシ前）"
+          }
+        ]
+      },
+      "expected": {
+        "result": "incomplete",
+        "reasonsInclude": [
+          "THREE_SET_STATE_CONFLICT"
+        ]
+      }
     }
   ]
 }
