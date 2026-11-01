@@ -278,7 +278,7 @@
         "value": null,
         "evidence": "unknown_after_latest_machining",
         "note": "10/26搬入後の実測径として確定した根拠は未確認。338.0を今回戻り後の実測値と推定しない。",
-        "reason": "LATEST_RETURN_DIAMETER_UNKNOWN_17_90"
+        "reason": "POST_RETURN_DIAMETER_17_90"
       },
       "previousUseCycle": {
         "useStartDate": {
@@ -342,14 +342,11 @@
   "phaseCInputState": {
     "overallResult": "incomplete",
     "reasons": [
-      "CALIBER_ACTUAL_USAGE_UNKNOWN_17_89",
-      "FORECAST_DIAMETER_UNKNOWN_17_90",
-      "EXCHANGE_DATE_UNKNOWN",
-      "NO_READY_SPARE_CURRENTLY_INSTALLED",
-      "PLANNED_SCHEDULE_NOT_ACTUAL",
-      "EXCHANGE_DATE_NOT_DERIVED_FROM_LAST_PLAN_DATE",
-      "LATEST_RETURN_DIAMETER_UNKNOWN_17_90",
-      "ACTUAL_CALIBER_CUMULATIVE_REQUIRED_FOR_REMAINING_SHIFTS"
+      "ACTUAL_CALIBER_CUMULATIVE_17_89",
+      "POST_RETURN_DIAMETER_17_90",
+      "ASSEMBLY_COMPLETION_17_90",
+      "NEXT_EXCHANGE_DATE_UNKNOWN",
+      "PRODUCTION_OR_CALIBER_PLAN_AFTER_2026_12_10"
     ],
     "shortageConfirmed": false,
     "note": "ready spareが現在0であることは確認できるが、次回交換日が未確定なので現時点でNO_READY_SPARE shortageとは判定しない。年間見通しの径基準は290mm、StandMaster登録292mmは別管理で本番マスタは変更しない。",
@@ -363,11 +360,6 @@
         "code": "CHOCK_SWAP_CANDIDATE_17_88_TO_17_90",
         "severity": "attention",
         "message": "17-88は中古予備（バラシ前）、17-90は新品予備（組替可能）。固定3セットの次状態候補は17-88から17-90へのチョック組替。実施日時・完了は未確認。"
-      },
-      {
-        "code": "NEXT_EXCHANGE_DATE_UNKNOWN",
-        "severity": "info",
-        "message": "17-89の次回ロール交換必要日は既存資料から確定できていない。"
       },
       {
         "code": "R17_88_NEXT_STANDARD_CUT_DIAMETER_VIABLE",
@@ -448,6 +440,21 @@
           "reason": "戻り後実測径が確定すれば直近径判定は可能。二重減径防止・分析精度向上に有用"
         }
       ]
+    },
+    "guards": [
+      {
+        "code": "PLANNED_SCHEDULE_NOT_ACTUAL",
+        "meaning": "計画値を実績へ昇格しない"
+      },
+      {
+        "code": "EXCHANGE_DATE_NOT_DERIVED_FROM_LAST_PLAN_DATE",
+        "meaning": "計画最終日・組替期限・legacy固定月数から交換日を自動生成しない"
+      }
+    ],
+    "reasonCodePolicy": {
+      "reason": "判定をincomplete/shortageにする根拠",
+      "advisory": "現在の注意・準備候補。単独ではresultを変更しない",
+      "guard": "誤変換・誤推論を禁止する不変条件"
     }
   },
   "plannedSchedule17_89": {
