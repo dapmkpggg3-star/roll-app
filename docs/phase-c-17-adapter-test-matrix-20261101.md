@@ -222,3 +222,29 @@ Phase C #17の実装完了と呼べるのは:
 5. UI接続前に純粋ロジックの結果を確認
 6. 実ブラウザでは#17の表示が二重タスクにならない
 7. GAS/実Sheetsを書き換える必要がある工程は別途明示し、無断で本番へ入れない
+
+
+## J. 17-90戻り後径の誤採用防止
+
+### J-01 Roles表示338.0を今回戻り後実測へ使わない
+根拠:
+- Roles履歴でφ338.0は2026-06-08に登録。
+- その後、2026-08〜10月の改削サイクルでdiameter変更履歴なし。
+- 作業履歴にも17-90の改削後径記録なし。
+- 2026-10-26搬入、2026-10-30新品予備（組替可能）変更はあるが、径更新はない。
+
+入力:
+- role.currentDiameter = 338.0
+- latestMachining.returnDate = 2026-10-26
+- latestMachining.afterDiameter = unknown
+
+期待:
+- `forecastDiameterMm = unknown`
+- `338.0`を今回戻り後実測値へ昇格しない
+- reasonに `LATEST_RETURN_DIAMETER_UNKNOWN_17_90` を保持
+
+### J-02 過去径と現行径のevidence分離
+期待:
+- 338.0はhistorical/displayed valueとして保持可能
+- current forecast-ready diameterとは別フィールド
+- 今回戻り後径が入力されるまで径依存normal判定に使わない
