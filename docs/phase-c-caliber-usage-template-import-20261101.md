@@ -152,3 +152,69 @@ snapshot無し:
 よって現時点:
 - parserがあってもactual cumulativeはunknown
 - 0へ補完しない
+
+
+## 13. planning-import.js再利用境界
+
+既存 `js/planning-import.js` を確認。
+
+### 再利用候補
+- `decodeXml`
+- `extractZipEntries`
+- `parseSharedStrings`
+- `parseWorkbookSheets`
+
+Excel ZIP/XML展開の土台として有用。
+
+### そのまま使わない
+
+#### parseWorksheetCells
+現行は `REQUIRED_COLUMNS` が
+B,D,E,G,H,I,J,K,L,N,P,X
+に固定されている。
+
+カリバ使用テンプレートの必要列を落とす可能性があるため、そのまま使わない。
+
+安全な選択肢:
+1. optional requiredColumns引数を追加し、既存呼出しはdefaultで従来Setを使う
+2. caliber usage専用parserで必要列を読む
+
+Workでは既存planning-import回帰テストを先に追加/維持してから判断する。
+
+#### asNumber相当の扱い
+planning-import内部の `asNumber` は空欄/不正値を0へ寄せる。
+
+カリバ実績では禁止。
+
+専用:
+```js
+parseOptionalActualNumber(value)
+```
+を使い、
+- blank -> null
+- 0 -> 0
+- positive numeric -> number
+- invalid text -> error
+とする。
+
+### importFile
+現行は「生産予定」sheet必須でplanning結果まで作る。
+カリバ使用テンプレートimportへ直接使わない。
+
+## 14. 推奨実装
+
+Phase C core完成後:
+- `js/caliber-usage-import.js`
+- `test/caliber-usage-import.test.js`
+
+を候補とする。
+
+既存planning-importのZIP helperを安全に再利用できるなら再利用するが、
+生産予定importの挙動は変えない。
+
+必須回帰:
+- 既存planning-import tests全合格
+- caliber blankが0にならない
+- 0は0
+- 行番号変化に耐える
+- 17st記入枠をmarkerで検出
