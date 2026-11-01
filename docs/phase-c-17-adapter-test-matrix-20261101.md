@@ -278,3 +278,27 @@ Phase C #17の実装完了と呼べるのは:
 - diameter-only referenceとして9を保持してもよい
 - 9回の改削・9サイクルが実行可能と確定しない
 - フラット加工/追加減径/日程/実使用を無視した年間normal判定に使わない
+
+
+## L. 17-89次回改削とリスク分解
+
+### L-01 次回1回の標準改削
+入力:
+- current diameter = 320.11
+- standard cut = 2.50
+
+期待:
+- predicted after cut = 317.61
+- 径理由でshortageにしない
+
+### L-02 リスク分解
+現行fixture期待:
+- diameterRisk = low（17-88/17-89の次回標準改削に限る）
+- readinessRisk = attention（組込完了予備0）
+- scheduleRisk = unknown（次回交換日未確認）
+- evidenceRisk = incomplete（17-89実累計、17-90戻り後径など）
+
+期待:
+- 総合resultはincomplete
+- readiness attentionだけでshortageへ昇格しない
+- diameter lowだけでnormalへ昇格しない
