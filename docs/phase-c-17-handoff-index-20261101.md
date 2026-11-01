@@ -105,6 +105,14 @@ main / PR #14 / 本番GAS / 実Sheetsへ直接入れない。
 - スマホ初期表示はreason 1 + action 1 + supplement最大2
 - incompleteを安全表示しない
 
+### 13
+`docs/phase-c-17-current-expected-output-20261101.json`
+- 現行#17 fixtureのゴールデン出力
+- result=incomplete
+- UI期待値
+- 禁止出力まで固定
+- Work実装後のgolden testに使用
+
 ## 2. 現在の#17結論
 
 ### confirmed
