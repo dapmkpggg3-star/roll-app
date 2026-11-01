@@ -65,6 +65,7 @@ UIの主reasonにはしない。
 |---|---|
 | PLANNED_SCHEDULE_NOT_ACTUAL | plannedをactualへ昇格しない |
 | EXCHANGE_DATE_NOT_DERIVED_FROM_LAST_PLAN_DATE | 最終計画日・組替期限・legacy固定月数を交換日にしない |
+| GENERIC_25_DAY_INBOUND_PLAN_NOT_PHASE_C17_LEAD | アプリの+25日仮搬入予定を#17の確定戻り日へ使わない |
 
 ## 7. deprecated aliases — 新規使用禁止
 
