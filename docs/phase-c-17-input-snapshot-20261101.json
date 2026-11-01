@@ -477,6 +477,10 @@
       {
         "code": "GENERIC_25_DAY_INBOUND_PLAN_NOT_PHASE_C17_LEAD",
         "meaning": "既存アプリの+25日仮搬入予定を#17の確定戻り日・準備可能日へ使わない"
+      },
+      {
+        "code": "DO_NOT_INVENT_DISPATCH_DATE",
+        "meaning": "中古予備・改削行きの搬出日が未確認ならtoday+N等で実績/確定予定を生成しない"
       }
     ],
     "reasonCodePolicy": {
