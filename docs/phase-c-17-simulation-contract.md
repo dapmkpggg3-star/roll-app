@@ -284,3 +284,56 @@ coverage: {
 - planned schedule最終日をexchangeDateへ変換しない
 - assemblyInstructionDueをexchangeDateへ変換しない
 - coverageが存在するだけで12か月normalへ昇格しない
+
+
+## 15. #17 カリバ使用上限ルール
+
+2026-10-23本人確認済みルールをPhase Cへ追加。
+
+### D10
+- 最大使用直数: 各カリバ累計6直
+- 必ず対応する西東ペアで使用
+- ペア:
+  - 6 + 17
+  - 7 + 18
+  - 8 + 19（SD345専用）
+  - 9 + 20
+  - 10 + 21
+  - 11 + 22
+- ペア使用時、同じ操業直数を両カリバの累計へ加算する。
+- 操業直数の総計はペアを1回として数え、2倍にしない。
+- 8+19はSD345専用。通常D10へ自動統合しない。
+- 1チャージを1直へ自動換算しない。
+
+### D13
+- 対象: 1〜5、12〜16
+- 各カリバ累計最大6直
+- D10のペア使用ルールを流用しない。
+- 同じカリバを複数期間使う場合は累計を維持する。
+  - 例: 14番 2直 + 後日2直 = 累計4直
+- カリバ番号順に自動で使い切る前提を置かない。
+
+### 計算契約
+
+```js
+remainingShifts = maxShiftsPerCaliber - actualCumulativeShifts
+```
+
+ただしactualCumulativeShiftsがunknownならremainingShiftsもunknown。
+
+plannedを加えた予測:
+```js
+projectedCumulative = actualConfirmed + plannedFuture
+```
+は、actualConfirmedが存在する場合だけ算出する。
+
+禁止:
+- actual unknownを0と仮定してremaining=6とする
+- planned過去期間をactualへ自動昇格する
+- D10ペアを操業直数で2倍計上する
+- D13へD10ペアロジックを適用する
+
+### 上限判定
+- actual cumulative > 6: 実績超過として要確認/異常フラグ
+- actual confirmed + planned future > 6: 計画超過警告
+- =6は上限到達であり超過ではない
