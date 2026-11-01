@@ -31,7 +31,7 @@ main / PR #14 / 本番GAS / 実Sheetsへ直接入れない。
 - normal / shortage / incomplete
 - shortage > incomplete > normal
 - 290mm年間基準
-- 約25日改削
+- #17戻り日は実績/明示予定を優先。+25日は仮搬入表示で、履歴中央値64日/最大80日は感度分析のみ
 - legacy 3か月/30日helper非流用
 - #17 D10/D13最大6直
 
@@ -48,7 +48,7 @@ main / PR #14 / 本番GAS / 実Sheetsへ直接入れない。
 `docs/phase-c-17-adapter-test-matrix-20261101.md`
 - core / adapter / UIの受入テスト
 - 290.00境界
-- 25日 vs legacy30日
+- +25日仮搬入 / legacy30日を#17確定戻り日にしない
 - 17-90 338誤採用防止
 - D10/D13最大6直
 - exchange candidate
@@ -212,7 +212,7 @@ Roles:
 - current fixture
 - diameter boundary
 - double-cut prevention
-- 25-day lead
+- #17 lead evidence / historical scenario
 - ready spare
 - D10/D13 cumulative
 - pair mismatch
@@ -221,3 +221,13 @@ Roles:
 - 17-91 procurement
 - UI adapter
 - #16 regression
+
+
+## 8. #17 rework lead evidence
+
+`docs/phase-c-17-rework-lead-history-20261101.json`
+- valid history 22 cycles
+- all median 51.5 days
+- since 2024: 10 cycles, 50–80 days, average 64.3, median 64
+- app +25 days is temporary inbound display only
+- historical 64/80 are scenarios, not confirmed due dates
