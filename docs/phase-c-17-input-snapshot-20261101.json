@@ -26,6 +26,66 @@
       "value": 292,
       "evidence": "current_master_registration",
       "mustNotAutoChange": true
+    },
+    "caliberUsage": {
+      "D10": {
+        "maxCumulativeShiftsPerCaliber": 6,
+        "paired": true,
+        "pairs": [
+          [
+            "6",
+            "17"
+          ],
+          [
+            "7",
+            "18"
+          ],
+          [
+            "8",
+            "19"
+          ],
+          [
+            "9",
+            "20"
+          ],
+          [
+            "10",
+            "21"
+          ],
+          [
+            "11",
+            "22"
+          ]
+        ],
+        "specialSteelPair": {
+          "calibers": [
+            "8",
+            "19"
+          ],
+          "steel": "SD345",
+          "mustNotMergeIntoNormalD10": true
+        },
+        "operationCounting": "pair_counts_as_one_operation_shift_while_each_caliber_gets_full_shift_count",
+        "evidence": "confirmed_rule"
+      },
+      "D13": {
+        "maxCumulativeShiftsPerCaliber": 6,
+        "paired": false,
+        "calibers": [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "12",
+          "13",
+          "14",
+          "15",
+          "16"
+        ],
+        "repeatedPeriodsAccumulate": true,
+        "evidence": "confirmed_rule"
+      }
     }
   },
   "currentThreeSetState": {
@@ -288,7 +348,8 @@
       "NO_READY_SPARE_CURRENTLY_INSTALLED",
       "PLANNED_SCHEDULE_NOT_ACTUAL",
       "EXCHANGE_DATE_NOT_DERIVED_FROM_LAST_PLAN_DATE",
-      "LATEST_RETURN_DIAMETER_UNKNOWN_17_90"
+      "LATEST_RETURN_DIAMETER_UNKNOWN_17_90",
+      "ACTUAL_CALIBER_CUMULATIVE_REQUIRED_FOR_REMAINING_SHIFTS"
     ],
     "shortageConfirmed": false,
     "note": "ready spareが現在0であることは確認できるが、次回交換日が未確定なので現時点でNO_READY_SPARE shortageとは判定しない。年間見通しの径基準は290mm、StandMaster登録292mmは別管理で本番マスタは変更しない。",
