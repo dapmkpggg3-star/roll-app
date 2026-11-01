@@ -185,6 +185,21 @@
         "unit": "shift",
         "evidence": "planned",
         "mustNotPromoteToActual": true
+      },
+      "nextMachiningViability": {
+        "currentDiameterMm": 320.11,
+        "standardCutMm": 2.5,
+        "predictedAfterStandardCutMm": 317.61,
+        "forecastMinimumDiameterMm": 290,
+        "standMasterScrapDiameterMm": 292,
+        "result": "viable_by_diameter",
+        "evidence": "derived_from_confirmed_diameter_and_confirmed_cut_rule",
+        "note": "現行使用後の次回1回の標準改削は径面では可能。実際の改削区分・追加減径・日程は別確認。"
+      },
+      "diameterOnlyReference": {
+        "theoreticalRemainingStandardCutsTo290Floor": 12,
+        "evidence": "derived_reference_only",
+        "note": "320.11から2.5mmずつの標準改削のみを仮定した径だけの参考値。フラット加工・追加減径・異常加工は含まないため、12か月の確定サイクル数には使わない。"
       }
     },
     {
@@ -297,6 +312,11 @@
         "code": "R17_88_NEXT_STANDARD_CUT_DIAMETER_VIABLE",
         "severity": "info",
         "message": "17-88は314.9mm、標準改削2.5mm後312.4mm見込み。次回1回の改削は径面では可能。"
+      },
+      {
+        "code": "R17_89_NEXT_STANDARD_CUT_DIAMETER_VIABLE",
+        "severity": "info",
+        "message": "17-89は320.11mm、標準改削2.5mm後317.61mm見込み。次回1回の改削は径面では可能。"
       }
     ],
     "targetNextState": {
@@ -305,6 +325,12 @@
       "processingCandidateRollId": "17-88",
       "evidence": "operational_target_not_actual",
       "note": "17-90の組込完了が実績確認されるまでready spareとして確定しない。17-88の搬出・改削開始も別実績で確認する。"
+    },
+    "riskBreakdown": {
+      "diameterRisk": "low_for_next_standard_cut_on_17_88_and_17_89",
+      "readinessRisk": "attention_ready_spare_zero",
+      "scheduleRisk": "unknown_next_exchange_date",
+      "evidenceRisk": "incomplete_caliber_actual_and_17_90_returned_diameter"
     }
   },
   "plannedSchedule17_89": {
