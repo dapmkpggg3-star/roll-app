@@ -33,7 +33,15 @@
     "readySpareRollId": null,
     "usedSpareRollId": "17-88",
     "assemblyPossibleRollId": "17-90",
-    "note": "17-90は新品予備（組替可能）であり新品予備（組込完了）ではない。次回交換日が未確定のため、現時点ではshortageではなくreadiness確認が必要。"
+    "note": "17-90は新品予備（組替可能）であり新品予備（組込完了）ではない。次回交換日が未確定のため、現時点ではshortageではなくreadiness確認が必要。",
+    "readySpareCount": 0,
+    "readySpareEvidence": "actual_confirmed_from_status",
+    "chockSwapCandidate": {
+      "sourceUsedRollId": "17-88",
+      "targetReturnedRollId": "17-90",
+      "evidence": "derived_from_confirmed_statuses_and_fixed_three_set_rule",
+      "notAnExecutedInstruction": true
+    }
   },
   "rolls": [
     {
@@ -240,7 +248,31 @@
       "EXCHANGE_DATE_NOT_DERIVED_FROM_LAST_PLAN_DATE"
     ],
     "shortageConfirmed": false,
-    "note": "ready spareが現在0であることは確認できるが、次回交換日が未確定なので現時点でNO_READY_SPARE shortageとは判定しない。年間見通しの径基準は290mm、StandMaster登録292mmは別管理で本番マスタは変更しない。"
+    "note": "ready spareが現在0であることは確認できるが、次回交換日が未確定なので現時点でNO_READY_SPARE shortageとは判定しない。年間見通しの径基準は290mm、StandMaster登録292mmは別管理で本番マスタは変更しない。",
+    "advisories": [
+      {
+        "code": "READY_SPARE_COUNT_ZERO",
+        "severity": "attention",
+        "message": "現在、新品予備（組込完了）は0セット。次回交換必要日が未確認のため shortage確定にはしない。"
+      },
+      {
+        "code": "CHOCK_SWAP_CANDIDATE_17_88_TO_17_90",
+        "severity": "attention",
+        "message": "17-88は中古予備（バラシ前）、17-90は新品予備（組替可能）。固定3セットの次状態候補は17-88から17-90へのチョック組替。実施日時・完了は未確認。"
+      },
+      {
+        "code": "NEXT_EXCHANGE_DATE_UNKNOWN",
+        "severity": "info",
+        "message": "17-89の次回ロール交換必要日は既存資料から確定できていない。"
+      }
+    ],
+    "targetNextState": {
+      "onlineRollId": "17-89",
+      "readySpareRollId": "17-90",
+      "processingCandidateRollId": "17-88",
+      "evidence": "operational_target_not_actual",
+      "note": "17-90の組込完了が実績確認されるまでready spareとして確定しない。17-88の搬出・改削開始も別実績で確認する。"
+    }
   },
   "plannedSchedule17_89": {
     "evidence": "planned",
