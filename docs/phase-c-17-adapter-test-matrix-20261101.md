@@ -362,3 +362,42 @@ Phase C #17の実装完了と呼べるのは:
 ### M-07 D13へペアルールを流用しない
 期待:
 - D13各カリバを独立累計
+
+
+## N. Exchange candidate algorithm
+
+### N-01 actual 0 + planned 6
+期待:
+- projected=6
+- limit reached
+- conflictなし
+
+### N-02 actual 1 + planned 6
+期待:
+- projected=7
+- capacity conflict
+- ただちにexchangeDate確定にはしない
+
+### N-03 actual unknown + planned 6
+期待:
+- projected unknown
+- incomplete
+- actual=0として扱わない
+
+### N-04 最初の超過block
+複数planのうち初めてprojected>6となるblockをearliestCapacityConflictとして返す。
+
+### N-05 conflictでも代替未確認
+期待:
+- exchangeDate unknown
+- CAPACITY_CONFLICT_REQUIRES_PLANNING_DECISION advisory
+
+### N-06 D10 pair
+planned 2直をpair両方へ+2。
+operation totalは2直であり4直にしない。
+
+### N-07 D13独立
+D13は指定caliberだけへ加算。
+
+### N-08 8+19 SD345
+SD345の明示plan以外へ自動流用しない。
