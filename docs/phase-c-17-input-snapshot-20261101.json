@@ -331,6 +331,14 @@
       "readinessRisk": "attention_ready_spare_zero",
       "scheduleRisk": "unknown_next_exchange_date",
       "evidenceRisk": "incomplete_caliber_actual_and_17_90_returned_diameter"
+    },
+    "coverage": {
+      "actualDataThrough": "2026-11-01",
+      "plannedCaliberScheduleThrough": "2026-12-10",
+      "assemblyInstructionDue": "2026-12-18",
+      "exchangeDate": null,
+      "exchangeDateEvidence": "unknown",
+      "interpretation": "12/10は参考計画の最終記載日、12/18は組替指示期限。どちらも交換日ではない。"
     }
   },
   "plannedSchedule17_89": {
