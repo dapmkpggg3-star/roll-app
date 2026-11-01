@@ -84,16 +84,20 @@
 - future predicted=317.61
 - 2.00過去実績を追加減算しない
 
-## D. 改削日程
+## D. 改削日程・リードタイム
 
-### D-01 confirmed dispatch + no actual return
+### D-01 confirmed dispatch + no actual/explicit return plan
 入力:
 - dispatch=2026-11-20
-- machiningLeadDays=25
+- actualReturn=null
+- explicitReturnPlan=null
+- genericTemporaryInboundPlanDays=25
 
 期待:
-- returnDue=2026-12-15
-- legacy 30日（12/20）を使わない
+- Phase C returnDue = unknown
+- 2026-12-15（+25日）を確定戻り日にしない
+- legacy 30日も使わない
+- historical scenariosとして64日/80日を参考計算してよい
 
 ### D-02 actual returnあり
 入力:
@@ -102,9 +106,19 @@
 
 期待:
 - actualReturnを採用
-- 25日予定より実績優先
+- evidence=actual_confirmed
 
-### D-03 中古予備・dispatch未確認
+### D-03 explicit return planあり
+入力:
+- dispatch=2026-11-20
+- explicitReturnPlan=2027-01-20
+- evidence=planned_confirmed
+
+期待:
+- returnDue=2027-01-20
+- +25日や64日中央値で上書きしない
+
+### D-04 中古予備・dispatch未確認
 入力:
 - status=中古予備（バラシ前）
 - dispatch=null
@@ -112,7 +126,17 @@
 期待:
 - returnDue unknown
 - today+2日を仮dispatchにしない
-- today+32日を戻り予定にしない
+- today+30/32日を戻り予定にしない
+
+### D-05 historical scenario
+入力:
+- confirmed return planなし
+- historical recent median=64
+- historical recent max=80
+
+期待:
+- scenario結果はadvisory/reference
+- normal判定のconfirmed evidenceへ昇格しない
 
 ## E. ready spare / 組替
 
