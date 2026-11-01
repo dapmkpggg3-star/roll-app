@@ -231,3 +231,29 @@
 - 本番mainの確認済み基点: aacf5b8
 - PR #14は未マージ。
 - main / 本番GAS / 実業務Sheetsは変更しない。
+
+
+## 13. legacy helperをPhase C #17へ直接流用しない
+
+2026-11-01のmain確認で、既存の3セット予測helperはPhase Cの根拠付き予測と条件が異なることを確認。
+
+### legacy差分
+- `getStandOnlineUseMonths(#17)` は3か月固定。
+- `getThreeSetForecastReworkReturnDate` は改削戻りを30日で仮計算する。
+- 中古予備では、実搬出日がなくても「today+2日」を仮pickupとして30日加算する。
+- `getThreeSetForecastCutInfo` は `getRemainingDiameterInfo` の本番StandMaster廃却径を使い、判定が `(currentDiameter - cut) > scrapDiameter`。
+- #17 Phase Cの年間見通し基準は「改削後290mm以上」なので境界は `>= 290`。
+- Phase Cの改削期間ルールは約25日。実績の搬入日があれば実績を優先する。
+
+### Phase C #17で禁止
+- useStart+3か月をexchangeDateへ代入しない。
+- dispatch未確認の中古予備にtoday+2日を自動で搬出予定として作らない。
+- 30日heuristicをPhase CのreturnDueDateへ使わない。
+- StandMaster 292mmと `>` 判定を、年間見通し290mm以上判定へ流用しない。
+- 既存helperの出力をevidence=`actual_confirmed`へ昇格しない。
+
+### Phase C #17で使用
+- forecast minimum = 290mm、境界含む `>= 290`
+- machining lead = 25日ルール（実績returnがあれば実績優先）
+- dispatch/return/exchangeが未確認ならunknown
+- heuristicを表示補助に残す場合も、Phase Cの根拠付きresultとは別ラベルにする
