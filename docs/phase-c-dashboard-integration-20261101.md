@@ -121,3 +121,43 @@ Phase Cカードには最低限、判定と一緒に根拠状態を表示でき�
 この文書は設計・受入条件。
 main / 本番PWA / GAS / Sheetsは変更しない。
 Work保存版46保全前に既存forecastコードを編集しない。
+
+
+## 9. #17 現行legacy UIのコード上ベースライン
+
+2026-11-01のmainコードとライブRoles状態から、ブラウザ実行前のコード上期待値を固定する。
+
+現行Roles:
+- 17-89 = オンライン / useStart 2026-10-14
+- 17-90 = 新品予備（組替可能）
+- 17-88 = 中古予備（バラシ前） / assemblyInstructionDue 2026-12-18
+
+legacy three-set forecast:
+- `getStandOnlineUseMonths(#17)=3`
+- useEndDate候補 = 2027-01-14
+- NEW_READYの17-90を最初に候補として拾う
+- judgment候補 = `要段取り`
+- reason = `新品予備（組替可能）あり`
+- action = 17-90の組替予定確認
+
+これは「現行簡易UIのコード上ベースライン」であり、Phase Cの正解ではない。
+
+Phase C導入後の#17期待:
+- core result = `incomplete`
+- exchangeDate = unknown
+- 2027-01-14を確定次回終了として表示しない
+- 17-90は組替候補としてadvisory/既存taskに残す
+- planned schedule / assembly due / exchangeDateを別々に表示・保持する
+
+today taskベースライン:
+- 17-88 + 17-90でassembly taskが生成される
+- task priorityは現行コード上 `medium`
+- `getTodayTaskWarning` はassembly taskへ常に `⚠ 日程未設定`
+- ただし17-88には2026-12-18のassemblyInstructionDueあり
+
+workshop boardベースライン:
+- assemblyInstructionDue 2026-12-18を期限として使用可能
+- priorityは残日数で計算
+- today taskの固定mediumとは優先度の意味が異なる可能性があるため、Phase C導入で無断統一しない
+
+このベースラインとの差分はWork実ブラウザ検証時に確認する。
