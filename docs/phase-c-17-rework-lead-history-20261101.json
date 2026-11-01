@@ -1,0 +1,276 @@
+{
+  "schema": "phase-c-17-rework-lead-history/v1",
+  "capturedAt": "2026-11-01",
+  "source": {
+    "spreadsheetId": "1X07qQa7u9YPLvErT0D48goT5wYmvcpgNjqzK3FhRFeA",
+    "sheet": "16,17",
+    "readOnly": true
+  },
+  "interpretation": {
+    "genericTemporaryInboundPlanDays": 25,
+    "genericTemporaryInboundPlanMeaning": "既存アプリの仮搬入予定表示。#17の実績リードタイムではない。",
+    "phaseCPolicy": "実搬入日または確定/明示された戻り予定日を優先。無ければreturnDueDateはunknown。履歴統計は感度分析用で、確定予定日へ昇格しない。"
+  },
+  "allValid": {
+    "count": 22,
+    "minDays": 29,
+    "maxDays": 80,
+    "averageDays": 53.9,
+    "medianDays": 51.5
+  },
+  "recentSince2024": {
+    "count": 10,
+    "minDays": 50,
+    "maxDays": 80,
+    "averageDays": 64.3,
+    "medianDays": 64
+  },
+  "perRoll": {
+    "17-88": {
+      "count": 10,
+      "minDays": 40,
+      "maxDays": 69,
+      "averageDays": 52.2,
+      "medianDays": 50,
+      "records": [
+        {
+          "sourceRow": 393,
+          "outbound": "2020-01-10",
+          "inbound": "2020-03-09",
+          "calendarDays": 59,
+          "diameterAfterDisplayed": "338.09 ",
+          "note": "(上)：338.11"
+        },
+        {
+          "sourceRow": 394,
+          "outbound": "2020-09-04",
+          "inbound": "2020-10-15",
+          "calendarDays": 41,
+          "diameterAfterDisplayed": "336.09 ",
+          "note": "(上)：336.11"
+        },
+        {
+          "sourceRow": 395,
+          "outbound": "2021-01-26",
+          "inbound": "2021-03-12",
+          "calendarDays": 45,
+          "diameterAfterDisplayed": "334.10 ",
+          "note": "(下)：334.11"
+        },
+        {
+          "sourceRow": 396,
+          "outbound": "2021-08-27",
+          "inbound": "2021-10-06",
+          "calendarDays": 40,
+          "diameterAfterDisplayed": "332.11 ",
+          "note": ""
+        },
+        {
+          "sourceRow": 397,
+          "outbound": "2022-04-25",
+          "inbound": "2022-06-07",
+          "calendarDays": 43,
+          "diameterAfterDisplayed": "330.14 ",
+          "note": "(上)：330.15"
+        },
+        {
+          "sourceRow": 399,
+          "outbound": "2023-05-11",
+          "inbound": "2023-06-30",
+          "calendarDays": 50,
+          "diameterAfterDisplayed": "326.10 ",
+          "note": "(下)：326.11　10.16（月）DS南側ロッドから作動油漏れ➡ロール抜き工作にて補修"
+        },
+        {
+          "sourceRow": 400,
+          "outbound": "2024-01-18",
+          "inbound": "2024-03-08",
+          "calendarDays": 50,
+          "diameterAfterDisplayed": "324.10 ",
+          "note": "←精整更新工事期間(7/中～8/末)を考慮"
+        },
+        {
+          "sourceRow": 401,
+          "outbound": "2024-11-12",
+          "inbound": "2025-01-20",
+          "calendarDays": 69,
+          "diameterAfterDisplayed": "322.11 ",
+          "note": "（上）：322.12\n業者による加工ミス発生 2025.1.17\n（下ロールWS15本目D13の社マークが1.5mmズレ加工）\n→そのまま納品とし4本目・15本目は使用不可"
+        },
+        {
+          "sourceRow": 402,
+          "outbound": "2025-07-09",
+          "inbound": "2025-09-09",
+          "calendarDays": 62,
+          "diameterAfterDisplayed": "320.10 ",
+          "note": ""
+        },
+        {
+          "sourceRow": 403,
+          "outbound": "2026-04-13",
+          "inbound": "2026-06-15",
+          "calendarDays": 63,
+          "diameterAfterDisplayed": "314.90 ",
+          "note": ""
+        }
+      ],
+      "excluded": [
+        {
+          "sourceRow": 392,
+          "reason": "incomplete_date"
+        },
+        {
+          "sourceRow": 398,
+          "outbound": "2022-11-15",
+          "inbound": "2022-01-16",
+          "days": -303,
+          "reason": "invalid_chronology_or_outlier_over_180"
+        },
+        {
+          "sourceRow": 404,
+          "reason": "incomplete_date"
+        }
+      ]
+    },
+    "17-89": {
+      "count": 10,
+      "minDays": 29,
+      "maxDays": 72,
+      "averageDays": 51.7,
+      "medianDays": 51,
+      "records": [
+        {
+          "sourceRow": 415,
+          "outbound": "2020-07-06",
+          "inbound": "2020-08-04",
+          "calendarDays": 29,
+          "diameterAfterDisplayed": "338.10 ",
+          "note": "(下)：338.09"
+        },
+        {
+          "sourceRow": 416,
+          "outbound": "2020-12-04",
+          "inbound": "2021-01-22",
+          "calendarDays": 49,
+          "diameterAfterDisplayed": "336.11 ",
+          "note": "(下)：336.10"
+        },
+        {
+          "sourceRow": 417,
+          "outbound": "2021-06-09",
+          "inbound": "2021-07-16",
+          "calendarDays": 37,
+          "diameterAfterDisplayed": "334.11 ",
+          "note": "(下)：334.10\n10/6　井上さんに（17-89）予備組込み指示しました。（石井）"
+        },
+        {
+          "sourceRow": 418,
+          "outbound": "2022-03-16",
+          "inbound": "2022-04-22",
+          "calendarDays": 37,
+          "diameterAfterDisplayed": "332.11 ",
+          "note": "リフトにてコンテナへ積み込み時、コンテナ内の底板抜け3/16\n（ロール箱の底が I ビーム）"
+        },
+        {
+          "sourceRow": 419,
+          "outbound": "2023-02-10",
+          "inbound": "2023-03-29",
+          "calendarDays": 47,
+          "diameterAfterDisplayed": "330.12 ",
+          "note": "(下)：330.10\nバラし済2/2　寿産業へ連絡済2/7境"
+        },
+        {
+          "sourceRow": 420,
+          "outbound": "2023-08-22",
+          "inbound": "2023-10-26",
+          "calendarDays": 65,
+          "diameterAfterDisplayed": "328.11 ",
+          "note": "(下)：328.10\n中馬さんからバラシ連絡あり2023.8.10　樋渡　10/31➡10/26搬入"
+        },
+        {
+          "sourceRow": 421,
+          "outbound": "2024-05-15",
+          "inbound": "2024-07-26",
+          "calendarDays": 72,
+          "diameterAfterDisplayed": "326.10 ",
+          "note": "下ロールWS側シャフトΦ180部の摩耗あり(公差外)→硬質クロムメッキ修理を実施"
+        },
+        {
+          "sourceRow": 422,
+          "outbound": "2024-12-10",
+          "inbound": "2025-02-13",
+          "calendarDays": 65,
+          "diameterAfterDisplayed": "324.13 ",
+          "note": ""
+        },
+        {
+          "sourceRow": 423,
+          "outbound": "2025-08-22",
+          "inbound": "2025-10-24",
+          "calendarDays": 63,
+          "diameterAfterDisplayed": "322.11 ",
+          "note": "(下)322.12\nバラシ済8/19　→ 8/22搬出予定\n※その時に鉄箱(空)1箱を一緒に！ 2025.7.30"
+        },
+        {
+          "sourceRow": 424,
+          "outbound": "2026-05-18",
+          "inbound": "2026-07-10",
+          "calendarDays": 53,
+          "diameterAfterDisplayed": "320.11 ",
+          "note": ""
+        }
+      ],
+      "excluded": [
+        {
+          "sourceRow": 414,
+          "reason": "incomplete_date"
+        },
+        {
+          "sourceRow": 425,
+          "reason": "incomplete_date"
+        }
+      ]
+    },
+    "17-90": {
+      "count": 2,
+      "minDays": 66,
+      "maxDays": 80,
+      "averageDays": 73,
+      "medianDays": 73,
+      "records": [
+        {
+          "sourceRow": 438,
+          "outbound": "2025-10-03",
+          "inbound": "2025-12-22",
+          "calendarDays": 80,
+          "diameterAfterDisplayed": "338.00 ",
+          "note": "(下)338.01\n三菱マテリアル負荷増に伴い、納期遅延12/5→12/22"
+        },
+        {
+          "sourceRow": 439,
+          "outbound": "2026-08-21",
+          "inbound": "2026-10-26",
+          "calendarDays": 66,
+          "diameterAfterDisplayed": "338.00 ",
+          "note": ""
+        }
+      ],
+      "excluded": [
+        {
+          "sourceRow": 437,
+          "reason": "incomplete_date"
+        },
+        {
+          "sourceRow": 440,
+          "reason": "incomplete_date"
+        }
+      ]
+    }
+  },
+  "scenarioReference": {
+    "temporaryUiDays": 25,
+    "recentMedianDays": 64,
+    "recentMaxDays": 80,
+    "note": "25/64/80を同格の予定値にしない。25はUI仮計画、64/80は履歴感度分析。"
+  }
+}
