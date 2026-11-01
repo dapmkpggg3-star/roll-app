@@ -1,0 +1,224 @@
+# Phase C #17 — Adapter / Acceptance Test Matrix
+
+更新日: 2026-11-01
+対象: Work保存版46へPhase Cを実装する際の必須受入テスト
+前提: main / 本番GAS / 実Sheetsは変更しない
+
+## A. 現行実データfixture
+
+### A-01 現在地
+入力:
+- 17-89 = online / useStart 2026-10-14 / diameter 320.11
+- 17-88 = 中古予備（バラシ前） / diameter 314.90 / assemblyInstructionDue 2026-12-18
+- 17-90 = 新品予備（組替可能） / latest return 2026-10-26 / returned diameter unknown
+- caliberActualUsage(17-89) = unknown
+- exchangeDate = unknown
+- planned schedule = 59直 + 8/19未定
+
+期待:
+- core result = incomplete
+- shortageConfirmed = false
+- READY_SPARE_COUNT_ZERO advisory
+- CHOCK_SWAP_CANDIDATE_17_88_TO_17_90 advisory
+- NEXT_EXCHANGE_DATE_UNKNOWN advisory
+- planned 59直をactualへ昇格しない
+- 2027-01-14をexchangeDateにしない
+- 2026-12-18をexchangeDateにしない
+- 2026-12-10をexchangeDateにしない
+
+## B. 径境界
+
+### B-01 290.00mmちょうど
+入力:
+- future machined diameter = 290.00
+- 他の必須根拠 = confirmed
+
+期待:
+- diameter理由でshortageにしない
+- `>=290` を満たす
+
+### B-02 289.99mm
+期待:
+- shortage
+- reason = DIAMETER_BELOW_FORECAST_MINIMUM
+
+### B-03 current 292.50 - future cut 2.50
+期待:
+- predicted = 290.00
+- diameter理由でshortageにしない
+
+### B-04 current 292.40 - future cut 2.50
+期待:
+- predicted = 289.90
+- shortage
+
+### B-05 StandMaster 292の影響隔離
+入力:
+- forecast result diameter 291.0
+- forecastMinimum=290
+- standMasterScrap=292
+
+期待:
+- Phase C年間見通しの径判定だけなら291.0は通過
+- StandMasterを291/290へ書換えない
+- 本番廃却処理のルール変更とは扱わない
+
+## C. 二重減径防止
+
+### C-01 17-89実測320.11
+入力:
+- prior actual before=322.11
+- prior actual after=320.11
+- actualReduction=2.00
+
+期待:
+- current diameter=320.11
+- 318.11へ再減算しない
+
+### C-02 future cutのみ適用
+入力:
+- current confirmed diameter=320.11
+- next future machining planned/rule cut=2.50
+
+期待:
+- future predicted=317.61
+- 2.00過去実績を追加減算しない
+
+## D. 改削日程
+
+### D-01 confirmed dispatch + no actual return
+入力:
+- dispatch=2026-11-20
+- machiningLeadDays=25
+
+期待:
+- returnDue=2026-12-15
+- legacy 30日（12/20）を使わない
+
+### D-02 actual returnあり
+入力:
+- dispatch=2026-11-20
+- actualReturn=2026-12-13
+
+期待:
+- actualReturnを採用
+- 25日予定より実績優先
+
+### D-03 中古予備・dispatch未確認
+入力:
+- status=中古予備（バラシ前）
+- dispatch=null
+
+期待:
+- returnDue unknown
+- today+2日を仮dispatchにしない
+- today+32日を戻り予定にしない
+
+## E. ready spare / 組替
+
+### E-01 ready spare=0、exchange unknown
+期待:
+- incomplete
+- shortageにしない
+
+### E-02 ready spare=0、交換日確定、間に合わないこと確定
+期待:
+- shortage
+- NO_READY_SPARE or ASSEMBLY_OVERDUE
+
+### E-03 17-90が組込完了へ
+期待:
+- 現行assembly candidateは解消
+- READY_SPARE_COUNT_ZERO advisoryは解消
+- caliber actual / exchangeDate等がunknownなら総合normalにはしない
+
+### E-04 12/18組替指示期限
+期待:
+- assembly deadlineとして保持
+- exchangeDateへ流用しない
+- today taskで期限があるのに「日程未設定」を出さない
+
+## F. planned / actual分離
+
+### F-01 59直
+期待:
+- evidence=planned
+- caliberActualUsageはunknownのまま
+
+### F-02 過去日付のplanned
+入力:
+- 計画期間が現在日より過去
+
+期待:
+- 過去日付だからactualへ自動昇格しない
+
+### F-03 8+19直数未定
+期待:
+- null/unknown
+- 0へ補完しない
+
+## G. UI adapter
+
+### G-01 Phase C incomplete
+期待:
+- 既存3セット維持予測カードでは「要確認」または「データ不足」
+- legacy heuristicの「維持可能」で上書きしない
+- 次回終了欄に固定3か月日付をPhase C確定日として表示しない
+
+### G-02 Phase C shortage
+期待:
+- 「不足見込み」
+- legacy candidateが存在してもshortageを打ち消さない
+
+### G-03 Phase C normal
+期待:
+- 必須根拠がすべてconfirmedの時だけ「維持可能」
+
+### G-04 他スタンド
+期待:
+- #16などPhase C未対応は既存legacy挙動を維持
+- #17限定導入で全スタンド回帰を起こさない
+
+## H. today task / workshop board統合
+
+### H-01 現行17-88 + 17-90
+期待:
+- assembly candidate 1件
+- Phase C advisory追加でtoday taskを2件にしない
+
+### H-02 期限表示
+入力:
+- 17-88 assemblyInstructionDue=2026-12-18
+
+期待:
+- 工作課ボードと本日のタスクで期限有無が矛盾しない
+
+## I. 結果優先順位
+
+### I-01 unknown + known shortage
+入力:
+- caliber usage unknown
+- diameter 289.9 confirmed
+
+期待:
+- shortage
+- incompleteで不足を隠さない
+
+### I-02 unknown only
+期待:
+- incomplete
+
+### I-03 all confirmed / no shortage
+期待:
+- normal
+
+## 完了条件
+
+Phase C #17の実装完了と呼べるのは:
+1. 上記必須ケースが通る
+2. 既存Phase A/Bテストが通る
+3. mainではなく検証ブランチ
+4. Work保存版46を基点にしている
+5. UI接続前に純粋ロジックの結果を確認
+6. 実ブラウザでは#17の表示が二重タスクにならない
+7. GAS/実Sheetsを書き換える必要がある工程は別途明示し、無断で本番へ入れない
