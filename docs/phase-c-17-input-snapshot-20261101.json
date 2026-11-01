@@ -17,20 +17,15 @@
       "evidence": "rule_confirmed",
       "source": "改削マスタ"
     },
-    "discardDiameter": {
-      "value": null,
-      "evidence": "conflict",
-      "candidates": [
-        {
-          "valueMm": 292,
-          "source": "StandMaster"
-        },
-        {
-          "valueMm": 290,
-          "source": "16,17履歴表"
-        }
-      ],
-      "resolutionRequired": true
+    "forecastMinimumDiameterMm": {
+      "value": 290,
+      "evidence": "confirmed_for_annual_forecast",
+      "scope": "#17 17-88/17-89/17-90"
+    },
+    "standMasterScrapDiameterMm": {
+      "value": 292,
+      "evidence": "current_master_registration",
+      "mustNotAutoChange": true
     }
   },
   "currentThreeSetState": {
@@ -237,13 +232,12 @@
   "phaseCInputState": {
     "overallResult": "incomplete",
     "reasons": [
-      "DISCARD_DIAMETER_RULE_CONFLICT",
       "CALIBER_ACTUAL_USAGE_UNKNOWN_17_89",
       "FORECAST_DIAMETER_UNKNOWN_17_90",
       "EXCHANGE_DATE_UNKNOWN",
       "NO_READY_SPARE_CURRENTLY_INSTALLED"
     ],
     "shortageConfirmed": false,
-    "note": "ready spareが現在0であることは確認できるが、次回交換日が未確定なので現時点でNO_READY_SPARE shortageとは判定しない。"
+    "note": "ready spareが現在0であることは確認できるが、次回交換日が未確定なので現時点でNO_READY_SPARE shortageとは判定しない。年間見通しの径基準は290mm、StandMaster登録292mmは別管理で本番マスタは変更しない。"
   }
 }
