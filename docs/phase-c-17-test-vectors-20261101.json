@@ -62,31 +62,6 @@
       }
     },
     {
-      "id": "LEAD_001",
-      "title": "25-day rule not legacy 30-day rule",
-      "input": {
-        "dispatchDate": "2026-11-20",
-        "actualReturnDate": null,
-        "machiningLeadDays": 25
-      },
-      "expected": {
-        "returnDueDate": "2026-12-15",
-        "forbiddenReturnDueDate": "2026-12-20"
-      }
-    },
-    {
-      "id": "LEAD_002",
-      "title": "used standby without dispatch remains unknown",
-      "input": {
-        "status": "中古予備（バラシ前）",
-        "dispatchDate": null
-      },
-      "expected": {
-        "returnDueDate": null,
-        "guard": "DO_NOT_INVENT_DISPATCH_DATE"
-      }
-    },
-    {
       "id": "READY_001",
       "title": "ready spare zero with unknown exchange is incomplete",
       "base": "current",
@@ -276,6 +251,65 @@
       "expected": {
         "usePhaseC": false,
         "useLegacy": true
+      }
+    },
+    {
+      "id": "LEAD_001",
+      "title": "generic +25 inbound date is not Phase C #17 return due",
+      "input": {
+        "dispatchDate": "2026-11-20",
+        "actualReturnDate": null,
+        "explicitReturnPlan": null,
+        "genericTemporaryInboundPlanDays": 25,
+        "historicalRecentMedianDays": 64,
+        "historicalRecentMaxDays": 80
+      },
+      "expected": {
+        "returnDueDate": null,
+        "genericTemporaryInboundDate": "2026-12-15",
+        "genericTemporaryInboundIsConfirmedReturn": false,
+        "scenarioMedianDays": 64,
+        "scenarioMaxDays": 80,
+        "guard": "GENERIC_25_DAY_INBOUND_PLAN_NOT_PHASE_C17_LEAD"
+      }
+    },
+    {
+      "id": "LEAD_002",
+      "title": "actual return overrides estimates",
+      "input": {
+        "dispatchDate": "2026-11-20",
+        "actualReturnDate": "2026-12-13",
+        "explicitReturnPlan": null
+      },
+      "expected": {
+        "effectiveReturnDate": "2026-12-13",
+        "evidence": "actual_confirmed"
+      }
+    },
+    {
+      "id": "LEAD_003",
+      "title": "explicit return plan is used when actual is absent",
+      "input": {
+        "dispatchDate": "2026-11-20",
+        "actualReturnDate": null,
+        "explicitReturnPlan": "2027-01-20",
+        "explicitReturnPlanEvidence": "planned_confirmed"
+      },
+      "expected": {
+        "returnDueDate": "2027-01-20",
+        "evidence": "planned_confirmed"
+      }
+    },
+    {
+      "id": "LEAD_004",
+      "title": "used standby without dispatch remains unknown",
+      "input": {
+        "status": "中古予備（バラシ前）",
+        "dispatchDate": null
+      },
+      "expected": {
+        "returnDueDate": null,
+        "guard": "DO_NOT_INVENT_DISPATCH_DATE"
       }
     }
   ]
