@@ -34,7 +34,10 @@
 - 年間見通しの検討基準: **改削後290mm以上**。17-88 / 17-89 / 17-90の3本に適用する。
 - 本番StandMasterの#17廃却径登録は292mmのまま維持する。Phase Cの検討基準290mmを理由に本番マスタを書き換えない。
 - 予測ロジックでは `forecastMinimumDiameterMm=290` と `standMasterScrapDiameterMm=292` を別項目として保持し、意味を混同しない。
-- 改削期間: 約25日。これは戻り予定計算のルール値であり、実搬入日が確認できれば実績を優先する。
+- 既存アプリの「搬出+25日」は仮搬入予定表示の一般ルールであり、#17 Phase Cの確定リードタイムには使わない。
+- #17の実搬出→搬入履歴22件は29〜80日、中央値51.5日。2024年以降10件は50〜80日、平均64.3日、中央値64日。
+- Phase CのreturnDueDateは、実搬入日または明示された確定/予定戻り日がある場合だけ採用する。無ければunknown。
+- 64日（直近中央値）・80日（直近最大）は感度分析用のhistorical scenarioであり、確定予定日に昇格しない。
 - 通常改削とフラット加工は別イベント。
 - 実測径に既に含まれた減径量を再度差し引かない。
 - 290mm基準を他スタンドへ自動展開しない。
@@ -53,7 +56,13 @@
     forecastMinimumDiameterMm: 290,
     standMasterScrapDiameterMm: 292,
     diameterRuleScope: "#17 annual forecast only",
-    machiningLeadDays: 25
+    temporaryInboundPlanDays: 25,
+    reworkLeadDays: null,
+    reworkLeadEvidence: "unconfirmed_for_17",
+    historicalLeadScenarioDays: {
+      recentMedian: 64,
+      recentMax: 80
+    }
   },
 
   rolls: [
@@ -243,7 +252,8 @@
 - 中古予備では、実搬出日がなくても「today+2日」を仮pickupとして30日加算する。
 - `getThreeSetForecastCutInfo` は `getRemainingDiameterInfo` の本番StandMaster廃却径を使い、判定が `(currentDiameter - cut) > scrapDiameter`。
 - #17 Phase Cの年間見通し基準は「改削後290mm以上」なので境界は `>= 290`。
-- Phase Cの改削期間ルールは約25日。実績の搬入日があれば実績を優先する。
+- 既存アプリの+25日仮搬入表示も、legacyの30日heuristicも、#17 Phase Cの確定戻り日には使わない。
+- #17は実搬入日/明示された戻り予定を優先し、無ければunknown。履歴64日中央値/80日最大は感度分析のみ。
 
 ### Phase C #17で禁止
 - useStart+3か月をexchangeDateへ代入しない。
@@ -254,7 +264,7 @@
 
 ### Phase C #17で使用
 - forecast minimum = 290mm、境界含む `>= 290`
-- machining lead = 25日ルール（実績returnがあれば実績優先）
+- rework return = 実績/明示予定がある時だけ確定。+25日仮搬入・30日legacyを確定値へ使わない
 - dispatch/return/exchangeが未確認ならunknown
 - heuristicを表示補助に残す場合も、Phase Cの根拠付きresultとは別ラベルにする
 
@@ -337,3 +347,43 @@ projectedCumulative = actualConfirmed + plannedFuture
 - actual cumulative > 6: 実績超過として要確認/異常フラグ
 - actual confirmed + planned future > 6: 計画超過警告
 - =6は上限到達であり超過ではない
+
+
+## 16. #17 rework lead-time evidence
+
+参照:
+`docs/phase-c-17-rework-lead-history-20261101.json`
+
+ライブ16,17履歴から完全な搬出・搬入日を持ち、時系列が正しい22サイクルを抽出。
+
+- 全22件: 29〜80日、平均53.9日、中央値51.5日
+- 2024年以降10件: 50〜80日、平均64.3日、中央値64日
+
+### Phase Cの扱い
+
+優先順位:
+1. actualReturnDate
+2. 明示されたconfirmed/planned return date（根拠付き）
+3. 無ければreturnDueDate = unknown
+
+historical scenario:
+- recentMedianDays=64
+- recentMaxDays=80
+
+は、3セットが遅延に耐えられるかの感度分析へだけ使用する。
+
+### 禁止
+
+- +25日仮搬入を#17のconfirmed returnDueへ使う
+- legacy30日を#17のconfirmed returnDueへ使う
+- 64日中央値を業者納期として断定する
+- 80日最大を必ず掛かる日数として断定する
+
+### scenario判定
+
+将来、exchangeDateがconfirmedになった場合:
+- 64日scenarioでも間に合う
+- 80日stress scenarioでも間に合う
+をadvisoryとして計算してよい。
+
+ただしscenario passだけでnormalへ昇格しない。
