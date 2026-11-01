@@ -113,6 +113,12 @@ main / PR #14 / 本番GAS / 実Sheetsへ直接入れない。
 - 禁止出力まで固定
 - Work実装後のgolden testに使用
 
+### 14
+`docs/phase-c-code-registry-20261101.md`
+- reason / advisory / guard の正式辞書
+- deprecated alias一覧
+- 新規実装はcanonical codeだけ使用
+
 ## 2. 現在の#17結論
 
 ### confirmed
