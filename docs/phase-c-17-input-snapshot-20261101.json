@@ -235,9 +235,169 @@
       "CALIBER_ACTUAL_USAGE_UNKNOWN_17_89",
       "FORECAST_DIAMETER_UNKNOWN_17_90",
       "EXCHANGE_DATE_UNKNOWN",
-      "NO_READY_SPARE_CURRENTLY_INSTALLED"
+      "NO_READY_SPARE_CURRENTLY_INSTALLED",
+      "PLANNED_SCHEDULE_NOT_ACTUAL",
+      "EXCHANGE_DATE_NOT_DERIVED_FROM_LAST_PLAN_DATE"
     ],
     "shortageConfirmed": false,
     "note": "ready spareが現在0であることは確認できるが、次回交換日が未確定なので現時点でNO_READY_SPARE shortageとは判定しない。年間見通しの径基準は290mm、StandMaster登録292mmは別管理で本番マスタは変更しない。"
+  },
+  "plannedSchedule17_89": {
+    "evidence": "planned",
+    "mustNotPromoteToActual": true,
+    "lastRecordedPlanDate": "2026-12-10",
+    "lastRecordedPlanDateIsUseEnd": false,
+    "knownPlannedShiftTotal": 59,
+    "unknownPlannedShiftItems": [
+      {
+        "calibers": [
+          "8",
+          "19"
+        ],
+        "size": "D10",
+        "date": "2026-10-18",
+        "plannedShifts": null,
+        "note": "仮予定／直数未定"
+      }
+    ],
+    "periods": [
+      {
+        "id": "参照1",
+        "size": "D10",
+        "calibers": [
+          "6",
+          "17"
+        ],
+        "start": "2026-10-14",
+        "end": "2026-10-18",
+        "plannedShifts": 6
+      },
+      {
+        "id": "参照2",
+        "size": "D10",
+        "calibers": [
+          "7",
+          "18"
+        ],
+        "start": "2026-12-05",
+        "end": "2026-12-09",
+        "plannedShifts": 6
+      },
+      {
+        "id": "参照3",
+        "size": "D10",
+        "calibers": [
+          "9",
+          "20"
+        ],
+        "start": "2026-11-04",
+        "end": "2026-11-09",
+        "plannedShifts": 6
+      },
+      {
+        "id": "参照4",
+        "size": "D10",
+        "calibers": [
+          "10",
+          "21"
+        ],
+        "start": "2026-11-10",
+        "end": "2026-11-12",
+        "plannedShifts": 3
+      },
+      {
+        "id": "参照5",
+        "size": "D10",
+        "calibers": [
+          "10",
+          "21"
+        ],
+        "start": "2026-12-10",
+        "end": "2026-12-10",
+        "plannedShifts": 1
+      },
+      {
+        "id": "参照6",
+        "size": "D10",
+        "calibers": [
+          "11",
+          "22"
+        ],
+        "start": "2026-11-21",
+        "end": "2026-11-23",
+        "plannedShifts": 5
+      },
+      {
+        "id": "参照7",
+        "size": "D13",
+        "calibers": [
+          "1"
+        ],
+        "start": "2026-11-25",
+        "end": "2026-11-29",
+        "plannedShifts": 6
+      },
+      {
+        "id": "参照8",
+        "size": "D13",
+        "calibers": [
+          "2"
+        ],
+        "start": "2026-11-29",
+        "end": "2026-12-03",
+        "plannedShifts": 5
+      },
+      {
+        "id": "参照9",
+        "size": "D13",
+        "calibers": [
+          "12"
+        ],
+        "start": "2026-10-31",
+        "end": "2026-11-03",
+        "plannedShifts": 6
+      },
+      {
+        "id": "参照10",
+        "size": "D13",
+        "calibers": [
+          "13"
+        ],
+        "start": "2026-10-25",
+        "end": "2026-10-30",
+        "plannedShifts": 6
+      },
+      {
+        "id": "参照11",
+        "size": "D13",
+        "calibers": [
+          "14"
+        ],
+        "start": "2026-10-23",
+        "end": "2026-10-24",
+        "plannedShifts": 2
+      },
+      {
+        "id": "参照12",
+        "size": "D13",
+        "calibers": [
+          "14"
+        ],
+        "start": "2026-11-18",
+        "end": "2026-11-19",
+        "plannedShifts": 2
+      },
+      {
+        "id": "参照13",
+        "size": "D13",
+        "calibers": [
+          "15"
+        ],
+        "start": "2026-11-14",
+        "end": "2026-11-17",
+        "plannedShifts": 5
+      }
+    ],
+    "interpretation": "計画期間と計画直数。現在実績・累計・交換必要日へ自動変換しない。D10ペアは各カリバへ全直数を加算するが操業直数はペアを1回で数える。"
   }
 }
