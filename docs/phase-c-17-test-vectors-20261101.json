@@ -1,0 +1,282 @@
+{
+  "schema": "phase-c-17-test-vectors/v1",
+  "updatedAt": "2026-11-01",
+  "baseFixture": "docs/phase-c-17-input-snapshot-20261101.json",
+  "ruleReference": "docs/phase-c-17-simulation-contract.md",
+  "codeRegistry": "docs/phase-c-code-registry-20261101.md",
+  "cases": [
+    {
+      "id": "CURRENT_001",
+      "title": "current #17 fixture remains incomplete",
+      "base": "current",
+      "expected": {
+        "result": "incomplete",
+        "primaryReason": "ACTUAL_CALIBER_CUMULATIVE_17_89",
+        "exchangeDate": null,
+        "shortageConfirmed": false,
+        "advisoriesInclude": [
+          "READY_SPARE_COUNT_ZERO",
+          "CHOCK_SWAP_CANDIDATE_17_88_TO_17_90"
+        ]
+      }
+    },
+    {
+      "id": "DIAMETER_001",
+      "title": "290.00mm passes annual floor",
+      "input": {
+        "forecastMinimumDiameterMm": 290,
+        "confirmedDiameterMm": 290,
+        "allOtherRequiredEvidence": "confirmed"
+      },
+      "expected": {
+        "diameterPass": true,
+        "reasonAbsent": "DIAMETER_BELOW_FORECAST_MINIMUM"
+      }
+    },
+    {
+      "id": "DIAMETER_002",
+      "title": "289.99mm is shortage",
+      "input": {
+        "forecastMinimumDiameterMm": 290,
+        "confirmedDiameterMm": 289.99,
+        "caliberEvidence": "unknown"
+      },
+      "expected": {
+        "result": "shortage",
+        "reasonsInclude": [
+          "DIAMETER_BELOW_FORECAST_MINIMUM"
+        ]
+      }
+    },
+    {
+      "id": "DOUBLE_CUT_001",
+      "title": "17-89 actual post-machining diameter is not reduced twice",
+      "input": {
+        "beforeActualMm": 322.11,
+        "afterActualMm": 320.11,
+        "actualReductionMm": 2
+      },
+      "expected": {
+        "currentDiameterMm": 320.11,
+        "forbiddenCurrentDiameterMm": 318.11
+      }
+    },
+    {
+      "id": "LEAD_001",
+      "title": "25-day rule not legacy 30-day rule",
+      "input": {
+        "dispatchDate": "2026-11-20",
+        "actualReturnDate": null,
+        "machiningLeadDays": 25
+      },
+      "expected": {
+        "returnDueDate": "2026-12-15",
+        "forbiddenReturnDueDate": "2026-12-20"
+      }
+    },
+    {
+      "id": "LEAD_002",
+      "title": "used standby without dispatch remains unknown",
+      "input": {
+        "status": "中古予備（バラシ前）",
+        "dispatchDate": null
+      },
+      "expected": {
+        "returnDueDate": null,
+        "guard": "DO_NOT_INVENT_DISPATCH_DATE"
+      }
+    },
+    {
+      "id": "READY_001",
+      "title": "ready spare zero with unknown exchange is incomplete",
+      "base": "current",
+      "expected": {
+        "result": "incomplete",
+        "reasonsInclude": [
+          "NEXT_EXCHANGE_DATE_UNKNOWN"
+        ],
+        "advisoriesInclude": [
+          "READY_SPARE_COUNT_ZERO"
+        ],
+        "reasonsAbsent": [
+          "NO_READY_SPARE"
+        ]
+      }
+    },
+    {
+      "id": "CALIBER_001",
+      "title": "D10 pair actual4 plus planned2 reaches limit",
+      "input": {
+        "size": "D10",
+        "pair": [
+          "6",
+          "17"
+        ],
+        "actualByCaliber": {
+          "6": 4,
+          "17": 4
+        },
+        "plannedShifts": 2,
+        "maxCumulativeShifts": 6
+      },
+      "expected": {
+        "projectedByCaliber": {
+          "6": 6,
+          "17": 6
+        },
+        "operationPlannedShifts": 2,
+        "overLimit": false
+      }
+    },
+    {
+      "id": "CALIBER_002",
+      "title": "D10 pair actual5 plus planned2 conflicts",
+      "input": {
+        "size": "D10",
+        "pair": [
+          "6",
+          "17"
+        ],
+        "actualByCaliber": {
+          "6": 5,
+          "17": 5
+        },
+        "plannedShifts": 2,
+        "maxCumulativeShifts": 6
+      },
+      "expected": {
+        "projectedByCaliber": {
+          "6": 7,
+          "17": 7
+        },
+        "conflict": true,
+        "code": "PLANNED_USAGE_EXCEEDS_CONFIRMED_CALIBER_MAX"
+      }
+    },
+    {
+      "id": "CALIBER_003",
+      "title": "unknown actual remains unknown",
+      "input": {
+        "actualCumulative": null,
+        "plannedShifts": 6,
+        "maxCumulativeShifts": 6
+      },
+      "expected": {
+        "projectedCumulative": null,
+        "remainingShifts": null,
+        "result": "incomplete"
+      }
+    },
+    {
+      "id": "CALIBER_004",
+      "title": "D13 repeated periods accumulate",
+      "input": {
+        "size": "D13",
+        "caliberNo": "14",
+        "actualPeriods": [
+          2,
+          2
+        ],
+        "maxCumulativeShifts": 6
+      },
+      "expected": {
+        "actualCumulative": 4,
+        "remainingShifts": 2
+      }
+    },
+    {
+      "id": "PAIR_001",
+      "title": "mismatched D10 pair is not auto-corrected",
+      "input": {
+        "size": "D10",
+        "pair": [
+          "6",
+          "17"
+        ],
+        "actualByCaliber": {
+          "6": 4,
+          "17": 3
+        }
+      },
+      "expected": {
+        "validationCode": "PAIR_USAGE_MISMATCH",
+        "autoCorrect": false
+      }
+    },
+    {
+      "id": "PLAN_001",
+      "title": "past planned date is still planned",
+      "input": {
+        "plannedPeriodEnd": "2026-10-30",
+        "now": "2026-11-01",
+        "plannedShifts": 6
+      },
+      "expected": {
+        "evidence": "planned",
+        "guard": "PLANNED_SCHEDULE_NOT_ACTUAL"
+      }
+    },
+    {
+      "id": "PLAN_002",
+      "title": "dates must not be promoted to exchange date",
+      "input": {
+        "lastPlannedDate": "2026-12-10",
+        "assemblyInstructionDue": "2026-12-18",
+        "legacyFixedUseEnd": "2027-01-14"
+      },
+      "expected": {
+        "exchangeDate": null,
+        "guard": "EXCHANGE_DATE_NOT_DERIVED_FROM_LAST_PLAN_DATE"
+      }
+    },
+    {
+      "id": "R90_001",
+      "title": "historical 338 is not latest post-return measured diameter",
+      "base": "current",
+      "expected": {
+        "latestPostReturnMeasuredDiameterMm": null,
+        "reason": "POST_RETURN_DIAMETER_17_90",
+        "forbiddenLatestDiameterMm": 338
+      }
+    },
+    {
+      "id": "PROCUREMENT_001",
+      "title": "17-91 budget plan is not inventory",
+      "base": "current",
+      "expected": {
+        "rollId": "17-91",
+        "evidence": "budget_plan_only",
+        "countAsInventory": false,
+        "countAsReadySpare": false
+      }
+    },
+    {
+      "id": "ADAPTER_001",
+      "title": "current incomplete maps to existing card safely",
+      "base": "current",
+      "expected": {
+        "judgment": "要確認",
+        "className": "is-check",
+        "useEndDate": "",
+        "onlineRoleName": "#17-89",
+        "nextCandidateName": "#17-90",
+        "reason": "17-89のカリバ累計が未確認",
+        "action": "現在の累計直数を確認"
+      }
+    },
+    {
+      "id": "REGRESSION_001",
+      "title": "#16 remains on legacy path",
+      "input": {
+        "stand": "#16",
+        "phaseCEnabledStands": [
+          "#17"
+        ]
+      },
+      "expected": {
+        "usePhaseC": false,
+        "useLegacy": true
+      }
+    }
+  ]
+}
