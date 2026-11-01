@@ -161,3 +161,93 @@ workshop boardベースライン:
 - today taskの固定mediumとは優先度の意味が異なる可能性があるため、Phase C導入で無断統一しない
 
 このベースラインとの差分はWork実ブラウザ検証時に確認する。
+
+
+## 10. #17 adapter interface
+
+既存 `getThreeSetForecastItem()` のcard modelへ合わせる。
+
+推奨:
+```js
+function getPhaseCThreeSetForecastItem(standKey, allRoles, phaseCResult) {
+  // #17 only
+}
+```
+
+返却:
+```js
+{
+  standKey: "17",
+  judgment: "維持可能" | "不足見込み" | "要確認" | "データ不足",
+  className: "is-maintainable" | "is-shortage" | "is-check" | "is-missing",
+
+  useEndDate: "", // exchangeDate confirmed時だけ入れる
+  onlineRoleName: "#17-89",
+  nextCandidateName: "#17-90",
+
+  reason: "17-89のカリバ累計が未確認",
+  action: "現在の累計直数を確認",
+
+  phaseC: true,
+  phaseCResult: "normal" | "shortage" | "incomplete",
+  evidenceState: {},
+  additionalReasons: [],
+  advisories: []
+}
+```
+
+### useEndDate
+- Phase C exchangeDateがconfirmedの時だけセット。
+- unknownなら空文字。
+- legacy useStart+3か月を代入しない。
+
+### nextCandidateName
+- 実績ステータスから明確な候補があれば表示可。
+- 現行#17は17-90（新品予備（組替可能））を候補表示可。
+- 候補表示=ready確定ではない。
+
+### judgment mapping
+- normal -> 維持可能 / is-maintainable
+- shortage -> 不足見込み / is-shortage
+- incomplete -> 要確認 / is-check
+- core入力自体を構成不能 -> データ不足 / is-missing
+
+### reason/action
+`phase-c-ui-message-map-20261101.md` のprimary reason mapを使用。
+
+## 11. 呼出し境界
+
+既存 `getThreeSetForecastItem(standKey, allRoles)` の入口で:
+
+```js
+if (String(standKey) === "17" && phaseCAdapterAvailable()) {
+  return getPhaseCThreeSetForecastItem(...);
+}
+return legacyGetThreeSetForecastItem(...);
+```
+
+実際の実装では既存関数名・構造に合わせる。
+大規模関数分割を目的にしない。
+
+## 12. fallback
+
+Phase C module読み込み失敗時:
+- #17を黙ってlegacy「維持可能」へ落とさない。
+- 検証段階では #17 = データ不足 / Phase C読込失敗 を優先。
+- 他スタンドはlegacy維持。
+
+本番導入時のfallback方針は実ブラウザ検証後に決定。
+
+## 13. DOM変更
+
+初期adapterでは既存card fieldsだけで表示可能。
+新DOM必須ではない。
+
+追加evidence詳細は後。
+まず:
+- judgment
+- reason
+- action
+- nextCandidate
+- confirmed exchangeDate only
+で検証する。
