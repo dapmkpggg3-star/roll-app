@@ -29,6 +29,7 @@ UIの主reasonにはしない。
 | PRODUCTION_OR_CALIBER_PLAN_AFTER_2026_12_10 | 12/10より先の使用計画未接続 |
 | MACHINING_TYPE_UNKNOWN | 加工区分が判定に必須な場面で未確認 |
 | READINESS_UNKNOWN | ready状態を判定できない |
+| THREE_SET_STATE_CONFLICT | 3セット数・ONLINE/USED等の状態構成が不正で予測継続不可 |
 | EXCHANGE_DATE_UNKNOWN | **使用禁止。NEXT_EXCHANGE_DATE_UNKNOWNへ統一** |
 
 ## 3. shortage reasons
