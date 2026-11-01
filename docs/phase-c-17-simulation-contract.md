@@ -17,7 +17,7 @@
 
 `shortage > incomplete > normal`
 
-つまり、実累計など一部がunknownでも、必要日に予備なし・改削戻り遅延・組替期限超過などが既知なら `shortage` を返す。径下限は現行資料で290mm/292mmの競合があるため、閾値依存判定は下記ルール競合の扱いに従う。
+つまり、実累計など一部がunknownでも、必要日に予備なし・改削戻り遅延・組替期限超過などが既知なら `shortage` を返す。#17の年間見通しでは290mmを検討基準として使用する。ただし本番StandMasterの登録値292mmは変更せず、予測基準と本番マスタ値を別項目として保持する。
 
 ## 2. 入力の根拠区分
 
@@ -28,18 +28,16 @@
 - `planned`: 計画値。実績へ昇格させない
 - `unknown`: 未確認。0へ変換しない
 
-## 3. #17 固定ルールとルール競合
+## 3. #17 固定ルールと本番マスタとの差
 
 - 対象3セット: 17-88 / 17-89 / 17-90
+- 年間見通しの検討基準: **改削後290mm以上**。17-88 / 17-89 / 17-90の3本に適用する。
+- 本番StandMasterの#17廃却径登録は292mmのまま維持する。Phase Cの検討基準290mmを理由に本番マスタを書き換えない。
+- 予測ロジックでは `forecastMinimumDiameterMm=290` と `standMasterScrapDiameterMm=292` を別項目として保持し、意味を混同しない。
 - 改削期間: 約25日。これは戻り予定計算のルール値であり、実搬入日が確認できれば実績を優先する。
 - 通常改削とフラット加工は別イベント。
 - 実測径に既に含まれた減径量を再度差し引かない。
-- **廃却径は現時点で確定扱いしない。** 2026-11-01のライブ読取りでは StandMaster!#17 が292mm、16,17履歴表の#17見出しが290mmで競合している。
-- 290mm/292mmのどちらかをコードへハードコードしない。
-- 径が290mm未満なら、どちらのルールでも下限未満なので shortage を確定できる。
-- 径が290mm以上292mm未満なら、廃却径ルールが解消するまで `incomplete` とする。
-- 径が292mm以上なら径下限だけは両候補を満たすが、他の根拠不足があれば `incomplete` のまま。
-- このルール競合を他スタンドへ自動展開しない。
+- 290mm基準を他スタンドへ自動展開しない。
 
 ## 4. 入力データ契約
 
@@ -52,9 +50,9 @@
   horizonEnd: "YYYY-MM-DD",
 
   rules: {
-    discardDiameterMm: null,
-    discardDiameterCandidatesMm: [290, 292],
-    discardDiameterEvidence: "conflict",
+    forecastMinimumDiameterMm: 290,
+    standMasterScrapDiameterMm: 292,
+    diameterRuleScope: "#17 annual forecast only",
     machiningLeadDays: 25
   },
 
@@ -143,7 +141,7 @@
 
 最低限、次を検出する。
 
-- `DIAMETER_BELOW_ALL_CANDIDATE_LIMITS`: 交換時の確定径が290mm未満で、競合する290/292mmのどちらでも下限未満。
+- `DIAMETER_BELOW_FORECAST_MINIMUM`: 交換時に使用予定ロールの確定径が年間見通し基準290mm未満。
 - `NO_READY_SPARE`: 必要日に使用可能な予備が確定していない、かつ「存在しない」ことが既知。
 - `RETURN_OVERDUE`: 必要日より後まで改削戻りが確定して遅れる。
 - `ASSEMBLY_OVERDUE`: 必要日より後まで組替完了が確定して遅れる。
@@ -161,7 +159,6 @@
 - `MACHINING_TYPE_UNKNOWN`
 - `READINESS_UNKNOWN`
 - `EXCHANGE_DATE_UNKNOWN`
-- `DISCARD_DIAMETER_RULE_CONFLICT`
 
 17-89の2026-10-14開始サイクルのカリバ別実累計は、2026-11-01時点で既存資料から確認できていないため、実装時の現行fixtureでは `CALIBER_ACTUAL_USAGE_UNKNOWN` を理由に `incomplete` になること。
 
@@ -177,16 +174,16 @@
 ## 10. 必須テスト
 
 1. 17-89: 実累計unknown、既知shortageなし → `incomplete`
-2. 廃却径ルール競合中でも確定径289.9mm → `shortage`
-3. 確定径291.0mm、他の不足なし → `incomplete` + `DISCARD_DIAMETER_RULE_CONFLICT`
-4. 実累計unknownでも必要日にready spare不在が確定 → `shortage`
-5. 必要日より改削戻りが遅いことが確定 → `shortage`
-6. 必要日より組替完了が遅いことが確定 → `shortage`
-7. 廃却径ルール解消済み、全根拠確認済み、径が確定下限以上・予備あり・期限内 → `normal`
-8. 改削後実測径320.11mm + 実績減径2.00mmを入力しても318.11mmへ再減算しない
-9. planned 59 shift をactual usageとして扱わない
-10. unknownを0として扱わない
-11. #17の廃却径候補を他スタンドへ適用しない
+2. 年間見通し基準290mmに対して確定径289.9mm → `shortage`
+3. 実累計unknownでも必要日にready spare不在が確定 → `shortage`
+4. 必要日より改削戻りが遅いことが確定 → `shortage`
+5. 必要日より組替完了が遅いことが確定 → `shortage`
+6. 全根拠確認済み・径>=290・予備あり・期限内 → `normal`
+7. 改削後実測径320.11mm + 実績減径2.00mmを入力しても318.11mmへ再減算しない
+8. planned 59 shift をactual usageとして扱わない
+9. unknownを0として扱わない
+10. #17の290mm年間見通し基準を他スタンドへ適用しない
+11. Phase C実装やテストがStandMasterの292mm登録値を自動変更しない
 
 ## 11. 実装境界
 
@@ -203,7 +200,7 @@
 - 17-89の2.00mm減径は 2026/4/16使用終了 → 5/18搬出 → 7/10搬入 → 320.11mm → 10/14次使用 のサイクルに対応確認済み。
 - 加工実施日・測定日・通常改削/フラット区分は未確認。
 - 17-89現行サイクルのカリバ別実累計は未確認。
-- 2026-11-01ライブ読取りで、#17廃却径は StandMaster=292mm と 16,17履歴表=290mm の競合を確認。解消までは単一値として確定しない。
+- 年間見通しでは17-88/89/90の検討基準290mmを使用する一方、StandMasterの#17登録は292mmのまま。本番マスタは変更しない。
 - 本番mainの確認済み基点: aacf5b8
 - PR #14は未マージ。
 - main / 本番GAS / 実業務Sheetsは変更しない。
