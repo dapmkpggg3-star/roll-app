@@ -231,3 +231,13 @@ Roles:
 - since 2024: 10 cycles, 50–80 days, average 64.3, median 64
 - app +25 days is temporary inbound display only
 - historical 64/80 are scenarios, not confirmed due dates
+
+
+## 9. Three-set state machine
+
+`docs/phase-c-17-three-set-state-machine-20261101.md`
+- NEW_READY + USED の組替同時遷移
+- NEW_INSTALLED→ONLINE / ONLINE→USED
+- REWORK_READY→REWORKING→NEW_READY
+- actualとsimulatedを分離
+- THREE_SET_STATE_CONFLICT
