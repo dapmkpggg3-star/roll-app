@@ -1,0 +1,82 @@
+const CACHE_NAME = 'roll-app-v67-input-checks';
+const CACHE_PREFIX = 'roll-app-';
+const urlsToCache = [
+  '/roll-app/',
+  '/roll-app/index.html',
+  '/roll-app/manifest.json',
+  '/roll-app/404.html'
+];
+
+// Service Worker インストール
+function deleteOldCaches() {
+  return caches.keys().then(cacheNames => Promise.all(
+    cacheNames
+      .filter(cacheName => cacheName.startsWith(CACHE_PREFIX) && cacheName !== CACHE_NAME)
+      .map(cacheName => {
+        console.log('Deleting old cache:', cacheName);
+        return caches.delete(cacheName);
+      })
+  ));
+}
+
+self.addEventListener('install', event => {
+  event.waitUntil(
+    deleteOldCaches()
+      .then(() => caches.open(CACHE_NAME))
+      .then(cache => {
+        console.log('Cache opened');
+        return cache.addAll(urlsToCache).catch(err => {
+          console.log('Cache addAll error:', err);
+          // Some resources may fail to cache, continue anyway
+        });
+      })
+  );
+  self.skipWaiting();
+});
+
+// Service Worker アクティベーション
+self.addEventListener('activate', event => {
+  event.waitUntil(
+    deleteOldCaches()
+  );
+  self.clients.claim();
+  // 自動更新: すべてのクライアントに更新を通知
+  self.clients.matchAll().then(clients => {
+    clients.forEach(client => {
+      client.postMessage({ type: 'SW_UPDATED' });
+    });
+  });
+});
+
+// ネットワークリクエストのハンドリング - 常にネットワーク優先
+self.addEventListener('fetch', event => {
+  const url = new URL(event.request.url);
+  const staticPath = url.pathname === '/roll-app/' || /\.(?:html|js|css|json|png|svg|ico)$/.test(url.pathname);
+  if (event.request.method === 'GET' && url.origin === self.location.origin && staticPath) {
+    event.respondWith(
+      fetch(event.request)
+        .then(response => {
+          // 成功したらキャッシュに保存（オプション）
+          if (response.status === 200) {
+            const responseClone = response.clone();
+            caches.open(CACHE_NAME).then(cache => {
+              cache.put(event.request, responseClone);
+            });
+          }
+          return response;
+        })
+        .catch(() => {
+          // ネットワークエラー時はキャッシュから返す
+          return caches.match(event.request)
+            .then(response => response || caches.match('/roll-app/404.html'));
+        })
+    );
+  }
+});
+
+// メッセージハンドリング
+self.addEventListener('message', event => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+});

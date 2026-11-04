@@ -1,0 +1,1569 @@
+const SHEETS_ENDPOINT = globalThis.ROLL_APP_CONFIG && globalThis.ROLL_APP_CONFIG.apiEndpoint || '';
+const DELETED_ROLE_IDS_KEY = 'deletedRoleIds';
+const LAST_SUCCESSFUL_SYNC_COUNT_KEY = 'lastSuccessfulSyncRoleCount';
+const SYNC_COUNT_DROP_ABORT_RATIO = 0.3;
+let syncDiagnosticRemoteRoles = null;
+let syncContentVerification = { phase: 'unknown', snapshot: null, checkedAt: '', error: '' };
+let workshopCompletionClient = null;
+
+function isWorkshopCompletionEnabled() {
+    return globalThis.ROLL_APP_CONFIG && globalThis.ROLL_APP_CONFIG.workshopCompletion === 'validation';
+}
+
+async function completeWorkshopFromStatusEdit(input, assertFormUnchanged) {
+    if (!isWorkshopCompletionEnabled()) return { handled: false };
+    if (isSyncing) throw new Error('同期中です。完了してから更新してください。');
+    const session = captureSyncSession();
+    if (!globalThis.RollWorkshopClient) throw new Error('工作連携の読込みが不足しています。再読込みしてください。');
+    isSyncing = true;
+    setSyncButtonBusy(true);
+    setSyncContentPhase('checking');
+    setSyncMessage('工作完了を保存し、表への反映を確認しています。しばらくお待ちください。');
+    try {
+        // A new controller per edit keeps form checks local to this operation;
+        // the durable request itself survives reload in account-bound storage.
+        workshopCompletionClient = RollWorkshopClient.create({
+            captureSession: () => session,
+            owner: () => RollAuth.currentUser() && RollAuth.currentUser().id,
+            storage: localStorage,
+            localSnapshot: () => { assertFormUnchanged(); return syncContentSnapshot(roles); },
+            snapshot: list => syncContentSnapshot(list.map(normalizeRole)),
+            makeId: () => 'workshop-' + crypto.randomUUID(),
+            call: async payload => {
+                const controller = new AbortController();
+                // Live validation needed over 30 seconds for both roll writes,
+                // formula recalculation and view refresh. A timeout still keeps
+                // the durable request for safe confirmation on the next attempt.
+                const timeout = setTimeout(() => controller.abort(), 120000);
+                try {
+                    const response = await rollApiFetch(SHEETS_ENDPOINT, { method: 'POST',
+                        body: JSON.stringify(payload), signal: controller.signal });
+                    const data = await readJsonResponse(response, '工作完了確認');
+                    session.assertCurrent();
+                    if (!data || data.success !== true || !data.result) throw new Error('工作の保存結果を確認できません。');
+                    return data.result;
+                } finally { clearTimeout(timeout); }
+            },
+            accept: snapshot => {
+                assertFormUnchanged();
+                roles = snapshot.roles.map(normalizeRole);
+                saveLocalRoles();
+                setSyncDiagnosticRemoteRoles(roles);
+                markSyncContentVerified(roles);
+                saveLastSyncAt();
+            }
+        });
+        const result = await workshopCompletionClient.complete(input);
+        session.assertCurrent();
+        assertFormUnchanged();
+        return result;
+    } catch (error) {
+        if (session.isCurrent()) {
+            setSyncContentPhase('unknown', error.message);
+            setSyncMessage(error.message, true);
+        }
+        throw error;
+    } finally {
+        isSyncing = false;
+        workshopCompletionClient = null;
+        if (session.isCurrent() && typeof invalidateFormalWorkshopBoard === 'function') invalidateFormalWorkshopBoard();
+        if (session.isCurrent() && syncContentVerification.phase === 'checking') setSyncContentPhase('unknown');
+        setSyncButtonBusy(false);
+        // A queued ordinary WRITE must not race the unfinished assembly. The
+        // user can retry the same status edit; generic sync stays explicit.
+        isSyncQueued = false;
+    }
+}
+
+// Bind a whole read/save/confirmation workflow to the login that started it.
+// The fallback supports isolated tests; actual API calls still require RollAuth.
+function captureSyncSession() {
+    return globalThis.RollAuth && typeof RollAuth.captureSession === 'function'
+        ? RollAuth.captureSession()
+        : { isCurrent: () => true, assertCurrent() {} };
+}
+
+function syncContentSnapshot(roleList) {
+    return stableStringify(getSortedVerificationSnapshots(roleList));
+}
+
+function markSyncContentVerified(roleList) {
+    syncContentVerification = { phase: 'verified', snapshot: syncContentSnapshot(roleList),
+        checkedAt: new Date().toISOString(), error: '' };
+    refreshSyncContentDisplay();
+}
+
+function setSyncContentPhase(phase, error = '') {
+    syncContentVerification = { ...syncContentVerification, phase, error };
+    refreshSyncContentDisplay();
+}
+
+function refreshSyncContentDisplay() {
+    if (typeof updateSyncStatusBadge === 'function') updateSyncStatusBadge();
+    updateLastSyncTimeDisplay();
+}
+
+function getSyncContentState() {
+    const state = syncContentVerification;
+    const local = getLocalRolesForDiagnostic();
+    const pendingIds = new Set(getDeletedRoleIds());
+    if (state.snapshot !== null) {
+        const oldRows = JSON.parse(state.snapshot);
+        const baseline = new Map(oldRows.map(row => [row.id, stableStringify(row)]));
+        const current = new Map(getSortedVerificationSnapshots(local).map(row => [row.id, stableStringify(row)]));
+        new Set([...baseline.keys(), ...current.keys()]).forEach(id => {
+            if (baseline.get(id) !== current.get(id)) pendingIds.add(id);
+        });
+    }
+    const pendingCount = state.snapshot === null ? null : pendingIds.size;
+    return { ...state, pendingCount,
+        verified: state.phase === 'verified' && pendingCount === 0
+            && syncContentSnapshot(local) === state.snapshot };
+}
+
+function getOnlineAssignmentAnomalies(roleList) {
+    if (!window.RollOnlineSafety) return [];
+    return window.RollOnlineSafety.diagnoseAllStandOnlineStates(roleList)
+        .filter(item => item.roleCount > 0
+            && (item.onlineState !== 'normal' || item.threeSetOnlineState === 'outside'));
+}
+
+function reportOnlineAssignmentAnomalies(roleList, contextLabel = '同期データ') {
+    const anomalies = getOnlineAssignmentAnomalies(roleList);
+    if (anomalies.length === 0) return [];
+    const details = anomalies
+        .map(item => `#${item.standKey}st ${item.threeSetOnlineLabel || item.onlineLabel}（オンライン${item.onlineCount}本／3セット対象${item.activeThreeSetCount}本）`)
+        .join('、');
+    setSyncMessage(`${contextLabel}にオンライン異常があります。${details}。自動修正せず、手動で確認してください。`, true);
+    console.warn('ONLINE_ASSIGNMENT_ANOMALY', { contextLabel, anomalies });
+    return anomalies;
+}
+let standMasterRows = [];
+let standMasterByStand = new Map();
+let lastStandMasterFetchAt = null;
+let lastGasSaveDebug = null;
+let lastSavedRemoteRoleCount = null;
+let isSyncQueued = false;
+const STATUS_DEBUG_ROLE_NAME = '#11-44';
+
+function parseStandRoleNumber(value) {
+    const text = String(value || '').trim();
+    const match = text.match(/#?\s*(\d+)(?:\s*-\s*(\d+))?/);
+
+    if (!match) {
+        return {
+            stand: Number.POSITIVE_INFINITY,
+            role: Number.POSITIVE_INFINITY,
+            text
+        };
+    }
+
+    return {
+        stand: Number(match[1]),
+        role: match[2] ? Number(match[2]) : 0,
+        text
+    };
+}
+
+function compareStandRoleNames(aName, bName) {
+    const a = parseStandRoleNumber(aName);
+    const b = parseStandRoleNumber(bName);
+
+    if (a.stand !== b.stand) {
+        return a.stand - b.stand;
+    }
+
+    if (a.role !== b.role) {
+        return a.role - b.role;
+    }
+
+    return a.text.localeCompare(b.text, 'ja');
+}
+
+function compareRolesByStandRole(a, b) {
+    return compareStandRoleNames(a && a.name, b && b.name);
+}
+
+function sortRolesByStandRole(roleList) {
+    return (Array.isArray(roleList) ? roleList : []).slice().sort(compareRolesByStandRole);
+}
+
+function normalizeStandMasterKey(value) {
+    const parsed = parseStandRoleNumber(value);
+    return Number.isFinite(parsed.stand) ? String(parsed.stand) : '';
+}
+
+function normalizeStandMasterNumericValue(value) {
+    if (value === undefined || value === null || String(value).trim() === '') {
+        return '';
+    }
+
+    const numericValue = Number(value);
+    return Number.isFinite(numericValue) ? numericValue : '';
+}
+
+function normalizeStandMasterRow(row) {
+    const stand = String(row && row.stand !== undefined && row.stand !== null ? row.stand : '').trim();
+
+    return {
+        stand,
+        standKey: normalizeStandMasterKey(stand),
+        newDiameter: normalizeStandMasterNumericValue(row && row.newDiameter),
+        scrapDiameter: normalizeStandMasterNumericValue(row && row.scrapDiameter),
+        leadTimeMonths: normalizeStandMasterNumericValue(row && row.leadTimeMonths)
+    };
+}
+
+function setStandMasterRows(rows) {
+    const normalizedRows = (Array.isArray(rows) ? rows : [])
+        .map(normalizeStandMasterRow)
+        .filter(row => row.standKey !== '')
+        .sort((a, b) => Number(a.standKey) - Number(b.standKey));
+
+    standMasterRows = normalizedRows;
+    standMasterByStand = new Map(normalizedRows.map(row => [row.standKey, row]));
+    return standMasterRows;
+}
+
+function getStandMaster(standKey) {
+    const key = normalizeStandMasterKey(standKey);
+    return key ? (standMasterByStand.get(key) || null) : null;
+}
+
+function isRemoteConfigured() {
+    return SHEETS_ENDPOINT.trim().length > 0;
+}
+
+function normalizeRoleIdForDelete(id) {
+    if (id === undefined || id === null) {
+        return '';
+    }
+
+    return String(id).trim();
+}
+
+function getRollDebugSnapshot(role) {
+    if (!role) {
+        return null;
+    }
+
+    return {
+        id: role.id,
+        name: role.name,
+        status: role.status
+    };
+}
+
+function findRollDebugIndex(roleList, roleName = '#11-44') {
+    return (Array.isArray(roleList) ? roleList : []).findIndex(role => String(role.name || '') === roleName);
+}
+
+function getRollDebugSlice(roleList, startIndex, count = 5) {
+    if (!Array.isArray(roleList) || startIndex < 0) {
+        return [];
+    }
+
+    return roleList.slice(startIndex, startIndex + count).map(getRollDebugSnapshot);
+}
+
+function isRoleNameBlank(role) {
+    return String(role && role.name !== undefined && role.name !== null ? role.name : '').trim() === '';
+}
+
+function getBlankNameRoleDiagnostics(roleList) {
+    return (Array.isArray(roleList) ? roleList : [])
+        .filter(isRoleNameBlank)
+        .map(role => ({
+            id: role && role.id,
+            status: role && role.status,
+            updatedAt: role && role.updatedAt
+        }));
+}
+
+function parseStoredJsonArray(key) {
+    try {
+        const value = JSON.parse(localStorage.getItem(key) || '[]');
+        return Array.isArray(value) ? value : [];
+    } catch (error) {
+        console.error(`parseStoredJsonArray error: ${key}`, error);
+        return [];
+    }
+}
+
+function getStoredRolesSnapshot() {
+    return localStorage.getItem('roles') || '[]';
+}
+
+function getStoredDeletedRoleIdsSnapshot() {
+    return localStorage.getItem(DELETED_ROLE_IDS_KEY) || '[]';
+}
+
+function getLocalRolesFromSnapshot(snapshot) {
+    return parseStoredJsonArrayFromText(snapshot).map(normalizeRole);
+}
+
+function parseStoredJsonArrayFromText(text) {
+    try {
+        const value = JSON.parse(text || '[]');
+        return Array.isArray(value) ? value : [];
+    } catch (error) {
+        console.error('parseStoredJsonArrayFromText error:', error);
+        return [];
+    }
+}
+
+function getLocalStorageSyncSignature() {
+    return stableStringify({
+        roles: parseStoredJsonArrayFromText(getStoredRolesSnapshot()),
+        deletedRoleIds: parseStoredJsonArrayFromText(getStoredDeletedRoleIdsSnapshot())
+            .map(normalizeRoleIdForDelete)
+            .filter(id => id !== '')
+            .sort()
+    });
+}
+
+function logStatusDebug(label, roleList, roleName = STATUS_DEBUG_ROLE_NAME) {
+    const role = (Array.isArray(roleList) ? roleList : []).find(item => String(item && item.name || '') === roleName);
+
+    console.log(`${label}:\n${roleName}\n${role ? role.status : 'NOT_FOUND'}`);
+}
+
+function getDeletedRoleIds() {
+    return Array.from(new Set(
+        parseStoredJsonArray(DELETED_ROLE_IDS_KEY)
+            .map(normalizeRoleIdForDelete)
+            .filter(id => id !== '')
+    ));
+}
+
+function setDeletedRoleIds(ids) {
+    const normalizedIds = Array.from(new Set(
+        (Array.isArray(ids) ? ids : [])
+            .map(normalizeRoleIdForDelete)
+            .filter(id => id !== '')
+    ));
+
+    localStorage.setItem(DELETED_ROLE_IDS_KEY, JSON.stringify(normalizedIds));
+    return normalizedIds;
+}
+
+function getLastSuccessfulSyncCount() {
+    const count = Number(localStorage.getItem(LAST_SUCCESSFUL_SYNC_COUNT_KEY));
+
+    if (Number.isFinite(count) && count > 0) {
+        return count;
+    }
+
+    try {
+        const previousRoles = JSON.parse(localStorage.getItem('roles_backup_before_sync') || '[]');
+        return Array.isArray(previousRoles) && previousRoles.length > 0 ? previousRoles.length : 0;
+    } catch (error) {
+        console.error('getLastSuccessfulSyncCount error:', error);
+        return 0;
+    }
+}
+
+function saveLastSuccessfulSyncCount(count) {
+    if (!Number.isFinite(count) || count < 0) {
+        return;
+    }
+
+    localStorage.setItem(LAST_SUCCESSFUL_SYNC_COUNT_KEY, String(count));
+}
+
+function getSyncCountBaseline(counts) {
+    const validCounts = counts.filter(count => Number.isFinite(count) && count > 0);
+    return validCounts.length > 0 ? Math.max(...validCounts) : 0;
+}
+
+function shouldAbortForSyncCountDrop(sendCount, baselineCount) {
+    if (!Number.isFinite(sendCount) || sendCount <= 0) {
+        return true;
+    }
+
+    if (!Number.isFinite(baselineCount) || baselineCount <= 0) {
+        return false;
+    }
+
+    return (baselineCount - sendCount) / baselineCount >= SYNC_COUNT_DROP_ABORT_RATIO;
+}
+
+function warnAndBlockUnsafeSyncCount(sendCount, baselineCount) {
+    if (!Number.isFinite(sendCount) || sendCount <= 0) {
+        alert('同期を中止しました。0件のデータ送信は禁止されています。データ消失防止のため確認してください。');
+        setSyncMessage('同期を中止しました。0件送信は禁止されています。', true);
+        return true;
+    }
+
+    if (shouldAbortForSyncCountDrop(sendCount, baselineCount)) {
+        alert(`同期を中止しました。送信件数が大幅に減っています（${baselineCount}件→${sendCount}件）。データ消失防止のため確認してください。`);
+        setSyncMessage('同期を中止しました。送信件数が大幅に減っています。', true);
+        return true;
+    }
+
+    return false;
+}
+
+function formatSyncDiagnosticCount(count) {
+    return Number.isFinite(count) ? String(count) : '未取得';
+}
+
+function normalizeGasSaveDebug(debug) {
+    if (!debug || typeof debug !== 'object') {
+        return null;
+    }
+
+    return {
+        source: debug.source || '',
+        receivedRoleCount: Number.isFinite(Number(debug.receivedRoleCount)) ? Number(debug.receivedRoleCount) : null,
+        writtenRoleCount: Number.isFinite(Number(debug.writtenRoleCount)) ? Number(debug.writtenRoleCount) : null,
+        savedAt: debug.savedAt || ''
+    };
+}
+
+function formatDebugCount(count) {
+    return Number.isFinite(count) ? String(count) : '未取得';
+}
+
+function getSyncSaveDebugText(savedRemoteRoleCount = lastSavedRemoteRoleCount) {
+    const debug = normalizeGasSaveDebug(lastGasSaveDebug);
+
+    return [
+        `GAS受信件数: ${formatDebugCount(debug ? debug.receivedRoleCount : null)}`,
+        `GAS書込件数: ${formatDebugCount(debug ? debug.writtenRoleCount : null)}`,
+        `保存後取得件数: ${formatDebugCount(savedRemoteRoleCount)}`
+    ].join(' / ');
+}
+
+function logSyncSaveDebugCounts(savedRemoteRoleCount = lastSavedRemoteRoleCount) {
+    const debug = normalizeGasSaveDebug(lastGasSaveDebug);
+
+    console.info(`GAS受信件数: ${formatDebugCount(debug ? debug.receivedRoleCount : null)}`);
+    console.info(`GAS書込件数: ${formatDebugCount(debug ? debug.writtenRoleCount : null)}`);
+    console.info(`保存後取得件数: ${formatDebugCount(savedRemoteRoleCount)}`);
+}
+
+async function fetchLastGasSaveDebug() {
+    const url = `${SHEETS_ENDPOINT}?action=debug-last-save&t=${Date.now()}`;
+    const response = await rollApiFetch(url, {
+        method: 'GET',
+        cache: 'no-store'
+    });
+    const data = await readJsonResponse(response, 'GAS保存診断取得');
+
+    if (!data || data.success !== true) {
+        const detail = data && data.error ? data.error : 'debug-last-save が取得できませんでした。';
+        throw createSyncError('GAS保存診断取得', detail);
+    }
+
+    lastGasSaveDebug = normalizeGasSaveDebug(data.debug);
+    return lastGasSaveDebug;
+}
+
+function setSyncDiagnosticRemoteRoles(remoteRoles) {
+    syncDiagnosticRemoteRoles = Array.isArray(remoteRoles)
+        ? remoteRoles.map(normalizeRole)
+        : null;
+}
+
+function getLocalRolesForDiagnostic() {
+    return Array.isArray(roles) ? roles.map(normalizeRole) : [];
+}
+
+function getSyncDiagnosticCounts(options = {}) {
+    const localRoles = Array.isArray(options.localRoles)
+        ? options.localRoles.map(normalizeRole)
+        : getLocalRolesForDiagnostic();
+    const remoteRoles = Array.isArray(options.remoteRoles)
+        ? options.remoteRoles.map(normalizeRole)
+        : syncDiagnosticRemoteRoles;
+    const hasRemote = Array.isArray(remoteRoles);
+    const mergedRoles = Array.isArray(options.mergedRoles)
+        ? options.mergedRoles.map(normalizeRole)
+        : (hasRemote ? mergeRemoteAndLocalRoles(remoteRoles, localRoles) : null);
+
+    return {
+        lastSuccessful: getLastSuccessfulSyncCount(),
+        local: localRoles.length,
+        remote: hasRemote ? remoteRoles.length : null,
+        merged: Array.isArray(mergedRoles) ? mergedRoles.length : null,
+        hasRemote
+    };
+}
+
+function getSyncDiagnosticStatus(counts) {
+    const comparableCounts = [counts.local];
+
+    if (counts.hasRemote) {
+        comparableCounts.push(counts.remote);
+    }
+
+    if (Number.isFinite(counts.merged)) {
+        comparableCounts.push(counts.merged);
+    }
+
+    const maxCount = Math.max(...comparableCounts);
+    const minCount = Math.min(...comparableCounts);
+    const diff = maxCount - minCount;
+    const baseline = getSyncCountBaseline([
+        counts.lastSuccessful,
+        Number.isFinite(counts.remote) ? counts.remote : 0
+    ]);
+    const mergedCount = Number.isFinite(counts.merged) ? counts.merged : counts.local;
+    const hasZero = counts.local === 0
+        || (counts.hasRemote && counts.remote === 0)
+        || mergedCount === 0;
+    const hasDangerDrop = shouldAbortForSyncCountDrop(mergedCount, baseline);
+
+    if (hasZero || hasDangerDrop) {
+        return {
+            level: 'danger',
+            statusText: '状態: ⛔ 同期停止',
+            detail: hasZero
+                ? '0件が含まれています。データ消失防止のため同期前に確認してください。'
+                : `30%以上減少しています（${baseline}件→${mergedCount}件）。同期停止対象です。`
+        };
+    }
+
+    const content = getSyncContentState();
+    if (content.phase === 'error') return { level: 'danger', statusText: '状態: 反映未確認', detail: content.error };
+    if (content.phase === 'checking') return { level: 'warning', statusText: '状態: 反映確認中', detail: '保存結果と内容を照合しています' };
+    if (content.verified) return { level: 'normal', statusText: '状態: 反映確認済み', detail: '最終確認時点で日付・状態・履歴を含む内容が一致しています' };
+    return { level: 'warning', statusText: '状態: 未反映・未確認',
+        detail: content.pendingCount === null ? '内容の一致はまだ確認できていません'
+            : `最終確認後の変更: ${content.pendingCount}件。同期して確認してください` };
+
+}
+
+function updateSyncDiagnosticPanel(options = {}) {
+    if (Array.isArray(options.remoteRoles)) {
+        setSyncDiagnosticRemoteRoles(options.remoteRoles);
+    }
+
+    const panel = document.getElementById('sync-diagnostic-panel');
+
+    if (!panel) {
+        return;
+    }
+
+    const counts = getSyncDiagnosticCounts(options);
+    const status = getSyncDiagnosticStatus(counts);
+    const statusEl = document.getElementById('sync-diagnostic-status');
+    const lastEl = document.getElementById('sync-diagnostic-last');
+    const localEl = document.getElementById('sync-diagnostic-local');
+    const remoteEl = document.getElementById('sync-diagnostic-remote');
+    const mergedEl = document.getElementById('sync-diagnostic-merged');
+    const detailEl = document.getElementById('sync-diagnostic-detail');
+
+    panel.classList.remove('sync-diagnostic-normal', 'sync-diagnostic-warning', 'sync-diagnostic-danger');
+    panel.classList.add(`sync-diagnostic-${status.level}`);
+
+    if (statusEl) statusEl.textContent = status.statusText;
+    if (lastEl) lastEl.textContent = counts.lastSuccessful > 0 ? String(counts.lastSuccessful) : '未取得';
+    if (localEl) localEl.textContent = formatSyncDiagnosticCount(counts.local);
+    if (remoteEl) remoteEl.textContent = formatSyncDiagnosticCount(counts.remote);
+    if (mergedEl) mergedEl.textContent = formatSyncDiagnosticCount(counts.merged);
+    if (detailEl) {
+        const saveDebugText = lastGasSaveDebug || Number.isFinite(lastSavedRemoteRoleCount)
+            ? ` / ${getSyncSaveDebugText()}`
+            : '';
+        detailEl.textContent = `${status.detail}${saveDebugText}`;
+    }
+}
+
+function markRoleDeleted(id) {
+    const normalizedId = normalizeRoleIdForDelete(id);
+
+    if (!normalizedId) {
+        return [];
+    }
+
+    return setDeletedRoleIds([...getDeletedRoleIds(), normalizedId]);
+}
+
+function clearDeletedRoleIds(ids) {
+    const clearSet = new Set((Array.isArray(ids) ? ids : [])
+        .map(normalizeRoleIdForDelete)
+        .filter(id => id !== ''));
+
+    if (clearSet.size === 0) {
+        return getDeletedRoleIds();
+    }
+
+    return setDeletedRoleIds(getDeletedRoleIds().filter(id => !clearSet.has(id)));
+}
+
+function isRoleMarkedDeleted(role, deletedRoleIds = getDeletedRoleIds()) {
+    const id = normalizeRoleIdForDelete(role && role.id);
+    return id !== '' && deletedRoleIds.includes(id);
+}
+
+function normalizeCurrentDiameter(value) {
+    if (value === undefined || value === null || String(value).trim() === '') {
+        return '';
+    }
+
+    const numericValue = Number(value);
+    return Number.isFinite(numericValue) ? numericValue : '';
+}
+
+function normalizeCoatingStatusForSync(value, status) {
+    if (typeof normalizeCoatingStatusValue === 'function') {
+        return normalizeCoatingStatusValue(value, status);
+    }
+
+    const normalizedStatus = String(status || '').trim();
+    const normalizedValue = String(value || '').trim();
+
+    if (normalizedStatus !== '新品予備保管') {
+        return '';
+    }
+
+    return ['coated', 'uncoated'].includes(normalizedValue) ? normalizedValue : '';
+}
+
+function setSyncMessage(message, isError = false) {
+    if (isError) setSyncContentPhase('error', message);
+    const syncEl = document.getElementById('sync-message');
+    if (syncEl) {
+        syncEl.textContent = message;
+        syncEl.style.color = isError ? '#b91c1c' : '#047857';
+    }
+}
+
+function looksLikeHtml(text) {
+    const trimmed = String(text || '').trim().toLowerCase();
+    return trimmed.startsWith('<!doctype html') || trimmed.startsWith('<html') || trimmed.includes('<body');
+}
+
+function createSyncError(actionLabel, reason) {
+    return new Error(`${actionLabel}に失敗しました。${reason}`);
+}
+
+async function readJsonResponse(response, actionLabel) {
+    const responseText = await response.text();
+
+    if (!response.ok) {
+        throw createSyncError(
+            actionLabel,
+            `同期先からHTTP ${response.status}が返りました。Apps ScriptのデプロイURL、公開設定、実行ログを確認してください。`
+        );
+    }
+
+    if (looksLikeHtml(responseText)) {
+        throw createSyncError(
+            actionLabel,
+            'JSONではなくHTMLページが返りました。Apps Scriptが「ウェブアプリ」としてデプロイされているか、URLが /exec で終わっているか、アクセス権が「全員」または利用者に許可されているか確認してください。'
+        );
+    }
+
+    try {
+        return JSON.parse(responseText);
+    } catch (error) {
+        console.error('JSON parse error:', error, 'response:', responseText);
+        throw createSyncError(
+            actionLabel,
+            '同期先からJSONとして読めないレスポンスが返りました。Apps Script側でContentService.MimeType.JSONを返しているか確認してください。'
+        );
+    }
+}
+
+function validateFetchResponse(data) {
+    if (!data || data.success !== true || !Array.isArray(data.roles)) {
+        const detail = data && data.error ? `詳細: ${data.error}` : 'roles配列が見つかりません。';
+        throw createSyncError('データ取得', `Apps Scriptから不正なデータ形式が返りました。${detail}`);
+    }
+}
+
+function validateStandMasterFetchResponse(data) {
+    if (!data || data.success !== true || !Array.isArray(data.standMaster)) {
+        const detail = data && data.error ? `詳細: ${data.error}` : 'standMaster配列が見つかりません。';
+        throw createSyncError('StandMaster取得', `Apps Scriptから不正なデータ形式が返りました。${detail}`);
+    }
+}
+
+function validatePlanningExportStatus(data, requestId) {
+    if (!data || data.success !== true || !data.status) {
+        const detail = data && data.error ? `詳細: ${data.error}` : '出力結果を確認できません。';
+        throw createSyncError('月次計画出力', detail);
+    }
+    if (String(data.status.requestId || '') !== String(requestId || '')) {
+        throw createSyncError('月次計画出力', '別の出力結果が返りました。もう一度実行してください。');
+    }
+    if (data.status.state === 'error') {
+        throw createSyncError('月次計画出力', data.status.error || 'Apps Script側でエラーが発生しました。');
+    }
+    return data.status;
+}
+
+async function fetchPlanningExportStatus(requestId) {
+    const url = `${SHEETS_ENDPOINT}?action=fetchPlanningExportStatus&requestId=${encodeURIComponent(requestId)}&t=${Date.now()}`;
+    const response = await rollApiFetch(url, { method: 'GET', cache: 'no-store' });
+    const data = await readJsonResponse(response, '月次計画出力結果の確認');
+    if (data && data.pending === true) return null;
+    return validatePlanningExportStatus(data, requestId);
+}
+
+async function exportPlanningDraft(plan) {
+    if (!isRemoteConfigured()) throw createSyncError('月次計画出力', 'スプレッドシート同期先が設定されていません。');
+    if (!plan || !plan.requestId || !plan.year || !plan.month) {
+        throw createSyncError('月次計画出力', '出力データが不足しています。Excelを読み込み直してください。');
+    }
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
+    try {
+        await rollApiFetch(SHEETS_ENDPOINT, {
+            method: 'POST',
+            mode: 'cors',
+            body: JSON.stringify({ action: 'writePlanningDraft', requestId: plan.requestId, plan }),
+            signal: controller.signal
+        });
+    } finally {
+        clearTimeout(timeoutId);
+    }
+
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+        await new Promise(resolve => setTimeout(resolve, attempt === 0 ? 900 : 600));
+        const status = await fetchPlanningExportStatus(plan.requestId);
+        if (status && status.state === 'complete') return status;
+    }
+    throw createSyncError('月次計画出力', '処理結果の確認が時間内に終わりませんでした。スプレッドシートを確認して、必要なら再出力してください。');
+}
+
+if (typeof globalThis !== 'undefined') {
+    globalThis.RollSheetGateway = {
+        exportPlanningDraft,
+        fetchPlanningExportStatus
+    };
+}
+
+function formatUseStartDateForSync(date) {
+    const pad = number => String(number).padStart(2, '0');
+    return `${date.getFullYear()}/${pad(date.getMonth() + 1)}/${pad(date.getDate())}`;
+}
+
+function normalizeUseStartDateForSync(value) {
+    if (value === undefined || value === null) {
+        return '';
+    }
+
+    if (value instanceof Date && !Number.isNaN(value.getTime())) {
+        return formatUseStartDateForSync(value);
+    }
+
+    const text = String(value).trim();
+
+    if (!text) {
+        return '';
+    }
+
+    const ymdMatch = text.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})$/);
+    if (ymdMatch) {
+        const year = Number(ymdMatch[1]);
+        const month = Number(ymdMatch[2]);
+        const day = Number(ymdMatch[3]);
+        const date = new Date(year, month - 1, day);
+
+        if (
+            date.getFullYear() === year &&
+            date.getMonth() === month - 1 &&
+            date.getDate() === day
+        ) {
+            return formatUseStartDateForSync(date);
+        }
+    }
+
+    const monthNameMatch = text.match(/^([A-Za-z]+)\s+(\d{1,2})(?:,?\s+(\d{4}))?$/);
+    if (monthNameMatch) {
+        const monthIndexes = {
+            jan: 0,
+            feb: 1,
+            mar: 2,
+            apr: 3,
+            may: 4,
+            jun: 5,
+            jul: 6,
+            aug: 7,
+            sep: 8,
+            oct: 9,
+            nov: 10,
+            dec: 11
+        };
+        const monthIndex = monthIndexes[monthNameMatch[1].slice(0, 3).toLowerCase()];
+        const day = Number(monthNameMatch[2]);
+        const year = monthNameMatch[3] ? Number(monthNameMatch[3]) : new Date().getFullYear();
+
+        if (monthIndex !== undefined) {
+            const date = new Date(year, monthIndex, day);
+
+            if (
+                date.getFullYear() === year &&
+                date.getMonth() === monthIndex &&
+                date.getDate() === day
+            ) {
+                return formatUseStartDateForSync(date);
+            }
+        }
+    }
+
+    const parsed = new Date(text);
+    if (!Number.isNaN(parsed.getTime())) {
+        return formatUseStartDateForSync(parsed);
+    }
+
+    return text;
+}
+
+function normalizeRole(role) {
+    const progress = role && role.workProgress && typeof role.workProgress === 'object'
+        ? { ...role.workProgress }
+        : {};
+    const history = Array.isArray(role && role.history)
+        ? role.history.filter(entry => entry && typeof entry === 'object')
+        : [];
+
+    if (role && role.requestSent === true && !progress.vendorSentAt) {
+        progress.vendorSentAt = role.updatedAt || new Date().toISOString();
+    }
+
+    if (typeof WORK_PROGRESS_STEPS !== 'undefined') {
+        WORK_PROGRESS_STEPS.forEach(step => {
+            progress[step.key] = progress[step.key] || '';
+        });
+    }
+
+    const rawStatus = String(role.status || '').trim();
+    const normalizedStatus = typeof normalizeRoleStatusValue === 'function'
+        ? normalizeRoleStatusValue(rawStatus)
+        : (ALLOWED_STATUSES.includes(rawStatus) ? rawStatus : '中古予備（バラシ前）');
+
+    return {
+        ...role,
+        updatedAt: role.updatedAt || new Date().toISOString(),
+        memo: role.memo || '',
+        status: normalizedStatus,
+        coatingStatus: normalizeCoatingStatusForSync(role.coatingStatus, role.status),
+        useStartDate: normalizeUseStartDateForSync(role.useStartDate),
+        useEndDate: typeof normalizeDateInputValue === 'function'
+            ? normalizeDateInputValue(role.useEndDate)
+            : String(role.useEndDate || ''),
+        orderExpectedDeliveryDate: typeof normalizeDateInputValue === 'function'
+            ? normalizeDateInputValue(role.orderExpectedDeliveryDate)
+            : String(role.orderExpectedDeliveryDate || ''),
+        assemblyInstructionDue: typeof normalizeAssemblyInstructionDue === 'function'
+            ? normalizeAssemblyInstructionDue(role.assemblyInstructionDue)
+            : String(role.assemblyInstructionDue || '').trim(),
+        isActiveThreeSet: role && role.isActiveThreeSet === true,
+        nextAssemblyPlanned: role && role.isActiveThreeSet === true && role.nextAssemblyPlanned === true,
+        currentDiameter: normalizeCurrentDiameter(role.currentDiameter),
+        workProgress: progress,
+        history: history,
+        requestSent: role.requestSent === true || Boolean(progress.vendorSentAt)
+    };
+}
+
+function mergeRoleHistory(aHistory, bHistory) {
+    const merged = new Map();
+    [...(aHistory || []), ...(bHistory || [])].forEach(entry => {
+        if (!entry || typeof entry !== 'object') return;
+        const key = [
+            entry.at || '',
+            entry.roleName || '',
+            entry.type || '',
+            entry.before || '',
+            entry.after || ''
+        ].join('|');
+        merged.set(key, entry);
+    });
+
+    return Array.from(merged.values()).sort((a, b) => {
+        return new Date(a.at).getTime() - new Date(b.at).getTime();
+    });
+}
+
+function getRoleMergeKey(role) {
+    if (role && role.id !== undefined && role.id !== null && String(role.id).trim() !== '') {
+        return `id:${String(role.id)}`;
+    }
+
+    return `name:${String(role && role.name ? role.name : '').trim()}`;
+}
+
+function getRoleUpdatedAtTimestamp(role) {
+    const value = role && role.updatedAt;
+    const timestamp = value ? new Date(value).getTime() : NaN;
+    return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+function shouldPreferRemoteRole(remoteRole, localRole) {
+    const remoteTimestamp = getRoleUpdatedAtTimestamp(remoteRole);
+    const localTimestamp = getRoleUpdatedAtTimestamp(localRole);
+
+    if (remoteTimestamp === null) return false;
+    if (localTimestamp === null) return true;
+    return remoteTimestamp > localTimestamp;
+}
+
+function mergeRoleVersions(remoteRole, localRole) {
+    const remoteWins = shouldPreferRemoteRole(remoteRole, localRole);
+    const primarySource = remoteWins ? remoteRole : localRole;
+    const secondarySource = remoteWins ? localRole : remoteRole;
+    const mergedRole = normalizeRole(primarySource);
+    const secondaryRole = normalizeRole(secondarySource);
+    const fallbackFields = [
+        'coatingStatus',
+        'useStartDate',
+        'useEndDate',
+        'orderExpectedDeliveryDate',
+        'assemblyInstructionDue',
+        'isActiveThreeSet',
+        'nextAssemblyPlanned',
+        'currentDiameter',
+        'workProgress',
+        'requestSent'
+    ];
+
+    fallbackFields.forEach(field => {
+        if (!Object.prototype.hasOwnProperty.call(primarySource || {}, field)
+            && Object.prototype.hasOwnProperty.call(secondarySource || {}, field)) {
+            mergedRole[field] = secondaryRole[field];
+        }
+    });
+
+    mergedRole.history = mergeRoleHistory(remoteRole && remoteRole.history, localRole && localRole.history);
+    mergedRole.requestSent = mergedRole.requestSent === true
+        || Boolean(mergedRole.workProgress && mergedRole.workProgress.vendorSentAt);
+
+    return {
+        role: mergedRole,
+        source: remoteWins ? 'remote' : 'local'
+    };
+}
+
+function mergeRemoteAndLocalRoles(remoteRoles, localRoles) {
+    const mergedMap = new Map();
+    const remoteSourceMap = new Map();
+    const deletedRoleIds = getDeletedRoleIds();
+    const seenKeys = new Set();
+    const duplicateKeys = [];
+    const conflictResolutions = [];
+
+    remoteRoles.forEach(role => {
+        const normalized = normalizeRole(role);
+        if (isRoleMarkedDeleted(normalized, deletedRoleIds)) {
+            return;
+        }
+        const key = getRoleMergeKey(normalized);
+        if (seenKeys.has(key)) {
+            duplicateKeys.push({ source: 'remote', key, role: getRollDebugSnapshot(normalized) });
+        }
+        seenKeys.add(key);
+        mergedMap.set(key, normalized);
+        remoteSourceMap.set(key, role);
+    });
+
+    localRoles.forEach(role => {
+        if (!role || !role.name || String(role.name).trim() === '') return;
+        if (isRoleMarkedDeleted(role, deletedRoleIds)) return;
+        const key = getRoleMergeKey(role);
+        const localRole = normalizeRole(role);
+        const remoteRole = mergedMap.get(key);
+        if (remoteRole) {
+            duplicateKeys.push({ source: 'local', key, role: getRollDebugSnapshot(localRole) });
+            const resolution = mergeRoleVersions(remoteSourceMap.get(key) || remoteRole, role);
+            mergedMap.set(key, resolution.role);
+            conflictResolutions.push({
+                key,
+                source: resolution.source,
+                remoteUpdatedAt: remoteRole.updatedAt || '',
+                localUpdatedAt: localRole.updatedAt || ''
+            });
+        } else if (seenKeys.has(key)) {
+            duplicateKeys.push({ source: 'local', key, role: getRollDebugSnapshot(localRole) });
+            mergedMap.set(key, localRole);
+        } else {
+            mergedMap.set(key, localRole);
+        }
+        seenKeys.add(key);
+    });
+
+    const mergedRoles = Array.from(mergedMap.values());
+    console.log('ROLL_DEBUG_MERGE_BEFORE_RETURN', {
+        remoteLength: remoteRoles.length,
+        localLength: localRoles.length,
+        mergedLength: mergedRoles.length,
+        deletedRoleIdsLength: deletedRoleIds.length,
+        duplicateKeys,
+        conflictResolutions
+    });
+    return mergedRoles;
+}
+
+function getMissingLocalRolesAfterMerge(localRoles, mergedRoles) {
+    const mergedKeys = new Set((Array.isArray(mergedRoles) ? mergedRoles : [])
+        .map(role => getRoleMergeKey(normalizeRole(role))));
+
+    return (Array.isArray(localRoles) ? localRoles : [])
+        .filter(role => role && role.name && String(role.name).trim() !== '')
+        .filter(role => !isRoleMarkedDeleted(role))
+        .filter(role => !mergedKeys.has(getRoleMergeKey(normalizeRole(role))))
+        .map(getRollDebugSnapshot);
+}
+
+function assertLocalRolesPreservedForPost(localRoles, rolesToPost) {
+    const missingLocalRoles = getMissingLocalRolesAfterMerge(localRoles, rolesToPost);
+
+    if (missingLocalRoles.length === 0) {
+        return;
+    }
+
+    console.error('ROLL_SYNC_ABORT_LOCAL_ROLES_DROPPED_BEFORE_POST', {
+        missingLocalRoles,
+        localLength: Array.isArray(localRoles) ? localRoles.length : null,
+        postLength: Array.isArray(rolesToPost) ? rolesToPost.length : null
+    });
+    throw createSyncError('同期前データ確認', `Local role missing before POST: ${missingLocalRoles.map(role => role.name || role.id).join(', ')}`);
+}
+
+async function fetchData() {
+    const session = captureSyncSession();
+    if (isSyncing) {
+        isSyncQueued = true;
+        setSyncMessage('同期中のためリモート読み込みを予約しました。');
+        return;
+    }
+
+    if (!isRemoteConfigured()) {
+        setSyncMessage('スプレッドシート同期先が設定されていません。設定を確認してください。', true);
+        return;
+    }
+    setSyncContentPhase('checking');
+    try {
+        const url = `${SHEETS_ENDPOINT}?action=fetch&t=${Date.now()}`;
+        const response = await rollApiFetch(url, {
+            method: 'GET',
+            cache: 'no-store'
+        });
+
+        const data = await readJsonResponse(response, 'データ取得');
+        session.assertCurrent();
+        validateFetchResponse(data);
+        setSyncDiagnosticRemoteRoles(data.roles);
+
+        if (isSyncing) {
+            isSyncQueued = true;
+            setSyncMessage('同期中のためリモート読み込みを予約しました。');
+            return;
+        }
+
+        const deletedRoleIds = getDeletedRoleIds();
+        // A renewed login or reload must not discard edits left on this device.
+        if (localStorage.getItem('roles') && Array.isArray(roles) && roles.length
+            && (syncContentSnapshot(roles) !== syncContentSnapshot(data.roles) || deletedRoleIds.length)) {
+            markSyncContentVerified(data.roles);
+            setSyncMessage('端末内と表の内容に違いがあります。端末内の変更を残しています。同期して確認してください。');
+            renderRoles();
+            return;
+        }
+        roles = data.roles
+            .map(normalizeRole)
+            .filter(role => !isRoleMarkedDeleted(role, deletedRoleIds));
+        fixOnlineDuplicates();
+        saveLocalRoles();
+        const ids = roles.map(r => Number(r.id) || 0);
+        nextId = ids.length > 0 ? Math.max(...ids) + 1 : 1;
+        markSyncContentVerified(data.roles);
+        renderRoles();
+        if (reportOnlineAssignmentAnomalies(roles, 'Google Sheets取得データ').length === 0) {
+            setSyncMessage('スプレッドシートからデータを読み込みました。');
+        }
+    } catch (error) {
+        if (!session.isCurrent()) return false;
+        console.error('loadRemoteRoles error:', error);
+        setSyncMessage((error.message || 'スプレッドシート同期に失敗しました。') + ' ブラウザ内のデータは残っています。', true);
+        renderRoles();
+    }
+}
+
+async function fetchStandMaster() {
+    const session = captureSyncSession();
+    if (!isRemoteConfigured()) {
+        setStandMasterRows([]);
+        return [];
+    }
+
+    try {
+        const url = `${SHEETS_ENDPOINT}?action=fetchStandMaster&t=${Date.now()}`;
+        const response = await rollApiFetch(url, {
+            method: 'GET',
+            cache: 'no-store'
+        });
+
+        const data = await readJsonResponse(response, 'StandMaster取得');
+        session.assertCurrent();
+        validateStandMasterFetchResponse(data);
+        lastStandMasterFetchAt = new Date().toISOString();
+        return setStandMasterRows(data.standMaster);
+    } catch (error) {
+        if (!session.isCurrent()) return standMasterRows;
+        console.error('fetchStandMaster error:', error);
+        setStandMasterRows([]);
+        return standMasterRows;
+    }
+}
+
+function validateRolesSaveStatus(data, requestId) {
+    if (!data || data.success !== true) throw createSyncError('保存結果確認', data && data.error || '保存結果を取得できません。');
+    if (data.pending === true) return null;
+    const status = data.status;
+    if (!status || status.requestId !== requestId) throw createSyncError('保存結果確認', '保存リクエストが一致しません。');
+    if (status.state === 'partial') throw createSyncError('一部未反映', status.error || '管理データは保存済みですが、履歴表への反映が完了していません。');
+    if (status.state === 'error') throw createSyncError('同期', status.error || '保存できませんでした。');
+    if (status.state !== 'complete') throw createSyncError('保存結果確認', '保存結果が未確定です。');
+    return status;
+}
+
+async function waitForRolesSaveStatus(requestId, session = captureSyncSession()) {
+    for (let attempt = 0; attempt < 12; attempt += 1) {
+        session.assertCurrent();
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        session.assertCurrent();
+        const response = await rollApiFetch(`${SHEETS_ENDPOINT}?action=fetchSaveStatus&requestId=${encodeURIComponent(requestId)}&t=${Date.now()}`,
+            { method: 'GET', cache: 'no-store' });
+        const status = validateRolesSaveStatus(await readJsonResponse(response, '保存結果確認'), requestId);
+        session.assertCurrent();
+        if (status) return status;
+    }
+    throw createSyncError('保存結果確認', '保存結果の確認が時間内に終わりませんでした。シートの状態を確認してください。');
+}
+
+async function saveData(roleList = roles, expectedRevision) {
+    const session = captureSyncSession();
+    if (!isRemoteConfigured()) {
+        return false;
+    }
+
+    try {
+        lastSavedRemoteRoleCount = null;
+        const rolesToSend = Array.isArray(roleList) ? roleList.map(normalizeRole) : [];
+        console.log('saveRemoteRoles: Sending data to', SHEETS_ENDPOINT);
+        console.log('SYNC SEND PAYLOAD COUNT', {
+            roles: rolesToSend.length
+        });
+
+        if (rolesToSend.length === 0) {
+            alert('同期を中止しました。0件のデータ送信は禁止されています。データ消失防止のため確認してください。');
+            setSyncMessage('同期を中止しました。0件送信は禁止されています。', true);
+            return false;
+        }
+
+        const blankNameRoles = getBlankNameRoleDiagnostics(rolesToSend);
+        const debugSendIndex = findRollDebugIndex(rolesToSend);
+        console.log('ROLL_DEBUG_SAVE_DATA_BEFORE_POST', {
+            'roles.length': rolesToSend.length,
+            rolesLength: rolesToSend.length,
+            blankNameCount: blankNameRoles.length,
+            blankNameRoles,
+            targetIndex: debugSendIndex,
+            afterTarget5: getRollDebugSlice(rolesToSend, debugSendIndex)
+        });
+
+        if (blankNameRoles.length > 0) {
+            console.error('ROLL_SYNC_ABORT_BLANK_ROLE_NAMES', {
+                'roles.length': rolesToSend.length,
+                rolesLength: rolesToSend.length,
+                blankNameCount: blankNameRoles.length,
+                blankNameRoles
+            });
+            alert(`同期を中止しました。スタンド番号が空のデータが含まれています（${blankNameRoles.length}件）。データ消失防止のため確認してください。`);
+            setSyncMessage(`同期を中止しました。スタンド番号が空のデータが含まれています（${blankNameRoles.length}件）。`, true);
+            return false;
+        }
+
+        if (!expectedRevision) {
+            throw createSyncError('同期', '同期先の更新版を確認できません。Apps Scriptの更新を確認してください。');
+        }
+        const requestId = `roles-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
+        const payload = JSON.stringify({
+            action: 'save', requestId, expectedRevision,
+            roles: rolesToSend
+        });
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+        try {
+            await rollApiFetch(SHEETS_ENDPOINT, {
+                method: 'POST',
+                mode: 'cors',
+                body: payload,
+                signal: controller.signal
+            });
+        } finally {
+            clearTimeout(timeoutId);
+        }
+
+        session.assertCurrent();
+        await waitForRolesSaveStatus(requestId, session);
+        session.assertCurrent();
+        if (globalThis.RollSaveReplayDiagnostic) await RollSaveReplayDiagnostic.afterSave(payload, session);
+        session.assertCurrent();
+
+        try {
+            await fetchLastGasSaveDebug();
+        } catch (debugError) {
+            session.assertCurrent();
+            console.warn('GAS save debug fetch failed:', debugError);
+            lastGasSaveDebug = null;
+        }
+
+        session.assertCurrent();
+        logSyncSaveDebugCounts();
+        updateSyncDiagnosticPanel();
+        return lastGasSaveDebug || true;
+    } catch (error) {
+        console.error('saveRemoteRoles error:', error);
+        throw error;
+    }
+}
+
+async function fetchRemoteRolesForGuard(actionLabel = '同期前データ確認') {
+    const session = captureSyncSession();
+    const url = `${SHEETS_ENDPOINT}?action=fetch&t=${Date.now()}`;
+    const response = await rollApiFetch(url, {
+        method: 'GET',
+        cache: 'no-store'
+    });
+
+    const data = await readJsonResponse(response, actionLabel);
+    session.assertCurrent();
+    validateFetchResponse(data);
+    logStatusDebug('REMOTE_STATUS_BEFORE_NORMALIZE', data.roles);
+    const remoteRoles = data.roles.map(normalizeRole);
+    logStatusDebug('REMOTE_STATUS_AFTER_NORMALIZE', remoteRoles);
+    Object.defineProperty(remoteRoles, 'syncRevision', { value: data.revision || '' });
+    setSyncDiagnosticRemoteRoles(remoteRoles);
+    return remoteRoles;
+}
+
+function loadRemoteRoles() {
+    return fetchData();
+}
+
+function loadStandMaster() {
+    return fetchStandMaster();
+}
+
+function saveRemoteRoles() {
+    return syncRoles();
+}
+
+let isSyncing = false;
+
+function stableStringify(value) {
+    if (Array.isArray(value)) {
+        return `[${value.map(stableStringify).join(',')}]`;
+    }
+
+    if (value && typeof value === 'object') {
+        return `{${Object.keys(value).sort().map(key => {
+            return `${JSON.stringify(key)}:${stableStringify(value[key])}`;
+        }).join(',')}}`;
+    }
+
+    return JSON.stringify(value ?? '');
+}
+
+function getRoleVerificationSnapshot(role) {
+    const normalized = normalizeRole(role);
+
+    return {
+        id: String(normalized.id ?? ''),
+        name: String(normalized.name ?? ''),
+        status: String(normalized.status ?? ''),
+        coatingStatus: String(normalized.coatingStatus ?? ''),
+        memo: String(normalized.memo ?? ''),
+        currentDiameter: normalized.currentDiameter === '' ? '' : Number(normalized.currentDiameter),
+        useStartDate: String(normalized.useStartDate ?? ''),
+        useEndDate: String(normalized.useEndDate ?? ''),
+        orderExpectedDeliveryDate: String(normalized.orderExpectedDeliveryDate ?? ''),
+        assemblyInstructionDue: String(normalized.assemblyInstructionDue ?? ''),
+        isActiveThreeSet: normalized.isActiveThreeSet === true,
+        nextAssemblyPlanned: normalized.nextAssemblyPlanned === true,
+        updatedAt: String(normalized.updatedAt ?? ''),
+        requestSent: normalized.requestSent === true,
+        workProgress: normalized.workProgress || {},
+        history: Array.isArray(normalized.history) ? normalized.history : []
+    };
+}
+
+function getSortedVerificationSnapshots(roleList) {
+    return roleList
+        .map(getRoleVerificationSnapshot)
+        .sort((a, b) => {
+            const aKey = a.id ? `id:${a.id}` : `name:${a.name}`;
+            const bKey = b.id ? `id:${b.id}` : `name:${b.name}`;
+            return aKey.localeCompare(bKey, 'ja');
+        });
+}
+
+function getFirstRoleVerificationDifference(expectedRole, actualRole) {
+    const fields = Array.from(new Set([
+        ...Object.keys(expectedRole || {}),
+        ...Object.keys(actualRole || {})
+    ])).sort();
+
+    for (const field of fields) {
+        const localValue = expectedRole ? expectedRole[field] : undefined;
+        const remoteValue = actualRole ? actualRole[field] : undefined;
+        if (stableStringify(localValue) !== stableStringify(remoteValue)) {
+            return {
+                role: expectedRole && (expectedRole.name || expectedRole.id) || actualRole && (actualRole.name || actualRole.id) || '',
+                field,
+                local: localValue,
+                remote: remoteValue
+            };
+        }
+    }
+
+    return null;
+}
+
+function verifySavedRoles(expectedRoles, actualRoles) {
+    const expected = getSortedVerificationSnapshots(expectedRoles);
+    const actual = getSortedVerificationSnapshots(actualRoles);
+
+    if (expected.length !== actual.length) {
+        throw createSyncError(
+            '同期後確認',
+            `保存後の件数が一致しません。アプリ:${expected.length}件 / スプレッドシート:${actual.length}件`
+        );
+    }
+
+    for (let index = 0; index < expected.length; index += 1) {
+        if (stableStringify(expected[index]) !== stableStringify(actual[index])) {
+            const roleName = expected[index].name || expected[index].id || `${index + 1}件目`;
+            const difference = getFirstRoleVerificationDifference(expected[index], actual[index]);
+            console.error('SYNC_ROLE_FIELD_MISMATCH', difference);
+            throw createSyncError(
+                '同期後確認',
+                `保存後のデータが一致しません。${JSON.stringify(difference || { role: roleName })}`
+            );
+        }
+    }
+
+    return true;
+}
+
+function setSyncButtonBusy(isBusy) {
+    const button = document.getElementById('syncSheetsBtn');
+
+    if (!button) {
+        return;
+    }
+
+    button.disabled = isBusy;
+    button.textContent = isBusy ? '同期中...' : 'スプレッドシートと同期';
+}
+
+async function syncRoles() {
+    const session = captureSyncSession();
+    if (isSyncing) {
+        isSyncQueued = true;
+        setSyncMessage('同期中です。少し待ってください。');
+        return;
+    }
+
+    isSyncing = true;
+    setSyncContentPhase('checking');
+    setSyncButtonBusy(true);
+
+    try {
+        if (!navigator.onLine) {
+            setSyncMessage('オフラインです。通信を確認してから再度同期してください。', true);
+            return;
+        }
+
+        if (!isRemoteConfigured()) {
+            setSyncMessage('スプレッドシート同期先が設定されていません。設定を確認してください。', true);
+            return;
+        }
+
+        const syncStartRolesSnapshot = getStoredRolesSnapshot();
+        const syncStartLocalStorageSignature = getLocalStorageSyncSignature();
+        const localRoles = getLocalRolesFromSnapshot(syncStartRolesSnapshot);
+        const debugLocalIndex = findRollDebugIndex(localRoles);
+        console.log('ROLL_DEBUG_SYNC_LOCAL_ROLES', {
+            localLength: localRoles.length,
+            targetIndex: debugLocalIndex,
+            afterTarget5: getRollDebugSlice(localRoles, debugLocalIndex)
+        });
+        const previousRoles = parseStoredJsonArray('roles_backup_before_sync').map(normalizeRole);
+        const remoteRoles = await fetchRemoteRolesForGuard();
+        session.assertCurrent();
+        const pendingDeletedRoleIds = getDeletedRoleIds();
+        const remoteRolesAfterPendingDelete = remoteRoles.filter(role => !isRoleMarkedDeleted(role, pendingDeletedRoleIds));
+        const previousRolesAfterPendingDelete = previousRoles.filter(role => !isRoleMarkedDeleted(role, pendingDeletedRoleIds));
+
+        console.log('SYNC GUARD CHECK', {
+            local: localRoles.length,
+            remote: remoteRoles.length,
+            deleted: pendingDeletedRoleIds.length,
+            previous: previousRoles.length
+        });
+
+        if (!Array.isArray(localRoles) || (localRoles.length === 0 && remoteRolesAfterPendingDelete.length > 0)) {
+            alert('アプリ側データが0件のため同期を停止しました。');
+            setSyncMessage('アプリ側データが0件のため同期を停止しました。', true);
+            return;
+        }
+
+        if (remoteRolesAfterPendingDelete.length >= 10 && localRoles.length < remoteRolesAfterPendingDelete.length * 0.2) {
+            alert(
+                `アプリ側データが少なすぎるため同期を停止しました。\nアプリ:${localRoles.length}件\nスプレッドシート:${remoteRolesAfterPendingDelete.length}件`
+            );
+            setSyncMessage('件数差が大きいため同期を停止しました。', true);
+            return;
+        }
+
+        if (previousRolesAfterPendingDelete.length >= 10 && localRoles.length < previousRolesAfterPendingDelete.length * 0.2) {
+            alert(
+                `前回同期前よりデータ件数が急減しています。\n同期を停止しました。\n現在:${localRoles.length}件\n前回:${previousRolesAfterPendingDelete.length}件`
+            );
+            setSyncMessage('前回より件数が急減したため同期を停止しました。', true);
+            return;
+        }
+
+        const mergedRoles = mergeRemoteAndLocalRoles(remoteRoles, localRoles);
+        const lastSuccessfulSyncCount = getLastSuccessfulSyncCount();
+        const syncCountBaseline = getSyncCountBaseline([
+            remoteRoles.length,
+            previousRoles.length,
+            lastSuccessfulSyncCount
+        ]);
+
+        console.log('SYNC SEND COUNT CHECK', {
+            send: mergedRoles.length,
+            baseline: syncCountBaseline,
+            remote: remoteRoles.length,
+            local: localRoles.length,
+            previous: previousRoles.length,
+            lastSuccessful: lastSuccessfulSyncCount,
+            deleted: pendingDeletedRoleIds.length
+        });
+        updateSyncDiagnosticPanel({
+            localRoles,
+            remoteRoles,
+            mergedRoles
+        });
+
+        if (warnAndBlockUnsafeSyncCount(mergedRoles.length, syncCountBaseline)) {
+            return;
+        }
+
+        const sortedMergedRoles = sortRolesByStandRole(mergedRoles);
+        const currentLocalStorageSignature = getLocalStorageSyncSignature();
+
+        if (
+            currentLocalStorageSignature !== syncStartLocalStorageSignature
+        ) {
+            isSyncQueued = true;
+            setSyncMessage('同期中に変更が入ったため、最新データで再同期します。');
+            return;
+        }
+
+        assertLocalRolesPreservedForPost(localRoles, sortedMergedRoles);
+        roles = sortedMergedRoles;
+        saveLocalRoles();
+
+        localStorage.setItem('roles_backup_before_sync', JSON.stringify(sortedMergedRoles));
+        localStorage.setItem('roles_backup_before_sync_saved_at', new Date().toISOString());
+
+        setSyncMessage('スプレッドシートと同期中です...');
+
+        const ok = await saveData(sortedMergedRoles, remoteRoles.syncRevision);
+        session.assertCurrent();
+
+        if (ok) {
+            setSyncMessage('保存結果を確認しています...');
+            const savedRemoteRoles = await fetchRemoteRolesForGuard('同期後データ確認');
+            session.assertCurrent();
+            lastSavedRemoteRoleCount = savedRemoteRoles.length;
+            logSyncSaveDebugCounts(lastSavedRemoteRoleCount);
+            verifySavedRoles(mergedRoles, savedRemoteRoles);
+            clearDeletedRoleIds(pendingDeletedRoleIds);
+            saveLastSuccessfulSyncCount(savedRemoteRoles.length);
+            saveLastSyncAt();
+            markSyncContentVerified(savedRemoteRoles);
+            renderRoles();
+            updateSyncDiagnosticPanel({
+                localRoles: roles,
+                remoteRoles: savedRemoteRoles,
+                mergedRoles: roles
+            });
+            if (reportOnlineAssignmentAnomalies(roles, '同期結果').length === 0) {
+                setSyncMessage(getSyncContentState().verified ? 'スプレッドシートへの反映を確認しました。' : '直前の保存は反映済みです。その後の変更が残っています。');
+            }
+            return true;
+        } else {
+            setSyncMessage('スプレッドシートと同期できませんでした。ブラウザ内には保存されています。', true);
+        }
+    } catch (error) {
+        if (!session.isCurrent()) return false;
+        console.error('syncRoles error:', error);
+        setSyncMessage((error.message || 'スプレッドシート同期に失敗しました。') + ' ブラウザ内のデータは残っています。', true);
+        return false;
+    } finally {
+        isSyncing = false;
+        if (session.isCurrent() && syncContentVerification.phase === 'checking') setSyncContentPhase('unknown');
+        refreshSyncContentDisplay();
+        setSyncButtonBusy(false);
+
+        if (!session.isCurrent()) {
+            // Never carry an old queued WRITE across a login boundary. A renewed
+            // login may have queued a read while this save was still settling.
+            isSyncQueued = false;
+            if (globalThis.RollAuth && RollAuth.currentUser()) loadRemoteRoles();
+        } else if (isSyncQueued) {
+            isSyncQueued = false;
+            syncRoles();
+        }
+    }
+}
+
+const LAST_SYNC_KEY = 'lastSyncAt';
+
+function formatLastSyncAt(value) {
+    if (!value) {
+        return '未同期';
+    }
+
+    const date = new Date(value);
+
+    if (Number.isNaN(date.getTime())) {
+        return '未同期';
+    }
+
+    const pad = number => String(number).padStart(2, '0');
+
+    return `${date.getFullYear()}/${pad(date.getMonth() + 1)}/${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
+
+function updateLastSyncTimeDisplay() {
+    const el = document.getElementById('last-sync-time');
+
+    if (!el) {
+        return;
+    }
+
+    const value = syncContentVerification.checkedAt;
+    el.textContent = `最終内容確認: ${value ? formatLastSyncAt(value) : '未確認'}`;
+}
+
+function saveLastSyncAt() {
+    localStorage.setItem(LAST_SYNC_KEY, new Date().toISOString());
+    updateLastSyncTimeDisplay();
+}
+
+document.addEventListener('DOMContentLoaded', updateLastSyncTimeDisplay);

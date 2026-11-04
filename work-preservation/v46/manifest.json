@@ -1,0 +1,404 @@
+{
+  "date": "2026-11-04",
+  "status": "partial_public_preservation",
+  "source_version": 46,
+  "source_commit": "7f414518e94dfc8b835fa0dd7293b6ca587fed67",
+  "public_branch": "work-preserve-v46-20261101",
+  "full_source_location": "Existing owner-private Sites source repository; version 46 remains saved, not deployed.",
+  "original_workspace": "Missing; uncommitted changes from that environment cannot be verified or recovered here.",
+  "recovered_checkout_status": "clean; HEAD matches saved version 46",
+  "excluded_source_paths": [
+    "js/app.js",
+    "test/diameter-scenario.test.js",
+    "test/helpers/workshop-api-fixture.cjs",
+    "test/manual-history-date-validation.gs",
+    "test/manual-history-date-validation.test.js",
+    "test/manual-workshop-validation.gs",
+    "test/roll-history-actual-sync.test.js",
+    "test/work-history-evidence.test.js",
+    "gas/workshop-api.gs"
+  ],
+  "excluded_categories": [
+    "review-data",
+    "review-tools",
+    "dist",
+    "review-source/docs",
+    "review-source/purchase-summary.patch",
+    "Sites configuration"
+  ],
+  "reason": "Public repository; operational records, personnel, real test fixtures and environment identifiers must not be newly published. Excluded files remain in private saved source. No application code was changed.",
+  "files": [
+    {
+      "path": ".gitignore",
+      "sha256": "8ebccbbedeafed52c96c0c0597e7c381e52809e24b2fd1e2c572d8b3bfcd406d"
+    },
+    {
+      "path": ".nojekyll",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "404.html",
+      "sha256": "d093c9205e16b81da2a6f0d7fa8e2df2eb870d5f396144d1ce1d981c62d45e89"
+    },
+    {
+      "path": "README.md",
+      "sha256": "75071fb1b4196537ab35d64300e96c6f37296ae140f2a51f89ee0caf7dd86d48"
+    },
+    {
+      "path": "css/planning-view.css",
+      "sha256": "874bbc1b00fbae0b29737a08fb79813516ce1c3ad04b087a158945f4475bb273"
+    },
+    {
+      "path": "css/styles.css",
+      "sha256": "be1bfba6e835bc24aabd2249d1d0162f725f84e6c09dc8bcbe091384ecae8e0e"
+    },
+    {
+      "path": "gas/workshop-history-port.gs",
+      "sha256": "60fc72b7b52da4cf4597f0dd114772ecee1291c1e54f2b54cf697031351ebe4c"
+    },
+    {
+      "path": "gas/workshop-instruction-store.gs",
+      "sha256": "46f09c5dcfdd96ef8e6f5df99cd1e6d0de0cfa9ba9f3524bd4fc1a1ad2f6f255"
+    },
+    {
+      "path": "gas/workshop-mutation-guard.gs",
+      "sha256": "19a3249ddd7effba05ea98529f352980cbcdbbe3174742fa3235ba23783cd119"
+    },
+    {
+      "path": "gas/workshop-operation-store.gs",
+      "sha256": "7e154f808ed41f114662f306bb04ef46f0e3fbfad5d101f9a26281925d08ef37"
+    },
+    {
+      "path": "gas/workshop-plan-store.gs",
+      "sha256": "81294014934a6fc5321ad66da71898a265e62f7698790f2031f75451bf6dbb15"
+    },
+    {
+      "path": "gas/workshop-roles-port.gs",
+      "sha256": "0303f16dce0c4ba99752e6aee940ee8aab4d1ad7da0f3dd0491943f876086974"
+    },
+    {
+      "path": "gas/workshop-write-guard.gs",
+      "sha256": "d59b27741d377f8f2eda46507fc6a686e88e718841818dc071d4390fed909de5"
+    },
+    {
+      "path": "google-apps-script.gs",
+      "sha256": "7d4100f734b1fd35b56ed8e1c375ed89a4c984b2127f2b1500bc9d196b0377be"
+    },
+    {
+      "path": "index.html",
+      "sha256": "656a68f84ec13195fdeaef1b8b99422685d3654c41443845ccdb659f8992b493"
+    },
+    {
+      "path": "js/csv.js",
+      "sha256": "d6b618ba9b31efab3c9aba4d3b5d0b05919f23a8ea30ed1db72c63abccf42bbc"
+    },
+    {
+      "path": "js/deployment-config.js",
+      "sha256": "3119a012df1adba12e4aac8b9cbafde100d76ae1af1815f44cd42edda06c5fd9"
+    },
+    {
+      "path": "js/diameter-scenario.js",
+      "sha256": "d12271840b837de326c09318f976424736dba3b5e9496196842c9620df904da9"
+    },
+    {
+      "path": "js/forecast-evidence.js",
+      "sha256": "b54f12380464de24dcf099c1b2cc9f403bf6faee329cbebc0e4033a7b816264d"
+    },
+    {
+      "path": "js/identity.js",
+      "sha256": "e6dacd0ef2939210a1ccc1ba939678bfbe89737012666ba2ab691305ae4101ef"
+    },
+    {
+      "path": "js/online-safety.js",
+      "sha256": "0339119f57f7cc0802f3104e295766bdcf9b317ea9c1460031a8ccc011cb4b89"
+    },
+    {
+      "path": "js/planning-calibers.js",
+      "sha256": "b5ca3422e9cf1db81ab797412205753cf8b20ea63a34668d7052a81526ff6da1"
+    },
+    {
+      "path": "js/planning-chronology.js",
+      "sha256": "39cf870a244b2ba26a5fceacbd8597b7171de85c2b4b3630256073e9da9dee57"
+    },
+    {
+      "path": "js/planning-date-ranges.js",
+      "sha256": "52b7957d26ce663ca00cc0502c18473bd352bfef1c50a148cadf997f242c4b4d"
+    },
+    {
+      "path": "js/planning-import.js",
+      "sha256": "46e6b67698e933218bca2cafa7eb9fbc3efd666692f462e817592adffca4ac1a"
+    },
+    {
+      "path": "js/planning-rules.js",
+      "sha256": "f496aef219f595a75a2c4bdb74a384f0c91b8ee0aa1582de7b750b7265393160"
+    },
+    {
+      "path": "js/planning-schedule.js",
+      "sha256": "5058f328f7572f8a1f8d87c4326e2fc9ca45368fc9f2cee9d18d84f6eb2847c6"
+    },
+    {
+      "path": "js/planning-sheet-output.js",
+      "sha256": "b2e2a467b45fa3b027ec5a957edcfeec989af16de3ecf2dbb27aa658993c61f1"
+    },
+    {
+      "path": "js/planning-usage.js",
+      "sha256": "f6402eaf6232a01a84e18d4ad5d29cd37557be1da1299ccff1d66df9921c4efd"
+    },
+    {
+      "path": "js/planning-view.js",
+      "sha256": "e0d63a222a240c881ae39dc2ad6c6d43a00d10b05b72f567e536ff4f3a125198"
+    },
+    {
+      "path": "js/preparation-forecast.js",
+      "sha256": "2c47565871c46f28be2935bdc1f30ab20a4f1f256bf747e1a257c0e61a7deea9"
+    },
+    {
+      "path": "js/rotation-reservations.js",
+      "sha256": "316f72acda6c713e4e92fe8ea482a68f14646d6f3f6279d4ca9d7445d1c4924b"
+    },
+    {
+      "path": "js/save-replay-diagnostic.js",
+      "sha256": "d7cb375fab2f97b5983a5dcd2605bad82033fbf916be84073ccc2e16a89d824e"
+    },
+    {
+      "path": "js/sync.js",
+      "sha256": "92b1a7f82bb7a7c774916fb181a6798f60b8efdd47e454700fb8a644934eed23"
+    },
+    {
+      "path": "js/work-history-evidence.js",
+      "sha256": "7b1883b90177d0141751b7fbe6696fad8c0f4ea13a7ad99a1081e7b6550d92ec"
+    },
+    {
+      "path": "js/workshop-adoption.js",
+      "sha256": "157b2fe5b563c692284152b91e5f6a4deda391585b990f3f8ef0d206c0a41403"
+    },
+    {
+      "path": "js/workshop-board-ui.js",
+      "sha256": "fd870743b61681a94029e75614e57afc068dfeb81102cce1ae1fa157e3a10121"
+    },
+    {
+      "path": "js/workshop-board.js",
+      "sha256": "41c325e02990e78663b8d6d3fdf6951272bd9a8de1012cff689811648c3dd920"
+    },
+    {
+      "path": "js/workshop-client.js",
+      "sha256": "06d347eb4ded520ae0685fd3b581300d677787ced1feeb10e6afdaa903895fe4"
+    },
+    {
+      "path": "js/workshop-instructions.js",
+      "sha256": "a77c348d3e414619ee50152c46d8855dbd88cd1ad6744b592369dec4123abdcf"
+    },
+    {
+      "path": "js/workshop-plan-link.js",
+      "sha256": "09c8f5eaceb4b7604956f8f5e0ba409fea198fb70f3ab5126ea6399a9e2b43ef"
+    },
+    {
+      "path": "js/workshop-recovery.js",
+      "sha256": "b8697b06f094224ebbae7ee5cf6c05ed4e6a4f1c093f590dcdac395a99d9b790"
+    },
+    {
+      "path": "js/workshop-status-bridge.js",
+      "sha256": "1f3956f4bf67cef65e6b162280fa2a1d9235af89d7cd6bb8fea86be3fbd69661"
+    },
+    {
+      "path": "manifest.json",
+      "sha256": "d133b4b923e7d680bb03d1e1a701aa3df7d00c8465ecd8a9e314df552ddd8b50"
+    },
+    {
+      "path": "scripts/build-workshop-board-preview.cjs",
+      "sha256": "2cd23dc0d1dc3bc2385df1683fd49e19420fbc3dd45391b2f633f0d0f488b07f"
+    },
+    {
+      "path": "scripts/build-workshop-gas.cjs",
+      "sha256": "2870e4ce9da35987912969b1e0138074fa58e68be016ffd0e50e75aa70ec8cbb"
+    },
+    {
+      "path": "service-worker.js",
+      "sha256": "672db842addfe574f7eaed1050ee06a9cc781c03ab9d3f444a8de68f643096d9"
+    },
+    {
+      "path": "test/auth-boundary.test.js",
+      "sha256": "1cb4ca178fea7eff0fb7874079a31eced151bf63073f81195e2da3e66a770a40"
+    },
+    {
+      "path": "test/auth-diagnostics.test.js",
+      "sha256": "eed664807b6539895397ef20dd4fea11210591f2dd9c6e3001a34ada9d782543"
+    },
+    {
+      "path": "test/auth-session.test.js",
+      "sha256": "e987429ba6a0af4141d60f56eeef857be5d4ce3caa48479bcb7cd2dddbf39e88"
+    },
+    {
+      "path": "test/diameter-evidence.test.js",
+      "sha256": "8c7cfec45bb40ea56dca8168b57a64aec7cec624d9277ab707db934eeda3ce9a"
+    },
+    {
+      "path": "test/forecast-evidence.test.js",
+      "sha256": "a7e00856aef0f89714484900d3310e4b6d861c85b790f0df5b5b72a6c68dfbe5"
+    },
+    {
+      "path": "test/forecast-reference.test.js",
+      "sha256": "4ed2e3f1838ed5c523749733bb5aa6b6236d424ea8b5adce0b8dbf1e34a2e8e0"
+    },
+    {
+      "path": "test/maintenance-lock.test.js",
+      "sha256": "c1c08d918f84f90833ce47d5515eb7889a9eeb85e0c685f8fc85e9643c5f559a"
+    },
+    {
+      "path": "test/manual-gas-validation.gs",
+      "sha256": "96d3976c0d9a401017d5ad71b5b8c40b094e927b96e8259dfca52e430460d847"
+    },
+    {
+      "path": "test/manual-workshop-preflight.gs",
+      "sha256": "c22829205a5d8edc302d91818db38538a336f6b787ed76eb28330f412747730a"
+    },
+    {
+      "path": "test/online-safety.test.js",
+      "sha256": "d580c3efea4c9fbd10442a2d6432f432cb06fa438bf9f8bf24c84380a3d7ce03"
+    },
+    {
+      "path": "test/planning-calibers.test.js",
+      "sha256": "86b881cfbb4ee52437f9046ca37bf82fe54f749dbc9ddbb2e313547a46361018"
+    },
+    {
+      "path": "test/planning-chronology.test.js",
+      "sha256": "b2ea9e524e40efd298d6c4daedeadb435219e67375ba7f50133af7bfa39aa163"
+    },
+    {
+      "path": "test/planning-date-ranges.test.js",
+      "sha256": "1824178f755005b3b76110a4daee4d6b548172bba024d0edb72bc667f89e1857"
+    },
+    {
+      "path": "test/planning-import.test.js",
+      "sha256": "0e7a977df24c39cf488af454ad58f2d118d1e68cc53f7f4127e0959a3f6f5ce2"
+    },
+    {
+      "path": "test/planning-rules.test.js",
+      "sha256": "b4ef70a8d88b74b438d51824020b1216b5bebfc1ab3b86e1368e5e52a25a2e12"
+    },
+    {
+      "path": "test/planning-schedule.test.js",
+      "sha256": "03a3c9c17b73cb8ac6e83bda46878aaf6037ba406301388fadaebc82cb199c61"
+    },
+    {
+      "path": "test/planning-sheet-gas.test.js",
+      "sha256": "f5d92fc7817068f1d39c47f4f569f18f677058eab1f52e32d637df740df6784d"
+    },
+    {
+      "path": "test/planning-sheet-output.test.js",
+      "sha256": "5b1d4ab2aafdb45507536f62faad55c02ba57dd4bb77f04a07030396bac188e8"
+    },
+    {
+      "path": "test/planning-usage.test.js",
+      "sha256": "a779238b5ad2b3b0ef66c7c74008af2a5b65956ede550a5682510df749803e11"
+    },
+    {
+      "path": "test/planning-view.test.js",
+      "sha256": "072e2d4ec772f1f1f9aad77b3b8eaeceb957ff8ace3d9a48c1d93bbec4575ee2"
+    },
+    {
+      "path": "test/preparation-forecast.test.js",
+      "sha256": "6dc42f37cf25e3b14cfbdf3e4745a869df7e2d982307db1fdd5c336db27edbca"
+    },
+    {
+      "path": "test/roll-history-migration.test.js",
+      "sha256": "90e6375c0a83697bbf44a82b561d8aef652ccdd93b8a3658df70b46b88c8eedb"
+    },
+    {
+      "path": "test/rotation-reservations.test.js",
+      "sha256": "56a78da3377f511bf4d22ae948d8d904c7b519f6ecf21d72f17c15b7add147a0"
+    },
+    {
+      "path": "test/same-day-assembly.test.js",
+      "sha256": "f26c73d79b6da2fae2203b235f905059c6413d489ed0483842ea78071361ac53"
+    },
+    {
+      "path": "test/save-replay-diagnostic.test.js",
+      "sha256": "6f87478febde31d9da1bb76487b3ce9b4ac50cfe3507f6a1944e969fa6f60c86"
+    },
+    {
+      "path": "test/spreadsheet-id-config.test.js",
+      "sha256": "87da69193501ca3ae843838a9c88006d674b3e274096db2edbfd636d47aac1eb"
+    },
+    {
+      "path": "test/summary-filter.test.js",
+      "sha256": "c3687b8bc53c5e44eb437668e045d23c8e38ca16bd14a56f3aabd3fa40ab2e7d"
+    },
+    {
+      "path": "test/sync-display.test.js",
+      "sha256": "743c1d2e8a802e4dc46236ec38d23881fbd4a78f2533b2a33e1f6069ff2a3505"
+    },
+    {
+      "path": "test/sync-revision-guard.test.js",
+      "sha256": "38e615a81a5a370c4130b29fdbeb38ecb64f4e71b2243fbd8a4b700529116041"
+    },
+    {
+      "path": "test/task-summary.test.js",
+      "sha256": "366340bfc1d0dc2c33b39779f173a1dba22e1e4534028ec3122197b22fb06b69"
+    },
+    {
+      "path": "test/two-way-sync.test.js",
+      "sha256": "ec25ce8340634cc3a139c831dd609f1da6ac39ecf1f5b892c5a5d2517ba428e9"
+    },
+    {
+      "path": "test/workshop-adoption.test.js",
+      "sha256": "6549298b992a27a3685c0403562bb19c6469026e377ae315cdbc55e2a03ce75c"
+    },
+    {
+      "path": "test/workshop-api.test.js",
+      "sha256": "215132a4b0258cc9e90b3b693fb80f9dda3e718f73ea5464f02903177c9387d0"
+    },
+    {
+      "path": "test/workshop-board-view.test.js",
+      "sha256": "e3693fbdc3bd6ea3fbfb704538c475d4c8fe853867240172ef59f00116e3c858"
+    },
+    {
+      "path": "test/workshop-client.test.js",
+      "sha256": "b6e47c5499f03e79ab1e0a023eb4c5eea9cf27b352ed9d69ad36a395e88d2a10"
+    },
+    {
+      "path": "test/workshop-deadline-review.test.js",
+      "sha256": "0c41aeda9e975a46c8678e367a4d1f25e95a612630172c7be1dbc55ea698b0ac"
+    },
+    {
+      "path": "test/workshop-flow.test.js",
+      "sha256": "845ca1f9b96a096f648ee440cf074536d7e1caca0791b3efa97cb8fd470f1dbe"
+    },
+    {
+      "path": "test/workshop-formal-board-ui.test.js",
+      "sha256": "6154285b0c9263ca6d3c78d73c5344b49ed1a77d9bcac04d8afba098d9a658dc"
+    },
+    {
+      "path": "test/workshop-formal-board.test.js",
+      "sha256": "44a626f3b629852b1c1c5f2c8832d04b610dd2d6ec87435a7b8e606a5a924636"
+    },
+    {
+      "path": "test/workshop-history-port.test.js",
+      "sha256": "9bb995849ca7da987fc68351981ae234fca1b0052ed1b7f9e16111d771eb2b71"
+    },
+    {
+      "path": "test/workshop-instructions.test.js",
+      "sha256": "5cf9ce46e1619a619905a63b775900ec25edaa09eb28d58bc928e5041c0ec636"
+    },
+    {
+      "path": "test/workshop-legacy-guards.test.js",
+      "sha256": "b3affbfaffbd617da0b2bfa6f46193c2da27930da8a00a23f0a1fb488bb93b68"
+    },
+    {
+      "path": "test/workshop-live-preflight.test.js",
+      "sha256": "76a4169fd9853e338d725f06913d8214206e8e24744f7fc7c770a9637386c3be"
+    },
+    {
+      "path": "test/workshop-recovery.test.js",
+      "sha256": "a07565b94795be739476e2a3ea75bbc6c70a87c2a453885f2cf6f65353b36c14"
+    },
+    {
+      "path": "test/workshop-same-day.test.js",
+      "sha256": "45999efe694776b114410447c233d2e824db79fe8db1d4278492cf124882df96"
+    },
+    {
+      "path": "test/workshop-status-edit.test.js",
+      "sha256": "bbb6e70d7971e9b5d2fbfcc99428d53e625681b75950fdbe1e2989c85289ecd8"
+    }
+  ]
+}
