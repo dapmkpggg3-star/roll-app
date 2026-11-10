@@ -6991,7 +6991,10 @@ function getTodayTaskTargetRole(task) {
 
     if (roleTaskPrefix) {
         const roleId = taskId.replace(roleTaskPrefix, '');
-        return roles.find(role => String(role.id) === String(roleId)) || null;
+        const directRole = roles.find(role => String(role.id) === String(roleId)) || null;
+        return directRole && getFilteredRoles().some(role => String(role.id) === String(directRole.id))
+            ? directRole
+            : null;
     }
 
     if (taskId.startsWith('assembly-')) {
@@ -7032,7 +7035,9 @@ function getTodayTaskStandTargetRole(task, targetStatuses = null) {
             return compareUpdatedAt(a, b, 'desc');
         });
 
-    return candidates.find(role => visibleRoleIds.has(String(role.id))) || null;
+    // Do not redirect a task to a lower-priority roll when its intended roll is hidden.
+    const target = candidates[0] || null;
+    return target && visibleRoleIds.has(String(target.id)) ? target : null;
 }
 
 function getWatchStandItems(allRoles) {
