@@ -7343,6 +7343,7 @@ function renderRoles() {
     
     const filteredRoles = getFilteredRoles();
     updateCountSummary(roles);
+    updateTodayTaskDashboard(roles);
     updatePriorityStandCard();
     updateStandRiskMap();
     updateThreeSetManagementDashboard(roles);
