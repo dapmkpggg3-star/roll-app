@@ -51,8 +51,11 @@ async function main(){
   assert.equal(await page.locator('#role-10-D').count(),0,'scrap should be hidden in default view');
   const task=page.locator('.today-task-item').filter({hasText:'予備不足確認'}).first();
   assert.equal(await task.count(),1,'real generated reserve task missing');
+  await page.locator('#today-task-toggle').click();
+  assert.equal(await page.locator('#today-task-toggle').getAttribute('aria-expanded'),'true','dashboard did not open with a real click');
+  assert.ok(await task.isVisible(),'task should be visible after user opens dashboard');
   await page.screenshot({path:path.join(out,'01-before-click.png'),fullPage:true});
-  await task.dispatchEvent('click');
+  await task.click();
   await page.waitForTimeout(380);
   assert.equal(await page.locator('#role-10-C.today-task-target-highlight').count(),1,'real UI wrong reserve target');
   assert.equal(await page.locator('#role-10-D').count(),0,'hidden scrap became visible');
@@ -65,7 +68,8 @@ async function main(){
   });
   assert.equal(await page.locator('#role-10-C').count(),0,'online target should be search-hidden');
   assert.equal(await page.locator('#role-10-A').count(),1);
-  await task.dispatchEvent('click');
+  assert.ok(await task.isVisible(),'task became inaccessible after real search filter changed');
+  await task.click();
   await page.waitForTimeout(140);
   assert.equal(await page.locator('.today-task-target-highlight').count(),0,'wrong row highlighted');
   assert.ok((await page.locator('body').innerText()).includes('対象ロールは現在の表示条件では見つかりません'),'missing safe warning');
