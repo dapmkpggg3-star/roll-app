@@ -8,6 +8,7 @@ on:
       - 'js/app.js'
       - 'test/today-task-target-visibility.test.js'
       - 'test/today-task-browser.cjs'
+      - 'test/roll001-real-filter-browser.cjs'
 permissions:
   contents: read
 jobs:
@@ -39,11 +40,15 @@ jobs:
           npm install --no-save --no-package-lock playwright@1.56.1
           npx playwright install --with-deps chromium
       - name: Verify real task DOM handlers with anonymous fixtures
-        run: node test/today-task-browser.cjs
+        run: |
+          node test/today-task-browser.cjs
+          node test/roll001-real-filter-browser.cjs
       - name: Upload anonymous screenshot and assertion evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: roll001-dom-evidence
-          path: artifacts/roll001-dom/
+          path: |
+            artifacts/roll001-dom/
+            artifacts/roll001-real-filter/
           if-no-files-found: warn
