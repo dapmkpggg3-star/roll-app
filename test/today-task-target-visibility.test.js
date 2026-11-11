@@ -91,3 +91,17 @@ test('target lookup does not change roll order or statuses', () => {
   selectTarget(assembly10);
   assert.equal(JSON.stringify(context.roles), before);
 });
+
+test('reserve shortage never chooses an excluded hidden status', () => {
+  const { selectTarget } = makeTargetLookup(roles.map(role => role.id));
+  const result = selectTarget({ id: 'reserve-shortage-10', standKey: '10' });
+  assert.ok(result);
+  assert.notEqual(result.status, SCRAP);
+  assert.notEqual(result.status, STORED);
+  assert.equal(result.id, '10-C');
+});
+
+test('generic stand task stops rather than redirecting past a hidden newest roll', () => {
+  const { selectTarget } = makeTargetLookup(['10-A', '10-B']);
+  assert.equal(selectTarget({ id: 'watch-10', standKey: '10' }), null);
+});
