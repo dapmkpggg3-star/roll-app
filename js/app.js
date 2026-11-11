@@ -1817,13 +1817,10 @@ function getPurchaseConfirmationLevel(info) {
 }
 
 function getPurchaseConfirmationItems(allRoles = roles) {
-    const excludedStandKeys = new Set((Array.isArray(allRoles) ? allRoles : [])
-        .filter(role => role && isPurchaseHandledStatus(role.status))
-        .map(role => getStandKey(role.name))
-        .filter(Boolean));
-
+    // One ordered or stored roll does not prove the whole stand's future demand
+    // is covered. Exclude only the handled role, not other unhandled rolls.
     return (Array.isArray(allRoles) ? allRoles : [])
-        .filter(role => !excludedStandKeys.has(getStandKey(role && role.name)))
+        .filter(role => role && !isPurchaseHandledStatus(role.status))
         .map(role => {
             const info = getPurchasePlanningInfo(role);
             const level = getPurchaseConfirmationLevel(info);
@@ -4761,17 +4758,17 @@ function getThreeSetManagementPurchaseStandItems(allRoles = roles) {
             deadline: basisPlan.purchaseDecisionDate,
             disposalForecastDate: basisPlan.disposalForecastDate,
             purchaseLevelKey: level.key,
-            status: hasOrderedWaiting ? '購入対応済み' : level.label,
+            status: hasOrderedWaiting ? '発注済みあり・必要数要確認' : level.label,
             action: hasOrderedWaiting
-                ? '納入後に新品予備保管へ変更してください'
+                ? '発注数量・納入予定と3セット維持可否を確認'
                 : hasNewStorage
                 ? '新品予備保管を含めて購入要否を確認'
                 : '3セット維持可否と購入要否を確認',
             reason: hasOrderedWaiting
                 ? [
                     `${ORDERED_WAITING_STATUS}あり`,
-                    '購入対応済みです',
-                    '現物未納入。納入後に新品予備保管または新品予備（組替可能）へ変更してください'
+                    '発注済みのロールがありますが、3セット全体の必要数・改削残回数・納入時期の照合は未完了です',
+                    '現物未納入。受入と次の組替条件が確認できるまで不足リスクを解消扱いしないでください'
                 ].join('\n')
                 : [
                     level.memo,
@@ -4780,7 +4777,7 @@ function getThreeSetManagementPurchaseStandItems(allRoles = roles) {
                     ? '新品予備保管を含めて3セット維持確認が必要です'
                     : '3セット維持確認が必要です'
                 ].join('\n'),
-            meta: hasOrderedWaiting ? '購入対応済み / 現物未納入' : level.memo,
+            meta: hasOrderedWaiting ? '発注済み / 必要数・納入時期の照合が必要' : level.memo,
             basisRoleName: basisPlan.roleName || '',
             purchaseTimingNotes: getThreeSetManagementPurchaseTimingNotes(basisPlan, today),
             hasNewStorage,
@@ -4827,7 +4824,9 @@ function getThreeSetManagementSummary(label, items, options = {}) {
 }
 
 function isThreeSetManagementPurchaseUnhandledItem(item) {
-    return !(item && item.hasOrderedWaiting);
+    // An order alone is not proof that future three-set demand is covered.
+    // Keep the item visible until quantity and actual delivery are verified.
+    return Boolean(item);
 }
 
 function getThreeSetManagementData(allRoles = roles) {
