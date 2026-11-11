@@ -56,7 +56,7 @@ const roles=[
  {id:'10-F',name:'#10-F',status:status('ORDERED_WAITING_STATUS'),memo:'',updatedAt:98}
 ];
 const assembly={id:'assembly-10',standKey:'10',standLabel:'#10',title:'組替候補あり',priority:'medium',elapsedDays:0};
-const reserve={id:'reserve-shortage-10',standKey:'10',standLabel:'#10',title:'予備不足確認',priority:'low',elapsedDays:0};
+const reserve={id:'reserve-shortage-10',standKey:'10',standLabel:'#10',title:'予備準備の予定を確認',priority:'low',elapsedDays:0};
 async function main(){
   const dir=path.join(__dirname,'../artifacts/roll001-real-filter');
   fs.mkdirSync(dir,{recursive:true});
@@ -77,10 +77,11 @@ async function main(){
     await prepare(reserve);
     assert.deepEqual(await page.evaluate(()=>window.__visible()),['10-A','10-B','10-C']);
     await click();
-    assert.equal(await page.locator('#role-10-C.today-task-target-highlight').count(),1);
+    assert.equal(await page.locator('.today-task-target-highlight').count(),0);
+    assert.ok((await page.locator('body').innerText()).includes('現物・改削搬入予定・組替予定'));
     assert.equal(await page.locator('#role-10-D').count(),0);
     await snap('01-default-filter.png');
-    checked.push('real default filter excludes hidden statuses; reserve focuses eligible online role');
+    checked.push('real default filter hides excluded statuses; readiness makes no false online navigation');
 
     await prepare(assembly,{searchQuery:'filter-visible'});
     assert.deepEqual(await page.evaluate(()=>window.__visible()),['10-B','10-C']);
