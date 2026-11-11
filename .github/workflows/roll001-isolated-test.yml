@@ -7,6 +7,7 @@ on:
       - '.github/workflows/roll001-isolated-test.yml'
       - 'js/app.js'
       - 'test/today-task-target-visibility.test.js'
+      - 'test/roll001-spare-readiness.test.cjs'
       - 'test/today-task-browser.cjs'
       - 'test/roll001-real-filter-browser.cjs'
       - 'test/roll001-isolated-full-ui.cjs'
@@ -24,7 +25,7 @@ jobs:
         with:
           node-version: '22'
       - name: Run real repository test with mock data only
-        run: node --test test/today-task-target-visibility.test.js
+        run: node --test test/today-task-target-visibility.test.js test/roll001-spare-readiness.test.cjs
 
   isolated-browser:
     runs-on: ubuntu-latest
