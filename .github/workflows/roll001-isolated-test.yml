@@ -1,0 +1,24 @@
+name: ROLL-001 isolated Node verification
+on:
+  push:
+    branches:
+      - fix/roll001-visibility-safe-20261110
+    paths:
+      - '.github/workflows/roll001-isolated-test.yml'
+      - 'js/app.js'
+      - 'test/today-task-target-visibility.test.js'
+permissions:
+  contents: read
+jobs:
+  isolated-node:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run real repository test with mock data only
+        run: node --test test/today-task-target-visibility.test.js
