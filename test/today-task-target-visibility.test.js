@@ -106,7 +106,7 @@ test('target lookup does not change roll order or statuses', () => {
   assert.equal(JSON.stringify(context.roles), before);
 });
 
-test('reserve shortage never chooses an excluded hidden status', () => {
+test('stand-wide reserve check never selects an arbitrary roll card', () => {
   const excludedRoles = [
     { id: '10-D', name: '#10-D', status: STORED, updatedAt: 999 },
     { id: '10-E', name: '#10-E', status: ORDERED, updatedAt: 998 },
@@ -116,10 +116,7 @@ test('reserve shortage never chooses an excluded hidden status', () => {
   const allRoles = [...roles, ...excludedRoles];
   const { selectTarget } = makeTargetLookup(allRoles.map(role => role.id), allRoles);
   const result = selectTarget({ id: 'reserve-shortage-10', standKey: '10' });
-  assert.ok(result);
-  assert.ok(![STORED, ORDERED, SCRAP, DISCARDED].includes(result.status));
-  // Production gives ONLINE first priority; the old mock incorrectly put USED first.
-  assert.equal(result.id, '10-C');
+  assert.equal(result, null, 'a stand readiness check must not highlight ONLINE or another arbitrary card');
 });
 
 test('reserve shortage returns null when only excluded statuses exist', () => {
@@ -133,7 +130,7 @@ test('reserve shortage returns null when only excluded statuses exist', () => {
   assert.equal(selectTarget({ id: 'reserve-shortage-10', standKey: '10' }), null);
 });
 
-test('reserve shortage does not redirect when its online target is hidden', () => {
+test('stand-wide reserve check does not redirect even if online is hidden', () => {
   const { selectTarget } = makeTargetLookup(['10-A', '10-B']);
   assert.equal(selectTarget({ id: 'reserve-shortage-10', standKey: '10' }), null);
 });
