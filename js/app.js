@@ -1764,14 +1764,17 @@ function getPurchasePlanningInfo(role) {
     }
 
     const onlineUseMonths = getStandOnlineUseMonths(standKey);
-    const leadTimeMonths = standMaster && standMaster.leadTimeMonths !== ''
-        ? Number(standMaster.leadTimeMonths)
-        : DEFAULT_PURCHASE_LEAD_TIME_MONTHS;
+    // Missing or invalid procurement lead time must never imply a safe purchase date.
+    const rawLeadTime = standMaster && standMaster.leadTimeMonths;
+    const leadTimeMonths = rawLeadTime !== undefined && rawLeadTime !== null && String(rawLeadTime).trim() !== ''
+        ? Number(rawLeadTime)
+        : Number.NaN;
+    const leadTimeVerified = Number.isFinite(leadTimeMonths) && leadTimeMonths > 0;
     const usableOnlineCount = Math.floor((currentDiameter - scrapDiameter) / adoptedCutMm) + 1;
     const useStartDate = normalizeUseStartDate(role && role.useStartDate);
     const forecastStartDate = useStartDate || getTodayDateString();
     const disposalForecastDate = addMonthsToDateString(forecastStartDate, usableOnlineCount * onlineUseMonths);
-    const purchaseDecisionDate = addMonthsToDateString(disposalForecastDate, -leadTimeMonths);
+    const purchaseDecisionDate = leadTimeVerified ? addMonthsToDateString(disposalForecastDate, -leadTimeMonths) : '';
 
     return {
         standKey,
@@ -1783,7 +1786,8 @@ function getPurchasePlanningInfo(role) {
         usableOnlineCount,
         useStartDate,
         disposalForecastDate,
-        leadTimeMonths,
+        leadTimeMonths: leadTimeVerified ? leadTimeMonths : null,
+        leadTimeVerified,
         purchaseDecisionDate
     };
 }
@@ -1793,8 +1797,8 @@ function getPurchaseConfirmationLevel(info) {
     const warningLimit = addMonthsToDateString(today, PURCHASE_CONFIRMATION_WINDOW_MONTHS);
     const decisionDate = normalizeDateInputValue(info && info.purchaseDecisionDate);
 
-    if (!decisionDate) {
-        return null;
+    if (!decisionDate || (info && info.leadTimeVerified === false)) {
+        return { key: 'unknown', label: '安全判定不能', memo: '購入納期が未確認または不正です' };
     }
 
     if (decisionDate <= today) {
@@ -1911,7 +1915,7 @@ function updatePurchaseConfirmationBoard(allRoles = roles) {
                 <span>廃却径</span><strong>${escapeHtml(formatPurchaseDiameter(item.scrapDiameter))}</strong>
                 <span>廃却予想</span><strong>${escapeHtml(formatPurchaseMonth(item.disposalForecastDate))}</strong>
                 <span>購入判断期限</span><strong>${escapeHtml(formatPurchaseMonth(item.purchaseDecisionDate))}</strong>
-                <span>理由</span><strong>購入LT${escapeHtml(String(item.leadTimeMonths))}か月</strong>
+                <span>理由</span><strong>${item.leadTimeVerified === false ? '購入LT未確認・安全判定不能' : '購入LT' + escapeHtml(String(item.leadTimeMonths)) + 'か月'}</strong>
             </div>
         </article>
     `).join('');
