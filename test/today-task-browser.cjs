@@ -45,7 +45,8 @@ const stubs = [
   'window.__setFixtures = (state) => { roles = state.roles; visibleIds = new Set(state.visibleIds); window.__tasks = state.tasks; const root = document.getElementById("role-list"); root.replaceChildren(); roles.filter(role => visibleIds.has(role.id)).forEach(role => { const row = document.createElement("tr"); row.id = "role-" + role.id; const td = document.createElement("td"); td.textContent = role.name + " / " + role.status; row.appendChild(td); root.appendChild(row); }); updateTodayTaskDashboard(roles); };',
   'window.__getStatusSnapshot = () => roles.map(role => ({ id: role.id, status: role.status }));'
 ].join('\n');
-const browserCode = [constants, stubs, renderer, selector, scrollAndToast].join('\n');
+const keyboard = section('function handleTodayTaskKeydown(event, taskId)', 'function focusTodayTaskRole(taskId)');
+const browserCode = [constants, stubs, renderer, keyboard, selector, scrollAndToast].join('\n');
 
 const out = path.join(__dirname, '../artifacts/roll001-dom');
 fs.mkdirSync(out, { recursive: true });
@@ -57,6 +58,7 @@ const roleFixtures = [
 ];
 const assemblyTask = { id:'assembly-10',standKey:'10',standLabel:'#10',title:'組替候補あり',priority:'medium',elapsedDays:0 };
 const reserveTask = { id:'reserve-shortage-10',standKey:'10',standLabel:'#10',title:'予備不足確認',priority:'low',elapsedDays:0 };
+async function runBrowserDom() {
 let browser;
 const checked = [];
 try {
@@ -123,3 +125,5 @@ try {
 } finally {
   if(browser) await browser.close();
 }
+}
+runBrowserDom().catch(error => { console.error(error); process.exitCode = 1; });
