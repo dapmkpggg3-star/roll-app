@@ -116,6 +116,13 @@
                         <label class="dashboard-display-option" for="dashboard-visibility-cutting-anomaly"><input type="checkbox" id="dashboard-visibility-cutting-anomaly"><span>改削異常チェック</span></label>
                     </div>
                 </section>
+                <section id="today-task-dashboard" class="today-task-dashboard is-collapsed" aria-label="本日のタスク">
+                    <div class="today-task-header">
+                        <button type="button" id="today-task-toggle" class="dashboard-toggle-btn today-task-title" onclick="toggleTodayTaskDashboard()" aria-expanded="false" aria-controls="today-task-list">本日のタスク（0件） ▼</button>
+                        <span id="today-task-count" class="today-task-count">0件</span>
+                    </div>
+                    <div id="today-task-list" class="today-task-list" aria-live="polite"></div>
+                </section>
                 <section id="priority-risk-overview" class="priority-risk-overview" aria-label="最優先確認とスタンド別リスク">
                     <div class="priority-risk-overview-grid">
                         <div id="priority-stand-panel" class="priority-risk-overview-panel priority-risk-overview-left" aria-label="最優先確認">
