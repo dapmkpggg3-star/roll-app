@@ -60,7 +60,7 @@ test('GUARD: invalid purchase lead times remain explicitly unverified, never sil
   const levelSource=piece('function getPurchaseConfirmationLevel(info)','function getPurchaseConfirmationItems(allRoles = roles)');
   assert.match(levelSource,/key: 'unknown', label: '安全判定不能'/);
   const ctx=vm.createContext({getTodayDateString:()=>currentDate,addMonthsToDateString:()=>currentDate,normalizeDateInputValue:x=>x||'',PURCHASE_CONFIRMATION_WINDOW_MONTHS:3});
-  vm.runInContext(levelSource+'\\nthis.level=getPurchaseConfirmationLevel;',ctx);
+  vm.runInContext(levelSource+'\nthis.level=getPurchaseConfirmationLevel;',ctx);
   for(const value of [undefined,null,'',0,-1,'bad']){
     const result=ctx.level({leadTimeVerified:false,purchaseDecisionDate:''});
     assert.equal(result.key,'unknown',String(value));
