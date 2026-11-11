@@ -49,7 +49,7 @@ async function main(){
   },roles);
   assert.equal(await page.locator('#role-10-C').count(),1,'real rendered online row missing');
   assert.equal(await page.locator('#role-10-D').count(),0,'scrap should be hidden in default view');
-  const task=page.locator('.today-task-item').filter({hasText:'予備不足確認'}).first();
+  const task=page.locator('.today-task-item').filter({hasText:'予備準備の予定を確認'}).first();
   assert.equal(await task.count(),1,'real generated reserve task missing');
   await page.locator('#today-task-toggle').click();
   assert.equal(await page.locator('#today-task-toggle').getAttribute('aria-expanded'),'true','dashboard did not open with a real click');
@@ -57,10 +57,11 @@ async function main(){
   await page.screenshot({path:path.join(out,'01-before-click.png'),fullPage:true});
   await task.click();
   await page.waitForTimeout(380);
-  assert.equal(await page.locator('#role-10-C.today-task-target-highlight').count(),1,'real UI wrong reserve target');
+  assert.equal(await page.locator('.today-task-target-highlight').count(),0,'readiness must not highlight a single roll');
+  assert.ok((await page.locator('body').innerText()).includes('現物・改削搬入予定・組替予定'),'stand readiness instruction missing');
   assert.equal(await page.locator('#role-10-D').count(),0,'hidden scrap became visible');
   await page.screenshot({path:path.join(out,'02-after-click.png'),fullPage:true});
-  checks.push('real task generated from synthetic scrap; real role rows target online while scrap remains hidden');
+  checks.push('real readiness card from synthetic scrap guides stand-wide review, not an arbitrary online card');
 
   await page.evaluate(()=>{
     searchQuery='#10-A';
@@ -72,9 +73,9 @@ async function main(){
   await task.click();
   await page.waitForTimeout(140);
   assert.equal(await page.locator('.today-task-target-highlight').count(),0,'wrong row highlighted');
-  assert.ok((await page.locator('body').innerText()).includes('対象ロールは現在の表示条件では見つかりません'),'missing safe warning');
+  assert.ok((await page.locator('body').innerText()).includes('現物・改削搬入予定・組替予定'),'missing stand-wide guidance');
   await page.screenshot({path:path.join(out,'03-search-hidden.png'),fullPage:true});
-  checks.push('real search field scenario blocks wrong task redirect and displays warning');
+  checks.push('real search filter does not cause false navigation; stand guidance remains visible');
   assert.equal(await page.evaluate(()=>roles.length),4,'synthetic roles mutated in navigation');
   checks.push('no mutation of role list by task navigation');
 
