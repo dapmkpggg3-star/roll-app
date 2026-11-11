@@ -57,7 +57,7 @@ const roleFixtures = [
   {id:'10-D',name:'#10-D',status:statusConstant('SCRAP_WAITING_STATUS'),updatedAt:80}
 ];
 const assemblyTask = { id:'assembly-10',standKey:'10',standLabel:'#10',title:'組替候補あり',priority:'medium',elapsedDays:0 };
-const reserveTask = { id:'reserve-shortage-10',standKey:'10',standLabel:'#10',title:'予備不足確認',priority:'low',elapsedDays:0 };
+const reserveTask = { id:'reserve-shortage-10',standKey:'10',standLabel:'#10',title:'予備準備の予定を確認',priority:'low',elapsedDays:0 };
 async function runBrowserDom() {
 let browser;
 const checked = [];
@@ -95,10 +95,11 @@ try {
   await reset(['10-A','10-B','10-C'],[reserveTask]);
   await page.locator('.today-task-item').click();
   await page.waitForTimeout(450);
-  assert.equal(await page.locator('#role-10-C.today-task-target-highlight.today-task-target-low').count(),1,'reserve short target must be visible ONLINE');
+  assert.equal(await page.locator('.today-task-target-highlight').count(),0,'readiness task must not highlight ONLINE');
+  assert.ok((await page.locator('body').innerText()).includes('現物・改削搬入予定・組替予定'), 'readiness instruction missing');
   assert.equal(await page.locator('#role-10-D').count(),0,'excluded scrap role must remain unrendered');
   await screenshot('05-reserve-shortage.png');
-  checked.push('reserve shortage selects eligible visible role, excludes scrap');
+  checked.push('stand-wide readiness does not falsely target online or reveal scrap');
 
   await reset(['10-A','10-B','10-C'],[assemblyTask]);
   await page.locator('.today-task-item').focus();
