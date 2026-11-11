@@ -39,9 +39,9 @@ const stubs = [
   'function getTodayTaskElapsedClass() { return "is-normal"; }',
   'function syncCollapsibleDashboardState() {}',
   'function getFilteredRoles() { return roles.filter(role => visibleIds.has(role.id)); }',
-  'function getStandKey(name) { const match = String(name).match(/#(\d+)/); return match ? match[1] : ""; }',
+  'function getStandKey(name) { const match = String(name).match(/#([0-9]+)/); return match ? match[1] : ""; }',
   'function compareUpdatedAt(a,b,order) { return order === "desc" ? b.updatedAt - a.updatedAt : a.updatedAt - b.updatedAt; }',
-  'function escapeHtml(input) { return String(input).replace(/[&<>"\x27]/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","\x27":"&#39;"}[ch])); }',
+  'function escapeHtml(input) { return String(input).replace(/[&<>]/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[ch])); }',
   'window.__setFixtures = (state) => { roles = state.roles; visibleIds = new Set(state.visibleIds); window.__tasks = state.tasks; const root = document.getElementById("role-list"); root.replaceChildren(); roles.filter(role => visibleIds.has(role.id)).forEach(role => { const row = document.createElement("tr"); row.id = "role-" + role.id; const td = document.createElement("td"); td.textContent = role.name + " / " + role.status; row.appendChild(td); root.appendChild(row); }); updateTodayTaskDashboard(roles); };',
   'window.__getStatusSnapshot = () => roles.map(role => ({ id: role.id, status: role.status }));'
 ].join('\n');
