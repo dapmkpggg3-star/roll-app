@@ -9,6 +9,7 @@ on:
       - 'test/today-task-target-visibility.test.js'
       - 'test/today-task-browser.cjs'
       - 'test/roll001-real-filter-browser.cjs'
+      - 'test/roll001-isolated-full-ui.cjs'
 permissions:
   contents: read
 jobs:
@@ -43,6 +44,7 @@ jobs:
         run: |
           node test/today-task-browser.cjs
           node test/roll001-real-filter-browser.cjs
+          node test/roll001-isolated-full-ui.cjs
       - name: Upload anonymous screenshot and assertion evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -51,4 +53,5 @@ jobs:
           path: |
             artifacts/roll001-dom/
             artifacts/roll001-real-filter/
+            artifacts/roll001-full-ui/
           if-no-files-found: warn
