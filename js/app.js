@@ -6108,8 +6108,28 @@ function getTodayTaskItems(allRoles) {
 
     groups.forEach((standRoles, standKey) => {
         const statuses = standRoles.map(role => role.status);
+        const hasOnline = statuses.includes(ONLINE_STATUS);
+        const hasInstalledSpare = statuses.includes(NEW_INSTALLED_STATUS);
+        const hasUsedSpare = statuses.includes(USED_STANDBY_STATUS);
+        const hasScrapWaiting = statuses.includes(SCRAP_WAITING_STATUS);
 
-        if (statuses.includes(SCRAP_WAITING_STATUS) && !statuses.includes(NEW_INSTALLED_STATUS)) {
+        // A ready-to-use emergency spare has chocks installed: USED or NEW_INSTALLED.
+        // Never treat a planned rework return or an unassembled roll as completed.
+        // This is a read-only registration check, not proof of physical shortage.
+        if (hasOnline && !hasInstalledSpare && !hasUsedSpare) {
+            tasks.push({
+                id: `reserve-shortage-${standKey}`,
+                priority: 'high',
+                standKey,
+                standNumber: Number(standKey) || 999999,
+                standLabel: `#${standKey}`,
+                title: '緊急交換用の完成予備を確認',
+                actions: ['現場の完成予備とアプリの登録状態を照合'],
+                reason: 'アプリ上で組込済み予備が確認できない（現物確認が必要）',
+                occurredAt: null,
+                elapsedDays: 0
+            });
+        } else if (hasScrapWaiting && !hasInstalledSpare) {
             const occurredAt = getOldestStatusChangedAt(standRoles, [SCRAP_WAITING_STATUS]);
             tasks.push({
                 id: `reserve-shortage-${standKey}`,
@@ -6117,9 +6137,9 @@ function getTodayTaskItems(allRoles) {
                 standKey,
                 standNumber: Number(standKey) || 999999,
                 standLabel: `#${standKey}`,
-                title: '予備不足確認',
-                actions: ['新品予備または組込完了ロールの手配状況確認'],
-                reason: '廃却待ち（ラック保管）あり・予備不足',
+                title: '予備準備の予定を確認',
+                actions: ['改削搬入予定・昼間の組替予定・オンライン終了予定を照合'],
+                reason: '組込完了予備は未登録（不足確定ではない）',
                 occurredAt,
                 elapsedDays: getElapsedDaysSince(occurredAt, now) || 0
             });
@@ -6934,7 +6954,9 @@ function getTodayTaskWarning(task, allRoles = []) {
     }
 
     if (String(task.id || '').startsWith('reserve-shortage-')) {
-        return '⚠ 予備不足';
+        return task.priority === 'high'
+            ? '⚠ 完成予備の登録・現物を要確認'
+            : '改削戻り・組替日程は未照合（不足未判定）';
     }
 
     return '';
@@ -6966,6 +6988,20 @@ function handleTodayTaskKeydown(event, taskId) {
 function focusTodayTaskRole(taskId) {
     const decodedTaskId = decodeURIComponent(String(taskId || ''));
     const task = getTodayTaskItems(roles).find(item => String(item.id) === decodedTaskId);
+
+    // Stand-wide readiness requires inspecting the three-set workflow, not
+    // misleadingly highlighting the ONLINE roll as a shortage target.
+    if (decodedTaskId.startsWith('reserve-shortage-')) {
+        if (!task) {
+            showToast('対象タスクが見つかりません');
+            return;
+        }
+        const panel = document.getElementById('three-set-management');
+        if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        showToast(`#${task.standKey}：現物・改削搬入予定・組替予定を確認してください`);
+        return;
+    }
+
     const targetRole = getTodayTaskTargetRole(task);
 
     if (!targetRole) {
@@ -7002,8 +7038,8 @@ function getTodayTaskTargetRole(task) {
     }
 
     if (taskId.startsWith('reserve-shortage-')) {
-        const normallyHiddenStatuses = [NEW_STORAGE_STATUS, ORDERED_WAITING_STATUS, SCRAP_WAITING_STATUS, DISCARDED_STATUS];
-        return getTodayTaskStandTargetRole(task, ALLOWED_STATUSES.filter(status => !normallyHiddenStatuses.includes(status)));
+        // Stand-wide task; there is no single roll-card target.
+        return null;
     }
 
     if (task.standKey) {
