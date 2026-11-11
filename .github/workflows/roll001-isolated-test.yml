@@ -41,7 +41,7 @@ jobs:
       - name: Install isolated browser test dependency
         run: |
           npm install --no-save --no-package-lock playwright@1.56.1
-          npx playwright install --with-deps chromium
+          npx playwright install chromium
       - name: Verify real task DOM handlers with anonymous fixtures
         run: |
           node test/today-task-browser.cjs
