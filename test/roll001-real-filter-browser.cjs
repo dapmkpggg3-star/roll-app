@@ -5,10 +5,16 @@ const path=require('node:path');
 const assert=require('node:assert/strict');
 const {chromium}=require('playwright');
 const src=fs.readFileSync(path.join(__dirname,'../js/app.js'),'utf8');
+const onlineSafetySource=fs.readFileSync(path.join(__dirname,'../js/online-safety.js'),'utf8');
 function slice(from,to){
   const a=src.indexOf(from), b=src.indexOf(to,a+from.length);
   assert.ok(a>=0&&b>a,'missing actual app function: '+from);
   return src.slice(a,b);
+}
+function safetySlice(from,to){
+  const a=onlineSafetySource.indexOf(from), b=onlineSafetySource.indexOf(to,a+from.length);
+  assert.ok(a>=0&&b>a,'missing production online-safety function: '+from);
+  return onlineSafetySource.slice(a,b);
 }
 function status(name){
   const match=src.match(new RegExp("const "+name+" = '([^']+)';"));
@@ -23,7 +29,7 @@ const parts=names.map(n=>'const '+n+' = '+JSON.stringify(status(n))+';');
 parts.push('const ALLOWED_STATUSES = '+JSON.stringify(allowed)+';');
 parts.push("let roles=[],statusFilter='all',searchQuery='',memoOnlyFilter=false,watchStandFilter=null;");
 parts.push("const TODAY_TASK_DASHBOARD_CONFIG={}; const TASK_PRIORITY_LABELS={high:'高',medium:'中',low:'低'};");
-parts.push("function getStandKey(n){return String(n).match(/#([0-9]+)/)?.[1]||'';}");
+parts.push(safetySlice('    function getStandKey(roleName) {', '    function isOnline(role) {'));
 parts.push("function compareUpdatedAt(a,b,o){return o==='asc'?a.updatedAt-b.updatedAt:b.updatedAt-a.updatedAt;}");
 parts.push("function escapeHtml(v){return String(v).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}");
 parts.push("function getTodayTaskItems(){return window.__tasks||[];} function getTodayTaskWarning(){return '';} function getTodayTaskElapsedClass(){return 'is-normal';} function syncCollapsibleDashboardState(){}");
@@ -37,7 +43,7 @@ parts.push(slice('function handleTodayTaskKeydown(event, taskId)','function focu
 parts.push(slice('function focusTodayTaskRole(taskId)','function getWatchStandItems(allRoles)'));
 parts.push(slice('function showToast(message)','function scrollPageToTop()'));
 parts.push("window.__prepare=(state)=>{roles=state.roles.map(r=>({...r}));statusFilter=state.statusFilter||'all';searchQuery=state.searchQuery||'';memoOnlyFilter=!!state.memoOnlyFilter;watchStandFilter=state.watchStandFilter||null;window.__tasks=[state.task];const tbody=document.getElementById('role-list');tbody.replaceChildren();for(const role of getFilteredRoles()){const tr=document.createElement('tr');tr.id='role-'+role.id;const td=document.createElement('td');td.textContent=role.name+' / '+role.status;tr.appendChild(td);tbody.appendChild(tr);}updateTodayTaskDashboard(roles);};");
-parts.push("window.__visible=()=>getFilteredRoles().map(r=>r.id);window.__states=()=>roles.map(r=>[r.id,r.status]);");
+parts.push("window.__visible=()=>getFilteredRoles().map(r=>r.id);window.__states=()=>roles.map(r=>[r.id,r.status]);window.__standKey=n=>getStandKey(n);");
 const injected=parts.join('\n');
 new Function(injected); // fail early on source-injection syntax mistakes
 
@@ -62,6 +68,9 @@ async function main(){
     const page=await context.newPage();
     await page.setContent('<!doctype html><html lang="ja"><meta charset="utf-8"><style>body{font-family:sans-serif;padding:30px}.wrap{display:flex;gap:28px}#today-task-dashboard{width:450px;padding:18px;border:1px solid #aaa}.today-task-item{cursor:pointer;padding:16px;margin:8px;border:1px solid #aaa}td{padding:16px;border:1px solid #aaa}.today-task-target-highlight{outline:5px solid orange;background:#ffedac}</style><h1>ROLL-001 実フィルタ隔離試験（架空データ）</h1><div class="wrap"><section id="today-task-dashboard">本日のタスク <span id="today-task-count"></span><div id="today-task-list"></div></section><table><tbody id="role-list"></tbody></table></div>');
     await page.addScriptTag({content:injected});
+    assert.equal(await page.evaluate(()=>window.__standKey('＃１０－Ａ')),'10');
+    assert.equal(await page.evaluate(()=>window.__standKey('#11-B')),'11');
+    checked.push('production online-safety stand key handles normalized and ASCII labels');
     async function prepare(task,options={}){await page.evaluate(x=>window.__prepare(x),{roles,task,...options});}
     async function click(){await page.locator('.today-task-item').click();await page.waitForTimeout(450);}
     async function snap(name){await page.screenshot({path:path.join(dir,name),fullPage:true});}
