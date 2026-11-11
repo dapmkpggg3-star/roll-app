@@ -54,10 +54,18 @@ test('AUDIT OPEN RISK: default duration estimates are stand-number based, not an
   assert.match(example,/return 3;/);
   console.log('AUDIT GAP: purchase forecast must be checked against actual future operating plan before business signoff');
 });
-test('AUDIT OPEN RISK: missing leadTimeMonths in stand master can become NaN rather than default',()=>{
-  const source=infoSource;
-  assert.match(source,/standMaster && standMaster\.leadTimeMonths !== ''/);
-  assert.equal(Number(undefined),Number.NaN);
+test('GUARD: invalid purchase lead times remain explicitly unverified, never silently safe',()=>{
+  assert.match(infoSource,/const leadTimeVerified = Number\.isFinite\(leadTimeMonths\) && leadTimeMonths > 0/);
+  assert.match(infoSource,/purchaseDecisionDate = leadTimeVerified \?/);
+  const levelSource=piece('function getPurchaseConfirmationLevel(info)','function getPurchaseConfirmationItems(allRoles = roles)');
+  assert.match(levelSource,/key: 'unknown', label: '安全判定不能'/);
+  const ctx=vm.createContext({getTodayDateString:()=>currentDate,addMonthsToDateString:()=>currentDate,normalizeDateInputValue:x=>x||'',PURCHASE_CONFIRMATION_WINDOW_MONTHS:3});
+  vm.runInContext(levelSource+'\\nthis.level=getPurchaseConfirmationLevel;',ctx);
+  for(const value of [undefined,null,'',0,-1,'bad']){
+    const result=ctx.level({leadTimeVerified:false,purchaseDecisionDate:''});
+    assert.equal(result.key,'unknown',String(value));
+  }
+  assert.equal(ctx.level({leadTimeVerified:true,purchaseDecisionDate:currentDate}).key,'urgent');
 });
 
 test('GUARD: the three-set purchase dashboard does not mark an ordered stand as resolved',()=>{
