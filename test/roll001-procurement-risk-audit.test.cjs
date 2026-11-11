@@ -73,7 +73,7 @@ test('GUARD: invalid purchase lead times remain explicitly unverified, never sil
     getTodayDateString:()=>currentDate,
     addMonthsToDateString:(date,months)=>months===0?date:'2027-01-01'
   });
-  vm.runInContext(infoSource+'\\nthis.plan=getPurchasePlanningInfo;',planning);
+  vm.runInContext(infoSource+'\nthis.plan=getPurchasePlanningInfo;',planning);
   for(const value of [undefined,null,'',0,-1,'bad']){
     planning.inputLead=value;
     const info=planning.plan({name:'#10-A',status:'オンライン',currentDiameter:320});
