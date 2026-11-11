@@ -7032,7 +7032,10 @@ function getTodayTaskStandTargetRole(task, targetStatuses = null) {
             return compareUpdatedAt(a, b, 'desc');
         });
 
-    return candidates.find(role => visibleRoleIds.has(String(role.id))) || null;
+    // Keep the business-priority target fixed. Never redirect a task to a
+    // different visible roll when the intended roll is hidden by filters.
+    const target = candidates[0] || null;
+    return target && visibleRoleIds.has(String(target.id)) ? target : null;
 }
 
 function getWatchStandItems(allRoles) {
