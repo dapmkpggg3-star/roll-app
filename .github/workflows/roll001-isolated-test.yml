@@ -7,6 +7,7 @@ on:
       - '.github/workflows/roll001-isolated-test.yml'
       - 'js/app.js'
       - 'test/today-task-target-visibility.test.js'
+      - 'test/today-task-browser.cjs'
 permissions:
   contents: read
 jobs:
@@ -22,3 +23,27 @@ jobs:
           node-version: '22'
       - name: Run real repository test with mock data only
         run: node --test test/today-task-target-visibility.test.js
+
+  isolated-browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install isolated browser test dependency
+        run: |
+          npm install --no-save --no-package-lock playwright@1.56.1
+          npx playwright install --with-deps chromium
+      - name: Verify real task DOM handlers with anonymous fixtures
+        run: node test/today-task-browser.cjs
+      - name: Upload anonymous screenshot and assertion evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: roll001-dom-evidence
+          path: artifacts/roll001-dom/
+          if-no-files-found: warn
