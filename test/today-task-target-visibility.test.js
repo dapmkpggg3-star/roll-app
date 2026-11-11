@@ -12,11 +12,24 @@ const end = appSource.indexOf('function getWatchStandItems(allRoles)', begin);
 assert.ok(begin >= 0 && end > begin, 'today-task functions must be present');
 const selectionSource = appSource.slice(begin, end);
 
-const USED = '中古予備（バラシ前）';
-const NEW = '新品予備（組替可能）';
-const ONLINE = 'オンライン';
-const STORED = '新品予備（組込完了）';
-const SCRAP = '廃却待ち';
+// Keep status fixtures aligned with the actual application, rather than an
+// independently ordered test-only list that can produce false failures.
+function readStatusConstant(name) {
+  const match = appSource.match(new RegExp('const ' + name + " = '([^']+)';"));
+  assert.ok(match, 'missing app status constant: ' + name);
+  return match[1];
+}
+const allowedMatch = appSource.match(/const ALLOWED_STATUSES\s*=\s*\[([\s\S]*?)\];/);
+assert.ok(allowedMatch, 'missing app status priority list');
+const allowedStatuses = [...allowedMatch[1].matchAll(/'([^']+)'/g)].map(match => match[1]);
+assert.ok(allowedStatuses.length, 'empty status priority list');
+const USED = readStatusConstant('USED_STANDBY_STATUS');
+const NEW = readStatusConstant('NEW_READY_STATUS');
+const ONLINE = readStatusConstant('ONLINE_STATUS');
+const STORED = readStatusConstant('NEW_STORAGE_STATUS');
+const ORDERED = readStatusConstant('ORDERED_WAITING_STATUS');
+const SCRAP = readStatusConstant('SCRAP_WAITING_STATUS');
+const DISCARDED = readStatusConstant('DISCARDED_STATUS');
 const roles = [
   { id: '10-A', name: '#10-A', status: USED, updatedAt: 10 },
   { id: '10-B', name: '#10-B', status: NEW, updatedAt: 30 },
@@ -26,11 +39,12 @@ const roles = [
   { id: '11-C', name: '#11-C', status: ONLINE, updatedAt: 40 }
 ];
 
-function makeTargetLookup(visibleIds) {
+function makeTargetLookup(visibleIds, roleData = roles) {
   const visible = new Set(visibleIds);
+  const roleCopies = roleData.map(role => ({ ...role }));
   const context = vm.createContext({
-    roles: roles.map(role => ({ ...role })),
-    getFilteredRoles: () => roles.filter(role => visible.has(role.id)),
+    roles: roleCopies,
+    getFilteredRoles: () => roleCopies.filter(role => visible.has(role.id)),
     getStandKey: name => String(name).match(/#(\d+)/)?.[1] || '',
     compareUpdatedAt: (a, b, order) => order === 'desc'
       ? Number(b.updatedAt) - Number(a.updatedAt)
@@ -38,10 +52,10 @@ function makeTargetLookup(visibleIds) {
     USED_STANDBY_STATUS: USED,
     NEW_READY_STATUS: NEW,
     NEW_STORAGE_STATUS: STORED,
-    ORDERED_WAITING_STATUS: '発注待ち',
+    ORDERED_WAITING_STATUS: ORDERED,
     SCRAP_WAITING_STATUS: SCRAP,
-    DISCARDED_STATUS: '廃却済',
-    ALLOWED_STATUSES: [USED, NEW, ONLINE, STORED, '発注待ち', SCRAP, '廃却済']
+    DISCARDED_STATUS: DISCARDED,
+    ALLOWED_STATUSES: allowedStatuses
   });
   vm.runInContext(selectionSource + '\nthis.selectTarget = getTodayTaskTargetRole;', context, { timeout: 1000 });
   return { selectTarget: context.selectTarget, context };
@@ -93,12 +107,35 @@ test('target lookup does not change roll order or statuses', () => {
 });
 
 test('reserve shortage never chooses an excluded hidden status', () => {
-  const { selectTarget } = makeTargetLookup(roles.map(role => role.id));
+  const excludedRoles = [
+    { id: '10-D', name: '#10-D', status: STORED, updatedAt: 999 },
+    { id: '10-E', name: '#10-E', status: ORDERED, updatedAt: 998 },
+    { id: '10-F', name: '#10-F', status: SCRAP, updatedAt: 997 },
+    { id: '10-G', name: '#10-G', status: DISCARDED, updatedAt: 996 }
+  ];
+  const allRoles = [...roles, ...excludedRoles];
+  const { selectTarget } = makeTargetLookup(allRoles.map(role => role.id), allRoles);
   const result = selectTarget({ id: 'reserve-shortage-10', standKey: '10' });
   assert.ok(result);
-  assert.notEqual(result.status, SCRAP);
-  assert.notEqual(result.status, STORED);
+  assert.ok(![STORED, ORDERED, SCRAP, DISCARDED].includes(result.status));
+  // Production gives ONLINE first priority; the old mock incorrectly put USED first.
   assert.equal(result.id, '10-C');
+});
+
+test('reserve shortage returns null when only excluded statuses exist', () => {
+  const excludedRoles = [
+    { id: '10-D', name: '#10-D', status: STORED, updatedAt: 999 },
+    { id: '10-E', name: '#10-E', status: ORDERED, updatedAt: 998 },
+    { id: '10-F', name: '#10-F', status: SCRAP, updatedAt: 997 },
+    { id: '10-G', name: '#10-G', status: DISCARDED, updatedAt: 996 }
+  ];
+  const { selectTarget } = makeTargetLookup(excludedRoles.map(role => role.id), excludedRoles);
+  assert.equal(selectTarget({ id: 'reserve-shortage-10', standKey: '10' }), null);
+});
+
+test('reserve shortage does not redirect when its online target is hidden', () => {
+  const { selectTarget } = makeTargetLookup(['10-A', '10-B']);
+  assert.equal(selectTarget({ id: 'reserve-shortage-10', standKey: '10' }), null);
 });
 
 test('generic stand task stops rather than redirecting past a hidden newest roll', () => {
