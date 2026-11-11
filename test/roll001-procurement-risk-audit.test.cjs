@@ -61,10 +61,32 @@ test('GUARD: invalid purchase lead times remain explicitly unverified, never sil
   assert.match(levelSource,/key: 'unknown', label: '安全判定不能'/);
   const ctx=vm.createContext({getTodayDateString:()=>currentDate,addMonthsToDateString:()=>currentDate,normalizeDateInputValue:x=>x||'',PURCHASE_CONFIRMATION_WINDOW_MONTHS:3});
   vm.runInContext(levelSource+'\nthis.level=getPurchaseConfirmationLevel;',ctx);
+  const planning=vm.createContext({
+    getStandKey:()=> '10',
+    normalizePurchaseDiameter:x=>Number(x),
+    DISCARDED_STATUS:'廃却待ち（ラック保管）',
+    getStandMaster:()=>({scrapDiameter:292,leadTimeMonths:planning.inputLead}),
+    getCuttingMaster:()=>({active:true,calculationCutMm:2,standardCutMm:2}),
+    normalizeCuttingMasterNumericValue:x=>Number(x),
+    getStandOnlineUseMonths:()=>3,
+    normalizeUseStartDate:x=>x||'',
+    getTodayDateString:()=>currentDate,
+    addMonthsToDateString:(date,months)=>months===0?date:'2027-01-01'
+  });
+  vm.runInContext(infoSource+'\\nthis.plan=getPurchasePlanningInfo;',planning);
   for(const value of [undefined,null,'',0,-1,'bad']){
-    const result=ctx.level({leadTimeVerified:false,purchaseDecisionDate:''});
-    assert.equal(result.key,'unknown',String(value));
+    planning.inputLead=value;
+    const info=planning.plan({name:'#10-A',status:'オンライン',currentDiameter:320});
+    assert.equal(info.leadTimeVerified,false,String(value));
+    assert.equal(info.purchaseDecisionDate,'',String(value));
+    assert.equal(info.leadTimeMonths,null,String(value));
+    assert.equal(ctx.level(info).key,'unknown',String(value));
   }
+  planning.inputLead=8;
+  const valid=planning.plan({name:'#10-A',status:'オンライン',currentDiameter:320});
+  assert.equal(valid.leadTimeVerified,true);
+  assert.equal(valid.leadTimeMonths,8);
+  assert.ok(valid.purchaseDecisionDate);
   assert.equal(ctx.level({leadTimeVerified:true,purchaseDecisionDate:currentDate}).key,'urgent');
 });
 
