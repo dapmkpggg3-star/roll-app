@@ -61,7 +61,8 @@ test('successful verification readback does not replace originals with the merge
   context.fetchRemoteRolesForGuard = async () => {
     fetches += 1;
     if (fetches === 1) return remoteWithRevision(remote, 'rev-1');
-    return remoteWithRevision(context.roles, 'rev-2');
+    // Simulate the remote readback of the submitted payload, not local UI state.
+    return remoteWithRevision(local, 'rev-2');
   };
   context.saveData = async () => true;
 
