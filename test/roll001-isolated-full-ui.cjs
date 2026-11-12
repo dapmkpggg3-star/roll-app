@@ -94,6 +94,14 @@ async function main(){
   }
   assert.equal(await procurementCards.filter({hasText:'#10-D'}).count(),0,'discarded roll must not be in procurement review');
   assert.equal(await page.locator('#purchase-confirmation-count').innerText(),'3件');
+  // Normal app starts in simple-overview and purchase review is disabled by
+  // default. Open both using the actual user-facing controls, not forced CSS.
+  await page.locator('#detailModeBtn').click();
+  assert.equal(await page.locator('body').evaluate(el=>el.classList.contains('simple-overview')),false,'detail view must be enabled');
+  await page.locator('#dashboard-display-settings-toggle').click();
+  await page.locator('#dashboard-visibility-purchase-confirmation').check();
+  assert.equal(await page.locator('#purchase-confirmation-board').evaluate(el=>el.hidden),false,'purchase review must be enabled in display settings');
+  checks.push('real detail-view and dashboard settings controls expose procurement review');
   // Expand through the real UI control: CSS is-collapsed hides the cards even
   // when their DOM assertions pass. Capture the actual visible board.
   const purchaseToggle=page.locator('#purchase-confirmation-toggle');
