@@ -1417,6 +1417,8 @@ async function syncRoles() {
             // An operator may edit local roles while the remote POST/readback is
             // in flight. Never overwrite those edits with the earlier snapshot.
             if (getLocalStorageSyncSignature() !== syncStartLocalStorageSignature) {
+                // Remote may already have changed: do not replay a queued POST.
+                isSyncQueued = false;
                 setSyncMessage('同期中に端末側の変更が入りました。Google側の保存は確認済みですが、端末側を上書きせず停止しました。差分を確認してください。', true);
                 setSyncContentPhase('unknown', '同期中に端末側の変更が発生');
                 return false;
