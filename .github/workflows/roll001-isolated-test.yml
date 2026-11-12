@@ -5,6 +5,7 @@ on:
       - fix/roll001-visibility-safe-20261110
     paths:
       - '.github/workflows/roll001-isolated-test.yml'
+      - 'index.html'
       - 'js/app.js'
       - 'test/today-task-target-visibility.test.js'
       - 'test/roll001-spare-readiness.test.cjs'
