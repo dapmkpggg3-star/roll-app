@@ -113,3 +113,30 @@ test('remote save rejection preserves the local working copy before confirmation
   assert.equal(JSON.parse(storage.get('roles'))[0].memo, 'local-old',
     'rejected remote save must not replace the local working copy');
 });
+
+test('concurrent local edit during remote save is never overwritten on verified readback', async () => {
+  const { context, storage } = harness();
+  const local = [{ id: '1', name: '#99-1', status: 'オンライン', memo: 'local-before', updatedAt: '2026-11-01T00:00:00.000Z', history: [] }];
+  const remote = [{ id: '1', name: '#99-1', status: 'オンライン', memo: 'remote-before', updatedAt: '2026-10-01T00:00:00.000Z', history: [] }];
+  const operatorEdit = [{ ...local[0], memo: 'operator-edited-during-request' }];
+  storage.set('roles', JSON.stringify(local));
+  let writes = 0;
+  context.saveLocalRoles = () => { writes++; storage.set('roles', JSON.stringify(context.roles)); };
+  let submitted;
+  let fetchCount = 0;
+  context.fetchRemoteRolesForGuard = async () => {
+    fetchCount++;
+    return fetchCount === 1 ? remoteWithRevision(remote, 'rev-1') : remoteWithRevision(submitted, 'rev-2');
+  };
+  context.saveData = async submittedRoles => {
+    submitted = submittedRoles;
+    storage.set('roles', JSON.stringify(operatorEdit));
+    return true;
+  };
+  const result = await context.syncRoles();
+  assert.notEqual(result, true);
+  assert.equal(writes, 0, 'verified remote must not force a local commit over an operator edit');
+  assert.equal(JSON.parse(storage.get('roles'))[0].memo, 'operator-edited-during-request');
+  assert.equal(context.readIndependentSyncOriginals().localOriginal[0].memo, 'local-before');
+  assert.equal(context.readIndependentSyncOriginals().remoteOriginal[0].memo, 'remote-before');
+});
