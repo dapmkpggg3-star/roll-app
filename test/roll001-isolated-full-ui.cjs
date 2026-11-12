@@ -94,11 +94,16 @@ async function main(){
   }
   assert.equal(await procurementCards.filter({hasText:'#10-D'}).count(),0,'discarded roll must not be in procurement review');
   assert.equal(await page.locator('#purchase-confirmation-count').innerText(),'3件');
-  await page.evaluate(()=>{
-    document.getElementById('purchase-confirmation-board').style.display='block';
-    document.getElementById('purchase-confirmation-list').style.display='block';
-  });
-  await page.screenshot({path:path.join(out,'04-procurement-missing-master.png'),fullPage:true});
+  // Expand through the real UI control: CSS is-collapsed hides the cards even
+  // when their DOM assertions pass. Capture the actual visible board.
+  const purchaseToggle=page.locator('#purchase-confirmation-toggle');
+  await purchaseToggle.click();
+  assert.equal(await purchaseToggle.getAttribute('aria-expanded'),'true','purchase board did not expand');
+  for(const name of ['#10-A','#10-B','#10-C']){
+    const card=procurementCards.filter({hasText:name});
+    assert.ok(await card.isVisible(),'purchase warning not visibly rendered for '+name);
+  }
+  await page.locator('#purchase-confirmation-board').screenshot({path:path.join(out,'04-procurement-missing-master.png')});
   checks.push('actual procurement dashboard retains all three unhandled roles with missing master data as unknown; discarded roll excluded');
 
   fs.writeFileSync(path.join(out,'evidence.json'),JSON.stringify({status:'PASS',scope:'actual index.html + app scripts in ephemeral disconnected browser, authentication UI bypassed only within fixture; fake roles',checks,networkRequestsBlocked:outbound.length},null,2));
