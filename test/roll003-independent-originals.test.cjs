@@ -73,3 +73,26 @@ test('successful verification readback does not replace originals with the merge
   assert.equal(confirmed[0].memo, 'local-newer');
   assert.equal(originals.remoteOriginal[0].memo, 'remote-older');
 });
+
+test('repeated capture overwrites the prior originals: not a durable restore point', () => {
+  const { context, storage } = harness();
+  const local1 = [{ id: '1', name: '#99-1', memo: 'local-before-first-sync' }];
+  const remote1 = [{ id: '1', name: '#99-1', memo: 'remote-before-first-sync' }];
+  const local2 = [{ id: '1', name: '#99-1', memo: 'local-before-second-sync' }];
+  const remote2 = [{ id: '1', name: '#99-1', memo: 'remote-before-second-sync' }];
+  context.storeIndependentSyncOriginals(local1, remote1);
+  assert.equal(context.readIndependentSyncOriginals().remoteOriginal[0].memo, 'remote-before-first-sync');
+  context.storeIndependentSyncOriginals(local2, remote2);
+  assert.equal(context.readIndependentSyncOriginals().localOriginal[0].memo, 'local-before-second-sync');
+  assert.equal(context.readIndependentSyncOriginals().remoteOriginal[0].memo, 'remote-before-second-sync');
+  assert.equal([...storage.keys()].filter(key => key.startsWith('roles_original_remote_before_sync') && !key.endsWith('_saved_at')).length, 1);
+});
+
+test('browser storage loss leaves no independently recoverable original', () => {
+  const { context, storage } = harness();
+  context.storeIndependentSyncOriginals([{ id: '1', memo: 'local' }], [{ id: '1', memo: 'remote' }]);
+  assert.equal(context.readIndependentSyncOriginals().remoteOriginal.length, 1);
+  storage.clear();
+  assert.equal(context.readIndependentSyncOriginals().localOriginal.length, 0);
+  assert.equal(context.readIndependentSyncOriginals().remoteOriginal.length, 0);
+});
