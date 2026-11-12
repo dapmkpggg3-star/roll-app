@@ -1797,7 +1797,7 @@ function getPurchaseConfirmationLevel(info) {
     const warningLimit = addMonthsToDateString(today, PURCHASE_CONFIRMATION_WINDOW_MONTHS);
     const decisionDate = normalizeDateInputValue(info && info.purchaseDecisionDate);
 
-    if (!decisionDate || (info && info.leadTimeVerified === false)) {
+    if (!info || info.leadTimeVerified !== true || !decisionDate) {
         return { key: 'unknown', label: '安全判定不能', memo: '購入納期が未確認または不正です' };
     }
 
