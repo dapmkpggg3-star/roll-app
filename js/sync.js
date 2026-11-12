@@ -1414,6 +1414,13 @@ async function syncRoles() {
             lastSavedRemoteRoleCount = savedRemoteRoles.length;
             logSyncSaveDebugCounts(lastSavedRemoteRoleCount);
             verifySavedRoles(mergedRoles, savedRemoteRoles);
+            // An operator may edit local roles while the remote POST/readback is
+            // in flight. Never overwrite those edits with the earlier snapshot.
+            if (getLocalStorageSyncSignature() !== syncStartLocalStorageSignature) {
+                setSyncMessage('同期中に端末側の変更が入りました。Google側の保存は確認済みですが、端末側を上書きせず停止しました。差分を確認してください。', true);
+                setSyncContentPhase('unknown', '同期中に端末側の変更が発生');
+                return false;
+            }
             // Commit locally only after the remote content is verified.
             roles = sortedMergedRoles;
             saveLocalRoles();
