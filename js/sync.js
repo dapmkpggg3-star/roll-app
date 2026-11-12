@@ -1402,9 +1402,8 @@ async function syncRoles() {
         }
 
         assertLocalRolesPreservedForPost(localRoles, sortedMergedRoles);
-        roles = sortedMergedRoles;
-        saveLocalRoles();
-
+        // Do not publish the merged working copy before the remote save and
+        // readback have both succeeded. Preserve local edits on a failed POST.
         setSyncMessage('スプレッドシートと同期中です...');
 
         const ok = await saveData(sortedMergedRoles, remoteRoles.syncRevision);
@@ -1415,6 +1414,9 @@ async function syncRoles() {
             lastSavedRemoteRoleCount = savedRemoteRoles.length;
             logSyncSaveDebugCounts(lastSavedRemoteRoleCount);
             verifySavedRoles(mergedRoles, savedRemoteRoles);
+            // Commit locally only after the remote content is verified.
+            roles = sortedMergedRoles;
+            saveLocalRoles();
             localStorage.setItem('roles_backup_before_sync', JSON.stringify(savedRemoteRoles));
             localStorage.setItem('roles_backup_before_sync_saved_at', new Date().toISOString());
             clearDeletedRoleIds(pendingDeletedRoleIds);
