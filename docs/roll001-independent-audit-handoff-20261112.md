@@ -62,3 +62,14 @@
 - 禁止: 実データ、実認証、実GAS/Sheets、main、PR14、非公開版57、公開/merge/配信への変更。監査用匿名情報以外を外部モデルへ渡さない。
 
 **状態:** この文書は監査依頼資料。独立監査を実施した証拠はない。担当チャッピー、再確認2026-11-13。
+
+## 2026-11-13｜コード実査結果（ChatGPTによる一次監査・独立監査ではない）
+
+対象: `js/sync.js` の `syncRoles()`, `getLocalStorageSyncSignature()`, `parseStoredJsonArrayFromText()`, `storeIndependentSyncOriginals()`。コードを直接読んで以下を指摘。**別モデルの監査実施実績はなし**。
+
+- **AUD-SYNC-01 / 高 / 未解決**: `getLocalStorageSyncSignature()` は保存文字列をJSONとして解釈し、`parseStoredJsonArrayFromText()` はJSON破損・配列以外を `[]` に変換する。開始時と保存直前に両方破損していた場合、異常が「空配列」の同一署名に正規化される可能性がある。署名一致を原本一致と誤認しないこと。Local原本のJSON破損を**書込前に停止**する匿名反証テストが必要。
+- **AUD-SYNC-02 / 高 / 未解決**: Remote保存成功後の再読・照合が成功しても、Local編集競合時は `return false` でLocal確定を止める一方、Remoteは更新済み。現在のガードは自動再送しないが、`isSyncQueued` が別操作でtrueなら `finally` の `syncRoles()` 再実行が起き得る。Remote/Local不一致の明示的な手動差分確認・自動再試行抑止が必要。
+- **AUD-SYNC-03 / 高 / 未解決**: `storeIndependentSyncOriginals` は2つのlocalStorageキーに逐次保存し、原子的な保存ではない。途中で容量エラーが出ればLocalだけ新世代・Remote旧世代の不整合が起こり得る。固定キー上書き/端末消失と合わせ、独立復元点として不合格。
+- **AUD-SYNC-04 / 中 / 未解決**: Remote POST `false` の表示「ブラウザ内には保存されています」は、結合結果がLocalに反映されていない新仕様では曖昧。Local旧データ保全とRemoteの保存結果未確定を区別する必要がある。
+
+一次監査の判定: **No-Go、隔離変更の統合禁止**。監査証拠は静的コード読取りであり、匿名Node/Chromium反証テストの新head実行・別モデル独立監査・本番検証は未実施。次: まず AUD-SYNC-01/02 の匿名回帰テストと最小隔離修正案、次に別モデル監査、CI照合。担当チャッピー、再確認2026-11-13。
