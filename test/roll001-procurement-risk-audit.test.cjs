@@ -92,6 +92,17 @@ test('GUARD: invalid purchase lead times remain explicitly unverified, never sil
   assert.equal(ctx.level({leadTimeVerified:true,purchaseDecisionDate:currentDate}).key,'urgent');
 });
 
+test('GUARD: missing or non-boolean lead-time verification must fail closed',()=>{
+  const levelSource=piece('function getPurchaseConfirmationLevel(info)','function getPurchaseConfirmationItems(allRoles = roles)');
+  const ctx=vm.createContext({getTodayDateString:()=>currentDate,addMonthsToDateString:()=> '2027-02-11',normalizeDateInputValue:x=>x||'',PURCHASE_CONFIRMATION_WINDOW_MONTHS:3});
+  vm.runInContext(levelSource+'\nthis.level=getPurchaseConfirmationLevel;',ctx);
+  for(const value of [undefined,null,false,0,'true']){
+    assert.equal(ctx.level({purchaseDecisionDate:'2027-12-01',leadTimeVerified:value}).key,'unknown',String(value));
+  }
+  assert.equal(ctx.level(null).key,'unknown');
+  assert.equal(ctx.level({purchaseDecisionDate:'2027-12-01',leadTimeVerified:true}),null);
+});
+
 test('GUARD: the three-set purchase dashboard does not mark an ordered stand as resolved',()=>{
   const unhandled=piece('function isThreeSetManagementPurchaseUnhandledItem(item)','function getThreeSetManagementData(');
   const ctx=vm.createContext({});
