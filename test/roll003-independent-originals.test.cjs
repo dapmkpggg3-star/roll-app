@@ -96,3 +96,19 @@ test('browser storage loss leaves no independently recoverable original', () => 
   assert.equal(context.readIndependentSyncOriginals().localOriginal.length, 0);
   assert.equal(context.readIndependentSyncOriginals().remoteOriginal.length, 0);
 });
+
+test('remote save rejection can leave local working copy merged before confirmation', async () => {
+  const { context, storage } = harness();
+  const local = [{ id: '1', name: '#99-1', status: 'オンライン', memo: 'local-old', updatedAt: '2026-11-01T00:00:00.000Z', history: [] }];
+  const remote = [{ id: '1', name: '#99-1', status: 'オンライン', memo: 'remote-new', updatedAt: '2026-11-12T00:00:00.000Z', history: [] }];
+  storage.set('roles', JSON.stringify(local));
+  context.saveLocalRoles = () => storage.set('roles', JSON.stringify(context.roles));
+  context.fetchRemoteRolesForGuard = async () => remoteWithRevision(remote, 'rev-1');
+  context.saveData = async () => false;
+  const result = await context.syncRoles();
+  assert.notEqual(result, true);
+  assert.equal(context.readIndependentSyncOriginals().localOriginal[0].memo, 'local-old');
+  assert.equal(context.readIndependentSyncOriginals().remoteOriginal[0].memo, 'remote-new');
+  assert.equal(JSON.parse(storage.get('roles'))[0].memo, 'remote-new',
+    'document existing behavior: working local storage changed even though remote save rejected');
+});
