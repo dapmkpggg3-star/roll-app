@@ -1795,9 +1795,14 @@ function getPurchasePlanningInfo(role) {
 function getPurchaseConfirmationLevel(info) {
     const today = getTodayDateString();
     const warningLimit = addMonthsToDateString(today, PURCHASE_CONFIRMATION_WINDOW_MONTHS);
-    const decisionDate = normalizeDateInputValue(info && info.purchaseDecisionDate);
+    const rawDecisionDate = info && info.purchaseDecisionDate;
+    const decisionDate = normalizeDateInputValue(rawDecisionDate);
+    // A parsed/rolled-over date must not silently suppress a procurement warning.
+    const decisionDateValid = typeof rawDecisionDate === 'string'
+        && /^\d{4}-\d{2}-\d{2}$/.test(rawDecisionDate)
+        && decisionDate === rawDecisionDate;
 
-    if (!info || info.leadTimeVerified !== true || !decisionDate) {
+    if (!info || info.leadTimeVerified !== true || !decisionDateValid) {
         return { key: 'unknown', label: '安全判定不能', memo: '購入納期が未確認または不正です' };
     }
 
