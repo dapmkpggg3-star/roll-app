@@ -99,3 +99,26 @@ test('GUARD: the three-set purchase dashboard does not mark an ordered stand as 
   assert.match(src,/発注済みあり・必要数要確認/);
   assert.match(src,/発注数量・納入予定と3セット維持可否を確認/);
 });
+
+test('GUARD: missing master values remain visible as safety-unverified; discarded rolls stay excluded',()=>{
+  const ctx=vm.createContext({
+    roles:[],
+    DISCARDED_STATUS:'廃却待ち（ラック保管）',
+    getStandKey:name=>String(name).match(/#([0-9]+)/)?.[1]||'',
+    isPurchaseHandledStatus:status=>status==='発注済み（納入待ち）'||status==='新品予備保管',
+    getPurchasePlanningInfo:role=>role.currentDiameter?({standKey:'10',roleName:role.name,purchaseDecisionDate:currentDate,leadTimeVerified:true}):null,
+    getPurchaseConfirmationLevel:info=>info?({key:'urgent',label:'要確認'}):({key:'unknown',label:'安全判定不能'}),
+    compareStandRoleNames:(a,b)=>a.localeCompare(b)
+  });
+  vm.runInContext(purchase+'\nthis.audit=getPurchaseConfirmationItems;',ctx,{timeout:1200});
+  const items=ctx.audit([
+    {name:'#10-A',status:'オンライン',currentDiameter:''},
+    {name:'#10-B',status:'オンライン',currentDiameter:320},
+    {name:'#10-C',status:'廃却待ち（ラック保管）',currentDiameter:''}
+  ]);
+  assert.equal(items.length,2);
+  assert.equal(items[0].roleName,'#10-A');
+  assert.equal(items[0].level.key,'unknown');
+  assert.equal(items[0].leadTimeVerified,false);
+  assert.equal(items[1].roleName,'#10-B');
+});
