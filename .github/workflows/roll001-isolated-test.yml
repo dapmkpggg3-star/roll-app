@@ -7,9 +7,15 @@ on:
       - '.github/workflows/roll001-isolated-test.yml'
       - 'index.html'
       - 'js/app.js'
+      - 'js/sync.js'
+      - 'css/styles.css'
       - 'test/today-task-target-visibility.test.js'
       - 'test/roll001-spare-readiness.test.cjs'
       - 'test/roll001-procurement-risk-audit.test.cjs'
+      - 'test/sync-revision-guard.test.js'
+      - 'test/roll003-independent-originals.test.cjs'
+      - 'test/roll004-hidden-status-filter.test.cjs'
+      - 'test/roll005-print-contract.test.cjs'
       - 'test/today-task-browser.cjs'
       - 'test/roll001-real-filter-browser.cjs'
       - 'test/roll001-isolated-full-ui.cjs'
@@ -27,7 +33,7 @@ jobs:
         with:
           node-version: '22'
       - name: Run real repository test with mock data only
-        run: node --test test/today-task-target-visibility.test.js test/roll001-spare-readiness.test.cjs test/roll001-procurement-risk-audit.test.cjs
+        run: node --test test/today-task-target-visibility.test.js test/roll001-spare-readiness.test.cjs test/roll001-procurement-risk-audit.test.cjs test/sync-revision-guard.test.js test/roll003-independent-originals.test.cjs test/roll004-hidden-status-filter.test.cjs test/roll005-print-contract.test.cjs
 
   isolated-browser:
     runs-on: ubuntu-latest

@@ -140,7 +140,7 @@ test('POST reports partial reflection separately from a fully completed save', (
 test('Roles writes preserve unrelated columns and clear only surplus managed rows', () => {
     const h = harness(), gas = h.context, calls = [];
     // Reload the real writeRoles after the race-test stub.
-    vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'google-apps-script.gs'), 'utf8').match(/function writeRoles\(roles\) \{[\s\S]*?\n\}\n\nfunction buildRoleRowForSheet/)[0].replace(/\nfunction buildRoleRowForSheet$/, ''), gas);
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'google-apps-script.gs'), 'utf8').match(/function writeRoles\(roles\) \{[\s\S]*?\r?\n\}\r?\n\r?\nfunction buildRoleRowForSheet/)[0].replace(/\r?\nfunction buildRoleRowForSheet$/, ''), gas);
     gas.getSheet = () => ({
         getLastRow: () => 5,
         getRange: (...args) => ({ setValues: values => calls.push({ kind: 'set', args, values }), clearContent: () => calls.push({ kind: 'clear', args }) }),
@@ -165,7 +165,7 @@ test('Roles writes preserve unrelated columns and clear only surplus managed row
 
 function realWriteHarness() {
     const h = harness(), gas = h.context, writes = [];
-    vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'google-apps-script.gs'), 'utf8').match(/function writeRoles\(roles\) \{[\s\S]*?\n\}\n\nfunction buildRoleRowForSheet/)[0].replace(/\nfunction buildRoleRowForSheet$/, ''), gas);
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'google-apps-script.gs'), 'utf8').match(/function writeRoles\(roles\) \{[\s\S]*?\r?\n\}\r?\n\r?\nfunction buildRoleRowForSheet/)[0].replace(/\r?\nfunction buildRoleRowForSheet$/, ''), gas);
     gas.getSheet = () => ({ getLastRow: () => 2, getRange: (...args) => ({ setValues: values => writes.push({ args, values }) }) });
     gas.ensureRolesColumnCapacity = () => {};
     gas.applyStatusDropdowns = () => {};

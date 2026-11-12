@@ -1,6 +1,8 @@
 const SHEETS_ENDPOINT = globalThis.ROLL_APP_CONFIG && globalThis.ROLL_APP_CONFIG.apiEndpoint || '';
 const DELETED_ROLE_IDS_KEY = 'deletedRoleIds';
 const LAST_SUCCESSFUL_SYNC_COUNT_KEY = 'lastSuccessfulSyncRoleCount';
+const SYNC_LOCAL_ORIGINAL_KEY = 'roles_original_local_before_sync';
+const SYNC_REMOTE_ORIGINAL_KEY = 'roles_original_remote_before_sync';
 const SYNC_COUNT_DROP_ABORT_RATIO = 0.3;
 let syncDiagnosticRemoteRoles = null;
 let syncContentVerification = { phase: 'unknown', snapshot: null, checkedAt: '', error: '' };
@@ -209,6 +211,28 @@ function parseStoredJsonArray(key) {
         console.error(`parseStoredJsonArray error: ${key}`, error);
         return [];
     }
+}
+
+function cloneSyncOriginalRoles(roleList) {
+    return JSON.parse(JSON.stringify(Array.isArray(roleList) ? roleList : []));
+}
+
+function storeIndependentSyncOriginals(localRoles, remoteRoles) {
+    const savedAt = new Date().toISOString();
+    const localOriginal = cloneSyncOriginalRoles(localRoles);
+    const remoteOriginal = cloneSyncOriginalRoles(remoteRoles);
+    localStorage.setItem(SYNC_LOCAL_ORIGINAL_KEY, JSON.stringify(localOriginal));
+    localStorage.setItem(SYNC_REMOTE_ORIGINAL_KEY, JSON.stringify(remoteOriginal));
+    localStorage.setItem(`${SYNC_LOCAL_ORIGINAL_KEY}_saved_at`, savedAt);
+    localStorage.setItem(`${SYNC_REMOTE_ORIGINAL_KEY}_saved_at`, savedAt);
+    return { localOriginal, remoteOriginal };
+}
+
+function readIndependentSyncOriginals() {
+    return {
+        localOriginal: parseStoredJsonArray(SYNC_LOCAL_ORIGINAL_KEY),
+        remoteOriginal: parseStoredJsonArray(SYNC_REMOTE_ORIGINAL_KEY)
+    };
 }
 
 function getStoredRolesSnapshot() {
@@ -1303,6 +1327,9 @@ async function syncRoles() {
         });
         const previousRoles = parseStoredJsonArray('roles_backup_before_sync').map(normalizeRole);
         const remoteRoles = await fetchRemoteRolesForGuard();
+        // Preserve the pre-merge local and remote copies. The merged payload must
+        // not replace either original, including when the remote save fails.
+        storeIndependentSyncOriginals(localRoles, remoteRoles);
         const pendingDeletedRoleIds = getDeletedRoleIds();
         const remoteRolesAfterPendingDelete = remoteRoles.filter(role => !isRoleMarkedDeleted(role, pendingDeletedRoleIds));
         const previousRolesAfterPendingDelete = previousRoles.filter(role => !isRoleMarkedDeleted(role, pendingDeletedRoleIds));
@@ -1378,9 +1405,6 @@ async function syncRoles() {
         roles = sortedMergedRoles;
         saveLocalRoles();
 
-        localStorage.setItem('roles_backup_before_sync', JSON.stringify(sortedMergedRoles));
-        localStorage.setItem('roles_backup_before_sync_saved_at', new Date().toISOString());
-
         setSyncMessage('スプレッドシートと同期中です...');
 
         const ok = await saveData(sortedMergedRoles, remoteRoles.syncRevision);
@@ -1391,6 +1415,8 @@ async function syncRoles() {
             lastSavedRemoteRoleCount = savedRemoteRoles.length;
             logSyncSaveDebugCounts(lastSavedRemoteRoleCount);
             verifySavedRoles(mergedRoles, savedRemoteRoles);
+            localStorage.setItem('roles_backup_before_sync', JSON.stringify(savedRemoteRoles));
+            localStorage.setItem('roles_backup_before_sync_saved_at', new Date().toISOString());
             clearDeletedRoleIds(pendingDeletedRoleIds);
             saveLastSuccessfulSyncCount(savedRemoteRoles.length);
             saveLastSyncAt();

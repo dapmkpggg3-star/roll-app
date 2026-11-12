@@ -7186,10 +7186,13 @@ function getFilteredRoles() {
         if (memoOnlyFilter && !hasMemoText(role)) {
             return false;
         }
-        const isNormallyHiddenStatus = role.status === NEW_STORAGE_STATUS
-            || role.status === ORDERED_WAITING_STATUS
-            || role.status === SCRAP_WAITING_STATUS;
-        if (isNormallyHiddenStatus && statusFilter !== role.status && !hasSearch && !memoOnlyFilter) {
+        const normalizedStatus = normalizeRoleStatusValue(role.status);
+        const isNormallyHiddenStatus = normalizedStatus === NEW_STORAGE_STATUS
+            || normalizedStatus === ORDERED_WAITING_STATUS
+            || normalizedStatus === SCRAP_WAITING_STATUS;
+        const filterExplicitlyShowsHidden = statusFilter !== 'all'
+            && normalizeRoleStatusValue(statusFilter) === normalizedStatus;
+        if (isNormallyHiddenStatus && !filterExplicitlyShowsHidden && !hasSearch && !memoOnlyFilter) {
             return false;
         }
         if (!hasSearch) {
