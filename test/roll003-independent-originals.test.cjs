@@ -140,3 +140,26 @@ test('concurrent local edit during remote save is never overwritten on verified 
   assert.equal(context.readIndependentSyncOriginals().localOriginal[0].memo, 'local-before');
   assert.equal(context.readIndependentSyncOriginals().remoteOriginal[0].memo, 'remote-before');
 });
+
+test('queued sync is suppressed when remote saved but concurrent local edit blocks commit', async () => {
+  const { context, storage } = harness();
+  const local = [{ id: '1', name: '#99-1', status: 'オンライン', memo: 'local-before', updatedAt: '2026-11-12T00:00:00.000Z', history: [] }];
+  const remote = [{ id: '1', name: '#99-1', status: 'オンライン', memo: 'remote-before', updatedAt: '2026-11-01T00:00:00.000Z', history: [] }];
+  storage.set('roles', JSON.stringify(local));
+  let calls = 0;
+  let submitted;
+  context.fetchRemoteRolesForGuard = async () => ++calls === 1 ? remoteWithRevision(remote, 'rev-1') : remoteWithRevision(submitted, 'rev-2');
+  let posts = 0;
+  context.saveData = async rolesToSend => {
+    posts++;
+    submitted = rolesToSend;
+    storage.set('roles', JSON.stringify([{ ...local[0], memo: 'operator-edit' }]));
+    await context.syncRoles(); // second click while first POST is in flight
+    return true;
+  };
+  const result = await context.syncRoles();
+  assert.notEqual(result, true);
+  assert.equal(posts, 1, 'must not auto-post again after remote/local divergence');
+  assert.equal(calls, 2, 'must not automatically fetch for a second sync');
+  assert.equal(JSON.parse(storage.get('roles'))[0].memo, 'operator-edit');
+});
