@@ -205,6 +205,13 @@
                         </div>
                         <div id="danger-roll-list" class="danger-roll-list"></div>
                     </div>
+                    <div id="purchase-confirmation-board" class="purchase-confirmation-board is-empty is-collapsed" aria-label="購入確認候補" aria-live="polite">
+                        <div class="purchase-confirmation-header">
+                            <button type="button" id="purchase-confirmation-toggle" class="dashboard-toggle-btn purchase-confirmation-title" onclick="togglePurchaseConfirmationDashboard()" aria-expanded="false" aria-controls="purchase-confirmation-list">購入確認候補（0件） ▼</button>
+                            <span id="purchase-confirmation-count" class="purchase-confirmation-count">0件</span>
+                        </div>
+                        <div id="purchase-confirmation-list" class="purchase-confirmation-list"></div>
+                    </div>
                     <div id="cutting-anomaly-dashboard" class="cutting-anomaly-dashboard is-empty is-collapsed" aria-live="polite">
                         <div class="cutting-anomaly-header">
                             <button type="button" id="cutting-anomaly-toggle" class="dashboard-toggle-btn cutting-anomaly-title" onclick="toggleCuttingAnomalyDashboard()" aria-expanded="false" aria-controls="cutting-anomaly-list">改削異常チェック（0件） ▼</button>
