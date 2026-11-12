@@ -97,6 +97,20 @@ async function main(){
   // Expand through the real UI control: CSS is-collapsed hides the cards even
   // when their DOM assertions pass. Capture the actual visible board.
   const purchaseToggle=page.locator('#purchase-confirmation-toggle');
+  // Diagnose actual visibility rather than forcing clicks on hidden elements.
+  const purchaseVisibility=await purchaseToggle.evaluate(el=>{
+    const chain=[];
+    for(let node=el;node&&chain.length<14;node=node.parentElement){
+      const css=getComputedStyle(node);
+      chain.push({tag:node.tagName,id:node.id,classes:node.className,display:css.display,visibility:css.visibility,opacity:css.opacity,rects:node.getClientRects().length,hidden:node.hidden});
+    }
+    return chain;
+  });
+  fs.writeFileSync(path.join(out,'purchase-visibility.json'),JSON.stringify(purchaseVisibility,null,2));
+  if(!await purchaseToggle.isVisible()){
+    await page.screenshot({path:path.join(out,'04-procurement-hidden-diagnostic.png'),fullPage:true});
+    throw new Error('Purchase toggle hidden; ancestor computed-style evidence saved: '+JSON.stringify(purchaseVisibility));
+  }
   await purchaseToggle.click();
   assert.equal(await purchaseToggle.getAttribute('aria-expanded'),'true','purchase board did not expand');
   for(const name of ['#10-A','#10-B','#10-C']){
