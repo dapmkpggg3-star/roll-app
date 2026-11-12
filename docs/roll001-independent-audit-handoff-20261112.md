@@ -40,3 +40,25 @@
 - **修正済みの旧監査指摘**: 数値10と文字列'10'の厳密比較による不一致、欠損マスタを購入確認から消す問題、廃却待ち混入は隔離実コードで修正され同一head CI成功。ただし本番再現・独立監査は未実施。
 - **監査者の重点反証**: タスクの優先順位と検索/非表示組合せ、ステータス旧表記、購入マスタ欠損時の「安全判定不能」表示、3セット固定と年間生産計画に基づく12か月以上の不足予測、意図しない外部通信、Local/Remote原本の保全・復元未証明。旧記述の「未修正の可能性」は現在のコードに対する事実と混同しない。
 - **判定**: ROLL-001〜005は未解決5件、解消確認0件、概算6合目、業務受入No-Go。11/12期限は未達のまま。独立監査前の本体・本番適用禁止。main/PR14/版57/保全枝/GAS/Sheets/実データには変更禁止。次工程はartifact実取得・画像/JSON照合→別モデル監査、担当チャッピー、再確認2026-11-13。
+
+## 2026-11-13 08:36 JST 追補｜ROLL-002/003 独立監査依頼（未実施）
+
+**対象を更新:** 最新隔離headは `a8e5ce936a6ae1107a5a0408e3de18a33431d38f`（この文書の追補前）。保全原本 `work-preserve-v46-20261101` との比較は ahead 60 / behind 0、変更15ファイル、`js/sync.js` +41/-6、`js/app.js` +108/-45。これらは監査範囲の説明であり監査結果ではない。
+
+### 直近の確定CIと未検証部分
+- [run 43325808202](https://github.com/dapmkpggg3-star/roll-app/actions/runs/43325808202) は旧head `dc5021c` で Node 53/53 PASS、Chromium DOM4/実フィルター6/フルUI6 PASS。これは新headの検証ではない。
+- 最新head `a8e5ce9` には `js/sync.js` のRemote POST・再読成功後Local確定への移動と、送信中Local変更時の署名再検査が含まれる。**最新head CI・別モデル監査は未確認**。
+
+### 別モデル監査者への具体的な反証依頼
+1. `js/sync.js` の `syncRoles()`、`saveData()`、`fetchRemoteRolesForGuard()`、`verifySavedRoles()`、`getLocalStorageSyncSignature()` を呼び出し順で追跡。POSTが `false` / 例外 / 実際には書込済みだが応答消失 / 読戻し失敗 / 不一致の各場合に、Local・Remote・削除待ちID・同期確認状態がどうなるかを表で示す。
+2. Remote POST中のLocal編集・削除・二重同期・タブ競合・LocalStorage保存失敗を匿名fixtureで反証。特に成功後の署名不一致時はRemoteが更新済みでもLocal確定を拒否するため、次回再同期で競合が安全停止するか検証。無条件の自動再送を推奨しない。
+3. `storeIndependentSyncOriginals` / `readIndependentSyncOriginals` の固定キー上書き・ブラウザ消失・破損・容量不足を調査。`roles_backup_before_sync` は独立した原状復元点と認めない。Local/Remoteそれぞれの**同期前**原本を世代・検証用ハッシュ・外部保全で残す設計と、実データ非接続の復元試験手順を要求。
+4. `test/roll003-independent-originals.test.cjs` と `test/sync-revision-guard.test.js` が実コードをどこまで呼んでいるか確認し、モックが危険な経路を隠していないか、検証されない分岐を列挙。
+5. 認証・GAS/Sheets ID・Remote revision・60件差分3件・固定3セット・Roles C/管理表H/現場表I・履歴と予定・オンライン交代への影響を「未検証」と明記し、証拠がない安全宣言を拒否。
+
+### 監査成果物の形式
+- 監査者のモデル名、日時、対象headとファイルblob、独立に実行したテスト、指摘ID/重大度/再現条件/影響/最小修正案/再試験条件を残す。
+- **合格条件:** 新headのNode/Chromium CI生ログ＋重要分岐の反証試験＋Local/Remote独立復元の証拠＋認証/実接続の安全ゲート。満たさなければ「監査待ち／業務No-Go」を維持。
+- 禁止: 実データ、実認証、実GAS/Sheets、main、PR14、非公開版57、公開/merge/配信への変更。監査用匿名情報以外を外部モデルへ渡さない。
+
+**状態:** この文書は監査依頼資料。独立監査を実施した証拠はない。担当チャッピー、再確認2026-11-13。
