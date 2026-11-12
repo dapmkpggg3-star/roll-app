@@ -103,6 +103,19 @@ test('GUARD: missing or non-boolean lead-time verification must fail closed',()=
   assert.equal(ctx.level({purchaseDecisionDate:'2027-12-01',leadTimeVerified:true}),null);
 });
 
+
+test('GUARD: malformed or calendar-invalid procurement dates fail closed',()=>{
+  const levelSource=piece('function getPurchaseConfirmationLevel(info)','function getPurchaseConfirmationItems(allRoles = roles)');
+  const normalizeSource=piece('function normalizeDateInputValue(value)','function addDaysToDateString(');
+  const ctx=vm.createContext({getTodayDateString:()=>currentDate,addMonthsToDateString:()=> '2027-02-11',PURCHASE_CONFIRMATION_WINDOW_MONTHS:3});
+  vm.runInContext(normalizeSource+'\n'+levelSource+'\\nthis.level=getPurchaseConfirmationLevel;',ctx);
+  for(const date of ['2026-02-30','2026-13-01','2026/12/01','Invalid Date','2026-11-1','2026-00-01','']){
+    assert.equal(ctx.level({purchaseDecisionDate:date,leadTimeVerified:true}).key,'unknown',date);
+  }
+  assert.equal(ctx.level({purchaseDecisionDate:'2027-12-01',leadTimeVerified:true}),null);
+  assert.equal(ctx.level({purchaseDecisionDate:'2026-11-11',leadTimeVerified:true}).key,'urgent');
+});
+
 test('GUARD: the three-set purchase dashboard does not mark an ordered stand as resolved',()=>{
   const unhandled=piece('function isThreeSetManagementPurchaseUnhandledItem(item)','function getThreeSetManagementData(');
   const ctx=vm.createContext({});
