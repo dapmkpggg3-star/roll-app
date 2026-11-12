@@ -1827,16 +1827,24 @@ function getPurchaseConfirmationItems(allRoles = roles) {
         .filter(role => role && !isPurchaseHandledStatus(role.status))
         .map(role => {
             const info = getPurchasePlanningInfo(role);
-            const level = getPurchaseConfirmationLevel(info);
-
-            if (!info || !level) {
-                return null;
+            // A missing diameter/master/cutting value must not make an unhandled roll
+            // disappear from the procurement review. This is NOT a purchase forecast.
+            if (!info && role.status !== DISCARDED_STATUS) {
+                return {
+                    standKey: getStandKey(role.name) || '?',
+                    roleName: role.name || '',
+                    status: role.status || '',
+                    currentDiameter: role.currentDiameter,
+                    scrapDiameter: '',
+                    disposalForecastDate: '',
+                    purchaseDecisionDate: '',
+                    leadTimeMonths: null,
+                    leadTimeVerified: false,
+                    level: { key: 'unknown', label: '安全判定不能' }
+                };
             }
-
-            return {
-                ...info,
-                level
-            };
+            const level = getPurchaseConfirmationLevel(info);
+            return info && level ? { ...info, level } : null;
         })
         .filter(Boolean)
         .sort((a, b) => {
