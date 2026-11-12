@@ -93,6 +93,17 @@ test('stand selection remains scoped to the requested stand', () => {
   assert.equal(selectTarget({ id: 'assembly-11', standKey: '11' }).id, '11-A');
 });
 
+test('numeric stand key selects only the matching visible stand', () => {
+  const { selectTarget } = makeTargetLookup(roles.map(role => role.id));
+  assert.equal(selectTarget({ id: 'assembly-10', standKey: 10 }).id, '10-A');
+  assert.equal(selectTarget({ id: 'assembly-11', standKey: 11 }).id, '11-A');
+});
+
+test('numeric stand key does not bypass hidden first-priority roll', () => {
+  const { selectTarget } = makeTargetLookup(['10-B', '10-C', '11-A']);
+  assert.equal(selectTarget({ id: 'assembly-10', standKey: 10 }), null);
+});
+
 test('missing task and unavailable stand return null', () => {
   const { selectTarget } = makeTargetLookup(roles.map(role => role.id));
   assert.equal(selectTarget(null), null);

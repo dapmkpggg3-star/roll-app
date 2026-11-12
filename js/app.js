@@ -7072,7 +7072,7 @@ function getTodayTaskStandTargetRole(task, targetStatuses = null) {
         ? new Map(targetStatuses.map((status, index) => [status, index]))
         : null;
     const candidates = roles
-        .filter(role => getStandKey(role.name) === task.standKey)
+        .filter(role => String(getStandKey(role.name)) === String(task.standKey))
         .filter(role => !statusPriority || statusPriority.has(role.status))
         .sort((a, b) => {
             if (statusPriority) {
