@@ -1824,7 +1824,9 @@ function getPurchaseConfirmationItems(allRoles = roles) {
     // One ordered or stored roll does not prove the whole stand's future demand
     // is covered. Exclude only the handled role, not other unhandled rolls.
     return (Array.isArray(allRoles) ? allRoles : [])
-        .filter(role => role && !isPurchaseHandledStatus(role.status))
+        .filter(role => role && !isPurchaseHandledStatus(role.status)
+            && normalizeRoleStatusValue(role.status) !== SCRAP_WAITING_STATUS
+            && normalizeRoleStatusValue(role.status) !== DISCARDED_STATUS)
         .map(role => {
             const info = getPurchasePlanningInfo(role);
             // A missing diameter/master/cutting value must not make an unhandled roll

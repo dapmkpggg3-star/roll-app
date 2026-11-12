@@ -14,6 +14,8 @@ const currentDate='2026-11-11';
 function auditPurchaseList(roles){
   const ctx=vm.createContext({
     roles,getStandKey:name=>String(name).match(/#([0-9]+)/)?.[1]||'',
+    SCRAP_WAITING_STATUS:'廃却待ち（ラック保管）',DISCARDED_STATUS:'廃棄',
+    normalizeRoleStatusValue:status=>status==='廃却待ち'?'廃却待ち（ラック保管）':status,
     isPurchaseHandledStatus:status=>status==='発注済み（納入待ち）'||status==='新品予備保管',
     getPurchasePlanningInfo:role=>({standKey:'10',roleName:role.name,purchaseDecisionDate:currentDate}),
     getPurchaseConfirmationLevel:()=>({key:'urgent',label:'要確認'}),
@@ -64,7 +66,7 @@ test('GUARD: invalid purchase lead times remain explicitly unverified, never sil
   const planning=vm.createContext({
     getStandKey:()=> '10',
     normalizePurchaseDiameter:x=>Number(x),
-    DISCARDED_STATUS:'廃却待ち（ラック保管）',
+    DISCARDED_STATUS:'廃棄',
     getStandMaster:()=>({scrapDiameter:292,leadTimeMonths:planning.inputLead}),
     getCuttingMaster:()=>({active:true,calculationCutMm:2,standardCutMm:2}),
     normalizeCuttingMasterNumericValue:x=>Number(x),
@@ -103,7 +105,8 @@ test('GUARD: the three-set purchase dashboard does not mark an ordered stand as 
 test('GUARD: missing master values remain visible as safety-unverified; discarded rolls stay excluded',()=>{
   const ctx=vm.createContext({
     roles:[],
-    DISCARDED_STATUS:'廃却待ち（ラック保管）',
+    SCRAP_WAITING_STATUS:'廃却待ち（ラック保管）',DISCARDED_STATUS:'廃棄',
+    normalizeRoleStatusValue:status=>status==='廃却待ち'?'廃却待ち（ラック保管）':status,
     getStandKey:name=>String(name).match(/#([0-9]+)/)?.[1]||'',
     isPurchaseHandledStatus:status=>status==='発注済み（納入待ち）'||status==='新品予備保管',
     getPurchasePlanningInfo:role=>role.currentDiameter?({standKey:'10',roleName:role.name,purchaseDecisionDate:currentDate,leadTimeVerified:true}):null,
@@ -114,7 +117,9 @@ test('GUARD: missing master values remain visible as safety-unverified; discarde
   const items=ctx.audit([
     {name:'#10-A',status:'オンライン',currentDiameter:''},
     {name:'#10-B',status:'オンライン',currentDiameter:320},
-    {name:'#10-C',status:'廃却待ち（ラック保管）',currentDiameter:''}
+    {name:'#10-C',status:'廃却待ち（ラック保管）',currentDiameter:''},
+    {name:'#10-D',status:'廃棄',currentDiameter:''},
+    {name:'#10-E',status:'廃却待ち',currentDiameter:''}
   ]);
   assert.equal(items.length,2);
   assert.equal(items[0].roleName,'#10-A');
