@@ -79,6 +79,28 @@ async function main(){
   assert.equal(await page.evaluate(()=>roles.length),4,'synthetic roles mutated in navigation');
   checks.push('no mutation of role list by task navigation');
 
+  // Procurement regression: inspect actual rendered dashboard, not just VM return values.
+  // The three synthetic active rolls intentionally lack diameter/master data.
+  await page.evaluate(input=>{
+    const before=roles.map(x=>({...x}));
+    updatePurchaseConfirmationBoard(before);
+  },roles);
+  const procurementCards=page.locator('#purchase-confirmation-list .purchase-confirmation-card');
+  assert.equal(await procurementCards.count(),3,'three unhandled active rolls with missing masters must remain visible in purchase review');
+  for(const name of ['#10-A','#10-B','#10-C']){
+    const card=procurementCards.filter({hasText:name});
+    assert.equal(await card.count(),1,'missing purchase warning for '+name);
+    assert.ok((await card.innerText()).includes('安全判定不能'),'missing fail-closed label for '+name);
+  }
+  assert.equal(await procurementCards.filter({hasText:'#10-D'}).count(),0,'discarded roll must not be in procurement review');
+  assert.equal(await page.locator('#purchase-confirmation-count').innerText(),'3件');
+  await page.evaluate(()=>{
+    document.getElementById('purchase-confirmation-board').style.display='block';
+    document.getElementById('purchase-confirmation-list').style.display='block';
+  });
+  await page.screenshot({path:path.join(out,'04-procurement-missing-master.png'),fullPage:true});
+  checks.push('actual procurement dashboard retains all three unhandled roles with missing master data as unknown; discarded roll excluded');
+
   fs.writeFileSync(path.join(out,'evidence.json'),JSON.stringify({status:'PASS',scope:'actual index.html + app scripts in ephemeral disconnected browser, authentication UI bypassed only within fixture; fake roles',checks,networkRequestsBlocked:outbound.length},null,2));
   console.log('ROLL-001 ISOLATED FULL UI PASS:',checks.length);
   checks.forEach(x=>console.log(' - '+x));
