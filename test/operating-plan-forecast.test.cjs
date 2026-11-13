@@ -102,6 +102,51 @@ test('rolling hours stay hours and are not added when a day is missing', () => {
   assert.equal(complete.acceptedAsActual, false);
 });
 
+test('past production tons do not become a future rework or purchase date', () => {
+  const past = context.summarizeMonthlyProductionSchedule([
+    { date: '2026-09-01', size: 'D10', productionAmount: 100, shift1Team: 'A', shift3Team: 'B', operatingHours: 8 }
+  ], '2026-11-13');
+  const linked = context.linkProductionToConsumption({ schedule: past, standKey: '10' });
+  assert.equal(linked.reworkTiming, 'unknown');
+  assert.equal(linked.purchaseTiming, 'unknown');
+  assert.equal(linked.rollUseCount, null);
+  assert.equal(linked.statusChanged, false);
+  assert.match(linked.reason, /過去の月/);
+  const future = context.summarizeMonthlyProductionSchedule([
+    { date: '2027-04-01', size: 'D10', productionAmount: 100, shift1Team: 'A', shift3Team: 'B', operatingHours: 8 },
+    { date: '2027-04-02', size: 'D13', productionAmount: 50, shift1Team: 'B', shift3Team: 'A', operatingHours: 4 }
+  ], '2026-11-13');
+  const missing = context.linkProductionToConsumption({ schedule: future, standKey: '10' });
+  assert.equal(missing.rollUseCount, null);
+  assert.equal(missing.gaps.includes('スタンドごとの使用トン数'), true);
+  assert.equal(missing.gaps.includes('10番と11番の8直までの上限'), true);
+  assert.equal(missing.gaps.includes('サイズごとの専用カリバ'), true);
+  assert.equal(source.includes('405'), false);
+  const estimated = context.linkProductionToConsumption({
+    schedule: context.summarizeMonthlyProductionSchedule([
+      { date: '2027-04-01', size: 'D1', productionAmount: 100, shift1Team: 'A', shift3Team: 'B', operatingHours: 8 }
+    ], '2026-11-13'),
+    standKey: '4',
+    standTons: { confirmed: true, tons: 100 },
+    conversion: { confirmed: true, tonsPerRollUse: 50 },
+    shortHoursConfirmed: true
+  });
+  assert.equal(estimated.rollUseCount, 2);
+  assert.equal(estimated.reworkTiming, 'unknown');
+  assert.equal(estimated.purchaseTiming, 'unknown');
+  const capped = context.linkProductionToConsumption({
+    schedule: estimated && context.summarizeMonthlyProductionSchedule([
+      { date: '2027-04-01', size: 'D1', productionAmount: 100, shift1Team: 'A', shift3Team: 'B', operatingHours: 8 }
+    ], '2026-11-13'),
+    standKey: '11',
+    standTons: { confirmed: true, tons: 100 },
+    conversion: { confirmed: true, tonsPerRollUse: 50 },
+    shortHoursConfirmed: true
+  });
+  assert.equal(capped.rollUseCount, null);
+  assert.equal(capped.gaps.includes('10番と11番の8直までの上限'), true);
+});
+
 test('lead time defaults to provisional six months and confirmed is explicit', () => {
   const fallback = context.defaultStandLeadTime('10');
   assert.equal(fallback.standKey, '10');

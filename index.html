@@ -195,6 +195,8 @@
                     <p>月別の生産予定は、サイズ、実行計画のトン数、Ⅰ勤とⅢ勤、圧延の作業時間です。ロールの本数とは別に表示し、過去の予定は今の実績や年間計画にしません。年間の本数が無いときは不足なしにしません。</p>
                     <label>生産予定ファイル <input id="monthly-schedule-file" type="file" accept=".xlsx,.xlsm"></label>
                     <pre id="monthly-schedule-summary">月別の生産予定はまだ読んでいません。ファイルは端末内だけで読み、アップロードしません。</pre>
+                    <h2>消耗と改削・購入</h2>
+                    <pre id="consumption-link">生産予定を読むと、計算できる範囲と、まだ判定できない理由を表示します。年間のロール本数は作りません。</pre>
                     <p>ロール本数の版は、別の年間資料があるときだけ保存します。新しい版を保存しても以前の版は残り、ロールのステータスは変わりません。</p>
                     <label>版ID <input id="operating-plan-id" type="text" value="plan-anon"></label>
                     <label>名称 <input id="operating-plan-label" type="text" value="匿名計画"></label>
@@ -497,7 +499,7 @@
     <script src="js/online-safety.js?v=20260805-online-safety"></script>
     <script src="js/sync.js?v=20261023-content-auth"></script>
 <script src="js/offline-recovery.js?v=20261113-offline-recovery"></script>
-<script src="js/operating-plan.js?v=20261113-monthly-schedule"></script>
+<script src="js/operating-plan.js?v=20261113-consumption-link"></script>
 <script src="js/csv.js?v=20260805-online-safety"></script>
 <script src="js/app.js?v=20261023-simple-auth"></script>
 

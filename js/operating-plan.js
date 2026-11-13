@@ -150,6 +150,54 @@ function summarizeMonthlyProductionSchedule(schedule, referenceDate) {
     };
 }
 
+function linkProductionToConsumption(input) {
+    const source = input || {};
+    const blocked = (reason, gaps) => ({
+        reworkTiming: 'unknown',
+        purchaseTiming: 'unknown',
+        rollUseCount: null,
+        statusChanged: false,
+        gaps,
+        reason
+    });
+    const summary = source.schedule;
+    if (!summary || summary.kind !== 'monthly-production-schedule') {
+        return blocked('月別の生産予定がありません。改削時期と購入時期は判定できません。', ['生産予定']);
+    }
+    const months = Array.isArray(summary.months) ? summary.months : [];
+    const future = months.filter(item => item.classification === 'future' || item.classification === 'current');
+    if (!future.length) {
+        return blocked('読み取った予定は過去の月です。これからの改削時期と購入時期には使いません。', ['これからの生産予定']);
+    }
+    const gaps = [];
+    const standNumber = Number(source.standKey);
+    const standTons = source.standTons && source.standTons.confirmed === true ? Number(source.standTons.tons) : null;
+    const tonsPerRollUse = source.conversion && source.conversion.confirmed === true ? Number(source.conversion.tonsPerRollUse) : null;
+    if (!Number.isFinite(standTons) || standTons < 0) gaps.push('スタンドごとの使用トン数');
+    if (!Number.isFinite(tonsPerRollUse) || tonsPerRollUse <= 0) {
+        gaps.push(standNumber >= 2 && standNumber <= 5
+            ? '2から5番スタンドの使用トン数の基準'
+            : 'カリバをどれだけ使うかの基準');
+    }
+    if (standNumber >= 10 && standNumber <= 11) gaps.push('10番と11番の8直までの上限');
+    const sizes = [...new Set(future.flatMap(item => item.sizes || []))];
+    if (sizes.length !== 1) gaps.push('サイズごとの専用カリバ');
+    if (future.some(item => item.operatingHours === null) || source.shortHoursConfirmed !== true) {
+        gaps.push('短い操業時間の扱い');
+    }
+    if (gaps.length) {
+        return blocked(`換算根拠が不足しています。${gaps.join('、')}。改削時期と購入時期は判定できません。`, gaps);
+    }
+    return {
+        reworkTiming: 'unknown',
+        purchaseTiming: 'unknown',
+        rollUseCount: standTons / tonsPerRollUse,
+        statusChanged: false,
+        gaps: ['消耗量と改削1回の対応'],
+        reason: 'スタンドの使用トン数から、ロールを使う量の目安は計算できます。改削1回分との対応が未確認なので、改削時期と購入時期は判定できません。'
+    };
+}
+
 function forecastThreeSetFromPlan(input) {
     const unknown = reason => ({ purchase: 'unknown', rework: 'unknown', shortage: 'unknown', totalUseCount: null, reason });
     const source = input || {};
@@ -255,6 +303,14 @@ function renderMonthlyScheduleSummary(summary) {
     const pastOnly = summary.months.every(item => item.classification === 'past');
     const pastNote = pastOnly ? 'この予定は基準日より前です。今の実績にも、これからの年間計画にも使いません。' : '過去の月は実績にしません。これからの月も年間計画にはしません。';
     target.textContent = `${lines.join('\n')}\n${pastNote}\n${summary.reason}`;
+    renderConsumptionLink(summary);
+}
+
+function renderConsumptionLink(summary) {
+    const target = document.getElementById('consumption-link');
+    if (!target) return;
+    const linked = linkProductionToConsumption({ schedule: summary });
+    target.textContent = linked.reason;
 }
 
 async function readMonthlyScheduleFile(file, referenceDate) {

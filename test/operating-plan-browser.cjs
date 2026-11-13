@@ -140,6 +140,9 @@ async function main() {
     assert.match(imported, /操業時間は未確認/);
     assert.match(imported, /今の実績にも、これからの年間計画にも使いません/);
     assert.match(imported, /不足なしとは判定しません/);
+    const consumption = await page.locator('#consumption-link').innerText();
+    assert.match(consumption, /過去の月/);
+    assert.match(consumption, /改削時期と購入時期には使いません/);
     assert.equal(await page.evaluate(() => roles[0].status), 'オンライン');
     assert.equal(outbound.length, 0);
     console.log('OPERATING PLAN browser PASS');
