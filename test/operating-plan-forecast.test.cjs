@@ -5,8 +5,12 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 const source = fs.readFileSync(path.join(__dirname, '../js/operating-plan.js'), 'utf8');
+const memoryStore = new Map();
 const context = vm.createContext({
-  localStorage: { getItem() { return null; }, setItem() {} },
+  localStorage: {
+    getItem(key) { return memoryStore.has(key) ? memoryStore.get(key) : null; },
+    setItem(key, value) { memoryStore.set(key, String(value)); }
+  },
   document: { getElementById() { return null; }, readyState: 'complete', addEventListener() {} },
   RollPlanningRules: require('../js/planning-rules'),
   RollPlanningSchedule: require('../js/planning-schedule'),
@@ -545,6 +549,24 @@ test('a selected stand keeps its pair and a late schedule read cannot return', (
   assert.equal(context.finishScheduleRead(second, { ok: true, months: [{ month: '2027-04' }], sourceName: 'A', days: [{}] }), false);
   assert.equal(context.finishScheduleRead(cleared, null), true);
   assert.equal(context.currentMonthlySummary(), null);
+});
+
+test('forecast settings stay with one roll, stand, size, and reference point', () => {
+  const stand10 = { rollId: 'roll-10', standKey: '10', size: 'D10', referenceAt: '2026-11-01', caliberId: 'anon-10', openingRuns: 6, openingTons: '' };
+  context.rememberForecastSetting(stand10);
+  const restored = context.recallForecastSetting(stand10);
+  assert.equal(restored.value.caliberId, 'anon-10');
+  assert.equal(restored.value.openingRuns, 6);
+  assert.equal(restored.value.openingTons, null);
+  assert.equal(context.recallForecastSetting({ rollId: 'roll-10', standKey: '11', size: 'D10', referenceAt: '2026-11-01' }).value, null);
+  assert.equal(context.recallForecastSetting({ rollId: 'roll-11', standKey: '10', size: 'D10', referenceAt: '2026-11-01' }).value, null);
+  assert.equal(context.recallForecastSetting({ rollId: 'roll-10', standKey: '10', size: 'D13', referenceAt: '2026-11-01' }).value, null);
+  assert.equal(context.recallForecastSetting({ rollId: 'roll-10', standKey: '10', size: 'D10', referenceAt: '2027-04-01' }).value, null);
+  context.rememberForecastSetting({ rollId: 'roll-10', standKey: '11', size: 'D10', referenceAt: '2026-11-01', caliberId: 'anon-11', openingRuns: 3, openingTons: 12 });
+  assert.equal(context.recallForecastSetting(stand10).value.caliberId, 'anon-10');
+  assert.equal(context.recallForecastSetting(stand10).value.openingRuns, 6);
+  assert.equal(context.recallForecastSetting({ rollId: 'roll-10', standKey: '11', size: 'D10', referenceAt: '2026-11-01' }).value.openingTons, 12);
+  assert.equal(context.forecastSettingKey(stand10).includes('ロール未選択'), false);
 });
 
 test('lead time defaults to provisional six months and confirmed is explicit', () => {

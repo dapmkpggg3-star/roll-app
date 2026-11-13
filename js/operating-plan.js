@@ -1082,7 +1082,8 @@ function renderExchangeCycle() {
                 ? ledger.map(item => `${item.frame} ${item.id} 径${item.diameter === null ? '未確認' : item.diameter}`).join('、')
                 : 'このスタンドの対象は台帳にありません。他のスタンドは混ぜません。'}`,
         describeRemainingCalibers(form.standKey, form.size, openingRuns),
-        `開始直数の出どころは${openingSource}です。未使用のカリバ本数ではありません。`
+        `開始直数の出どころは${openingSource}です。未使用のカリバ本数ではありません。`,
+        `予測設定は${forecastSettingKey({ rollId: online && online.id, standKey: form.standKey, size: form.size, referenceAt: schedule && schedule.referenceDate })}です。別のスタンド・サイズ・ロール・基準時点へは流用しません。${form.currentCaliber || openingRuns !== undefined ? '' : '既存の使用資料に現用カリバと開始量は無いので、空欄のままです。'}`
     ].join('\n');
     if (!days.length) {
         target.textContent = `生産予定が無いので、架空の操業では予測しません。\n${ledgerText}`;
@@ -1172,6 +1173,99 @@ function readStandLeadTime(standKey) {
 }
 
 let latestMonthlySummary = null;
+let activeForecastContext = null;
+let applyingForecastSetting = false;
+
+function forecastSettingKey(input) {
+    const source = input || {};
+    const stand = String(source.standKey || '').replace(/^#/, '').trim();
+    const size = String(source.size || '').normalize('NFKC').toUpperCase().replace(/\s+/g, '');
+    const rollId = String(source.rollId || '').trim();
+    const reference = String(source.referenceAt || '').slice(0, 10);
+    return [rollId || 'ロール未選択', stand || 'スタンド未選択', size || 'サイズ未選択', reference || '基準時点未設定'].join('|');
+}
+
+function readForecastSettings() {
+    try {
+        const parsed = JSON.parse(localStorage.getItem('caliber_forecast_settings_v1') || '{}');
+        return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+    } catch (error) {
+        return {};
+    }
+}
+
+function blankForecastAmount(value) {
+    if (value === undefined || value === null || value === '') return null;
+    const number = Number(value);
+    return Number.isFinite(number) ? number : null;
+}
+
+function rememberForecastSetting(input) {
+    const source = input || {};
+    const key = forecastSettingKey(source);
+    const stored = readForecastSettings();
+    stored[key] = {
+        caliberId: String(source.caliberId || '').trim(),
+        openingRuns: blankForecastAmount(source.openingRuns),
+        openingTons: blankForecastAmount(source.openingTons)
+    };
+    localStorage.setItem('caliber_forecast_settings_v1', JSON.stringify(stored));
+    return { key, value: stored[key] };
+}
+
+function recallForecastSetting(input) {
+    const key = forecastSettingKey(input);
+    const value = readForecastSettings()[key];
+    return { key, value: value || null };
+}
+
+function currentForecastContext() {
+    const form = readCaliberInputs();
+    const selected = String(form.standKey || '').replace(/^#/, '').trim();
+    const ledger = readLedgerResources(typeof roles === 'undefined' ? [] : roles, { standKey: form.standKey, size: form.size });
+    const online = ledger.find(item => item.standKey === selected && item.frame === 'online');
+    const reference = latestMonthlySummary && latestMonthlySummary.ok !== false ? latestMonthlySummary.referenceDate : '';
+    return { rollId: online ? online.id : '', standKey: selected, size: form.size, referenceAt: reference || '' };
+}
+
+function writeForecastFields(value) {
+    if (typeof document === 'undefined') return;
+    applyingForecastSetting = true;
+    const caliber = document.getElementById('caliber-current');
+    const runs = document.getElementById('caliber-opening');
+    const tons = document.getElementById('caliber-opening-tons');
+    const stored = value || {};
+    if (caliber) caliber.value = stored.caliberId || '';
+    if (runs) runs.value = stored.openingRuns === null || stored.openingRuns === undefined ? '' : String(stored.openingRuns);
+    if (tons) tons.value = stored.openingTons === null || stored.openingTons === undefined ? '' : String(stored.openingTons);
+    applyingForecastSetting = false;
+}
+
+function syncForecastSettingContext() {
+    if (typeof document === 'undefined' || applyingForecastSetting) return null;
+    const next = currentForecastContext();
+    const previous = activeForecastContext;
+    const form = readCaliberInputs();
+    const snapshot = { caliberId: form.currentCaliber || '', openingRuns: form.openingUsedRuns, openingTons: form.openingUsedTons };
+    if (!previous) {
+        activeForecastContext = next;
+        const recalled = recallForecastSetting(next);
+        if (recalled.value) writeForecastFields(recalled.value);
+        return recalled;
+    }
+    if (forecastSettingKey(previous) === forecastSettingKey(next)) {
+        return rememberForecastSetting(Object.assign({}, next, snapshot));
+    }
+    rememberForecastSetting(Object.assign({}, previous, snapshot));
+    const samePlace = String(previous.rollId || '') === String(next.rollId || '')
+        && String(previous.standKey || '') === String(next.standKey || '')
+        && String(previous.size || '').normalize('NFKC').toUpperCase().replace(/\s+/g, '') === String(next.size || '').normalize('NFKC').toUpperCase().replace(/\s+/g, '');
+    const recalled = recallForecastSetting(next);
+    if (samePlace) rememberForecastSetting(Object.assign({}, next, snapshot));
+    else writeForecastFields(recalled.value || { caliberId: '', openingRuns: null, openingTons: null });
+    activeForecastContext = next;
+    return recallForecastSetting(next);
+}
 let scheduleReadGeneration = 0;
 
 function beginScheduleRead() {
@@ -1389,10 +1483,13 @@ function bindMonthlyScheduleFileInput() {
     const input = document.getElementById('monthly-schedule-file');
     if (!input || input.dataset.bound === 'true') return;
     input.dataset.bound = 'true';
+    syncForecastSettingContext();
     renderExchangeCycle();
     ['caliber-stand', 'caliber-size', 'caliber-current', 'caliber-opening', 'caliber-opening-tons', 'caliber-pass', 'work-date', 'work-period', 'work-reserved-hours', 'work-type', 'work-required-hours', 'work-people', 'work-continuous', 'work-changeover', 'work-three-set', 'life-diameter', 'life-scrap', 'life-cut', 'life-spare', 'cycle-spare-calibers', 'cycle-rework-days'].forEach(id => {
         const field = document.getElementById(id);
         if (field) field.addEventListener('change', () => {
+            if (applyingForecastSetting) return;
+            syncForecastSettingContext();
             suggestKnownWorkEffort();
             renderMonthlyScheduleSummary(latestMonthlySummary);
             renderExchangeCycle();
@@ -1404,6 +1501,7 @@ function bindMonthlyScheduleFileInput() {
         const message = document.getElementById('operating-plan-message');
         if (!file) {
             finishScheduleRead(generation, null);
+            syncForecastSettingContext();
             renderMonthlyScheduleSummary({ ok: false, reason: '生産予定を外したので、循環の予測を無効にしました。' });
             if (message) message.textContent = '生産予定を外したので、循環の予測を無効にしました。';
             renderExchangeCycle();
@@ -1415,6 +1513,7 @@ function bindMonthlyScheduleFileInput() {
             const summary = await readMonthlyScheduleFile(file, referenceDate);
             summary.sourceName = file.name;
             if (!finishScheduleRead(generation, summary)) return;
+            syncForecastSettingContext();
             renderMonthlyScheduleSummary(summary);
             if (message) message.textContent = '生産予定は端末内で表示しました。ロール本数には保存せず、外部へは送っていません。';
         } catch (error) {
