@@ -180,3 +180,19 @@ test('corrupt stored roles or deletion JSON stops before remote read and POST', 
     assert.equal(storage.get(key), value, key + ': preserve original bytes for investigation');
   }
 });
+
+test('paired originals survive a failure while writing legacy keys', () => {
+  const { context, storage } = harness();
+  const local = [{ id: '1', memo: 'operator-before-sync' }];
+  const remote = [{ id: '1', memo: 'sheet-before-sync' }];
+  const originalSetItem = context.localStorage.setItem;
+  context.localStorage.setItem = (key, value) => {
+    if (key === 'roles_original_remote_before_sync') throw Error('simulated quota failure');
+    return originalSetItem(key, value);
+  };
+  assert.throws(() => context.storeIndependentSyncOriginals(local, remote), /simulated quota failure/);
+  const pair = context.readIndependentSyncOriginals();
+  assert.equal(pair.localOriginal[0].memo, 'operator-before-sync');
+  assert.equal(pair.remoteOriginal[0].memo, 'sheet-before-sync');
+  assert.ok(storage.has('roles_sync_original_pair_v1'));
+});
