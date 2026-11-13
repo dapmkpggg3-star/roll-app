@@ -5,7 +5,14 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 const source = fs.readFileSync(path.join(__dirname, '../js/operating-plan.js'), 'utf8');
-const context = vm.createContext({ localStorage: { getItem() { return null; }, setItem() {} }, document: { getElementById() { return null; } } });
+const context = vm.createContext({
+  localStorage: { getItem() { return null; }, setItem() {} },
+  document: { getElementById() { return null; }, readyState: 'complete', addEventListener() {} },
+  RollPlanningRules: require('../js/planning-rules'),
+  RollPlanningSchedule: require('../js/planning-schedule'),
+  RollPlanningCalibers: require('../js/planning-calibers')
+});
+context.globalThis = context;
 vm.runInContext(source, context);
 
 function months(count, startYear = 2026) {
@@ -119,7 +126,7 @@ test('past production tons do not become a future rework or purchase date', () =
   const missing = context.linkProductionToConsumption({ schedule: future, standKey: '10' });
   assert.equal(missing.rollUseCount, null);
   assert.equal(missing.gaps.includes('スタンドごとの使用トン数'), true);
-  assert.equal(missing.gaps.includes('10番と11番の8直までの上限'), true);
+  assert.equal(missing.gaps.includes('10番と11番の8直までの上限'), false);
   assert.equal(missing.gaps.includes('サイズごとの専用カリバ'), true);
   assert.equal(source.includes('405'), false);
   const estimated = context.linkProductionToConsumption({
@@ -134,17 +141,25 @@ test('past production tons do not become a future rework or purchase date', () =
   assert.equal(estimated.rollUseCount, 2);
   assert.equal(estimated.reworkTiming, 'unknown');
   assert.equal(estimated.purchaseTiming, 'unknown');
-  const capped = context.linkProductionToConsumption({
-    schedule: estimated && context.summarizeMonthlyProductionSchedule([
-      { date: '2027-04-01', size: 'D1', productionAmount: 100, shift1Team: 'A', shift3Team: 'B', operatingHours: 8 }
-    ], '2026-11-13'),
-    standKey: '11',
-    standTons: { confirmed: true, tons: 100 },
-    conversion: { confirmed: true, tonsPerRollUse: 50 },
-    shortHoursConfirmed: true
+  const day = (date, hours, team, amount) => ({
+    date, size: 'D1', operatingHours: hours, productionAmount: amount,
+    shift1Team: '', shift3Team: team || '', productionByTeam: { A: team === 'A' ? amount : 0, B: team === 'B' ? amount : 0 }
   });
-  assert.equal(capped.rollUseCount, null);
-  assert.equal(capped.gaps.includes('10番と11番の8直までの上限'), true);
+  const replacement = context.projectCaliberReplacement({
+    standKey: '10', referenceDate: '2026-11-13', currentCaliber: 'anon-1', openingUsedRuns: 6, size: 'D1',
+    days: [day('2027-04-01', 8, 'A', 10), day('2027-04-02', 0, 'B', 0), day('2027-04-03', 8, 'A', 10), day('2027-04-04', 5, 'A', 10)]
+  });
+  assert.equal(replacement.exchangeDate, '2027-04-02');
+  assert.equal(replacement.exceedsOnDate, '2027-04-04');
+  assert.equal(replacement.reworkTiming, 'unknown');
+  assert.equal(replacement.statusChanged, false);
+  const short = context.projectCaliberReplacement({
+    standKey: '11', referenceDate: '2026-11-13', currentCaliber: 'anon-1', openingUsedRuns: 6, size: 'D1',
+    days: [day('2027-04-01', 3, 'A', 10), day('2027-04-02', 1.5, 'A', 10)]
+  });
+  assert.equal(short.reviews.map(item => item.kind).join(','), '2時間以上4時間未満,2時間未満');
+  assert.equal(short.statusChanged, false);
+  assert.match(short.reason, /1直にしていません/);
 });
 
 test('lead time defaults to provisional six months and confirmed is explicit', () => {

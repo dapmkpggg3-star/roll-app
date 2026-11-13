@@ -142,7 +142,23 @@ async function main() {
     assert.match(imported, /不足なしとは判定しません/);
     const consumption = await page.locator('#consumption-link').innerText();
     assert.match(consumption, /過去の月/);
-    assert.match(consumption, /改削時期と購入時期には使いません/);
+    assert.match(consumption, /8直/);
+    assert.match(consumption, /4時間以上/);
+    const candidate = await page.evaluate(() => {
+      const day = (date, hours, team, amount) => ({
+        date, size: 'D1', operatingHours: hours, productionAmount: amount,
+        shift1Team: '', shift3Team: team || '', productionByTeam: { A: team === 'A' ? amount : 0, B: team === 'B' ? amount : 0 }
+      });
+      const result = projectCaliberReplacement({
+        standKey: '10', referenceDate: '2026-11-13', currentCaliber: 'anon-1', openingUsedRuns: 6, size: 'D1',
+        days: [day('2027-04-01', 8, 'A', 10), day('2027-04-02', 0, 'B', 0), day('2027-04-03', 8, 'A', 10), day('2027-04-04', 5, 'A', 10)]
+      });
+      document.getElementById('consumption-link').textContent = result.reason;
+      return document.getElementById('consumption-link').textContent;
+    });
+    assert.match(candidate, /交換候補は2027-04-02/);
+    assert.match(candidate, /改削日でも購入日でもありません/);
+    assert.equal(await page.evaluate(() => roles[0].status), 'オンライン');
     assert.equal(await page.evaluate(() => roles[0].status), 'オンライン');
     assert.equal(outbound.length, 0);
     console.log('OPERATING PLAN browser PASS');

@@ -179,12 +179,8 @@ function linkProductionToConsumption(input) {
             ? '2から5番スタンドの使用トン数の基準'
             : 'カリバをどれだけ使うかの基準');
     }
-    if (standNumber >= 10 && standNumber <= 11) gaps.push('10番と11番の8直までの上限');
     const sizes = [...new Set(future.flatMap(item => item.sizes || []))];
     if (sizes.length !== 1) gaps.push('サイズごとの専用カリバ');
-    if (future.some(item => item.operatingHours === null) || source.shortHoursConfirmed !== true) {
-        gaps.push('短い操業時間の扱い');
-    }
     if (gaps.length) {
         return blocked(`換算根拠が不足しています。${gaps.join('、')}。改削時期と購入時期は判定できません。`, gaps);
     }
@@ -195,6 +191,100 @@ function linkProductionToConsumption(input) {
         statusChanged: false,
         gaps: ['消耗量と改削1回の対応'],
         reason: 'スタンドの使用トン数から、ロールを使う量の目安は計算できます。改削1回分との対応が未確認なので、改削時期と購入時期は判定できません。'
+    };
+}
+
+function shiftUseFromHours(hours) {
+    if (typeof hours !== 'number' || !Number.isFinite(hours)) return 'missing';
+    if (hours >= 4) return 'full';
+    if (hours < 2) return 'underTwo';
+    return 'short';
+}
+
+function projectCaliberReplacement(input) {
+    const source = input || {};
+    const standNumber = Number(source.standKey);
+    const reference = String(source.referenceDate || '').slice(0, 10);
+    const days = (Array.isArray(source.days) ? source.days : [])
+        .filter(row => row && String(row.date || '') >= reference);
+    const base = {
+        exchangeDate: null,
+        exceedsOnDate: null,
+        reworkTiming: 'unknown',
+        purchaseTiming: 'unknown',
+        statusChanged: false,
+        reviews: []
+    };
+    if (standNumber !== 10 && standNumber !== 11) {
+        return { ...base, status: 'unknown', reason: '10番と11番以外のカリバ上限は台帳に無いため、交換日は判定できません。' };
+    }
+    if (!days.length) {
+        return { ...base, status: 'past', reason: '読み取った予定は過去の月です。これからの交換日には使いません。10番と11番の上限は8直、4時間以上は1直です。' };
+    }
+    if (!source.currentCaliber || typeof source.openingUsedRuns !== 'number' || !Number.isInteger(source.openingUsedRuns) || source.openingUsedRuns < 0) {
+        return { ...base, status: 'unknown', reason: '今のカリバと、開始時に何直使ったかが未確認です。10番と11番の上限は8直、4時間以上は1直です。' };
+    }
+    const reviews = [];
+    const countable = [];
+    days.forEach(row => {
+        const teamCount = [row.shift1Team, row.shift3Team].filter(Boolean).length;
+        const produced = (typeof row.productionAmount === 'number' && row.productionAmount > 0)
+            || [row.shift1Team, row.shift3Team].some(team => team && row.productionByTeam && Number(row.productionByTeam[team]) > 0);
+        if (!produced) {
+            countable.push(row);
+            return;
+        }
+        const use = shiftUseFromHours(row.operatingHours);
+        if (use !== 'full') {
+            reviews.push({ date: row.date, kind: use === 'missing' ? '時間未確認' : use === 'underTwo' ? '2時間未満' : '2時間以上4時間未満' });
+            return;
+        }
+        if (teamCount > 1) {
+            reviews.push({ date: row.date, kind: '勤ごとの時間' });
+            return;
+        }
+        countable.push(row);
+    });
+    const rules = globalThis.RollPlanningRules;
+    const scheduleApi = globalThis.RollPlanningSchedule;
+    const calibers = globalThis.RollPlanningCalibers;
+    if (!rules || !scheduleApi || !calibers) {
+        return { ...base, reviews, status: 'unknown', reason: 'カリバ予測を読み込めません。' };
+    }
+    const projected = calibers.projectCaliberChange(countable, {
+        equipmentId: `stand-${standNumber}`,
+        stands: [String(standNumber)],
+        size: source.size || '',
+        maxRuns: 8,
+        usedRuns: source.openingUsedRuns,
+        currentCaliber: source.currentCaliber,
+        nextCaliber: source.nextCaliber,
+        caliberSequence: source.caliberSequence
+    }, {
+        ruleEngine: rules.createPlanningRules({ afterProductionAllowedWorkTypes: [rules.WORK_TYPES.CALIBER_CHANGE] }),
+        scheduleApi,
+        slotTypes: rules.SLOT_TYPES,
+        workTypes: rules.WORK_TYPES
+    });
+    const exchangeDate = projected.recommendation ? projected.recommendation.date : (projected.lastAllowedRun ? projected.lastAllowedRun.date : null);
+    const exceedsOnDate = projected.firstOverLimitRun ? projected.firstOverLimitRun.date : null;
+    let reason = !exceedsOnDate
+        ? 'この予定の範囲では8直を超えません。4時間以上を1直として数えています。'
+        : exchangeDate
+            ? `交換候補は${exchangeDate}です。${exceedsOnDate}の操業は8直を超えます。これは改削日でも購入日でもありません。`
+            : `${exceedsOnDate}の前に交換が必要です。止まれる日が予定に無いため、交換日は確定しません。`;
+    if (reviews.length) {
+        reason += `要確認: ${reviews.map(item => `${item.date}は${item.kind}`).join('、')}。その日は1直にしていません。`;
+    }
+    return {
+        exchangeDate,
+        exceedsOnDate,
+        status: reviews.length ? 'needsReview' : projected.status,
+        reviews,
+        reworkTiming: 'unknown',
+        purchaseTiming: 'unknown',
+        statusChanged: false,
+        reason
     };
 }
 
@@ -310,7 +400,15 @@ function renderConsumptionLink(summary) {
     const target = document.getElementById('consumption-link');
     if (!target) return;
     const linked = linkProductionToConsumption({ schedule: summary });
-    target.textContent = linked.reason;
+    const caliber = projectCaliberReplacement({
+        standKey: '10',
+        days: summary && summary.days,
+        referenceDate: summary && summary.referenceDate,
+        currentCaliber: summary && summary.currentCaliber,
+        openingUsedRuns: summary && summary.openingUsedRuns,
+        size: summary && summary.size
+    });
+    target.textContent = `${linked.reason}\n${caliber.reason}`;
 }
 
 async function readMonthlyScheduleFile(file, referenceDate) {
@@ -318,7 +416,7 @@ async function readMonthlyScheduleFile(file, referenceDate) {
         return { ok: false, reason: '生産予定の読み取り機能を確認できません。' };
     }
     const parsed = await globalThis.RollPlanningImport.parseXlsxArrayBuffer(await file.arrayBuffer());
-    return summarizeMonthlyProductionSchedule(parsed.schedule, referenceDate);
+    return { ...summarizeMonthlyProductionSchedule(parsed.schedule, referenceDate), days: parsed.schedule, referenceDate };
 }
 
 function renderOperatingPlanPanel() {
