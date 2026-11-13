@@ -7365,3 +7365,66 @@ body.read-only-account .assembly-action-cell,
 body.read-only-account #auto-planning-export { display: none !important; }
 
 body:not(.authorized-admin) #adminModeBtn { display: none !important; }
+
+@media print {
+    body:not(.workshop-board-mode) .header-actions,
+    body:not(.workshop-board-mode) .role-form,
+    body:not(.workshop-board-mode) .form-action-zone,
+    body:not(.workshop-board-mode) .last-sync-time,
+    body:not(.workshop-board-mode) .page-scroll-controls,
+    body:not(.workshop-board-mode) .detail-modal,
+    body:not(.workshop-board-mode) #login-screen,
+    body:not(.workshop-board-mode) #app-update-notice,
+    body:not(.workshop-board-mode) #sync-diagnostic-panel,
+    body:not(.workshop-board-mode) #auto-planning-panel,
+    body:not(.workshop-board-mode) #dashboard-display-settings,
+    body:not(.workshop-board-mode) #count-summary,
+    body:not(.workshop-board-mode) #today-task-dashboard,
+    body:not(.workshop-board-mode) #purchase-confirmation-board,
+    body:not(.workshop-board-mode) .actions-column,
+    body:not(.workshop-board-mode) .action-buttons,
+    body:not(.workshop-board-mode) .card-actions-list {
+        display: none !important;
+    }
+
+    body:not(.workshop-board-mode) #role-table {
+        display: table !important;
+        width: 100% !important;
+        border-collapse: collapse;
+        background: #ffffff !important;
+    }
+
+    body:not(.workshop-board-mode) #role-table thead {
+        display: table-header-group !important;
+    }
+
+    body:not(.workshop-board-mode) #role-table tbody#role-list {
+        display: table-row-group !important;
+        width: 100% !important;
+        grid-template-columns: none !important;
+    }
+
+    body:not(.workshop-board-mode) #role-table tbody#role-list tr {
+        display: table-row !important;
+        min-height: 0 !important;
+        height: auto !important;
+        break-inside: avoid;
+        page-break-inside: avoid;
+        box-shadow: none !important;
+    }
+
+    body:not(.workshop-board-mode) #role-table tbody#role-list th,
+    body:not(.workshop-board-mode) #role-table tbody#role-list td {
+        display: table-cell !important;
+        width: auto !important;
+        color: #0f172a !important;
+        background: #ffffff !important;
+        border: 1px solid #cbd5e1 !important;
+        padding: 4px 6px !important;
+    }
+
+    body:not(.workshop-board-mode) #role-table .stand-name-cell {
+        font-size: 14px !important;
+        line-height: 1.3 !important;
+    }
+}

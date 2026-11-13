@@ -19,3 +19,4 @@ Thumbs.db
 # Build
 dist/
 build/
+artifacts/

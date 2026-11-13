@@ -181,6 +181,31 @@ test('corrupt stored roles or deletion JSON stops before remote read and POST', 
   }
 });
 
+test('a second capture keeps the previous original generation', () => {
+  const { context, storage } = harness();
+  context.storeIndependentSyncOriginals([{ id: '1', memo: 'generation-1' }], [{ id: '1', memo: 'remote-1' }]);
+  context.storeIndependentSyncOriginals([{ id: '1', memo: 'generation-2' }], [{ id: '1', memo: 'remote-2' }]);
+  const generations = JSON.parse(storage.get('roles_sync_original_generations_v1'));
+  assert.equal(generations.length, 2);
+  assert.equal(generations[0].localOriginal[0].memo, 'generation-2');
+  assert.equal(generations[1].remoteOriginal[0].memo, 'remote-1');
+  assert.equal(context.readIndependentSyncOriginals().localOriginal[0].memo, 'generation-2');
+});
+
+test('a thrown remote save does not replace the local working copy', async () => {
+  const { context, storage } = harness();
+  const local = [{ id: '1', name: '#99-1', status: 'オンライン', memo: 'local-kept', updatedAt: '2026-11-01T00:00:00.000Z', history: [] }];
+  storage.set('roles', JSON.stringify(local));
+  let writes = 0;
+  context.saveLocalRoles = () => { writes += 1; storage.set('roles', JSON.stringify(context.roles)); };
+  context.fetchRemoteRolesForGuard = async () => remoteWithRevision(local, 'rev-1');
+  context.saveData = async () => { throw new Error('一部未反映'); };
+  const result = await context.syncRoles();
+  assert.notEqual(result, true);
+  assert.equal(writes, 0);
+  assert.equal(JSON.parse(storage.get('roles'))[0].memo, 'local-kept');
+});
+
 test('paired originals survive a failure while writing legacy keys', () => {
   const { context, storage } = harness();
   const local = [{ id: '1', memo: 'operator-before-sync' }];

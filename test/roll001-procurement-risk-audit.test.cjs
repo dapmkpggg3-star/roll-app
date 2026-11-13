@@ -151,3 +151,8 @@ test('GUARD: missing master values remain visible as safety-unverified; discarde
   assert.equal(items[0].leadTimeVerified,false);
   assert.equal(items[1].roleName,'#10-B');
 });
+test('12 month purchase shortage stays unverified without an operating plan', () => {
+  assert.match(src, /LONG_HORIZON_PURCHASE_UNVERIFIED = '12か月以上の不足は、月別操業計画と確認済み納期が無いため判定不能'/);
+  assert.equal(src.includes('年間生産計画により12か月分は安全'), false);
+  console.log('AUDIT GAP: 12+ month shortage remains unverified until a monthly operating plan and confirmed lead time exist');
+});

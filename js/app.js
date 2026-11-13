@@ -41,6 +41,7 @@ const COUNT_SUMMARY_OPEN_KEY = 'countSummaryOpen';
 const DEFAULT_PURCHASE_LEAD_TIME_MONTHS = 6;
 const PURCHASE_CONFIRMATION_WINDOW_MONTHS = 3;
 const THREE_SET_MANAGEMENT_PURCHASE_DECISION_MONTHS = 8;
+const LONG_HORIZON_PURCHASE_UNVERIFIED = '12か月以上の不足は、月別操業計画と確認済み納期が無いため判定不能';
 const REWORK_SETUP_TASK_LEAD_DAYS = 21;
 const REWORK_SETUP_DISPATCH_READY_DAYS = 2;
 const REWORK_SETUP_REWORK_DAYS = 30;
@@ -1931,6 +1932,7 @@ function updatePurchaseConfirmationBoard(allRoles = roles) {
                 <span>廃却予想</span><strong>${escapeHtml(formatPurchaseMonth(item.disposalForecastDate))}</strong>
                 <span>購入判断期限</span><strong>${escapeHtml(formatPurchaseMonth(item.purchaseDecisionDate))}</strong>
                 <span>理由</span><strong>${item.leadTimeVerified === false ? '購入LT未確認・安全判定不能' : '購入LT' + escapeHtml(String(item.leadTimeMonths)) + 'か月'}</strong>
+                <span>12か月以上</span><strong>${escapeHtml(LONG_HORIZON_PURCHASE_UNVERIFIED)}</strong>
             </div>
         </article>
     `).join('');
@@ -4787,14 +4789,16 @@ function getThreeSetManagementPurchaseStandItems(allRoles = roles) {
                 ? [
                     `${ORDERED_WAITING_STATUS}あり`,
                     '発注済みのロールがありますが、3セット全体の必要数・改削残回数・納入時期の照合は未完了です',
-                    '現物未納入。受入と次の組替条件が確認できるまで不足リスクを解消扱いしないでください'
+                    '現物未納入。受入と次の組替条件が確認できるまで不足リスクを解消扱いしないでください',
+                    LONG_HORIZON_PURCHASE_UNVERIFIED
                 ].join('\n')
                 : [
                     level.memo,
                     getThreeSetManagementPurchaseReasonText(basisPlan.roleName || `#${standKey}`, level),
                     hasNewStorage
                     ? '新品予備保管を含めて3セット維持確認が必要です'
-                    : '3セット維持確認が必要です'
+                    : '3セット維持確認が必要です',
+                    LONG_HORIZON_PURCHASE_UNVERIFIED
                 ].join('\n'),
             meta: hasOrderedWaiting ? '発注済み / 必要数・納入時期の照合が必要' : level.memo,
             basisRoleName: basisPlan.roleName || '',

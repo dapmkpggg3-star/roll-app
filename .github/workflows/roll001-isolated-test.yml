@@ -16,6 +16,10 @@ on:
       - 'test/roll003-independent-originals.test.cjs'
       - 'test/roll004-hidden-status-filter.test.cjs'
       - 'test/roll005-print-contract.test.cjs'
+      - 'test/roll003-offline-recovery.test.cjs'
+      - 'test/roll003-offline-recovery-browser.cjs'
+      - 'test/roll005-print-browser.cjs'
+      - 'js/offline-recovery.js'
       - 'test/today-task-browser.cjs'
       - 'test/roll001-real-filter-browser.cjs'
       - 'test/roll001-isolated-full-ui.cjs'
@@ -33,7 +37,7 @@ jobs:
         with:
           node-version: '22'
       - name: Run real repository test with mock data only
-        run: node --test test/today-task-target-visibility.test.js test/roll001-spare-readiness.test.cjs test/roll001-procurement-risk-audit.test.cjs test/sync-revision-guard.test.js test/roll003-independent-originals.test.cjs test/roll004-hidden-status-filter.test.cjs test/roll005-print-contract.test.cjs
+        run: node --test test/today-task-target-visibility.test.js test/roll001-spare-readiness.test.cjs test/roll001-procurement-risk-audit.test.cjs test/sync-revision-guard.test.js test/roll003-independent-originals.test.cjs test/roll003-offline-recovery.test.cjs test/roll004-hidden-status-filter.test.cjs test/roll005-print-contract.test.cjs
 
   isolated-browser:
     runs-on: ubuntu-latest
@@ -59,6 +63,8 @@ jobs:
           node test/today-task-browser.cjs
           node test/roll001-real-filter-browser.cjs
           node test/roll001-isolated-full-ui.cjs
+          node test/roll005-print-browser.cjs
+          node test/roll003-offline-recovery-browser.cjs
       - name: Upload anonymous screenshot and assertion evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -68,4 +74,5 @@ jobs:
             artifacts/roll001-dom/
             artifacts/roll001-real-filter/
             artifacts/roll001-full-ui/
+            artifacts/roll005-print/
           if-no-files-found: warn

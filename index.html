@@ -373,6 +373,10 @@
                         <button type="button" id="exportCsvBtn" class="csv-btn" onclick="exportCsv()">CSVエクスポート</button>
                         <button type="button" class="import-btn admin-only" onclick="document.getElementById('csv-import-input').click()">CSVインポート</button>
                         <button type="button" class="btn admin-only" onclick="restoreLatestBackup()">バックアップ復元</button>
+                        <button type="button" id="exportOfflineRecoveryBtn" class="btn" onclick="exportOfflineRecoveryFile()">復旧ファイルを保存</button>
+                        <button type="button" id="importOfflineRecoveryBtn" class="btn" onclick="document.getElementById('offline-recovery-input').click()">復旧ファイルを確認</button>
+                        <button type="button" id="undoOfflineRecoveryBtn" class="btn" onclick="undoOfflineRecovery()">直前の復旧を取り消す</button>
+                        <input id="offline-recovery-input" type="file" accept="application/json,.json" style="display:none" onchange="handleOfflineRecoveryFile(event)">
 <button type="button" id="syncSheetsBtn" class="sync-btn" onclick="syncRoles()">スプレッドシートと同期</button>
 <button type="button" id="adminModeBtn" class="admin-mode-btn" onclick="toggleAdminMode()" aria-pressed="false">管理者モード OFF</button>
 </div>
@@ -461,6 +465,7 @@
     <script src="js/planning-import.js?v=20260927-sheet-output"></script>
     <script src="js/online-safety.js?v=20260805-online-safety"></script>
     <script src="js/sync.js?v=20261023-content-auth"></script>
+<script src="js/offline-recovery.js?v=20261113-offline-recovery"></script>
 <script src="js/csv.js?v=20260805-online-safety"></script>
 <script src="js/app.js?v=20261023-simple-auth"></script>
 
