@@ -208,7 +208,47 @@
                             <option value="skip">このスタンドを飛ばす</option>
                         </select>
                     </label>
-                    <pre id="consumption-link">生産予定を読み、今のカリバと開始直数を入れると、作業できる日があるときだけ交換候補を表示します。2から5番は、通ると確認できた予定だけで規定到達とトン数到達の参考候補を別々に出します。6から9番は、資料に残る直数とトン数を分けて表示します。</pre>
+                    <h3>交換作業枠</h3>
+                    <p>未確認のままでは候補にしません。2から5番はロール替、6番以降の直数予測はカリバ替です。必要時間は作業ごとに入れ、空欄を4時間にはしません。</p>
+                    <label>作業日 <input id="work-date" type="date" value=""></label>
+                    <label>時間帯
+                        <select id="work-period">
+                            <option value="" selected>未確認</option>
+                            <option value="day">昼</option>
+                            <option value="night">夜</option>
+                        </select>
+                    </label>
+                    <label>確保時間 <input id="work-reserved-hours" type="number" min="0" step="0.5" value=""></label>
+                    <label>作業種別
+                        <select id="work-type">
+                            <option value="" selected>未確認</option>
+                            <option value="rollChange">ロール替</option>
+                            <option value="caliberChange">カリバ替</option>
+                        </select>
+                    </label>
+                    <label>この作業の必要時間 <input id="work-required-hours" type="number" min="0" step="0.5" value=""></label>
+                    <label>連続操業
+                        <select id="work-continuous">
+                            <option value="" selected>未確認</option>
+                            <option value="yes">連続している</option>
+                            <option value="no">連続していない</option>
+                        </select>
+                    </label>
+                    <label>組替
+                        <select id="work-changeover">
+                            <option value="" selected>未確認</option>
+                            <option value="yes">組替できる</option>
+                            <option value="no">組替できない</option>
+                        </select>
+                    </label>
+                    <label>固定3セット
+                        <select id="work-three-set">
+                            <option value="" selected>未確認</option>
+                            <option value="yes">3セットを保てる</option>
+                            <option value="no">3セットを保てない</option>
+                        </select>
+                    </label>
+                    <pre id="consumption-link">生産予定を読み、今のカリバと開始直数を入れると、作業できる日があるときだけ交換候補を表示します。2から5番は、通ると確認できた予定と、上の作業枠がそろったときだけ参考候補を出します。</pre>
                     <p>ロール本数の版は、別の年間資料があるときだけ保存します。新しい版を保存しても以前の版は残り、ロールのステータスは変わりません。</p>
                     <label>版ID <input id="operating-plan-id" type="text" value="plan-anon"></label>
                     <label>名称 <input id="operating-plan-label" type="text" value="匿名計画"></label>
@@ -511,7 +551,7 @@
     <script src="js/online-safety.js?v=20260805-online-safety"></script>
     <script src="js/sync.js?v=20261023-content-auth"></script>
 <script src="js/offline-recovery.js?v=20261113-offline-recovery"></script>
-<script src="js/operating-plan.js?v=20261113-work-slot"></script>
+<script src="js/operating-plan.js?v=20261113-work-confirm"></script>
 <script src="js/csv.js?v=20260805-online-safety"></script>
 <script src="js/app.js?v=20261023-simple-auth"></script>
 

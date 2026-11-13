@@ -259,34 +259,37 @@ test('past production tons do not become a future rework or purchase date', () =
   assert.match(passed.reason, /交換作業枠未確認/);
   assert.equal(passed.reason.includes('参考候補は2027-04-02'), false);
   assert.equal(passed.reason.includes('超えます'), false);
-  const slot = {
-    date: '2027-04-02', size: 'D1', operatingHours: 0, productionAmount: 0,
-    shift1Team: 'A', shift3Team: '', productionByTeam: { A: 0, B: 0 },
-    workSlot: true, workShift: 'shift1', workHours: 4,
-    continuousOperation: false, changeoverReady: true, threeSetReady: true
-  };
+  const work = (overrides) => ({
+    date: '2027-04-02', period: 'day', reservedHours: 5, workType: 'rollChange', requiredHours: 5,
+    continuous: 'no', changeover: 'yes', threeSet: 'yes', ...overrides
+  });
+  const schedule = [day('2027-04-01', 8, 'A', 1000), day('2027-04-02', 0, 'B', 0), day('2027-04-03', 8, 'A', 1000), day('2027-04-04', 8, 'A', 1000)];
   const confirmed = context.projectCaliberReplacement({
     standKey: '2', referenceDate: '2026-11-13', standPass: 'pass', openingUsedRuns: 33, openingUsedTons: 12000,
-    days: [day('2027-04-01', 8, 'A', 1000), slot, day('2027-04-03', 8, 'A', 1000), day('2027-04-04', 8, 'A', 1000)]
+    workConfirmation: work(), days: schedule
   });
   assert.equal(confirmed.shiftReachDate, '2027-04-03');
   assert.match(confirmed.reason, /規定到達の参考候補は2027-04-02/);
   assert.match(confirmed.reason, /トン数到達の参考候補は2027-04-02/);
   const nightOnly = context.projectCaliberReplacement({
     standKey: '2', referenceDate: '2026-11-13', standPass: 'pass', openingUsedRuns: 33, openingUsedTons: 12000,
-    days: [day('2027-04-01', 8, 'A', 1000), day('2027-04-02', 0, 'B', 0), day('2027-04-03', 8, 'A', 1000), day('2027-04-04', 8, 'A', 1000)]
+    workConfirmation: work({ period: 'night' }), days: schedule
   });
   assert.equal(nightOnly.referenceCandidates.length, 0);
-  const shortGap = { ...slot, workHours: 3 };
-  const underFour = context.projectCaliberReplacement({
+  const shortWork = context.projectCaliberReplacement({
     standKey: '2', referenceDate: '2026-11-13', standPass: 'pass', openingUsedRuns: 33,
-    days: [day('2027-04-01', 8, 'A', 10), shortGap, day('2027-04-03', 8, 'A', 10), day('2027-04-04', 8, 'A', 10)]
+    workConfirmation: work({ reservedHours: 3, requiredHours: 5 }), days: schedule
   });
-  assert.equal(underFour.shiftReachDate, '2027-04-03');
-  assert.match(underFour.reason, /交換作業枠未確認/);
+  assert.equal(shortWork.shiftReachDate, '2027-04-03');
+  assert.match(shortWork.reason, /交換作業枠未確認/);
+  const wrongType = context.projectCaliberReplacement({
+    standKey: '2', referenceDate: '2026-11-13', standPass: 'pass', openingUsedRuns: 33,
+    workConfirmation: work({ workType: 'caliberChange' }), days: schedule
+  });
+  assert.match(wrongType.reason, /交換作業枠未確認/);
   const current = context.projectCaliberReplacement({
     standKey: '6', referenceDate: '2026-11-13', standPass: 'pass', openingUsedRuns: 13,
-    days: [day('2027-04-01', 8, 'A', 10), slot, day('2027-04-03', 8, 'A', 10), day('2027-04-04', 8, 'A', 10)]
+    workConfirmation: work({ workType: 'caliberChange' }), days: schedule
   });
   assert.equal(current.shiftReachDate, '2027-04-03');
   assert.equal(current.tonReachDate, null);

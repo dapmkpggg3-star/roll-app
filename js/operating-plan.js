@@ -322,40 +322,46 @@ function forecastShiftReach(source, basis, days) {
         return { reach: null, candidate: null, reason: `${blocked.date}は${blocked.kind}です。未確認の使用量を0直にしないため、${label}到達見込みは確定しません。` };
     }
     if (!reach) return { reach: null, candidate: null, reason: `この予定の範囲では${label}${basis.runs}直に達しません。` };
-    const candidate = confirmedWorkCandidate(beforeUnknown, reach, basis.stand);
+    const candidate = confirmedWorkCandidate(reach, basis.stand, source.workConfirmation);
     const slotText = candidate
         ? `交換作業枠を確認できたため、${label}到達の参考候補は${candidate}です。`
         : `交換作業枠未確認のため、${label}到達の参考候補は出しません。`;
     return { reach, candidate, reason: `${label}${basis.runs}直への到達見込みは${reach}です。${slotText}` };
 }
 
-function confirmedWorkSlot(row) {
-    return Boolean(row
-        && row.workSlot === true
-        && row.workShift === 'shift1'
-        && typeof row.workHours === 'number'
-        && row.workHours >= 4
-        && row.continuousOperation !== true
-        && row.changeoverReady === true
-        && row.threeSetReady === true);
+function expectedWorkType(stand) {
+    const number = Number(String(stand || '').replace(/^#/, ''));
+    if (number >= 2 && number <= 5) return 'rollChange';
+    if (number >= 6 && number <= 17) return 'caliberChange';
+    return '';
 }
 
-function confirmedWorkCandidate(days, reachDate, stand) {
+function confirmedWorkCandidate(reachDate, stand, confirmation) {
     const rules = globalThis.RollPlanningRules;
-    const scheduleApi = globalThis.RollPlanningSchedule;
-    if (!rules || !scheduleApi || !reachDate) return null;
-    const ruleEngine = rules.createPlanningRules({ afterProductionAllowedWorkTypes: [rules.WORK_TYPES.CALIBER_CHANGE] });
-    let found = null;
-    days.forEach(row => {
-        if (!row || String(row.date) >= reachDate || !confirmedWorkSlot(row)) return;
-        const slots = scheduleApi.buildAvailableSlots(row, rules.SLOT_TYPES, { includeAfterProduction: false });
-        const allowed = slots.some(slot => slot.shift === 'shift1' && ruleEngine.validateWorkForSlot({
-            type: rules.WORK_TYPES.CALIBER_CHANGE,
-            stands: [String(stand)]
-        }, slot).allowed);
-        if (allowed) found = row.date;
-    });
-    return found;
+    const source = confirmation || {};
+    const required = source.requiredHours;
+    const reserved = source.reservedHours;
+    const expected = expectedWorkType(stand);
+    const ready = Boolean(rules && reachDate && source.date
+        && String(source.date) < reachDate
+        && source.period === 'day'
+        && source.workType === expected
+        && typeof required === 'number' && Number.isFinite(required) && required > 0
+        && typeof reserved === 'number' && Number.isFinite(reserved) && reserved >= required
+        && source.continuous === 'no'
+        && source.changeover === 'yes'
+        && source.threeSet === 'yes');
+    if (!ready) return null;
+    const workType = expected === 'rollChange' ? rules.WORK_TYPES.ROLL_CHANGE : rules.WORK_TYPES.CALIBER_CHANGE;
+    const allowed = rules.createPlanningRules({ afterProductionAllowedWorkTypes: [] }).validateWorkForSlot({
+        type: workType,
+        stands: [String(stand)]
+    }, {
+        type: rules.SLOT_TYPES.DAY_MAINTENANCE,
+        shift: 'shift1',
+        productionActive: false
+    }).allowed;
+    return allowed ? source.date : null;
 }
 
 function forecastTonReach(source, basis, days) {
@@ -387,7 +393,7 @@ function forecastTonReach(source, basis, days) {
         return { reach: null, candidate: null, reason: `${blocked}の生産量が未確認です。0tにしないため、トン数到達見込みは確定しません。` };
     }
     if (!reach) return { reach: null, candidate: null, reason: `この予定の範囲では基準${formatTons(basis.tons)}に達しません。` };
-    const candidate = confirmedWorkCandidate(days, reach, basis.stand);
+    const candidate = confirmedWorkCandidate(reach, basis.stand, source.workConfirmation);
     const slotText = candidate
         ? `交換作業枠を確認できたため、トン数到達の参考候補は${candidate}です。`
         : '交換作業枠未確認のため、トン数到達の参考候補は出しません。';
@@ -737,6 +743,7 @@ function renderConsumptionLink(summary) {
         openingUsedRuns: form.openingUsedRuns,
         openingUsedTons: form.openingUsedTons,
         standPass: form.standPass,
+        workConfirmation: form.workConfirmation,
         days: summary && summary.days,
         referenceDate: summary && summary.referenceDate
     });
@@ -756,7 +763,23 @@ function readCaliberInputs() {
         currentCaliber: value('caliber-current').trim(),
         openingUsedRuns: opening === '' ? undefined : Number(opening),
         openingUsedTons: openingTons === '' ? undefined : Number(openingTons),
-        standPass: value('caliber-pass')
+        standPass: value('caliber-pass'),
+        workConfirmation: readWorkConfirmation(value)
+    };
+}
+
+function readWorkConfirmation(value) {
+    const reserved = value('work-reserved-hours').trim();
+    const required = value('work-required-hours').trim();
+    return {
+        date: value('work-date').trim(),
+        period: value('work-period'),
+        reservedHours: reserved === '' ? undefined : Number(reserved),
+        workType: value('work-type'),
+        requiredHours: required === '' ? undefined : Number(required),
+        continuous: value('work-continuous'),
+        changeover: value('work-changeover'),
+        threeSet: value('work-three-set')
     };
 }
 
@@ -842,7 +865,7 @@ function bindMonthlyScheduleFileInput() {
     const input = document.getElementById('monthly-schedule-file');
     if (!input || input.dataset.bound === 'true') return;
     input.dataset.bound = 'true';
-    ['caliber-stand', 'caliber-size', 'caliber-current', 'caliber-opening', 'caliber-opening-tons', 'caliber-pass'].forEach(id => {
+    ['caliber-stand', 'caliber-size', 'caliber-current', 'caliber-opening', 'caliber-opening-tons', 'caliber-pass', 'work-date', 'work-period', 'work-reserved-hours', 'work-type', 'work-required-hours', 'work-continuous', 'work-changeover', 'work-three-set'].forEach(id => {
         const field = document.getElementById(id);
         if (field) field.addEventListener('change', () => renderMonthlyScheduleSummary(latestMonthlySummary));
     });
