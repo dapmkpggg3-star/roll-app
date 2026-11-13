@@ -57,7 +57,7 @@ test('AUDIT OPEN RISK: default duration estimates are stand-number based, not an
   console.log('AUDIT GAP: purchase forecast must be checked against actual future operating plan before business signoff');
 });
 test('GUARD: invalid purchase lead times remain explicitly unverified, never silently safe',()=>{
-  assert.match(infoSource,/const leadTimeVerified = Number\.isFinite\(leadTimeMonths\) && leadTimeMonths > 0/);
+  assert.match(infoSource,/const leadTimeVerified = leadTimeConfirmed === true && Number\.isFinite\(leadTimeMonths\) && leadTimeMonths > 0/);
   assert.match(infoSource,/purchaseDecisionDate = leadTimeVerified \?/);
   const levelSource=piece('function getPurchaseConfirmationLevel(info)','function getPurchaseConfirmationItems(allRoles = roles)');
   assert.match(levelSource,/key: 'unknown', label: '安全判定不能'/);
@@ -67,12 +67,13 @@ test('GUARD: invalid purchase lead times remain explicitly unverified, never sil
     getStandKey:()=> '10',
     normalizePurchaseDiameter:x=>Number(x),
     DISCARDED_STATUS:'廃棄',
-    getStandMaster:()=>({scrapDiameter:292,leadTimeMonths:planning.inputLead}),
+    getStandMaster:()=>({scrapDiameter:292,leadTimeMonths:planning.inputLead,leadTimeConfirmed:planning.confirmLead===true}),
     getCuttingMaster:()=>({active:true,calculationCutMm:2,standardCutMm:2}),
     normalizeCuttingMasterNumericValue:x=>Number(x),
     getStandOnlineUseMonths:()=>3,
     normalizeUseStartDate:x=>x||'',
     getTodayDateString:()=>currentDate,
+    DEFAULT_PURCHASE_LEAD_TIME_MONTHS:6,
     addMonthsToDateString:(date,months)=>months===0?date:'2027-01-01'
   });
   vm.runInContext(infoSource+'\nthis.plan=getPurchasePlanningInfo;',planning);
@@ -85,6 +86,11 @@ test('GUARD: invalid purchase lead times remain explicitly unverified, never sil
     assert.equal(ctx.level(info).key,'unknown',String(value));
   }
   planning.inputLead=8;
+  planning.confirmLead=false;
+  const provisional=planning.plan({name:'#10-A',status:'オンライン',currentDiameter:320});
+  assert.equal(provisional.leadTimeVerified,false);
+  assert.equal(provisional.purchaseDecisionDate,'');
+  planning.confirmLead=true;
   const valid=planning.plan({name:'#10-A',status:'オンライン',currentDiameter:320});
   assert.equal(valid.leadTimeVerified,true);
   assert.equal(valid.leadTimeMonths,8);

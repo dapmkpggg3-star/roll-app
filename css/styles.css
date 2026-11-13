@@ -7352,6 +7352,7 @@ body.simple-overview #auto-planning-panel,
 body.simple-overview .action-dashboard-grid,
 body.simple-overview #three-set-forecast-dashboard,
 body.simple-overview #rework-setup-dashboard,
+body.simple-overview #operating-plan-panel,
 body.simple-overview #purchase-confirmation-board {
     display: none !important;
 }
@@ -7380,6 +7381,7 @@ body:not(.authorized-admin) #adminModeBtn { display: none !important; }
     body:not(.workshop-board-mode) #dashboard-display-settings,
     body:not(.workshop-board-mode) #count-summary,
     body:not(.workshop-board-mode) #today-task-dashboard,
+    body:not(.workshop-board-mode) #operating-plan-panel,
     body:not(.workshop-board-mode) #purchase-confirmation-board,
     body:not(.workshop-board-mode) .actions-column,
     body:not(.workshop-board-mode) .action-buttons,

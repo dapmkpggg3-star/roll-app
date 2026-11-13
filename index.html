@@ -190,6 +190,34 @@
                         <p class="auto-planning-output-note">出力先：最新版 ロール管理（同じ月を再出力した場合は、同じシートを更新）</p>
                     </div>
                 </section>
+                <section id="operating-plan-panel" aria-label="操業計画と購入リードタイム">
+                    <h2>操業計画の版</h2>
+                    <p>実資料は取り込みません。新しい版を保存しても、以前の版は残り、ロールのステータスは変わりません。</p>
+                    <label>版ID <input id="operating-plan-id" type="text" value="plan-anon"></label>
+                    <label>名称 <input id="operating-plan-label" type="text" value="匿名計画"></label>
+                    <label>更新日時 <input id="operating-plan-updated-at" type="text" value="2026-11-13T00:00:00.000Z"></label>
+                    <label>対象月 <input id="operating-plan-months" type="text" value="2026-04"></label>
+                    <label>スタンド <input id="operating-plan-stand" type="text" value="10"></label>
+                    <label>行の月 <input id="operating-plan-row-month" type="text" value="2026-04"></label>
+                    <label>計画本数 <input id="operating-plan-planned" type="text" value=""></label>
+                    <label>実績本数 <input id="operating-plan-actual" type="text" value=""></label>
+                    <button type="button" id="save-operating-plan" onclick="saveOperatingPlanFromForm()">計画の版を保存</button>
+                    <pre id="operating-plan-revisions"></pre>
+                    <pre id="operating-plan-diff"></pre>
+                    <h2>スタンド別購入リードタイム</h2>
+                    <p>未保存は全スタンド暫定6か月です。暫定は確認済みと区別し、安全判定には使いません。</p>
+                    <label>スタンド <input id="lead-time-stand" type="text" value="10"></label>
+                    <label>月数 <input id="lead-time-months" type="number" min="1" value="6"></label>
+                    <label>区分
+                        <select id="lead-time-status">
+                            <option value="provisional" selected>暫定</option>
+                            <option value="confirmed">確認済み</option>
+                        </select>
+                    </label>
+                    <button type="button" id="save-lead-time" onclick="saveStandLeadTimeFromForm()">リードタイムを保存</button>
+                    <pre id="stand-lead-time-list"></pre>
+                    <p id="operating-plan-message" role="status"></p>
+                </section>
                 <div class="action-dashboard-grid" aria-label="優先確認ダッシュボード">
                     <div id="incomplete-work-dashboard" class="incomplete-work-dashboard is-collapsed" aria-live="polite">
                         <div class="incomplete-work-header">
@@ -466,6 +494,7 @@
     <script src="js/online-safety.js?v=20260805-online-safety"></script>
     <script src="js/sync.js?v=20261023-content-auth"></script>
 <script src="js/offline-recovery.js?v=20261113-offline-recovery"></script>
+<script src="js/operating-plan.js?v=20261113-operating-plan"></script>
 <script src="js/csv.js?v=20260805-online-safety"></script>
 <script src="js/app.js?v=20261023-simple-auth"></script>
 

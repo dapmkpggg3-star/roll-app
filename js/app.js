@@ -1765,12 +1765,16 @@ function getPurchasePlanningInfo(role) {
     }
 
     const onlineUseMonths = getStandOnlineUseMonths(standKey);
-    // Missing or invalid procurement lead time must never imply a safe purchase date.
-    const rawLeadTime = standMaster && standMaster.leadTimeMonths;
+    // A provisional lead time, including the six-month default, is not a confirmed date.
+    const storedLead = typeof readStandLeadTime === 'function' ? readStandLeadTime(standKey) : null;
+    const rawLeadTime = storedLead ? storedLead.months : (standMaster && standMaster.leadTimeMonths);
     const leadTimeMonths = rawLeadTime !== undefined && rawLeadTime !== null && String(rawLeadTime).trim() !== ''
         ? Number(rawLeadTime)
-        : Number.NaN;
-    const leadTimeVerified = Number.isFinite(leadTimeMonths) && leadTimeMonths > 0;
+        : DEFAULT_PURCHASE_LEAD_TIME_MONTHS;
+    const leadTimeConfirmed = storedLead
+        ? storedLead.status === 'confirmed'
+        : standMaster && standMaster.leadTimeConfirmed === true;
+    const leadTimeVerified = leadTimeConfirmed === true && Number.isFinite(leadTimeMonths) && leadTimeMonths > 0;
     const usableOnlineCount = Math.floor((currentDiameter - scrapDiameter) / adoptedCutMm) + 1;
     const useStartDate = normalizeUseStartDate(role && role.useStartDate);
     const forecastStartDate = useStartDate || getTodayDateString();
