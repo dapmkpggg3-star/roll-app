@@ -367,6 +367,29 @@ async function main() {
     await page.locator('#caliber-stand').dispatchEvent('change');
     assert.equal(await page.locator('#caliber-current').inputValue(), 'anon-11');
     assert.equal(await page.locator('#caliber-opening').inputValue(), '3');
+    await page.reload();
+    await page.evaluate(() => {
+      document.getElementById('login-screen').style.display = 'none';
+      document.getElementById('main-screen').style.display = 'block';
+      document.body.classList.remove('simple-overview');
+      roles.splice(0, roles.length,
+        { id: 'roll-2', name: '#2-A', status: 'オンライン', currentDiameter: 50, memo: '', updatedAt: '2026-11-13T00:00:00.000Z', history: [] },
+        { id: 'roll-online', name: '#10-A', status: 'オンライン', currentDiameter: 81, memo: '', updatedAt: '2026-11-13T00:00:00.000Z', history: [] },
+        { id: 'roll-11', name: '#11-B', status: '新品予備（組込完了）', currentDiameter: 66, memo: '', updatedAt: '2026-11-13T00:00:00.000Z', history: [] },
+        { id: 'roll-ready', name: '#10-B', status: '新品予備（組込完了）', currentDiameter: 93, memo: '', updatedAt: '2026-11-13T00:00:00.000Z', history: [] },
+        { id: 'roll-used', name: '#10-C', status: '中古予備（バラシ前）', currentDiameter: 74, memo: '', updatedAt: '2026-11-13T00:00:00.000Z', history: [] }
+      );
+    });
+    await page.locator('#caliber-size').fill('D10');
+    await page.locator('#caliber-stand').fill('10');
+    await page.locator('#caliber-stand').dispatchEvent('change');
+    assert.equal(await page.locator('#caliber-current').inputValue(), 'anon-10');
+    assert.equal(await page.locator('#caliber-opening').inputValue(), '6');
+    await page.locator('#caliber-stand').fill('11');
+    await page.locator('#caliber-stand').dispatchEvent('change');
+    assert.equal(await page.locator('#caliber-current').inputValue(), 'anon-11');
+    assert.equal(await page.locator('#caliber-opening').inputValue(), '3');
+    assert.equal((await page.locator('#cycle-result').innerText()).includes('anon-10'), false);
     assert.equal(await page.evaluate(() => roles[0].status), 'オンライン');
     assert.equal(await page.evaluate(() => roles[0].status), 'オンライン');
     assert.equal(outbound.length, 0);
