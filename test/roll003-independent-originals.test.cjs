@@ -163,3 +163,20 @@ test('queued sync is suppressed when remote saved but concurrent local edit bloc
   assert.equal(calls, 2, 'must not automatically fetch for a second sync');
   assert.equal(JSON.parse(storage.get('roles'))[0].memo, 'operator-edit');
 });
+
+test('corrupt stored roles or deletion JSON stops before remote read and POST', async () => {
+  for (const [key, value] of [['roles', '{bad'], ['roles', '{}'], ['deletedRoleIds', '{bad'], ['deletedRoleIds', '{}']]) {
+    const { context, storage } = harness();
+    storage.set('roles', JSON.stringify([{ id: '1', name: '#99-1', status: 'オンライン', updatedAt: '2026-11-01T00:00:00.000Z', history: [] }]));
+    storage.set(key, value);
+    let reads = 0;
+    let posts = 0;
+    context.fetchRemoteRolesForGuard = async () => { reads++; throw Error('must not fetch'); };
+    context.saveData = async () => { posts++; throw Error('must not post'); };
+    const result = await context.syncRoles();
+    assert.notEqual(result, true, key + ': corrupt input must stop sync');
+    assert.equal(reads, 0, key + ': remote read must not begin');
+    assert.equal(posts, 0, key + ': remote write must not begin');
+    assert.equal(storage.get(key), value, key + ': preserve original bytes for investigation');
+  }
+});
