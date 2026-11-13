@@ -1048,6 +1048,7 @@ function readLedgerResources(list, selection) {
         const runs = finiteOrNull(Number(item.openingRuns));
         return {
             id: String(item.id),
+            standKey: standNumberFromName(item.name || item.id),
             frame: ledgerFrame(item.status),
             diameter: item.currentDiameter === undefined || item.currentDiameter === null || item.currentDiameter === '' ? null : diameter,
             caliberId: item.currentCaliber || null,
@@ -1064,7 +1065,9 @@ function renderExchangeCycle() {
     const days = schedule && Array.isArray(schedule.days) ? schedule.days : [];
     const ledgerKeys = pairedStandKeys(form.standKey, form.size);
     const ledger = readLedgerResources(typeof roles === 'undefined' ? [] : roles, { standKey: form.standKey, size: form.size });
-    const online = ledger.find(item => item.frame === 'online');
+    const selectedStand = String(form.standKey || '').replace(/^#/, '').trim();
+    const cycleResources = ledger.filter(item => item.standKey === selectedStand && item.frame !== 'other');
+    const online = cycleResources.find(item => item.frame === 'online');
     const openingRuns = form.openingUsedRuns === undefined ? (online ? online.runs : undefined) : form.openingUsedRuns;
     const openingSource = form.openingUsedRuns === undefined
         ? (online && typeof online.runs === 'number' ? '台帳の現行カリバ' : '未確認')
@@ -1093,7 +1096,7 @@ function renderExchangeCycle() {
         adoptedCutMm: form.cutMm,
         reworkDays: form.reworkDays,
         workConfirmation: form.workConfirmation,
-        resources: ledger.filter(item => item.frame !== 'other'),
+        resources: cycleResources,
         days
     });
     const line = item => `${item.date} ${item.kind} ${item.note}`;
