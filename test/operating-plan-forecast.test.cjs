@@ -207,7 +207,8 @@ test('past production tons do not become a future rework or purchase date', () =
   assert.match(maximumTons.reason, /6,075t/);
   assert.match(maximumTons.reason, /7,695t/);
   assert.match(maximumTons.reason, /7,600t/);
-  assert.match(maximumTons.reason, /現行最大にしません/);
+  assert.match(maximumTons.reason, /固定最大にはしません/);
+  assert.match(maximumTons.reason, /旧参照/);
   assert.equal(maximumTons.reason.includes('10000'), false);
   const roughTons = context.projectCaliberReplacement({
     standKey: '8', referenceDate: '2026-11-13', openingUsedTons: 5000
@@ -246,7 +247,7 @@ test('past production tons do not become a future rework or purchase date', () =
   const unknownTons = context.projectCaliberReplacement({ standKey: '7', referenceDate: '2026-11-13' });
   assert.match(unknownTons.reason, /15直/);
   assert.match(unknownTons.reason, /19直/);
-  assert.match(unknownTons.reason, /0tにはせず/);
+  assert.match(unknownTons.reason, /0直にはしません/);
   const passed = context.projectCaliberReplacement({
     standKey: '2', referenceDate: '2026-11-13', standPass: 'pass', openingUsedRuns: 33, openingUsedTons: 12000,
     days: [day('2027-04-01', 8, 'A', 1000), day('2027-04-02', 0, 'B', 0), day('2027-04-03', 8, 'A', 1000), day('2027-04-04', 8, 'A', 1000)]
@@ -255,9 +256,44 @@ test('past production tons do not become a future rework or purchase date', () =
   assert.equal(passed.exceedsOnDate, null);
   assert.equal(passed.shiftReachDate, '2027-04-03');
   assert.equal(passed.tonReachDate, '2027-04-03');
-  assert.match(passed.reason, /規定到達の参考候補は2027-04-02/);
-  assert.match(passed.reason, /トン数到達の参考候補は2027-04-02/);
+  assert.match(passed.reason, /交換作業枠未確認/);
+  assert.equal(passed.reason.includes('参考候補は2027-04-02'), false);
   assert.equal(passed.reason.includes('超えます'), false);
+  const slot = {
+    date: '2027-04-02', size: 'D1', operatingHours: 0, productionAmount: 0,
+    shift1Team: 'A', shift3Team: '', productionByTeam: { A: 0, B: 0 },
+    workSlot: true, workShift: 'shift1', workHours: 4,
+    continuousOperation: false, changeoverReady: true, threeSetReady: true
+  };
+  const confirmed = context.projectCaliberReplacement({
+    standKey: '2', referenceDate: '2026-11-13', standPass: 'pass', openingUsedRuns: 33, openingUsedTons: 12000,
+    days: [day('2027-04-01', 8, 'A', 1000), slot, day('2027-04-03', 8, 'A', 1000), day('2027-04-04', 8, 'A', 1000)]
+  });
+  assert.equal(confirmed.shiftReachDate, '2027-04-03');
+  assert.match(confirmed.reason, /規定到達の参考候補は2027-04-02/);
+  assert.match(confirmed.reason, /トン数到達の参考候補は2027-04-02/);
+  const nightOnly = context.projectCaliberReplacement({
+    standKey: '2', referenceDate: '2026-11-13', standPass: 'pass', openingUsedRuns: 33, openingUsedTons: 12000,
+    days: [day('2027-04-01', 8, 'A', 1000), day('2027-04-02', 0, 'B', 0), day('2027-04-03', 8, 'A', 1000), day('2027-04-04', 8, 'A', 1000)]
+  });
+  assert.equal(nightOnly.referenceCandidates.length, 0);
+  const shortGap = { ...slot, workHours: 3 };
+  const underFour = context.projectCaliberReplacement({
+    standKey: '2', referenceDate: '2026-11-13', standPass: 'pass', openingUsedRuns: 33,
+    days: [day('2027-04-01', 8, 'A', 10), shortGap, day('2027-04-03', 8, 'A', 10), day('2027-04-04', 8, 'A', 10)]
+  });
+  assert.equal(underFour.shiftReachDate, '2027-04-03');
+  assert.match(underFour.reason, /交換作業枠未確認/);
+  const current = context.projectCaliberReplacement({
+    standKey: '6', referenceDate: '2026-11-13', standPass: 'pass', openingUsedRuns: 13,
+    days: [day('2027-04-01', 8, 'A', 10), slot, day('2027-04-03', 8, 'A', 10), day('2027-04-04', 8, 'A', 10)]
+  });
+  assert.equal(current.shiftReachDate, '2027-04-03');
+  assert.equal(current.tonReachDate, null);
+  assert.match(current.reason, /現行使用直数は15直/);
+  assert.match(current.reason, /旧参照/);
+  assert.match(current.reason, /現行到達の参考候補は2027-04-02/);
+  assert.match(current.reason, /固定最大にはしません/);
   const skipped = context.projectCaliberReplacement({
     standKey: '2', referenceDate: '2026-11-13', standPass: 'skip', openingUsedRuns: 33,
     days: [day('2027-04-01', 8, 'A', 1000)]

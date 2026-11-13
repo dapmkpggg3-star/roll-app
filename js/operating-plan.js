@@ -213,10 +213,11 @@ function knownTonBasis(standKey) {
     if (prescribed[stand]) return { kind: '基準', stand, ...prescribed[stand] };
     if (stand === 6 || stand === 7) {
         return {
-            kind: '併記', stand,
+            kind: '現行', stand, runs: 15, tons: null,
             records: [
-                { role: '主計算', period: '2026-08から2026-09', runs: 15, tons: 6075 },
-                { role: '残存参照', period: '2026-06から2026-07', runs: 19, tons: 7695 },
+                { role: '現行', period: '本人回答', runs: 15, tons: null },
+                { role: '主計算', period: '2026-08から2026-09', runs: null, tons: 6075 },
+                { role: '旧参照', period: '2026-06から2026-07', runs: 19, tons: 7695 },
                 { role: '過去概算', period: '過去の回答', runs: null, tons: 7600 }
             ]
         };
@@ -282,8 +283,9 @@ function forecastShiftReach(source, basis, days) {
     if (typeof runs !== 'number' || !Number.isInteger(runs) || runs < 0) {
         return { reach: null, candidate: null, reason: '開始直数が未確認なので、規定到達見込みは出しません。' };
     }
+    const label = basis.kind === '現行' ? '現行' : '規定';
     if (runs >= basis.runs) {
-        return { reach: null, candidate: null, reason: '開始時に規定直数へ達しています。規定到達の参考候補は出しません。' };
+        return { reach: null, candidate: null, reason: `開始時に${label}直数へ達しています。${label}到達の参考候補は出しません。` };
     }
     const beforeUnknown = [];
     let blocked = null;
@@ -317,19 +319,50 @@ function forecastShiftReach(source, basis, days) {
     });
     const reach = projected.lastAllowedRun ? projected.lastAllowedRun.date : null;
     if (blocked && (!reach || blocked.date <= reach)) {
-        return { reach: null, candidate: null, reason: `${blocked.date}は${blocked.kind}です。未確認の使用量を0直にしないため、規定到達見込みは確定しません。` };
+        return { reach: null, candidate: null, reason: `${blocked.date}は${blocked.kind}です。未確認の使用量を0直にしないため、${label}到達見込みは確定しません。` };
     }
-    if (!reach) return { reach: null, candidate: null, reason: `この予定の範囲では規定${basis.runs}直に達しません。` };
-    const earlierStop = beforeUnknown.reduce((found, row) => (String(row.date) < reach && row.productionAmount === 0 ? row.date : found), null);
-    const candidate = projected.recommendation ? projected.recommendation.date : earlierStop;
+    if (!reach) return { reach: null, candidate: null, reason: `この予定の範囲では${label}${basis.runs}直に達しません。` };
+    const candidate = confirmedWorkCandidate(beforeUnknown, reach, basis.stand);
     const slotText = candidate
-        ? `作業できる日があるため、規定到達の参考候補は${candidate}です。`
-        : '作業できる日が無いため、規定到達の参考候補は出しません。';
-    return { reach, candidate, reason: `規定${basis.runs}直への到達見込みは${reach}です。${slotText}` };
+        ? `交換作業枠を確認できたため、${label}到達の参考候補は${candidate}です。`
+        : `交換作業枠未確認のため、${label}到達の参考候補は出しません。`;
+    return { reach, candidate, reason: `${label}${basis.runs}直への到達見込みは${reach}です。${slotText}` };
+}
+
+function confirmedWorkSlot(row) {
+    return Boolean(row
+        && row.workSlot === true
+        && row.workShift === 'shift1'
+        && typeof row.workHours === 'number'
+        && row.workHours >= 4
+        && row.continuousOperation !== true
+        && row.changeoverReady === true
+        && row.threeSetReady === true);
+}
+
+function confirmedWorkCandidate(days, reachDate, stand) {
+    const rules = globalThis.RollPlanningRules;
+    const scheduleApi = globalThis.RollPlanningSchedule;
+    if (!rules || !scheduleApi || !reachDate) return null;
+    const ruleEngine = rules.createPlanningRules({ afterProductionAllowedWorkTypes: [rules.WORK_TYPES.CALIBER_CHANGE] });
+    let found = null;
+    days.forEach(row => {
+        if (!row || String(row.date) >= reachDate || !confirmedWorkSlot(row)) return;
+        const slots = scheduleApi.buildAvailableSlots(row, rules.SLOT_TYPES, { includeAfterProduction: false });
+        const allowed = slots.some(slot => slot.shift === 'shift1' && ruleEngine.validateWorkForSlot({
+            type: rules.WORK_TYPES.CALIBER_CHANGE,
+            stands: [String(stand)]
+        }, slot).allowed);
+        if (allowed) found = row.date;
+    });
+    return found;
 }
 
 function forecastTonReach(source, basis, days) {
     const opening = source.openingUsedTons;
+    if (basis.tons == null) {
+        return { reach: null, candidate: null, reason: '基準トン数は固定最大として承認されていないため、トン数到達見込みは出しません。' };
+    }
     if (typeof opening !== 'number' || !Number.isFinite(opening) || opening < 0) {
         return { reach: null, candidate: null, reason: '開始トン数が未確認なので、トン数到達見込みは出しません。' };
     }
@@ -337,7 +370,6 @@ function forecastTonReach(source, basis, days) {
         return { reach: null, candidate: null, reason: '開始時に基準トン数へ達しています。トン数到達の参考候補は出しません。' };
     }
     let total = opening;
-    let slot = null;
     let reach = null;
     let blocked = null;
     days.forEach(row => {
@@ -347,10 +379,7 @@ function forecastTonReach(source, basis, days) {
             blocked = row.date;
             return;
         }
-        if (amount === 0) {
-            slot = row.date;
-            return;
-        }
+        if (amount === 0) return;
         total += amount;
         if (total >= basis.tons) reach = row.date;
     });
@@ -358,10 +387,10 @@ function forecastTonReach(source, basis, days) {
         return { reach: null, candidate: null, reason: `${blocked}の生産量が未確認です。0tにしないため、トン数到達見込みは確定しません。` };
     }
     if (!reach) return { reach: null, candidate: null, reason: `この予定の範囲では基準${formatTons(basis.tons)}に達しません。` };
-    const candidate = slot && slot < reach ? slot : null;
+    const candidate = confirmedWorkCandidate(days, reach, basis.stand);
     const slotText = candidate
-        ? `作業できる日があるため、トン数到達の参考候補は${candidate}です。`
-        : '作業できる日が無いため、トン数到達の参考候補は出しません。';
+        ? `交換作業枠を確認できたため、トン数到達の参考候補は${candidate}です。`
+        : '交換作業枠未確認のため、トン数到達の参考候補は出しません。';
     return { reach, candidate, reason: `基準${formatTons(basis.tons)}への到達見込みは${reach}です。${slotText}` };
 }
 
@@ -381,10 +410,24 @@ function projectTonUse(input) {
         reviews: [],
         basis
     };
+    if (basis.kind === '現行') {
+        const runs = source.openingUsedRuns;
+        const runsKnown = typeof runs === 'number' && Number.isInteger(runs) && runs >= 0;
+        const runPlace = !runsKnown
+            ? '開始時の使用直数は未確認です。0直にはしません'
+            : `開始時は${runs}直で、現行${basis.runs}直${runs >= basis.runs ? 'に達しています' : 'より前です'}`;
+        const forecast = forecastReferenceReach(source, basis);
+        return {
+            ...base,
+            status: 'guideOnly',
+            shiftReachDate: forecast.shiftReachDate,
+            tonReachDate: forecast.tonReachDate,
+            referenceCandidates: forecast.candidates,
+            reason: `${basis.stand}番の現行使用直数は${basis.runs}直です。6,075tは原資料の主計算欄で、固定最大にはしません。19直・7,695tと過去概算7,600tは旧参照です。${runPlace}。${forecast.reason}交換日は出しません。`
+        };
+    }
     if (basis.kind === '併記') {
-        const older = basis.stand <= 7
-            ? '15直と19直は現運用の回答まで分けて保持し、過去概算の7,600tは現行最大にしません。'
-            : '原資料の13直・5,265tと、過去概算の約5,000tは別です。どちらも確定最大ではありません。';
+        const older = '原資料の13直・5,265tと、過去概算の約5,000tは別です。どちらも確定最大ではありません。';
         const unknownUse = typeof source.openingUsedTons !== 'number' ? '開始時の使用量が未確認でも0tにはせず、' : '';
         return {
             ...base,

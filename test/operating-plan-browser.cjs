@@ -233,9 +233,11 @@ async function main() {
     await page.locator('#caliber-opening').fill('33');
     await page.locator('#caliber-opening-tons').fill('');
     await page.locator('#monthly-schedule-file').setInputFiles(futureScheduleFile());
-    await page.waitForFunction(() => document.getElementById('consumption-link').textContent.includes('規定到達の参考候補は2027-04-02'));
+    await page.waitForFunction(() => document.getElementById('consumption-link').textContent.includes('交換作業枠未確認'));
     const reached = await page.locator('#consumption-link').innerText();
     assert.match(reached, /到達見込みは2027-04-03/);
+    assert.match(reached, /参考候補は出しません/);
+    assert.equal(reached.includes('参考候補は2027'), false);
     assert.equal(reached.includes('超えます'), false);
     assert.equal(await page.evaluate(() => roles[0].status), 'オンライン');
     assert.equal(await page.evaluate(() => roles[0].status), 'オンライン');
