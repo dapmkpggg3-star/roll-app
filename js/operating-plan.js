@@ -1057,7 +1057,10 @@ function readLedgerResources(list, selection) {
     });
 }
 
+let exchangeCycleRenderGeneration = 0;
+
 function renderExchangeCycle() {
+    const generation = ++exchangeCycleRenderGeneration;
     const target = document.getElementById('cycle-result');
     if (!target || typeof simulateExchangeCycle !== 'function' || typeof readCaliberInputs !== 'function') return;
     const form = readCaliberInputs();
@@ -1083,7 +1086,7 @@ function renderExchangeCycle() {
     ].join('\n');
     if (!days.length) {
         target.textContent = `生産予定が無いので、架空の操業では予測しません。\n${ledgerText}`;
-        loadStandPremisesNote(target);
+        loadStandPremisesNote(target, form.standKey, generation);
         return;
     }
     const limit = knownCaliberLimit(form.standKey, form.size);
@@ -1106,21 +1109,27 @@ function renderExchangeCycle() {
         result.reason,
         result.events.map(line).join('\n')
     ].join('\n');
-    loadStandPremisesNote(target);
+    loadStandPremisesNote(target, form.standKey, generation);
 }
 
-async function loadStandPremisesNote(target) {
+async function loadStandPremisesNote(target, standKey, generation) {
     if (typeof fetch !== 'function') return;
+    const selectedStand = String(standKey || '').replace(/^#/, '').trim();
+    const isCurrent = () => generation === exchangeCycleRenderGeneration
+        && document.getElementById('cycle-result') === target
+        && String((readCaliberInputs() || {}).standKey || '').replace(/^#/, '').trim() === selectedStand;
     try {
         const response = await fetch('local/stand-premises.json');
         if (!response.ok) throw new Error('missing');
         const data = await response.json();
-        const row = data && data.diametersMm && data.diametersMm['10'];
+        if (!isCurrent()) return;
+        const row = selectedStand && data && data.diametersMm && data.diametersMm[selectedStand];
         const extra = row
-            ? `10番の新品時は${row.newDiameter}mm、廃却径は${row.scrapDiameter}mmです。現在の実測径ではありません。`
-            : 'ローカル仕様に10番の径がありません。未回答とは別です。';
+            ? `${selectedStand}番の新品時は${row.newDiameter}mm、廃却径は${row.scrapDiameter}mmです。現在の実測径ではありません。`
+            : `${selectedStand || '選択'}番の径はローカル仕様で未確認です。他スタンドの径は代用しません。`;
         target.textContent += `\n既回答の径はローカル仕様から読みました。${extra}`;
     } catch (error) {
+        if (!isCurrent()) return;
         target.textContent += '\n径のローカル仕様は未読込です。本人未回答ではありません。';
     }
 }
