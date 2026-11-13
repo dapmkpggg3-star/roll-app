@@ -270,6 +270,16 @@ async function main() {
     await page.waitForFunction(() => document.getElementById('work-effort').textContent.includes('3人で経過1時間'));
     assert.equal(await page.locator('#work-required-hours').inputValue(), '1');
     assert.equal(await page.locator('#work-people').inputValue(), '3');
+    await page.locator('#caliber-opening').fill('6');
+    await page.locator('#life-diameter').fill('500');
+    await page.locator('#life-scrap').fill('400');
+    await page.locator('#life-cut').fill('7');
+    await page.locator('#life-spare').fill('0');
+    await page.locator('#life-spare').dispatchEvent('change');
+    await page.waitForFunction(() => {
+      const text = document.getElementById('consumption-link').textContent;
+      return text.includes('あと2直') && text.includes('改削残回数は14回') && text.includes('予備は0本') && text.includes('判定不能');
+    });
     assert.equal(await page.evaluate(() => roles[0].status), 'オンライン');
     assert.equal(await page.evaluate(() => roles[0].status), 'オンライン');
     assert.equal(outbound.length, 0);

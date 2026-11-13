@@ -666,9 +666,6 @@ function forecastThreeSetFromPlan(input) {
     if (revision && (revision.kind === 'monthly-production-schedule' || revision.measure === 'tons')) {
         return unknown('月別の生産予定はトン数です。ロールの本数ではないため、不足なしとは判定しません。');
     }
-    if (source.activeThreeSetCount !== 3) {
-        return unknown('固定3セットの対象本数が3本として確認できません。');
-    }
     if (!Number.isFinite(Number(source.remainingCutCount))) {
         return unknown('改削残回数が未確認です。');
     }
@@ -694,7 +691,7 @@ function forecastThreeSetFromPlan(input) {
             rework: 'unknown',
             shortage: 'unknown',
             totalUseCount,
-            reason: '購入リードタイムが暫定のため、確定判定はしません。'
+            reason: '購入リードタイムが暫定のため、確定判定はしません。3セットはロール3本のことではありません。'
         };
     }
     return {
@@ -703,8 +700,89 @@ function forecastThreeSetFromPlan(input) {
         shortage: 'unknown',
         totalUseCount,
         remainingCutCount: Number(source.remainingCutCount),
-        reason: '数量は集計できましたが、本数と改削回数の業務上の換算は未確定のため判定不能です。'
+        reason: '数量は集計できましたが、本数と改削回数の業務上の換算は未確定のため判定不能です。3セットはロール3本のことではありません。'
     };
+}
+
+function describeRemainingCalibers(standKey, size, openingRuns) {
+    const limit = knownCaliberLimit(standKey, size);
+    if (!limit || limit.kind !== '最大') return '残カリバ直数は、確定した最大が無いので出しません。0直にはしません。';
+    if (typeof openingRuns !== 'number' || !Number.isFinite(openingRuns)) {
+        return `最大${limit.runs}直は確認しています。開始直数が未確認なので、残カリバ直数は出しません。`;
+    }
+    const left = limit.runs - openingRuns;
+    if (left < 0) return `開始直数は最大${limit.runs}直を超えています。残カリバは0直にはしません。`;
+    return `残カリバは最大${limit.runs}直まであと${left}直です。ロール本数ではありません。`;
+}
+
+function describeReworkDemand(source) {
+    const current = source.currentDiameter;
+    const scrap = source.scrapDiameter;
+    const cut = source.cutMm;
+    const missing = value => value === undefined || value === null || value === '' || !Number.isFinite(Number(value));
+    if (missing(current) || missing(scrap) || missing(cut)) {
+        return '現在径、廃却径、切込みのどれかが未確認です。改削残回数は0回にしません。';
+    }
+    const currentDiameter = Number(current);
+    const scrapDiameter = Number(scrap);
+    const cutMm = Number(cut);
+    if (!(cutMm > 0)) return '切込みが確認できないので、改削残回数は出しません。';
+    const remainingDiameter = currentDiameter - scrapDiameter;
+    if (remainingDiameter <= 0) return '現在径は廃却径以下です。改削残回数は購入需要にしません。';
+    let count = Math.floor(remainingDiameter / cutMm);
+    if (typeof getRemainingDiameterInfo === 'function') {
+        try {
+            const info = getRemainingDiameterInfo({ name: `#${source.standKey || ''}`, currentDiameter });
+            if (info && info.scrapDiameter === scrapDiameter && info.adoptedCutMm === cutMm && Number.isFinite(info.remainingCutCount)) {
+                count = info.remainingCutCount;
+            }
+        } catch (error) {
+            count = Math.floor(remainingDiameter / cutMm);
+        }
+    }
+    return `残り径は${remainingDiameter}mm、改削残回数は${count}回です。改削日にはしません。`;
+}
+
+function describeSpareReadiness(spareCount) {
+    if (spareCount === undefined || spareCount === null || spareCount === '') {
+        return '使用できる予備本数は未確認です。不足なしにはしません。';
+    }
+    const count = Number(spareCount);
+    if (!Number.isInteger(count) || count < 0) return '予備本数を確認できないので、不足なしにはしません。';
+    if (count === 0) return '使用できる予備は0本です。準備不足の可能性は残しますが、不足の確定にはしません。';
+    return `使用できる予備は${count}本です。年間の必要本数が未確認なので、不足なしにはしません。`;
+}
+
+function describeLongHorizon(summary, standKey) {
+    const months = summary && Array.isArray(summary.months) ? summary.months : [];
+    const future = months.filter(item => item && (item.classification === 'future' || item.classification === 'current'));
+    const stored = readStandLeadTime(standKey);
+    const lead = stored || { months: PROVISIONAL_LEAD_TIME_MONTHS, status: 'provisional' };
+    const leadText = lead.status === 'confirmed'
+        ? `購入までの期間は確認済み${lead.months}か月です。期間だけでは不足なしにしません。`
+        : `購入までの期間は暫定${lead.months}か月です。暫定は購入日にも不足なしにもしません。`;
+    const span = `これからの予定は${future.length}か月です。`;
+    if (future.length < 12) {
+        return `${span}12か月以上の廃却需要と購入需要は判定不能です。年間必要本数は別表を待たず、確認できた使用回数から計算します。今の予定はトン数なので本数にはしません。${leadText}`;
+    }
+    return `${span}12か月分あっても生産トン数はロール本数ではありません。年間必要本数は別表が無くても、トン数だけでは計算しません。${leadText}`;
+}
+
+function describeLifeChain(source) {
+    const input = source || {};
+    const caliber = input.caliber || {};
+    const hasDemand = Boolean(caliber.exchangeDate) || (Array.isArray(caliber.referenceCandidates) && caliber.referenceCandidates.length > 0);
+    const demand = hasDemand
+        ? '交換の参考需要は上の日付です。改削日にも購入日にもしません。'
+        : '交換の参考需要は未確認です。改削日にはしません。';
+    return [
+        '3セットはロール3本のことではありません。',
+        describeRemainingCalibers(input.standKey, input.size, input.openingUsedRuns),
+        demand,
+        describeReworkDemand(input),
+        describeSpareReadiness(input.spareCount),
+        describeLongHorizon(input.schedule, input.standKey)
+    ].join('\n');
 }
 
 function normalizeStandLeadTime(input) {
@@ -786,7 +864,18 @@ function renderConsumptionLink(summary) {
         days: summary && summary.days,
         referenceDate: summary && summary.referenceDate
     });
-    target.textContent = `${linked.reason}\n${caliber.reason}`;
+    const life = describeLifeChain({
+        standKey: form.standKey,
+        size: form.size,
+        openingUsedRuns: form.openingUsedRuns,
+        currentDiameter: form.currentDiameter,
+        scrapDiameter: form.scrapDiameter,
+        cutMm: form.cutMm,
+        spareCount: form.spareCount,
+        schedule: summary,
+        caliber
+    });
+    target.textContent = `${linked.reason}\n${caliber.reason}\n${life}`;
 }
 
 function readCaliberInputs() {
@@ -803,8 +892,16 @@ function readCaliberInputs() {
         openingUsedRuns: opening === '' ? undefined : Number(opening),
         openingUsedTons: openingTons === '' ? undefined : Number(openingTons),
         standPass: value('caliber-pass'),
+        currentDiameter: numberOrBlank('life-diameter'),
+        scrapDiameter: numberOrBlank('life-scrap'),
+        cutMm: numberOrBlank('life-cut'),
+        spareCount: numberOrBlank('life-spare'),
         workConfirmation: readWorkConfirmation(value)
     };
+    function numberOrBlank(id) {
+        const raw = value(id).trim();
+        return raw === '' ? undefined : Number(raw);
+    }
 }
 
 function readWorkConfirmation(value) {
@@ -919,7 +1016,7 @@ function bindMonthlyScheduleFileInput() {
     const input = document.getElementById('monthly-schedule-file');
     if (!input || input.dataset.bound === 'true') return;
     input.dataset.bound = 'true';
-    ['caliber-stand', 'caliber-size', 'caliber-current', 'caliber-opening', 'caliber-opening-tons', 'caliber-pass', 'work-date', 'work-period', 'work-reserved-hours', 'work-type', 'work-required-hours', 'work-people', 'work-continuous', 'work-changeover', 'work-three-set'].forEach(id => {
+    ['caliber-stand', 'caliber-size', 'caliber-current', 'caliber-opening', 'caliber-opening-tons', 'caliber-pass', 'work-date', 'work-period', 'work-reserved-hours', 'work-type', 'work-required-hours', 'work-people', 'work-continuous', 'work-changeover', 'work-three-set', 'life-diameter', 'life-scrap', 'life-cut', 'life-spare'].forEach(id => {
         const field = document.getElementById(id);
         if (field) field.addEventListener('change', () => {
             suggestKnownWorkEffort();

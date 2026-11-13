@@ -2839,7 +2839,7 @@ function validateThreeSetAssignment(roleName, isActiveThreeSet, nextAssemblyPlan
 
     const otherActiveCount = getOtherActiveThreeSetCount(roleName, currentRoleId);
     if (otherActiveCount >= 3) {
-        alert('同じスタンドの運用3セット対象は最大3本です。先に旧ロールの指定を解除してください');
+        alert('同じスタンドの運用3セット対象に指定できるのは最大3本です。3セットは3本のことではありません。先に旧ロールの指定を解除してください');
         return false;
     }
     return true;

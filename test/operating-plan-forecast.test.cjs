@@ -68,7 +68,10 @@ test('missing plan, remaining cuts, or a provisional lead time stays unverified'
   assert.equal(provisional.purchase, 'unknown');
   assert.match(provisional.reason, /暫定/);
   const notThree = context.forecastThreeSetFromPlan({ standKey: '10', revision: plan, remainingCutCount: 2, activeThreeSetCount: 2, leadTime: { status: 'confirmed', months: 6 } });
-  assert.match(notThree.reason, /固定3セット/);
+  assert.equal(notThree.shortage, 'unknown');
+  assert.equal(notThree.purchase, 'unknown');
+  assert.match(notThree.reason, /3セットはロール3本のことではありません/);
+  assert.equal(notThree.reason.includes('対象本数が3本'), false);
 });
 
 test('a past monthly schedule stays in tons and is not an annual plan or actual use', () => {
@@ -337,6 +340,28 @@ test('past production tons do not become a future rework or purchase date', () =
   assert.equal(skipped.shiftReachDate, null);
   assert.match(skipped.reason, /飛ばす/);
   assert.match(short.reason, /提案のまま/);
+});
+
+test('future operation reaches remaining caliber, rework count, and spare readiness without a purchase date', () => {
+  const summary = context.summarizeMonthlyProductionSchedule([
+    { date: '2027-04-01', size: 'D10', productionAmount: 100, shift1Team: 'A', shift3Team: 'B', operatingHours: 8 },
+    { date: '2027-04-02', size: 'D10', productionAmount: 0, shift1Team: 'A', shift3Team: '', operatingHours: 0 }
+  ], '2026-11-13');
+  const life = context.describeLifeChain({
+    standKey: '10', size: 'D10', openingUsedRuns: 6,
+    currentDiameter: 500, scrapDiameter: 400, cutMm: 7, spareCount: 0,
+    schedule: summary, caliber: { exchangeDate: null, referenceCandidates: [] }
+  });
+  assert.match(life, /3セットはロール3本のことではありません/);
+  assert.match(life, /あと2直/);
+  assert.match(life, /改削残回数は14回/);
+  assert.match(life, /予備は0本/);
+  assert.match(life, /12か月以上の廃却需要と購入需要は判定不能/);
+  assert.match(life, /暫定6か月/);
+  assert.equal(life.includes('不足なしです'), false);
+  const blank = context.describeLifeChain({ standKey: '10', size: 'D10', schedule: summary, caliber: {} });
+  assert.match(blank, /0回にしません/);
+  assert.match(blank, /開始直数が未確認/);
 });
 
 test('lead time defaults to provisional six months and confirmed is explicit', () => {

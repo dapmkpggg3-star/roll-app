@@ -250,6 +250,12 @@
                             <option value="no">3セットを保てない</option>
                         </select>
                     </label>
+                    <h3>残寿命</h3>
+                    <p>空欄は未確認です。0回や不足なしにはしません。3セットはロール3本のことではありません。年間の必要本数は、確認できた使用回数から計算し、別の表は要りません。</p>
+                    <label>現在径 <input id="life-diameter" type="number" min="0" step="0.1" value=""></label>
+                    <label>廃却径 <input id="life-scrap" type="number" min="0" step="0.1" value=""></label>
+                    <label>切込み <input id="life-cut" type="number" min="0" step="0.1" value=""></label>
+                    <label>使用できる予備 <input id="life-spare" type="number" min="0" step="1" value=""></label>
                     <pre id="consumption-link">生産予定を読み、今のカリバと開始直数を入れると、作業できる日があるときだけ交換候補を表示します。2から5番は、通ると確認できた予定と、上の作業枠がそろったときだけ参考候補を出します。</pre>
                     <p>ロール本数の版は、別の年間資料があるときだけ保存します。新しい版を保存しても以前の版は残り、ロールのステータスは変わりません。</p>
                     <label>版ID <input id="operating-plan-id" type="text" value="plan-anon"></label>
@@ -446,7 +452,7 @@
                             <input type="checkbox" id="role-next-assembly-planned" onchange="handleNextAssemblyPlannedChange()">
                             <span>次回組み込み予定</span>
                         </label>
-                        <p>次回組み込み予定は同じスタンドで1本だけ、運用3セット対象は最大3本です。</p>
+                        <p>次回組み込み予定は同じスタンドで1本だけです。運用3セット対象に指定できるのは最大3本で、3セットそのものが3本という意味ではありません。</p>
                     </fieldset>
                     <textarea id="role-memo" placeholder="メモを入力...(改行可)" style="flex: 1; min-height: 40px; padding: 12px 15px; border: 2px solid #e0e0e0; border-radius: 6px; font-size: 1rem; resize: vertical;"></textarea>
                     </div>
@@ -553,7 +559,7 @@
     <script src="js/online-safety.js?v=20260805-online-safety"></script>
     <script src="js/sync.js?v=20261023-content-auth"></script>
 <script src="js/offline-recovery.js?v=20261113-offline-recovery"></script>
-<script src="js/operating-plan.js?v=20261113-work-effort"></script>
+<script src="js/operating-plan.js?v=20261113-life-chain"></script>
 <script src="js/csv.js?v=20260805-online-safety"></script>
 <script src="js/app.js?v=20261023-simple-auth"></script>
 
