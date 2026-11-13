@@ -47,6 +47,26 @@ async function main() {
       standKey: '10', revision: null, remainingCutCount: 2, activeThreeSetCount: 3, leadTime: defaultStandLeadTime('10')
     }));
     assert.equal(forecast.shortage, 'unknown');
+    const summaryText = await page.evaluate(() => {
+      const summary = summarizeMonthlyProductionSchedule([
+        { date: '2025-04-01', size: 'D10', productionAmount: 120, shift1Team: 'A', shift3Team: 'B' }
+      ], '2026-11-13');
+      renderMonthlyScheduleSummary(summary);
+      return document.getElementById('monthly-schedule-summary').textContent;
+    });
+    assert.match(summaryText, /120トン/);
+    assert.match(summaryText, /過去の予定/);
+    assert.match(summaryText, /今の実績にも/);
+    assert.match(summaryText, /不足なしとは判定しません/);
+    const hoursText = await page.evaluate(() => {
+      const summary = summarizeMonthlyProductionSchedule([
+        { date: '2026-10-01', size: 'D10', productionAmount: 10, shift1Team: 'A', shift3Team: 'B', operatingHours: 7 }
+      ], '2026-11-13');
+      renderMonthlyScheduleSummary(summary);
+      return document.getElementById('monthly-schedule-summary').textContent;
+    });
+    assert.match(hoursText, /操業時間7/);
+    assert.match(hoursText, /今の実績にも/);
     assert.equal(outbound.length, 0);
     console.log('OPERATING PLAN browser PASS');
   } finally {

@@ -64,6 +64,44 @@ test('missing plan, remaining cuts, or a provisional lead time stays unverified'
   assert.match(notThree.reason, /固定3セット/);
 });
 
+test('a past monthly schedule stays in tons and is not an annual plan or actual use', () => {
+  const summary = context.summarizeMonthlyProductionSchedule([
+    { date: '2025-04-01', size: 'D10', productionAmount: 120, shift1Team: 'A', shift3Team: 'B', operatingHours: 8 },
+    { date: '2025-04-02', size: 'D13', productionAmount: 80, shift1Team: 'B', shift3Team: 'A' }
+  ], '2026-11-13');
+  assert.equal(summary.kind, 'monthly-production-schedule');
+  assert.equal(summary.acceptedAsActual, false);
+  assert.equal(summary.acceptedAsAnnual, false);
+  assert.equal(summary.usableForShortage, false);
+  assert.equal(summary.months[0].classification, 'past');
+  assert.equal(summary.months[0].productionTons, 200);
+  assert.equal(summary.months[0].measure, 'tons');
+  assert.equal(summary.months[0].sizes.join(','), 'D10,D13');
+  assert.equal(summary.months[0].operatingHours, null);
+  const forecast = context.forecastThreeSetFromPlan({
+    standKey: '10', revision: summary, remainingCutCount: 3, activeThreeSetCount: 3,
+    leadTime: { months: 6, status: 'confirmed' }
+  });
+  assert.equal(forecast.shortage, 'unknown');
+  assert.equal(forecast.totalUseCount, null);
+  assert.match(forecast.reason, /不足なしとは判定しません/);
+  const rejected = context.createOperatingPlanRevision({
+    updatedAt: '2026-11-13T00:00:00.000Z', targetMonths: ['2026-04'],
+    rows: [{ standKey: '10', month: '2026-04', plannedUseCount: 1, actualUseCount: null, productionTons: 200 }]
+  });
+  assert.equal(rejected.ok, false);
+});
+
+test('rolling hours stay hours and are not added when a day is missing', () => {
+  const complete = context.summarizeMonthlyProductionSchedule([
+    { date: '2026-10-01', size: 'D10', productionAmount: 10, shift1Team: 'A', shift3Team: 'B', operatingHours: 7 },
+    { date: '2026-10-02', size: 'STOP', productionAmount: 0, shift1Team: '', shift3Team: '', operatingHours: 0 }
+  ], '2026-11-13');
+  assert.equal(complete.months[0].operatingHours, 7);
+  assert.equal(complete.months[0].classification, 'past');
+  assert.equal(complete.acceptedAsActual, false);
+});
+
 test('lead time defaults to provisional six months and confirmed is explicit', () => {
   const fallback = context.defaultStandLeadTime('10');
   assert.equal(fallback.standKey, '10');

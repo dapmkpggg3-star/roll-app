@@ -32,6 +32,9 @@ function createOperatingPlanRevision(input) {
         if (!row || row.status !== undefined) {
             return { ok: false, reason: '操業計画にロールのステータスは入れません。' };
         }
+        if (row.productionTons !== undefined || row.productionAmount !== undefined || row.measure === 'tons') {
+            return { ok: false, reason: '生産量のトン数はロールの本数として保存しません。' };
+        }
         const standKey = String(row.standKey || '').trim();
         const month = String(row.month || '');
         if (!standKey || !targetMonths.includes(month)) {
@@ -91,16 +94,75 @@ function preferredUseCount(row) {
     return row.actualUseCount === null || row.actualUseCount === undefined ? row.plannedUseCount : row.actualUseCount;
 }
 
+function monthKeyFromDate(date) {
+    const match = String(date || '').match(/^(\d{4}-\d{2})-\d{2}$/);
+    return match && OPERATING_PLAN_MONTH.test(match[1]) ? match[1] : '';
+}
+
+function summarizeMonthlyProductionSchedule(schedule, referenceDate) {
+    const reference = String(referenceDate || '').slice(0, 7);
+    if (!OPERATING_PLAN_MONTH.test(reference)) {
+        return { ok: false, reason: '基準日が不正です。' };
+    }
+    const byMonth = new Map();
+    (Array.isArray(schedule) ? schedule : []).forEach(row => {
+        const month = monthKeyFromDate(row && row.date);
+        if (!month) return;
+        if (!byMonth.has(month)) byMonth.set(month, []);
+        byMonth.get(month).push(row);
+    });
+    const months = [...byMonth.keys()].sort().map(month => {
+        const items = byMonth.get(month);
+        const sizes = [...new Set(items.map(item => String(item.size || '').trim()).filter(Boolean))];
+        let productionTons = 0;
+        let tonsKnown = true;
+        let operatingHours = 0;
+        let hoursKnown = true;
+        const shifts = new Set();
+        items.forEach(item => {
+            if (typeof item.productionAmount !== 'number' || !Number.isFinite(item.productionAmount)) tonsKnown = false;
+            else productionTons += item.productionAmount;
+            if (typeof item.operatingHours !== 'number' || !Number.isFinite(item.operatingHours)) hoursKnown = false;
+            else operatingHours += item.operatingHours;
+            if (item.shift1Team) shifts.add(`1直${item.shift1Team}`);
+            if (item.shift3Team) shifts.add(`3直${item.shift3Team}`);
+        });
+        return {
+            month,
+            sizes,
+            productionTons: tonsKnown ? productionTons : null,
+            measure: 'tons',
+            shifts: [...shifts],
+            operatingHours: hoursKnown ? operatingHours : null,
+            dayCount: items.length,
+            classification: month < reference ? 'past' : month === reference ? 'current' : 'future'
+        };
+    });
+    return {
+        ok: true,
+        kind: 'monthly-production-schedule',
+        measure: 'tons',
+        acceptedAsActual: false,
+        acceptedAsAnnual: false,
+        usableForShortage: false,
+        months,
+        reason: '月別の生産予定はトン数です。ロールの本数ではなく、年間計画でもありません。不足なしとは判定しません。'
+    };
+}
+
 function forecastThreeSetFromPlan(input) {
     const unknown = reason => ({ purchase: 'unknown', rework: 'unknown', shortage: 'unknown', totalUseCount: null, reason });
     const source = input || {};
+    const revision = source.revision;
+    if (revision && (revision.kind === 'monthly-production-schedule' || revision.measure === 'tons')) {
+        return unknown('月別の生産予定はトン数です。ロールの本数ではないため、不足なしとは判定しません。');
+    }
     if (source.activeThreeSetCount !== 3) {
         return unknown('固定3セットの対象本数が3本として確認できません。');
     }
     if (!Number.isFinite(Number(source.remainingCutCount))) {
         return unknown('改削残回数が未確認です。');
     }
-    const revision = source.revision;
     if (!revision || !Array.isArray(revision.targetMonths) || revision.targetMonths.length < 12) {
         return unknown('年間計画の対象月が12か月分ありません。');
     }
@@ -173,6 +235,36 @@ function readStandLeadTime(standKey) {
     return stored || null;
 }
 
+function renderMonthlyScheduleSummary(summary) {
+    const target = document.getElementById('monthly-schedule-summary');
+    if (!target) return;
+    if (!summary || summary.ok === false) {
+        target.textContent = summary && summary.reason ? summary.reason : '月別の生産予定はまだ読んでいません。';
+        return;
+    }
+    if (!summary.months.length) {
+        target.textContent = '月別の生産予定を確認できません。不足なしとは判定しません。';
+        return;
+    }
+    const lines = summary.months.map(item => {
+        const when = item.classification === 'past' ? '過去の予定' : item.classification === 'current' ? '今月の予定' : 'これからの予定';
+        const tons = item.productionTons === null ? 'トン数未確認' : `${item.productionTons}トン`;
+        const hours = item.operatingHours === null ? '操業時間は未確認' : `操業時間${item.operatingHours}`;
+        return `${item.month} ${when} / サイズ${item.sizes.join('・') || '未確認'} / ${tons} / 勤務${item.shifts.join('・') || '未確認'} / ${hours}`;
+    });
+    const pastOnly = summary.months.every(item => item.classification === 'past');
+    const pastNote = pastOnly ? 'この予定は基準日より前です。今の実績にも、これからの年間計画にも使いません。' : '過去の月は実績にしません。これからの月も年間計画にはしません。';
+    target.textContent = `${lines.join('\n')}\n${pastNote}\n${summary.reason}`;
+}
+
+async function readMonthlyScheduleFile(file, referenceDate) {
+    if (!file || !globalThis.RollPlanningImport || typeof globalThis.RollPlanningImport.parseXlsxArrayBuffer !== 'function') {
+        return { ok: false, reason: '生産予定の読み取り機能を確認できません。' };
+    }
+    const parsed = await globalThis.RollPlanningImport.parseXlsxArrayBuffer(await file.arrayBuffer());
+    return summarizeMonthlyProductionSchedule(parsed.schedule, referenceDate);
+}
+
 function renderOperatingPlanPanel() {
     const revisions = readOperatingPlanState();
     const revisionList = document.getElementById('operating-plan-revisions');
@@ -241,4 +333,29 @@ function saveStandLeadTimeFromForm() {
         ? '確認済みリードタイムを保存しました。'
         : '暫定リードタイムを保存しました。安全判定には使いません。';
     renderOperatingPlanPanel();
+}
+
+function bindMonthlyScheduleFileInput() {
+    const input = document.getElementById('monthly-schedule-file');
+    if (!input || input.dataset.bound === 'true') return;
+    input.dataset.bound = 'true';
+    input.addEventListener('change', async () => {
+        const file = input.files && input.files[0];
+        const message = document.getElementById('operating-plan-message');
+        if (!file) return;
+        try {
+            const today = new Date();
+            const referenceDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`;
+            const summary = await readMonthlyScheduleFile(file, referenceDate);
+            renderMonthlyScheduleSummary(summary);
+            if (message) message.textContent = '生産予定は端末内で表示しました。ロール本数には保存せず、外部へは送っていません。';
+        } catch (error) {
+            renderMonthlyScheduleSummary({ ok: false, reason: error && error.message ? error.message : '生産予定を読めませんでした。' });
+        }
+    });
+}
+
+if (typeof document !== 'undefined') {
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bindMonthlyScheduleFileInput);
+    else bindMonthlyScheduleFileInput();
 }

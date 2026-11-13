@@ -219,6 +219,12 @@
         return { year, month };
     }
 
+    function presentNumber(value) {
+        if (value === undefined || value === null || value === '') return null;
+        const numeric = typeof value === 'number' ? value : Number(String(value).replace(/,/g, '').trim());
+        return Number.isFinite(numeric) ? numeric : null;
+    }
+
     function asNumber(value) {
         if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
         const numeric = Number(String(value == null ? '' : value).replace(/,/g, '').trim());
@@ -233,7 +239,7 @@
     function normalizeSize(value, productionAmount) {
         const token = String(value == null ? '' : value).normalize('NFKC').toUpperCase().replace(/\s+/g, '');
         if (/^D\d+(?:\.0)?$/.test(token)) return token.replace(/\.0$/, '');
-        if (/休止|休み|STOP/.test(token) || asNumber(productionAmount) === 0) return 'STOP';
+        if (/休止|休み|STOP/.test(token) || productionAmount === 0) return 'STOP';
         return '';
     }
 
@@ -276,12 +282,17 @@
         const dayRows = findDaySequence(rows, period.year, period.month);
         return dayRows.map(item => {
             const cells = item.cells;
-            const aProduction = asNumber(cells.L);
-            const bProduction = asNumber(cells.N);
-            const statedTotal = asNumber(cells.J);
-            const productionAmount = statedTotal || aProduction + bProduction;
+            const aProduction = presentNumber(cells.L);
+            const bProduction = presentNumber(cells.N);
+            const statedTotal = presentNumber(cells.J);
+            const productionAmount = statedTotal !== null
+                ? statedTotal
+                : (aProduction !== null && bProduction !== null ? aProduction + bProduction : null);
             const shift1Team = normalizeTeam(cells.H);
             const shift3Team = normalizeTeam(cells.I);
+            const hourText = typeof cells.P === 'string' ? cells.P.replace(/,/g, '').trim() : cells.P;
+            const hourNumber = typeof hourText === 'number' ? hourText : Number(hourText);
+            const operatingHours = hourText === undefined || hourText === null || hourText === '' || !Number.isFinite(hourNumber) ? null : hourNumber;
             const productionByTeam = { A: aProduction, B: bProduction };
             return {
                 date: isoDate(period.year, period.month, item.day),
@@ -290,9 +301,10 @@
                 productionByTeam,
                 shift1Team,
                 shift3Team,
+                operatingHours,
                 jointMaintenance: isWeekday(period.year, period.month, item.day)
                     && Boolean(shift1Team)
-                    && asNumber(productionByTeam[shift1Team]) === 0
+                    && productionByTeam[shift1Team] === 0
             };
         });
     }

@@ -192,7 +192,10 @@
                 </section>
                 <section id="operating-plan-panel" aria-label="操業計画と購入リードタイム">
                     <h2>操業計画の版</h2>
-                    <p>実資料は取り込みません。新しい版を保存しても、以前の版は残り、ロールのステータスは変わりません。</p>
+                    <p>月別の生産予定は、サイズ、実行計画のトン数、Ⅰ勤とⅢ勤、圧延の作業時間です。ロールの本数とは別に表示し、過去の予定は今の実績や年間計画にしません。年間の本数が無いときは不足なしにしません。</p>
+                    <label>生産予定ファイル <input id="monthly-schedule-file" type="file" accept=".xlsx,.xlsm"></label>
+                    <pre id="monthly-schedule-summary">月別の生産予定はまだ読んでいません。ファイルは端末内だけで読み、アップロードしません。</pre>
+                    <p>ロール本数の版は、別の年間資料があるときだけ保存します。新しい版を保存しても以前の版は残り、ロールのステータスは変わりません。</p>
                     <label>版ID <input id="operating-plan-id" type="text" value="plan-anon"></label>
                     <label>名称 <input id="operating-plan-label" type="text" value="匿名計画"></label>
                     <label>更新日時 <input id="operating-plan-updated-at" type="text" value="2026-11-13T00:00:00.000Z"></label>
@@ -494,7 +497,7 @@
     <script src="js/online-safety.js?v=20260805-online-safety"></script>
     <script src="js/sync.js?v=20261023-content-auth"></script>
 <script src="js/offline-recovery.js?v=20261113-offline-recovery"></script>
-<script src="js/operating-plan.js?v=20261113-operating-plan"></script>
+<script src="js/operating-plan.js?v=20261113-monthly-schedule"></script>
 <script src="js/csv.js?v=20260805-online-safety"></script>
 <script src="js/app.js?v=20261023-simple-auth"></script>
 

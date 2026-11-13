@@ -67,7 +67,8 @@ function sampleWorksheet() {
             sharedCell(`I${row}`, day === 1 ? 4 : 3),
             numberCell(`J${row}`, aAmount + bAmount),
             numberCell(`L${row}`, aAmount),
-            numberCell(`N${row}`, bAmount)
+            numberCell(`N${row}`, bAmount),
+            numberCell(`P${row}`, day === 1 ? 7 : 0)
         ].join('')}</row>`);
     }
     return `<?xml version="1.0"?><worksheet><sheetData>${rows.join('')}</sheetData></worksheet>`;
@@ -114,6 +115,7 @@ test('production rows are extracted from the longest sequential day block', () =
         productionByTeam: { A: 100, B: 0 },
         shift1Team: 'A',
         shift3Team: 'B',
+        operatingHours: 7,
         jointMaintenance: false
     });
     assert.equal(rows[1].size, 'STOP');
@@ -134,6 +136,41 @@ test('a complete xlsx zip is parsed without uploading or external libraries', as
     assert.equal(planning.sizeChanges[0].change.fromSize, 'D1');
     assert.equal(planning.sizeChanges[0].change.toSize, 'D2');
     assert.equal(planning.sizeChanges[0].recommendation.slot.shift, 'shift1');
+});
+
+test('missing tons and hours stay unknown instead of zero', () => {
+    const rows = [];
+    for (let day = 1; day <= 20; day += 1) {
+        const row = day + 15;
+        rows.push(`<row r="${row}">${[
+            numberCell(`D${row}`, day),
+            sharedCell(`G${row}`, 0)
+        ].join('')}</row>`);
+    }
+    const xml = `<?xml version="1.0"?><worksheet><sheetData>${rows.join('')}</sheetData></worksheet>`;
+    const parsed = importer.parseProductionWorksheet(xml, ['D10'], '31.04 生産予定');
+    assert.equal(parsed[0].productionAmount, null);
+    assert.equal(parsed[0].operatingHours, null);
+    assert.equal(parsed[0].size, 'D10');
+});
+
+test('formula text in the rolling-hours column stays hours', () => {
+    const rows = [];
+    for (let day = 1; day <= 20; day += 1) {
+        const row = day + 15;
+        rows.push(`<row r="${row}">${[
+            numberCell(`D${row}`, day),
+            sharedCell(`G${row}`, 0),
+            sharedCell(`H${row}`, 1),
+            sharedCell(`I${row}`, 2),
+            numberCell(`J${row}`, 10),
+            `<c r="P${row}" t="str"><v>7.00</v></c>`
+        ].join('')}</row>`);
+    }
+    const xml = `<?xml version="1.0"?><worksheet><sheetData>${rows.join('')}</sheetData></worksheet>`;
+    const parsed = importer.parseProductionWorksheet(xml, ['D10', 'A', 'B'], '31.04 生産予定');
+    assert.equal(parsed[0].operatingHours, 7);
+    assert.equal(parsed[0].productionAmount, 10);
 });
 
 test('xml entities and rich shared strings are decoded', () => {
