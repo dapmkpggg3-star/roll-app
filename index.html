@@ -201,7 +201,14 @@
                     <label>今のカリバ <input id="caliber-current" type="text" value=""></label>
                     <label>開始時の使用直数 <input id="caliber-opening" type="number" min="0" step="1" value=""></label>
                     <label>開始時の使用トン数 <input id="caliber-opening-tons" type="number" min="0" step="any" value=""></label>
-                    <pre id="consumption-link">生産予定を読み、今のカリバと開始直数を入れると、作業できる日があるときだけ交換候補を表示します。2から5番は規定直数と基準トン数を別々に見ます。6から9番はトン数のまま見ます。</pre>
+                    <label>予定の通り方
+                        <select id="caliber-pass">
+                            <option value="" selected>未確認</option>
+                            <option value="pass">このスタンドを通る</option>
+                            <option value="skip">このスタンドを飛ばす</option>
+                        </select>
+                    </label>
+                    <pre id="consumption-link">生産予定を読み、今のカリバと開始直数を入れると、作業できる日があるときだけ交換候補を表示します。2から5番は、通ると確認できた予定だけで規定到達とトン数到達の参考候補を別々に出します。6から9番は、資料に残る直数とトン数を分けて表示します。</pre>
                     <p>ロール本数の版は、別の年間資料があるときだけ保存します。新しい版を保存しても以前の版は残り、ロールのステータスは変わりません。</p>
                     <label>版ID <input id="operating-plan-id" type="text" value="plan-anon"></label>
                     <label>名称 <input id="operating-plan-label" type="text" value="匿名計画"></label>
@@ -504,7 +511,7 @@
     <script src="js/online-safety.js?v=20260805-online-safety"></script>
     <script src="js/sync.js?v=20261023-content-auth"></script>
 <script src="js/offline-recovery.js?v=20261113-offline-recovery"></script>
-<script src="js/operating-plan.js?v=20261113-stand-reference"></script>
+<script src="js/operating-plan.js?v=20261113-reference-reach"></script>
 <script src="js/csv.js?v=20260805-online-safety"></script>
 <script src="js/app.js?v=20261023-simple-auth"></script>
 

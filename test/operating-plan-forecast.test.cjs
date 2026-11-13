@@ -202,17 +202,21 @@ test('past production tons do not become a future rework or purchase date', () =
     days: [day('2027-04-01', 8, 'A', 10000)]
   });
   assert.equal(maximumTons.exchangeDate, null);
+  assert.match(maximumTons.reason, /15直/);
+  assert.match(maximumTons.reason, /19直/);
+  assert.match(maximumTons.reason, /6,075t/);
+  assert.match(maximumTons.reason, /7,695t/);
   assert.match(maximumTons.reason, /7,600t/);
-  assert.match(maximumTons.reason, /残り6,600t/);
-  assert.match(maximumTons.reason, /交換日は出しません/);
+  assert.match(maximumTons.reason, /現行最大にしません/);
   assert.equal(maximumTons.reason.includes('10000'), false);
   const roughTons = context.projectCaliberReplacement({
     standKey: '8', referenceDate: '2026-11-13', openingUsedTons: 5000
   });
   assert.equal(roughTons.exchangeDate, null);
   assert.equal(roughTons.exceedsOnDate, null);
-  assert.match(roughTons.reason, /概算5,000t/);
-  assert.match(roughTons.reason, /確定最大は未確認/);
+  assert.match(roughTons.reason, /13直/);
+  assert.match(roughTons.reason, /5,265t/);
+  assert.match(roughTons.reason, /5,000t/);
   assert.equal(roughTons.reason.includes('超えます'), false);
   const rollGuide = context.projectCaliberReplacement({
     standKey: '4', referenceDate: '2026-11-13', openingUsedTons: 13000,
@@ -240,7 +244,26 @@ test('past production tons do not become a future rework or purchase date', () =
   assert.match(standFive.reason, /12,500t/);
   assert.match(standFive.reason, /0tにはしません/);
   const unknownTons = context.projectCaliberReplacement({ standKey: '7', referenceDate: '2026-11-13' });
+  assert.match(unknownTons.reason, /15直/);
+  assert.match(unknownTons.reason, /19直/);
   assert.match(unknownTons.reason, /0tにはせず/);
+  const passed = context.projectCaliberReplacement({
+    standKey: '2', referenceDate: '2026-11-13', standPass: 'pass', openingUsedRuns: 33, openingUsedTons: 12000,
+    days: [day('2027-04-01', 8, 'A', 1000), day('2027-04-02', 0, 'B', 0), day('2027-04-03', 8, 'A', 1000), day('2027-04-04', 8, 'A', 1000)]
+  });
+  assert.equal(passed.exchangeDate, null);
+  assert.equal(passed.exceedsOnDate, null);
+  assert.equal(passed.shiftReachDate, '2027-04-03');
+  assert.equal(passed.tonReachDate, '2027-04-03');
+  assert.match(passed.reason, /規定到達の参考候補は2027-04-02/);
+  assert.match(passed.reason, /トン数到達の参考候補は2027-04-02/);
+  assert.equal(passed.reason.includes('超えます'), false);
+  const skipped = context.projectCaliberReplacement({
+    standKey: '2', referenceDate: '2026-11-13', standPass: 'skip', openingUsedRuns: 33,
+    days: [day('2027-04-01', 8, 'A', 1000)]
+  });
+  assert.equal(skipped.shiftReachDate, null);
+  assert.match(skipped.reason, /飛ばす/);
   assert.match(short.reason, /提案のまま/);
 });
 

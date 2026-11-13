@@ -211,8 +211,25 @@ function knownTonBasis(standKey) {
         5: { tons: 12500, runs: 31 }
     };
     if (prescribed[stand]) return { kind: '基準', stand, ...prescribed[stand] };
-    if (stand === 6 || stand === 7) return { kind: '最大', tons: 7600, unit: 'カリバ' };
-    if (stand === 8 || stand === 9) return { kind: '概算', tons: 5000, unit: 'カリバ' };
+    if (stand === 6 || stand === 7) {
+        return {
+            kind: '併記', stand,
+            records: [
+                { role: '主計算', period: '2026-08から2026-09', runs: 15, tons: 6075 },
+                { role: '残存参照', period: '2026-06から2026-07', runs: 19, tons: 7695 },
+                { role: '過去概算', period: '過去の回答', runs: null, tons: 7600 }
+            ]
+        };
+    }
+    if (stand === 8 || stand === 9) {
+        return {
+            kind: '併記', stand,
+            records: [
+                { role: '主計算', period: '2026-09', runs: 13, tons: 5265 },
+                { role: '過去概算', period: '過去の回答', runs: null, tons: 5000 }
+            ]
+        };
+    }
     return null;
 }
 
@@ -222,8 +239,130 @@ function formatTons(value) {
 
 function basisText(basis) {
     if (basis.kind === '基準') return `${basis.stand}番は規定${basis.runs}直、基準${formatTons(basis.tons)}です。規定直数と基準トン数は互いに換算せず、基準トン数は固定最大にしません。切込み量とは別です`;
-    if (basis.kind === '最大') return `6番と7番は1カリバ最大${formatTons(basis.tons)}です。直数には換算しません`;
-    return `8番と9番は1カリバ約${formatTons(basis.tons)}の概算目安です。確定最大ではありません。直数には換算しません`;
+    return basis.records.map(record => {
+        const runs = record.runs === null ? '' : `${record.runs}直・`;
+        return `${record.role}（${record.period}）${runs}${formatTons(record.tons)}`;
+    }).join('、');
+}
+
+function futureReferenceDays(source) {
+    const reference = String(source.referenceDate || '').slice(0, 10);
+    return (Array.isArray(source.days) ? source.days : [])
+        .filter(row => row && String(row.date || '') >= reference && (!source.caliberActiveUntil || row.date <= source.caliberActiveUntil));
+}
+
+function forecastReferenceReach(source, basis) {
+    const empty = { shiftReachDate: null, tonReachDate: null, candidates: [], reason: '通過か飛ばすかが未確認なので、予定からは到達見込みと参考候補を出しません。' };
+    if (source.standPass === 'skip') {
+        return { ...empty, reason: 'この予定ではスタンドを飛ばすため、到達見込みと参考候補は出しません。' };
+    }
+    if (source.standPass !== 'pass') return empty;
+    const days = futureReferenceDays(source);
+    if (!days.length) {
+        return { ...empty, reason: 'このスタンドを通る予定でも、基準日以降の予定が無いため到達見込みは出しません。' };
+    }
+    const parts = [];
+    const candidates = [];
+    const shift = forecastShiftReach(source, basis, days);
+    parts.push(shift.reason);
+    if (shift.candidate) candidates.push({ kind: '規定直数', date: shift.candidate });
+    const ton = forecastTonReach(source, basis, days);
+    parts.push(ton.reason);
+    if (ton.candidate) candidates.push({ kind: '基準トン数', date: ton.candidate });
+    return {
+        shiftReachDate: shift.reach,
+        tonReachDate: ton.reach,
+        candidates,
+        reason: `${parts.join('')}これは超過日でも改削日でも購入日でもありません。`
+    };
+}
+
+function forecastShiftReach(source, basis, days) {
+    const runs = source.openingUsedRuns;
+    if (typeof runs !== 'number' || !Number.isInteger(runs) || runs < 0) {
+        return { reach: null, candidate: null, reason: '開始直数が未確認なので、規定到達見込みは出しません。' };
+    }
+    if (runs >= basis.runs) {
+        return { reach: null, candidate: null, reason: '開始時に規定直数へ達しています。規定到達の参考候補は出しません。' };
+    }
+    const beforeUnknown = [];
+    let blocked = null;
+    days.forEach(row => {
+        if (blocked) return;
+        const review = dayUseReview(row);
+        if (review) {
+            blocked = { date: row.date, kind: review };
+            return;
+        }
+        beforeUnknown.push(row);
+    });
+    const rules = globalThis.RollPlanningRules;
+    const scheduleApi = globalThis.RollPlanningSchedule;
+    const calibers = globalThis.RollPlanningCalibers;
+    if (!rules || !scheduleApi || !calibers) {
+        return { reach: null, candidate: null, reason: '規定到達見込みを読み込めません。' };
+    }
+    const projected = calibers.projectCaliberChange(beforeUnknown, {
+        equipmentId: `stand-${basis.stand}`,
+        stands: [String(basis.stand)],
+        size: '',
+        maxRuns: basis.runs,
+        usedRuns: runs,
+        currentCaliber: source.currentCaliber || 'reference'
+    }, {
+        ruleEngine: rules.createPlanningRules({ afterProductionAllowedWorkTypes: [rules.WORK_TYPES.CALIBER_CHANGE] }),
+        scheduleApi,
+        slotTypes: rules.SLOT_TYPES,
+        workTypes: rules.WORK_TYPES
+    });
+    const reach = projected.lastAllowedRun ? projected.lastAllowedRun.date : null;
+    if (blocked && (!reach || blocked.date <= reach)) {
+        return { reach: null, candidate: null, reason: `${blocked.date}は${blocked.kind}です。未確認の使用量を0直にしないため、規定到達見込みは確定しません。` };
+    }
+    if (!reach) return { reach: null, candidate: null, reason: `この予定の範囲では規定${basis.runs}直に達しません。` };
+    const earlierStop = beforeUnknown.reduce((found, row) => (String(row.date) < reach && row.productionAmount === 0 ? row.date : found), null);
+    const candidate = projected.recommendation ? projected.recommendation.date : earlierStop;
+    const slotText = candidate
+        ? `作業できる日があるため、規定到達の参考候補は${candidate}です。`
+        : '作業できる日が無いため、規定到達の参考候補は出しません。';
+    return { reach, candidate, reason: `規定${basis.runs}直への到達見込みは${reach}です。${slotText}` };
+}
+
+function forecastTonReach(source, basis, days) {
+    const opening = source.openingUsedTons;
+    if (typeof opening !== 'number' || !Number.isFinite(opening) || opening < 0) {
+        return { reach: null, candidate: null, reason: '開始トン数が未確認なので、トン数到達見込みは出しません。' };
+    }
+    if (opening >= basis.tons) {
+        return { reach: null, candidate: null, reason: '開始時に基準トン数へ達しています。トン数到達の参考候補は出しません。' };
+    }
+    let total = opening;
+    let slot = null;
+    let reach = null;
+    let blocked = null;
+    days.forEach(row => {
+        if (reach || blocked) return;
+        const amount = row.productionAmount;
+        if (typeof amount !== 'number' || !Number.isFinite(amount)) {
+            blocked = row.date;
+            return;
+        }
+        if (amount === 0) {
+            slot = row.date;
+            return;
+        }
+        total += amount;
+        if (total >= basis.tons) reach = row.date;
+    });
+    if (blocked && !reach) {
+        return { reach: null, candidate: null, reason: `${blocked}の生産量が未確認です。0tにしないため、トン数到達見込みは確定しません。` };
+    }
+    if (!reach) return { reach: null, candidate: null, reason: `この予定の範囲では基準${formatTons(basis.tons)}に達しません。` };
+    const candidate = slot && slot < reach ? slot : null;
+    const slotText = candidate
+        ? `作業できる日があるため、トン数到達の参考候補は${candidate}です。`
+        : '作業できる日が無いため、トン数到達の参考候補は出しません。';
+    return { reach, candidate, reason: `基準${formatTons(basis.tons)}への到達見込みは${reach}です。${slotText}` };
 }
 
 function projectTonUse(input) {
@@ -242,6 +381,17 @@ function projectTonUse(input) {
         reviews: [],
         basis
     };
+    if (basis.kind === '併記') {
+        const older = basis.stand <= 7
+            ? '15直と19直は現運用の回答まで分けて保持し、過去概算の7,600tは現行最大にしません。'
+            : '原資料の13直・5,265tと、過去概算の約5,000tは別です。どちらも確定最大ではありません。';
+        const unknownUse = typeof source.openingUsedTons !== 'number' ? '開始時の使用量が未確認でも0tにはせず、' : '';
+        return {
+            ...base,
+            status: 'unknown',
+            reason: `${basis.stand}番の資料は${basisText(basis)}です。${older}${unknownUse}交換日は出しません。`
+        };
+    }
     if (basis.kind === '基準') {
         const runs = source.openingUsedRuns;
         const runsKnown = typeof runs === 'number' && Number.isInteger(runs) && runs >= 0;
@@ -251,10 +401,14 @@ function projectTonUse(input) {
         const runPlace = !runsKnown
             ? '開始時の使用直数は未確認です。0直にはしません'
             : `開始時は${runs}直で、規定${basis.runs}直${runs >= basis.runs ? 'に達しています' : 'より前です'}`;
+        const forecast = forecastReferenceReach(source, basis);
         return {
             ...base,
             status: 'guideOnly',
-            reason: `${basisText(basis)}。${tonPlace}。${runPlace}。工場全体の予定トン数は足さず、交換日は出しません。`
+            shiftReachDate: forecast.shiftReachDate,
+            tonReachDate: forecast.tonReachDate,
+            referenceCandidates: forecast.candidates,
+            reason: `${basisText(basis)}。${tonPlace}。${runPlace}。${forecast.reason}`
         };
     }
     if (!tonsKnown) {
@@ -532,13 +686,14 @@ function renderConsumptionLink(summary) {
     const target = document.getElementById('consumption-link');
     if (!target) return;
     const form = readCaliberInputs();
-    const linked = linkProductionToConsumption({ schedule: summary });
+    const linked = linkProductionToConsumption({ schedule: summary, standKey: form.standKey });
     const caliber = projectCaliberReplacement({
         standKey: form.standKey,
         size: form.size,
         currentCaliber: form.currentCaliber,
         openingUsedRuns: form.openingUsedRuns,
         openingUsedTons: form.openingUsedTons,
+        standPass: form.standPass,
         days: summary && summary.days,
         referenceDate: summary && summary.referenceDate
     });
@@ -557,7 +712,8 @@ function readCaliberInputs() {
         size: value('caliber-size').trim(),
         currentCaliber: value('caliber-current').trim(),
         openingUsedRuns: opening === '' ? undefined : Number(opening),
-        openingUsedTons: openingTons === '' ? undefined : Number(openingTons)
+        openingUsedTons: openingTons === '' ? undefined : Number(openingTons),
+        standPass: value('caliber-pass')
     };
 }
 
@@ -643,7 +799,7 @@ function bindMonthlyScheduleFileInput() {
     const input = document.getElementById('monthly-schedule-file');
     if (!input || input.dataset.bound === 'true') return;
     input.dataset.bound = 'true';
-    ['caliber-stand', 'caliber-size', 'caliber-current', 'caliber-opening', 'caliber-opening-tons'].forEach(id => {
+    ['caliber-stand', 'caliber-size', 'caliber-current', 'caliber-opening', 'caliber-opening-tons', 'caliber-pass'].forEach(id => {
         const field = document.getElementById(id);
         if (field) field.addEventListener('change', () => renderMonthlyScheduleSummary(latestMonthlySummary));
     });
