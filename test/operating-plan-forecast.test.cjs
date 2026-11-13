@@ -176,6 +176,27 @@ test('past production tons do not become a future rework or purchase date', () =
   assert.equal(context.knownCaliberLimit('16', 'D13').runs, 14);
   assert.equal(context.knownCaliberLimit('17', 'D10').runs, 6);
   assert.equal(context.knownCaliberLimit('6', 'D10'), null);
+  const normalGuide = context.projectCaliberReplacement({
+    standKey: '12', referenceDate: '2026-11-13', currentCaliber: 'anon-1', openingUsedRuns: 11, size: 'D10',
+    days: [day('2027-04-01', 8, 'A', 10)]
+  });
+  assert.equal(normalGuide.exchangeDate, null);
+  assert.equal(normalGuide.exceedsOnDate, null);
+  assert.equal(normalGuide.lastAllowedDate, null);
+  assert.match(normalGuide.reason, /通常11直の目安/);
+  assert.match(normalGuide.reason, /確定最大は未確認/);
+  assert.equal(normalGuide.reason.includes('超えます'), false);
+  const confirmedMax = context.projectCaliberReplacement({
+    standKey: '13', referenceDate: '2026-11-13', currentCaliber: 'anon-1', openingUsedRuns: 11, size: 'D13',
+    days: [
+      { ...day('2027-04-01', 8, 'A', 10), size: 'D13' },
+      { ...day('2027-04-02', 0, 'B', 0), size: 'D13' },
+      { ...day('2027-04-03', 8, 'A', 10), size: 'D13' }
+    ]
+  });
+  assert.equal(confirmedMax.exchangeDate, '2027-04-02');
+  assert.equal(confirmedMax.exceedsOnDate, '2027-04-03');
+  assert.match(confirmedMax.reason, /最大12直を超えます/);
 });
 
 test('lead time defaults to provisional six months and confirmed is explicit', () => {

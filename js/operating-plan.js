@@ -292,29 +292,38 @@ function projectCaliberReplacement(input) {
         slotTypes: rules.SLOT_TYPES,
         workTypes: rules.WORK_TYPES
     });
-    const exceedsOnDate = projected.firstOverLimitRun ? projected.firstOverLimitRun.date : null;
-    const lastAllowedDate = projected.lastAllowedRun ? projected.lastAllowedRun.date : null;
+    const guideOrExceedDate = projected.firstOverLimitRun ? projected.firstOverLimitRun.date : null;
+    const projectedLastAllowed = projected.lastAllowedRun ? projected.lastAllowedRun.date : null;
     const slotDate = projected.recommendation ? projected.recommendation.date : null;
-    const unknownIsAfterDecision = Boolean(blocked && exceedsOnDate && blocked.date > exceedsOnDate);
-    const exchangeDate = unknownIsAfterDecision || !blocked ? slotDate : null;
+    const unknownIsAfterDecision = Boolean(blocked && guideOrExceedDate && blocked.date > guideOrExceedDate);
+    const confirmedMaximum = limit.kind === '最大';
+    const exchangeDate = confirmedMaximum && (unknownIsAfterDecision || !blocked) ? slotDate : null;
+    const exceedsOnDate = confirmedMaximum && !(blocked && !unknownIsAfterDecision) ? guideOrExceedDate : null;
+    const lastAllowedDate = confirmedMaximum ? projectedLastAllowed : null;
     let reason;
     if (blocked && !unknownIsAfterDecision) {
         reason = `${blocked.date}は${blocked.kind}です。未確認の使用量を0直にしないため、この先の交換日と超過日は確定しません。`;
+    } else if (!confirmedMaximum) {
+        reason = guideOrExceedDate
+            ? `${guideOrExceedDate}は通常${limit.runs}直の目安に達する見込みです。確定最大は未確認のため、交換候補日と超過日は出しません。`
+            : `この予定の範囲では通常${limit.runs}直の目安に達しません。確定最大は未確認です。4時間以上を1直として数えています。`;
     } else if (!exceedsOnDate) {
-        reason = `この予定の範囲では${limit.kind}${limit.runs}直を超えません。4時間以上を1直として数えています。`;
+        reason = `この予定の範囲では最大${limit.runs}直を超えません。4時間以上を1直として数えています。`;
     } else if (exchangeDate) {
-        reason = `交換候補は${exchangeDate}です。${exceedsOnDate}の操業は${limit.kind}${limit.runs}直を超えます。これは改削日でも購入日でもありません。`;
+        reason = `交換候補は${exchangeDate}です。${exceedsOnDate}の操業は最大${limit.runs}直を超えます。これは改削日でも購入日でもありません。`;
     } else {
         reason = `止まれる日が無いため、交換候補日は出しません。上限内の最終操業は${lastAllowedDate || 'なし'}、上限を超える操業は${exceedsOnDate}です。`;
     }
     if (blocked && unknownIsAfterDecision) {
-        reason += `${blocked.date}は${blocked.kind}ですが、確定済みの交換候補より後です。`;
+        reason += confirmedMaximum
+            ? `${blocked.date}は${blocked.kind}ですが、確定済みの交換候補より後です。`
+            : `${blocked.date}は${blocked.kind}ですが、通常目安の見込みより後です。`;
     }
     return {
         exchangeDate,
-        exceedsOnDate: blocked && !unknownIsAfterDecision ? null : exceedsOnDate,
+        exceedsOnDate,
         lastAllowedDate,
-        status: blocked && !unknownIsAfterDecision ? 'needsReview' : (exchangeDate ? projected.status : 'noSafeSlot'),
+        status: blocked && !unknownIsAfterDecision ? 'needsReview' : (confirmedMaximum ? (exchangeDate ? projected.status : 'noSafeSlot') : 'guideOnly'),
         reviews: blocked ? [blocked] : [],
         limit,
         reworkTiming: 'unknown',

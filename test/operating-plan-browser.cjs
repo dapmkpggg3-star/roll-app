@@ -91,6 +91,30 @@ function futureScheduleFile() {
   }));
   return file;
 }
+function normalGuideFile() {
+  const rows = [];
+  for (let day = 1; day <= 20; day += 1) {
+    const row = day + 15;
+    const producing = day === 1;
+    rows.push(`<row r="${row}">${[
+      `<c r="D${row}"><v>${day}</v></c>`,
+      `<c r="G${row}" t="s"><v>0</v></c>`,
+      `<c r="I${row}" t="s"><v>${producing ? 2 : 3}</v></c>`,
+      `<c r="J${row}"><v>${producing ? 10 : 0}</v></c>`,
+      `<c r="L${row}"><v>${producing ? 10 : 0}</v></c>`,
+      `<c r="N${row}"><v>0</v></c>`,
+      `<c r="P${row}"><v>${producing ? 8 : 0}</v></c>`
+    ].join('')}</row>`);
+  }
+  const file = path.join(os.tmpdir(), 'roll-anon-guide.xlsx');
+  fs.writeFileSync(file, storedZip({
+    'xl/workbook.xml': '<?xml version="1.0"?><workbook xmlns:r="r"><sheets><sheet name="27.04 生産予定" sheetId="1" r:id="rId1"/></sheets></workbook>',
+    'xl/_rels/workbook.xml.rels': '<?xml version="1.0"?><Relationships><Relationship Id="rId1" Target="worksheets/sheet1.xml"/></Relationships>',
+    'xl/sharedStrings.xml': '<sst><si><t>D10</t></si><si><t> </t></si><si><t>A</t></si><si><t>B</t></si></sst>',
+    'xl/worksheets/sheet1.xml': `<?xml version="1.0"?><worksheet><sheetData>${rows.join('')}</sheetData></worksheet>`
+  }));
+  return file;
+}
 const root = path.resolve(__dirname, '..');
 const mime = { '.html': 'text/html; charset=utf-8', '.js': 'application/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8' };
 
@@ -177,6 +201,15 @@ async function main() {
     const candidate = await page.locator('#consumption-link').innerText();
     assert.match(candidate, /交換候補は2027-04-02/);
     assert.match(candidate, /改削日でも購入日でもありません/);
+    await page.locator('#caliber-stand').fill('12');
+    await page.locator('#caliber-size').fill('D10');
+    await page.locator('#caliber-current').fill('anon-1');
+    await page.locator('#caliber-opening').fill('11');
+    await page.locator('#monthly-schedule-file').setInputFiles(normalGuideFile());
+    await page.waitForFunction(() => document.getElementById('consumption-link').textContent.includes('通常11直の目安'));
+    const guide = await page.locator('#consumption-link').innerText();
+    assert.match(guide, /確定最大は未確認/);
+    assert.equal(guide.includes('交換候補は'), false);
     assert.equal(await page.evaluate(() => roles[0].status), 'オンライン');
     assert.equal(await page.evaluate(() => roles[0].status), 'オンライン');
     assert.equal(outbound.length, 0);
