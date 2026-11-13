@@ -294,6 +294,13 @@ test('past production tons do not become a future rework or purchase date', () =
   assert.equal(missingThreeSet.shiftReachDate, '2027-04-03');
   assert.equal(missingThreeSet.referenceCandidates.length, 0);
   assert.match(missingThreeSet.reason, /交換作業枠未確認/);
+  const missingPeople = context.projectCaliberReplacement({
+    standKey: '2', referenceDate: '2026-11-13', standPass: 'pass', openingUsedRuns: 33,
+    workConfirmation: work({ people: undefined }), days: schedule
+  });
+  assert.equal(missingPeople.shiftReachDate, '2027-04-03');
+  assert.equal(missingPeople.referenceCandidates.length, 0);
+  assert.match(missingPeople.reason, /交換作業枠未確認/);
   const current = context.projectCaliberReplacement({
     standKey: '6', referenceDate: '2026-11-13', standPass: 'pass', openingUsedRuns: 13,
     workConfirmation: work({ workType: 'caliberChange' }), days: schedule
