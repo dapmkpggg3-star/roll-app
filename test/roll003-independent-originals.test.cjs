@@ -181,6 +181,26 @@ test('corrupt stored roles or deletion JSON stops before remote read and POST', 
   }
 });
 
+test('a corrupt generation log is left untouched while the current pair is stored', () => {
+  const { context, storage } = harness();
+  storage.set('roles_sync_original_generations_v1', '{not-json');
+  context.storeIndependentSyncOriginals([{ id: '1', memo: 'current-local' }], [{ id: '1', memo: 'current-remote' }]);
+  assert.equal(storage.get('roles_sync_original_generations_v1'), '{not-json');
+  assert.equal(context.readIndependentSyncOriginals().localOriginal[0].memo, 'current-local');
+  assert.equal(context.readIndependentSyncOriginals().remoteOriginal[0].memo, 'current-remote');
+});
+
+test('original generations keep only the newest five pairs', () => {
+  const { context, storage } = harness();
+  for (let index = 1; index <= 6; index += 1) {
+    context.storeIndependentSyncOriginals([{ id: '1', memo: `local-${index}` }], [{ id: '1', memo: `remote-${index}` }]);
+  }
+  const generations = JSON.parse(storage.get('roles_sync_original_generations_v1'));
+  assert.equal(generations.length, 5);
+  assert.equal(generations[0].localOriginal[0].memo, 'local-6');
+  assert.equal(generations[4].localOriginal[0].memo, 'local-2');
+});
+
 test('a second capture keeps the previous original generation', () => {
   const { context, storage } = harness();
   context.storeIndependentSyncOriginals([{ id: '1', memo: 'generation-1' }], [{ id: '1', memo: 'remote-1' }]);

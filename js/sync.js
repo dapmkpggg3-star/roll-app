@@ -228,14 +228,21 @@ function storeIndependentSyncOriginals(localRoles, remoteRoles) {
     }));
     // Keep earlier pairs. The latest key alone is replaced on the next sync.
     const generation = { savedAt, localOriginal, remoteOriginal };
+    const rawGenerations = localStorage.getItem('roles_sync_original_generations_v1');
     let priorGenerations = [];
-    try {
-        const storedGenerations = JSON.parse(localStorage.getItem('roles_sync_original_generations_v1') || '[]');
-        if (Array.isArray(storedGenerations)) priorGenerations = storedGenerations;
-    } catch (error) {
-        priorGenerations = [];
+    let generationsReadable = true;
+    if (rawGenerations) {
+        try {
+            const storedGenerations = JSON.parse(rawGenerations);
+            if (Array.isArray(storedGenerations)) priorGenerations = storedGenerations;
+            else generationsReadable = false;
+        } catch (error) {
+            generationsReadable = false;
+        }
     }
-    localStorage.setItem('roles_sync_original_generations_v1', JSON.stringify([generation, ...priorGenerations].slice(0, 5)));
+    if (generationsReadable) {
+        localStorage.setItem('roles_sync_original_generations_v1', JSON.stringify([generation, ...priorGenerations].slice(0, 5)));
+    }
     localStorage.setItem(SYNC_LOCAL_ORIGINAL_KEY, JSON.stringify(localOriginal));
     localStorage.setItem(SYNC_REMOTE_ORIGINAL_KEY, JSON.stringify(remoteOriginal));
     localStorage.setItem(`${SYNC_LOCAL_ORIGINAL_KEY}_saved_at`, savedAt);
