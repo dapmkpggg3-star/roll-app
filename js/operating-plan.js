@@ -201,61 +201,87 @@ function shiftUseFromHours(hours) {
     return 'short';
 }
 
+function knownCaliberLimit(standKey, size) {
+    const stand = String(standKey || '').replace(/^#/, '');
+    const normalized = String(size || '').normalize('NFKC').toUpperCase().replace(/\s+/g, '');
+    const table = {
+        '10': { runs: 8, kind: '最大' },
+        '11': { runs: 8, kind: '最大' },
+        '12': { runs: 11, kind: '通常' },
+        '13|D10': { runs: 6, kind: '通常' },
+        '13|D13': { runs: 12, kind: '最大' },
+        '14|D10': { runs: 5, kind: '通常' },
+        '14|D13': { runs: 7, kind: '最大' },
+        '15|D10': { runs: 5, kind: '通常' },
+        '15|D13': { runs: 7, kind: '最大' },
+        '16|D10': { runs: 13, kind: '最大' },
+        '16|D13': { runs: 14, kind: '最大' },
+        '17|D10': { runs: 6, kind: '最大' },
+        '17|D13': { runs: 6, kind: '最大' }
+    };
+    return table[stand] || table[`${stand}|${normalized}`] || null;
+}
+
+function dayUseReview(row) {
+    const amount = row ? row.productionAmount : undefined;
+    const teams = [row && row.shift1Team, row && row.shift3Team].filter(Boolean);
+    if (amount === null || amount === undefined) return '生産量未確認';
+    const produced = amount > 0 || teams.some(team => row.productionByTeam && Number(row.productionByTeam[team]) > 0);
+    if (!produced) return '';
+    const use = shiftUseFromHours(row.operatingHours);
+    if (use === 'missing') return '時間未確認';
+    if (use === 'underTwo') return '2時間未満';
+    if (use === 'short') return '2時間以上4時間未満';
+    if (teams.length > 1) return '勤ごとの時間';
+    return '';
+}
+
 function projectCaliberReplacement(input) {
     const source = input || {};
-    const standNumber = Number(source.standKey);
     const reference = String(source.referenceDate || '').slice(0, 10);
     const days = (Array.isArray(source.days) ? source.days : [])
-        .filter(row => row && String(row.date || '') >= reference);
+        .filter(row => row && String(row.date || '') >= reference && (!source.caliberActiveUntil || row.date <= source.caliberActiveUntil));
+    const limit = knownCaliberLimit(source.standKey, source.size);
     const base = {
         exchangeDate: null,
         exceedsOnDate: null,
+        lastAllowedDate: null,
         reworkTiming: 'unknown',
         purchaseTiming: 'unknown',
         statusChanged: false,
         reviews: []
     };
-    if (standNumber !== 10 && standNumber !== 11) {
-        return { ...base, status: 'unknown', reason: '10番と11番以外のカリバ上限は台帳に無いため、交換日は判定できません。' };
+    if (!limit) {
+        return { ...base, status: 'unknown', reason: 'このスタンドとサイズの直数上限は、通常・最大・例外を分けて記録されていません。' };
     }
     if (!days.length) {
-        return { ...base, status: 'past', reason: '読み取った予定は過去の月です。これからの交換日には使いません。10番と11番の上限は8直、4時間以上は1直です。' };
+        return { ...base, status: 'past', reason: `読み取った予定は過去の月です。これからの交換日には使いません。${source.standKey}番の${limit.kind}は${limit.runs}直、4時間以上は1直です。` };
     }
     if (!source.currentCaliber || typeof source.openingUsedRuns !== 'number' || !Number.isInteger(source.openingUsedRuns) || source.openingUsedRuns < 0) {
-        return { ...base, status: 'unknown', reason: '今のカリバと、開始時に何直使ったかが未確認です。10番と11番の上限は8直、4時間以上は1直です。' };
+        return { ...base, status: 'unknown', reason: `今のカリバと、開始時に何直使ったかが未確認です。${limit.kind}は${limit.runs}直、4時間以上は1直です。` };
     }
-    const reviews = [];
-    const countable = [];
+    const beforeUnknown = [];
+    let blocked = null;
     days.forEach(row => {
-        const teamCount = [row.shift1Team, row.shift3Team].filter(Boolean).length;
-        const produced = (typeof row.productionAmount === 'number' && row.productionAmount > 0)
-            || [row.shift1Team, row.shift3Team].some(team => team && row.productionByTeam && Number(row.productionByTeam[team]) > 0);
-        if (!produced) {
-            countable.push(row);
+        if (blocked) return;
+        const review = dayUseReview(row);
+        if (review) {
+            blocked = { date: row.date, kind: review };
             return;
         }
-        const use = shiftUseFromHours(row.operatingHours);
-        if (use !== 'full') {
-            reviews.push({ date: row.date, kind: use === 'missing' ? '時間未確認' : use === 'underTwo' ? '2時間未満' : '2時間以上4時間未満' });
-            return;
-        }
-        if (teamCount > 1) {
-            reviews.push({ date: row.date, kind: '勤ごとの時間' });
-            return;
-        }
-        countable.push(row);
+        beforeUnknown.push(row);
     });
     const rules = globalThis.RollPlanningRules;
     const scheduleApi = globalThis.RollPlanningSchedule;
     const calibers = globalThis.RollPlanningCalibers;
     if (!rules || !scheduleApi || !calibers) {
-        return { ...base, reviews, status: 'unknown', reason: 'カリバ予測を読み込めません。' };
+        return { ...base, status: 'unknown', reason: 'カリバ予測を読み込めません。' };
     }
-    const projected = calibers.projectCaliberChange(countable, {
-        equipmentId: `stand-${standNumber}`,
-        stands: [String(standNumber)],
+    const projected = calibers.projectCaliberChange(beforeUnknown, {
+        equipmentId: `stand-${source.standKey}`,
+        stands: [String(source.standKey)],
         size: source.size || '',
-        maxRuns: 8,
+        maxRuns: limit.runs,
         usedRuns: source.openingUsedRuns,
         currentCaliber: source.currentCaliber,
         nextCaliber: source.nextCaliber,
@@ -266,21 +292,31 @@ function projectCaliberReplacement(input) {
         slotTypes: rules.SLOT_TYPES,
         workTypes: rules.WORK_TYPES
     });
-    const exchangeDate = projected.recommendation ? projected.recommendation.date : (projected.lastAllowedRun ? projected.lastAllowedRun.date : null);
     const exceedsOnDate = projected.firstOverLimitRun ? projected.firstOverLimitRun.date : null;
-    let reason = !exceedsOnDate
-        ? 'この予定の範囲では8直を超えません。4時間以上を1直として数えています。'
-        : exchangeDate
-            ? `交換候補は${exchangeDate}です。${exceedsOnDate}の操業は8直を超えます。これは改削日でも購入日でもありません。`
-            : `${exceedsOnDate}の前に交換が必要です。止まれる日が予定に無いため、交換日は確定しません。`;
-    if (reviews.length) {
-        reason += `要確認: ${reviews.map(item => `${item.date}は${item.kind}`).join('、')}。その日は1直にしていません。`;
+    const lastAllowedDate = projected.lastAllowedRun ? projected.lastAllowedRun.date : null;
+    const slotDate = projected.recommendation ? projected.recommendation.date : null;
+    const unknownIsAfterDecision = Boolean(blocked && exceedsOnDate && blocked.date > exceedsOnDate);
+    const exchangeDate = unknownIsAfterDecision || !blocked ? slotDate : null;
+    let reason;
+    if (blocked && !unknownIsAfterDecision) {
+        reason = `${blocked.date}は${blocked.kind}です。未確認の使用量を0直にしないため、この先の交換日と超過日は確定しません。`;
+    } else if (!exceedsOnDate) {
+        reason = `この予定の範囲では${limit.kind}${limit.runs}直を超えません。4時間以上を1直として数えています。`;
+    } else if (exchangeDate) {
+        reason = `交換候補は${exchangeDate}です。${exceedsOnDate}の操業は${limit.kind}${limit.runs}直を超えます。これは改削日でも購入日でもありません。`;
+    } else {
+        reason = `止まれる日が無いため、交換候補日は出しません。上限内の最終操業は${lastAllowedDate || 'なし'}、上限を超える操業は${exceedsOnDate}です。`;
+    }
+    if (blocked && unknownIsAfterDecision) {
+        reason += `${blocked.date}は${blocked.kind}ですが、確定済みの交換候補より後です。`;
     }
     return {
         exchangeDate,
-        exceedsOnDate,
-        status: reviews.length ? 'needsReview' : projected.status,
-        reviews,
+        exceedsOnDate: blocked && !unknownIsAfterDecision ? null : exceedsOnDate,
+        lastAllowedDate,
+        status: blocked && !unknownIsAfterDecision ? 'needsReview' : (exchangeDate ? projected.status : 'noSafeSlot'),
+        reviews: blocked ? [blocked] : [],
+        limit,
         reworkTiming: 'unknown',
         purchaseTiming: 'unknown',
         statusChanged: false,
@@ -373,7 +409,10 @@ function readStandLeadTime(standKey) {
     return stored || null;
 }
 
+let latestMonthlySummary = null;
+
 function renderMonthlyScheduleSummary(summary) {
+    if (summary) latestMonthlySummary = summary;
     const target = document.getElementById('monthly-schedule-summary');
     if (!target) return;
     if (!summary || summary.ok === false) {
@@ -399,16 +438,31 @@ function renderMonthlyScheduleSummary(summary) {
 function renderConsumptionLink(summary) {
     const target = document.getElementById('consumption-link');
     if (!target) return;
+    const form = readCaliberInputs();
     const linked = linkProductionToConsumption({ schedule: summary });
     const caliber = projectCaliberReplacement({
-        standKey: '10',
+        standKey: form.standKey,
+        size: form.size,
+        currentCaliber: form.currentCaliber,
+        openingUsedRuns: form.openingUsedRuns,
         days: summary && summary.days,
-        referenceDate: summary && summary.referenceDate,
-        currentCaliber: summary && summary.currentCaliber,
-        openingUsedRuns: summary && summary.openingUsedRuns,
-        size: summary && summary.size
+        referenceDate: summary && summary.referenceDate
     });
     target.textContent = `${linked.reason}\n${caliber.reason}`;
+}
+
+function readCaliberInputs() {
+    const value = id => {
+        const element = typeof document !== 'undefined' ? document.getElementById(id) : null;
+        return element ? element.value : '';
+    };
+    const opening = value('caliber-opening').trim();
+    return {
+        standKey: value('caliber-stand').trim(),
+        size: value('caliber-size').trim(),
+        currentCaliber: value('caliber-current').trim(),
+        openingUsedRuns: opening === '' ? undefined : Number(opening)
+    };
 }
 
 async function readMonthlyScheduleFile(file, referenceDate) {
@@ -493,6 +547,10 @@ function bindMonthlyScheduleFileInput() {
     const input = document.getElementById('monthly-schedule-file');
     if (!input || input.dataset.bound === 'true') return;
     input.dataset.bound = 'true';
+    ['caliber-stand', 'caliber-size', 'caliber-current', 'caliber-opening'].forEach(id => {
+        const field = document.getElementById(id);
+        if (field) field.addEventListener('change', () => renderMonthlyScheduleSummary(latestMonthlySummary));
+    });
     input.addEventListener('change', async () => {
         const file = input.files && input.files[0];
         const message = document.getElementById('operating-plan-message');

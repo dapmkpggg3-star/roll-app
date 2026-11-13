@@ -154,12 +154,28 @@ test('past production tons do not become a future rework or purchase date', () =
   assert.equal(replacement.reworkTiming, 'unknown');
   assert.equal(replacement.statusChanged, false);
   const short = context.projectCaliberReplacement({
-    standKey: '11', referenceDate: '2026-11-13', currentCaliber: 'anon-1', openingUsedRuns: 6, size: 'D1',
-    days: [day('2027-04-01', 3, 'A', 10), day('2027-04-02', 1.5, 'A', 10)]
+    standKey: '11', referenceDate: '2026-11-13', currentCaliber: 'anon-1', openingUsedRuns: 7, size: 'D1',
+    days: [day('2027-04-01', 3, 'A', 10), day('2027-04-02', 8, 'A', 10)]
   });
-  assert.equal(short.reviews.map(item => item.kind).join(','), '2時間以上4時間未満,2時間未満');
-  assert.equal(short.statusChanged, false);
-  assert.match(short.reason, /1直にしていません/);
+  assert.equal(short.exchangeDate, null);
+  assert.equal(short.exceedsOnDate, null);
+  assert.equal(short.reason.includes('超えません'), false);
+  assert.match(short.reason, /確定しません/);
+  const noSlot = context.projectCaliberReplacement({
+    standKey: '10', referenceDate: '2026-11-13', currentCaliber: 'anon-1', openingUsedRuns: 7, size: 'D1',
+    days: [day('2027-04-01', 8, 'A', 10), day('2027-04-02', 8, 'A', 10)]
+  });
+  assert.equal(noSlot.exchangeDate, null);
+  assert.equal(noSlot.lastAllowedDate, '2027-04-01');
+  assert.equal(noSlot.exceedsOnDate, '2027-04-02');
+  assert.match(noSlot.reason, /交換候補日は出しません/);
+  assert.equal(context.knownCaliberLimit('12', 'D10').runs, 11);
+  assert.equal(context.knownCaliberLimit('12', 'D10').kind, '通常');
+  assert.equal(context.knownCaliberLimit('13', 'D10').runs, 6);
+  assert.equal(context.knownCaliberLimit('13', 'D13').runs, 12);
+  assert.equal(context.knownCaliberLimit('16', 'D13').runs, 14);
+  assert.equal(context.knownCaliberLimit('17', 'D10').runs, 6);
+  assert.equal(context.knownCaliberLimit('6', 'D10'), null);
 });
 
 test('lead time defaults to provisional six months and confirmed is explicit', () => {

@@ -67,6 +67,30 @@ function anonymousScheduleFile() {
   }));
   return file;
 }
+function futureScheduleFile() {
+  const rows = [];
+  for (let day = 1; day <= 20; day += 1) {
+    const row = day + 15;
+    const producing = day === 1 || day === 3 || day === 4;
+    rows.push(`<row r="${row}">${[
+      `<c r="D${row}"><v>${day}</v></c>`,
+      `<c r="G${row}" t="s"><v>0</v></c>`,
+      `<c r="I${row}" t="s"><v>${producing ? 2 : 3}</v></c>`,
+      `<c r="J${row}"><v>${producing ? 10 : 0}</v></c>`,
+      `<c r="L${row}"><v>${producing ? 10 : 0}</v></c>`,
+      `<c r="N${row}"><v>0</v></c>`,
+      `<c r="P${row}"><v>${producing ? 8 : 0}</v></c>`
+    ].join('')}</row>`);
+  }
+  const file = path.join(os.tmpdir(), 'roll-anon-future.xlsx');
+  fs.writeFileSync(file, storedZip({
+    'xl/workbook.xml': '<?xml version="1.0"?><workbook xmlns:r="r"><sheets><sheet name="27.04 生産予定" sheetId="1" r:id="rId1"/></sheets></workbook>',
+    'xl/_rels/workbook.xml.rels': '<?xml version="1.0"?><Relationships><Relationship Id="rId1" Target="worksheets/sheet1.xml"/></Relationships>',
+    'xl/sharedStrings.xml': '<sst><si><t>D1</t></si><si><t> </t></si><si><t>A</t></si><si><t>B</t></si></sst>',
+    'xl/worksheets/sheet1.xml': `<?xml version="1.0"?><worksheet><sheetData>${rows.join('')}</sheetData></worksheet>`
+  }));
+  return file;
+}
 const root = path.resolve(__dirname, '..');
 const mime = { '.html': 'text/html; charset=utf-8', '.js': 'application/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8' };
 
@@ -144,18 +168,13 @@ async function main() {
     assert.match(consumption, /過去の月/);
     assert.match(consumption, /8直/);
     assert.match(consumption, /4時間以上/);
-    const candidate = await page.evaluate(() => {
-      const day = (date, hours, team, amount) => ({
-        date, size: 'D1', operatingHours: hours, productionAmount: amount,
-        shift1Team: '', shift3Team: team || '', productionByTeam: { A: team === 'A' ? amount : 0, B: team === 'B' ? amount : 0 }
-      });
-      const result = projectCaliberReplacement({
-        standKey: '10', referenceDate: '2026-11-13', currentCaliber: 'anon-1', openingUsedRuns: 6, size: 'D1',
-        days: [day('2027-04-01', 8, 'A', 10), day('2027-04-02', 0, 'B', 0), day('2027-04-03', 8, 'A', 10), day('2027-04-04', 5, 'A', 10)]
-      });
-      document.getElementById('consumption-link').textContent = result.reason;
-      return document.getElementById('consumption-link').textContent;
-    });
+    await page.locator('#caliber-stand').fill('10');
+    await page.locator('#caliber-size').fill('D1');
+    await page.locator('#caliber-current').fill('anon-1');
+    await page.locator('#caliber-opening').fill('6');
+    await page.locator('#monthly-schedule-file').setInputFiles(futureScheduleFile());
+    await page.waitForFunction(() => document.getElementById('consumption-link').textContent.includes('交換候補は2027-04-02'));
+    const candidate = await page.locator('#consumption-link').innerText();
     assert.match(candidate, /交換候補は2027-04-02/);
     assert.match(candidate, /改削日でも購入日でもありません/);
     assert.equal(await page.evaluate(() => roles[0].status), 'オンライン');

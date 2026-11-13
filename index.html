@@ -196,7 +196,11 @@
                     <label>生産予定ファイル <input id="monthly-schedule-file" type="file" accept=".xlsx,.xlsm"></label>
                     <pre id="monthly-schedule-summary">月別の生産予定はまだ読んでいません。ファイルは端末内だけで読み、アップロードしません。</pre>
                     <h2>消耗と改削・購入</h2>
-                    <pre id="consumption-link">生産予定を読むと、計算できる範囲と、まだ判定できない理由を表示します。年間のロール本数は作りません。</pre>
+                    <label>スタンド <input id="caliber-stand" type="text" value="10"></label>
+                    <label>サイズ <input id="caliber-size" type="text" value="D1"></label>
+                    <label>今のカリバ <input id="caliber-current" type="text" value=""></label>
+                    <label>開始時の使用直数 <input id="caliber-opening" type="number" min="0" step="1" value=""></label>
+                    <pre id="consumption-link">生産予定を読み、今のカリバと開始直数を入れると、作業できる日があるときだけ交換候補を表示します。</pre>
                     <p>ロール本数の版は、別の年間資料があるときだけ保存します。新しい版を保存しても以前の版は残り、ロールのステータスは変わりません。</p>
                     <label>版ID <input id="operating-plan-id" type="text" value="plan-anon"></label>
                     <label>名称 <input id="operating-plan-label" type="text" value="匿名計画"></label>
