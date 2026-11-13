@@ -958,6 +958,12 @@ function simulateExchangeCycle(input) {
                     blocked = true;
                     return;
                 }
+                const enteringRuns = entering ? finiteOrNull(entering.runs) : null;
+                if (resources && enteringRuns === null) {
+                    push(date, 'ロール替需要', '交換先の開始直数が未確認です。0直にはしません。');
+                    blocked = true;
+                    return;
+                }
                 state.rework = { id: leavingId, readyOn: addDays(date, reworkDays), status: 'rework' };
                 if (resources) {
                     const leaving = resources.find(item => item.id === leavingId);
@@ -965,9 +971,11 @@ function simulateExchangeCycle(input) {
                     entering.frame = 'online';
                     state.diameter = finiteOrNull(entering.diameter);
                     state.caliberId = entering.caliberId;
+                    state.caliberRuns = enteringRuns;
+                } else {
+                    state.caliberRuns = 0;
                 }
                 state.onlineId = spareRolls.shift();
-                state.caliberRuns = 0;
                 state.pending = null;
                 push(date, 'ロール替', '組込済みの予備をオンラインへ移し、外した対象を再生へ入れました。この時点では径を変えません。');
                 if (date >= state.rework.readyOn) finishRework(date);
@@ -1042,6 +1050,17 @@ function ledgerFrame(status) {
     return 'other';
 }
 
+function withSavedOpenings(resources, standKey, size, referenceAt) {
+    if (!Array.isArray(resources)) return [];
+    return resources.map(item => {
+        const saved = recallForecastSetting({ rollId: item.id, standKey, size, referenceAt }).value;
+        const next = Object.assign({}, item);
+        if (saved && saved.caliberId) next.caliberId = saved.caliberId;
+        if (saved && saved.openingRuns !== null && saved.openingRuns !== undefined) next.runs = saved.openingRuns;
+        return next;
+    });
+}
+
 function readLedgerResources(list, selection) {
     if (!Array.isArray(list)) return [];
     const keys = selection ? pairedStandKeys(selection.standKey, selection.size) : null;
@@ -1075,48 +1094,94 @@ function renderExchangeCycle() {
     const ledgerKeys = pairedStandKeys(form.standKey, form.size);
     const ledger = readLedgerResources(typeof roles === 'undefined' ? [] : roles, { standKey: form.standKey, size: form.size });
     const selectedStand = String(form.standKey || '').replace(/^#/, '').trim();
-    const cycleResources = ledger.filter(item => item.standKey === selectedStand && item.frame !== 'other');
-    const online = cycleResources.find(item => item.frame === 'online');
-    const openingRuns = form.openingUsedRuns === undefined ? (online ? online.runs : undefined) : form.openingUsedRuns;
+    const referenceAt = form.forecastReference || (schedule && schedule.referenceDate) || '';
+    const cycleResources = withSavedOpenings(
+        ledger.filter(item => item.standKey === selectedStand && item.frame !== 'other'),
+        form.standKey,
+        form.size,
+        referenceAt
+    );
+    const chosen = cycleResources.find(item => item.id === form.forecastRoll);
+    const online = form.forecastRoll
+        ? (chosen && chosen.frame === 'online' ? chosen : null)
+        : cycleResources.find(item => item.frame === 'online');
+    const openingRuns = form.forecastRoll && form.openingUsedRuns !== undefined
+        ? form.openingUsedRuns
+        : (form.openingUsedRuns === undefined ? (online ? online.runs : undefined) : form.openingUsedRuns);
     const openingSource = form.openingUsedRuns === undefined
-        ? (online && typeof online.runs === 'number' ? '台帳の現行カリバ' : '未確認')
+        ? (online && typeof online.runs === 'number' ? '保存した開始直数' : '未確認')
         : '画面の入力';
     const ledgerText = [
         !form.standKey
             ? 'スタンドが未選択なので、台帳の対象は混ぜません。'
             : `対象スタンドは${ledgerKeys.join('・')}です。${ledger.length
                 ? ledger.map(item => `${item.frame} ${item.id} 径${item.diameter === null ? '未確認' : item.diameter}`).join('、')
-                : 'このスタンドの対象は台帳にありません。他のスタンドは混ぜません。'}`,
+                : 'このスタンドの対象は台帳にありません。他のスタンドは混ぜません。'}計算に使うのは${selectedStand || '未選択'}番です。`,
         describeRemainingCalibers(form.standKey, form.size, openingRuns),
         `開始直数の出どころは${openingSource}です。未使用のカリバ本数ではありません。`,
-        `予測設定は${forecastSettingKey({ rollId: online && online.id, standKey: form.standKey, size: form.size, referenceAt: schedule && schedule.referenceDate })}です。別のスタンド・サイズ・ロール・基準時点へは流用しません。${form.currentCaliber || openingRuns !== undefined ? '' : '既存の使用資料に現用カリバと開始量は無いので、空欄のままです。'}`
+        `予測設定は${forecastSettingKey({ rollId: form.forecastRoll || (online && online.id), standKey: form.standKey, size: form.size, referenceAt })}です。別のスタンド・サイズ・ロール・基準時点へは流用しません。予備の本数からはカリバIDを作りません。`
     ].join('\n');
-    if (!days.length) {
-        target.textContent = `生産予定が無いので、架空の操業では予測しません。\n${ledgerText}`;
-        loadStandPremisesNote(target, form.standKey, generation);
-        return;
-    }
     const limit = knownCaliberLimit(form.standKey, form.size);
+    const line = item => `${item.date} ${item.kind} ${item.note}`;
+    let scheduleText = '生産予定が無いので、架空の操業では予測しません。';
+    if (form.forecastRoll && !online) {
+        scheduleText = '選んだロールはこのスタンドのオンラインではないので、状態は変えず交換もしません。';
+    } else if (days.length) {
+        const result = simulateExchangeCycle({
+            maxRuns: limit && limit.kind === '最大' ? limit.runs : undefined,
+            openingRuns,
+            currentCaliberId: form.currentCaliber || (online && online.caliberId) || null,
+            spareCaliberIds: null,
+            scrapDiameter: form.scrapDiameter,
+            adoptedCutMm: form.cutMm,
+            reworkDays: form.reworkDays,
+            workConfirmation: form.workConfirmation,
+            resources: cycleResources,
+            days
+        });
+        const uncovered = result.reason.includes('13か月全体の不足なしは判定できません')
+            ? '読み込んだ予定が13か月に満たない範囲は、不足なしにしません。'
+            : '';
+        scheduleText = [
+            `予定「${schedule.sourceName || '名前なし'}」で計算しています。架空の操業日は足していません。`,
+            result.reason,
+            uncovered,
+            result.events.map(line).join('\n')
+        ].filter(Boolean).join('\n');
+    }
+    target.textContent = [scheduleText, ledgerText, describeAnonymousHorizon(form, online, cycleResources, limit)].join('\n');
+    loadStandPremisesNote(target, form.standKey, generation);
+}
+
+function describeAnonymousHorizon(form, online, resources, limit) {
+    if (!form.forecastRoll || !form.forecastReference || !online) {
+        return '予測対象ロールまたは基準日が未選択なので、匿名の13か月は出しません。';
+    }
+    const work = form.workConfirmation || {};
+    const confirmed = work.period === 'day'
+        && typeof work.requiredHours === 'number' && work.requiredHours > 0
+        && typeof work.reservedHours === 'number' && work.reservedHours >= work.requiredHours
+        && Number.isInteger(work.people) && work.people > 0
+        && work.continuous === 'no' && work.changeover === 'yes' && work.threeSet === 'yes';
     const result = simulateExchangeCycle({
         maxRuns: limit && limit.kind === '最大' ? limit.runs : undefined,
-        openingRuns,
-        currentCaliberId: form.currentCaliber || (online && online.caliberId) || null,
-        spareCaliberIds: form.spareCaliberCount === undefined ? null : Array.from({ length: form.spareCaliberCount }, (_, index) => `anon-caliber-${index + 1}`),
+        openingRuns: online.runs,
+        currentCaliberId: online.caliberId,
+        spareCaliberIds: null,
         scrapDiameter: form.scrapDiameter,
         adoptedCutMm: form.cutMm,
         reworkDays: form.reworkDays,
-        workConfirmation: form.workConfirmation,
-        resources: cycleResources,
-        days
+        workConfirmation: confirmed ? Object.assign({}, work, { repeatOnStops: true, workTypes: ['caliberChange', 'rollChange'] }) : work,
+        resources,
+        days: anonymousOperatingDays(form.forecastReference, 400)
     });
-    const line = item => `${item.date} ${item.kind} ${item.note}`;
-    target.textContent = [
-        `予定「${schedule.sourceName || '名前なし'}」で計算しています。架空の操業日は足していません。`,
-        ledgerText,
+    const notable = result.events.find(item => item.kind === 'ロール替' || item.kind === 'ロール替需要');
+    return [
+        '匿名の13か月です。読み込んだ予定の日ではありません。',
         result.reason,
-        result.events.map(line).join('\n')
-    ].join('\n');
-    loadStandPremisesNote(target, form.standKey, generation);
+        notable ? `${notable.date} ${notable.kind} ${notable.note} カリバ${notable.caliberId || '未確認'} 開始${notable.caliberRuns === null || notable.caliberRuns === undefined ? '未確認' : notable.caliberRuns}` : '匿名の13か月に交換は出ていません。',
+        confirmed ? '' : '作業枠が未確認なので、匿名の13か月でも交換は成立させません。'
+    ].filter(Boolean).join('\n');
 }
 
 async function loadStandPremisesNote(target, standKey, generation) {
@@ -1230,8 +1295,17 @@ function currentForecastContext() {
     const selected = String(form.standKey || '').replace(/^#/, '').trim();
     const ledger = readLedgerResources(typeof roles === 'undefined' ? [] : roles, { standKey: form.standKey, size: form.size });
     const online = ledger.find(item => item.standKey === selected && item.frame === 'online');
-    const reference = latestMonthlySummary && latestMonthlySummary.ok !== false ? latestMonthlySummary.referenceDate : '';
-    return { rollId: online ? online.id : '', standKey: selected, size: form.size, referenceAt: reference || '' };
+    const chosen = typeof document !== 'undefined' && document.getElementById('forecast-roll');
+    const referenceField = typeof document !== 'undefined' && document.getElementById('forecast-reference');
+    const reference = referenceField && referenceField.value
+        ? referenceField.value
+        : (latestMonthlySummary && latestMonthlySummary.ok !== false ? latestMonthlySummary.referenceDate : '');
+    return {
+        rollId: chosen && chosen.value.trim() ? chosen.value.trim() : (online ? online.id : ''),
+        standKey: selected,
+        size: form.size,
+        referenceAt: reference || ''
+    };
 }
 
 function writeForecastFields(value) {
@@ -1358,6 +1432,8 @@ function readCaliberInputs() {
     return {
         standKey: value('caliber-stand').trim(),
         size: value('caliber-size').trim(),
+        forecastRoll: value('forecast-roll').trim(),
+        forecastReference: value('forecast-reference').trim(),
         currentCaliber: value('caliber-current').trim(),
         openingUsedRuns: opening === '' ? undefined : Number(opening),
         openingUsedTons: openingTons === '' ? undefined : Number(openingTons),
@@ -1490,7 +1566,7 @@ function bindMonthlyScheduleFileInput() {
     input.dataset.bound = 'true';
     syncForecastSettingContext();
     renderExchangeCycle();
-    ['caliber-stand', 'caliber-size', 'caliber-current', 'caliber-opening', 'caliber-opening-tons', 'caliber-pass', 'work-date', 'work-period', 'work-reserved-hours', 'work-type', 'work-required-hours', 'work-people', 'work-continuous', 'work-changeover', 'work-three-set', 'life-diameter', 'life-scrap', 'life-cut', 'life-spare', 'cycle-spare-calibers', 'cycle-rework-days'].forEach(id => {
+    ['forecast-roll', 'forecast-reference', 'caliber-stand', 'caliber-size', 'caliber-current', 'caliber-opening', 'caliber-opening-tons', 'caliber-pass', 'work-date', 'work-period', 'work-reserved-hours', 'work-type', 'work-required-hours', 'work-people', 'work-continuous', 'work-changeover', 'work-three-set', 'life-diameter', 'life-scrap', 'life-cut', 'life-spare', 'cycle-spare-calibers', 'cycle-rework-days'].forEach(id => {
         const field = document.getElementById(id);
         if (field) field.addEventListener('change', () => {
             if (applyingForecastSetting) return;

@@ -465,7 +465,7 @@ test('an anonymous cycle changes the caliber before rework and does not change t
 test('different diameters stay with their own roll through rework', () => {
   const original = [
     { id: 'roll-online', frame: 'online', diameter: 81, caliberId: 'cal-1', runs: 1 },
-    { id: 'roll-ready', frame: 'installedSpare', diameter: 93, caliberId: 'cal-ready' },
+    { id: 'roll-ready', frame: 'installedSpare', diameter: 93, caliberId: 'cal-ready', runs: 0 },
     { id: 'roll-used', frame: 'usedSpare', diameter: 74, caliberId: 'cal-used' }
   ];
   const slot = {
@@ -601,6 +601,62 @@ test('forecast settings stay with one roll, stand, size, and reference point', (
   const backToA = context.applyForecastContextChange(dateC, dateA, { caliberId: '', openingRuns: '', openingTons: '' });
   assert.equal(backToA.value.caliberId, 'anon-A');
   assert.equal(backToA.value.openingRuns, 6);
+});
+
+test('a spare roll continues from its own saved opening', () => {
+  context.rememberForecastSetting({ rollId: 'roll-b', standKey: '10', size: 'D10', referenceAt: '2027-04-01', caliberId: 'cal-b', openingRuns: 2, openingTons: '' });
+  const prepared = context.withSavedOpenings([
+    { id: 'roll-a', frame: 'online', diameter: 81, caliberId: null, runs: null },
+    { id: 'roll-b', frame: 'installedSpare', diameter: 93, caliberId: null, runs: null }
+  ], '10', 'D10', '2027-04-01');
+  assert.equal(prepared[0].caliberId, null);
+  assert.equal(prepared[1].caliberId, 'cal-b');
+  assert.equal(prepared[1].runs, 2);
+  const slot = {
+    date: '2027-04-02', period: 'day', workType: 'rollChange', requiredHours: 5, reservedHours: 5, people: 1,
+    continuous: 'no', changeover: 'yes', threeSet: 'yes'
+  };
+  const days = [
+    { date: '2027-04-01', productionAmount: 10, operatingHours: 8, shift1Team: 'A', shift3Team: '' },
+    { date: '2027-04-02', productionAmount: 0, operatingHours: 0, shift1Team: 'A', shift3Team: '' },
+    { date: '2027-04-03', productionAmount: 10, operatingHours: 8, shift1Team: 'A', shift3Team: '' }
+  ];
+  const changed = context.simulateExchangeCycle({
+    maxRuns: 8, openingRuns: 7, currentCaliberId: 'cal-a', reworkDays: 0, workConfirmation: slot,
+    resources: [
+      { id: 'roll-a', frame: 'online', diameter: 81, caliberId: 'cal-a', runs: 7 },
+      { id: 'roll-b', frame: 'installedSpare', diameter: 93, caliberId: 'cal-b', runs: 2 }
+    ],
+    days
+  });
+  const next = changed.events.find(item => item.date === '2027-04-03' && item.kind === '操業');
+  assert.equal(next.caliberId, 'cal-b');
+  assert.equal(next.caliberRuns, 3);
+  const unknown = context.simulateExchangeCycle({
+    maxRuns: 8, openingRuns: 7, currentCaliberId: 'cal-a', reworkDays: 0, workConfirmation: slot,
+    resources: [
+      { id: 'roll-a', frame: 'online', diameter: 81, caliberId: 'cal-a', runs: 7 },
+      { id: 'roll-b', frame: 'installedSpare', diameter: 93, caliberId: 'cal-b', runs: null }
+    ],
+    days
+  });
+  assert.equal(unknown.events.some(item => item.kind === 'ロール替'), false);
+  assert.match(unknown.events.map(item => item.note).join('\n'), /0直にはしません/);
+  assert.equal(unknown.events.some(item => item.date === '2027-04-03'), false);
+  assert.equal(unknown.resources.find(item => item.id === 'roll-a').frame, 'online');
+  const horizon = context.simulateExchangeCycle({
+    maxRuns: 8, openingRuns: 7, currentCaliberId: 'cal-a', reworkDays: 0,
+    workConfirmation: Object.assign({ repeatOnStops: true, workTypes: ['rollChange'] }, slot),
+    spareCaliberIds: null,
+    resources: [
+      { id: 'roll-a', frame: 'online', diameter: 81, caliberId: 'cal-a', runs: 7 },
+      { id: 'roll-b', frame: 'installedSpare', diameter: 93, caliberId: 'cal-b', runs: 2 }
+    ],
+    days: context.anonymousOperatingDays('2027-04-01', 400)
+  });
+  assert.match(horizon.reason, /13か月の範囲まで/);
+  assert.match(horizon.reason, /不足なしとは判定しません/);
+  assert.equal(horizon.events.find(item => item.kind === 'ロール替').caliberId, 'cal-b');
 });
 
 test('lead time defaults to provisional six months and confirmed is explicit', () => {

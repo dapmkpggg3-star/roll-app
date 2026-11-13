@@ -257,7 +257,9 @@
                     <label>切込み <input id="life-cut" type="number" min="0" step="0.1" value=""></label>
                     <label>使用できる予備 <input id="life-spare" type="number" min="0" step="1" value=""></label>
                     <h3>交換と再生の1周</h3>
-                    <p>生産予定を読み込んだときだけ計算します。予定が無い日を作りません。ファイルを替える、外す、読めないときは結果を無効にします。</p>
+                    <p>生産予定を読み込んだときだけ、その予定で計算します。予定が無い日を作りません。予測対象のロールと基準日を選ぶと、その保存と、別にラベルした匿名の13か月を出します。予備の本数からはカリバIDを作りません。</p>
+                    <label>予測対象ロール <input id="forecast-roll" type="text" value=""></label>
+                    <label>基準日 <input id="forecast-reference" type="date" value=""></label>
                     <label>予備カリバの数 <input id="cycle-spare-calibers" type="number" min="0" step="1" value=""></label>
                     <label>改削に要する日数 <input id="cycle-rework-days" type="number" min="0" step="1" value=""></label>
                     <pre id="cycle-result">交換と再生の計算を準備しています。</pre>
@@ -564,7 +566,7 @@
     <script src="js/online-safety.js?v=20260805-online-safety"></script>
     <script src="js/sync.js?v=20261023-content-auth"></script>
 <script src="js/offline-recovery.js?v=20261113-offline-recovery"></script>
-<script src="js/operating-plan.js?v=20261114-reference-caliber"></script>
+<script src="js/operating-plan.js?v=20261114-saved-spare"></script>
 <script src="js/csv.js?v=20260805-online-safety"></script>
 <script src="js/app.js?v=20261023-simple-auth"></script>
 
