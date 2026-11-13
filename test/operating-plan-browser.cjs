@@ -281,7 +281,9 @@ async function main() {
     assert.match(withheld, /画面の入力/);
     await page.evaluate(() => {
       roles.splice(0, roles.length,
+        { id: 'roll-2', name: '#2-A', status: 'オンライン', currentDiameter: 50, memo: '', updatedAt: '2026-11-13T00:00:00.000Z', history: [] },
         { id: 'roll-online', name: '#10-A', status: 'オンライン', currentDiameter: 81, memo: '', updatedAt: '2026-11-13T00:00:00.000Z', history: [] },
+        { id: 'roll-11', name: '#11-B', status: '新品予備（組込完了）', currentDiameter: 66, memo: '', updatedAt: '2026-11-13T00:00:00.000Z', history: [] },
         { id: 'roll-ready', name: '#10-B', status: '新品予備（組込完了）', currentDiameter: 93, memo: '', updatedAt: '2026-11-13T00:00:00.000Z', history: [] },
         { id: 'roll-used', name: '#10-C', status: '中古予備（バラシ前）', currentDiameter: 74, memo: '', updatedAt: '2026-11-13T00:00:00.000Z', history: [] }
       );
@@ -295,9 +297,12 @@ async function main() {
     await page.waitForFunction(() => document.getElementById('cycle-result').textContent.includes('roll-anon-schedule.xlsx'));
     const swapped = await page.locator('#cycle-result').innerText();
     assert.equal(swapped.includes('roll-anon-future.xlsx'), false);
+    assert.match(swapped, /対象スタンドは10・11です/);
     assert.match(swapped, /径81/);
+    assert.match(swapped, /径66/);
     assert.match(swapped, /径93/);
     assert.match(swapped, /径74/);
+    assert.equal(swapped.includes('径50'), false);
     await page.locator('#monthly-schedule-file').setInputFiles([]);
     await page.locator('#monthly-schedule-file').dispatchEvent('change');
     await page.waitForFunction(() => document.getElementById('cycle-result').textContent.includes('架空の操業では予測しません'));
@@ -309,6 +314,34 @@ async function main() {
     await page.locator('#monthly-schedule-file').setInputFiles(badFile);
     await page.locator('#monthly-schedule-file').dispatchEvent('change');
     await page.waitForFunction(() => document.getElementById('cycle-result').textContent.includes('架空の操業では予測しません'));
+    assert.equal((await page.locator('#cycle-result').innerText()).includes('roll-anon-future.xlsx'), false);
+    await page.evaluate(() => {
+      const original = RollPlanningImport.parseXlsxArrayBuffer.bind(RollPlanningImport);
+      let calls = 0;
+      RollPlanningImport.parseXlsxArrayBuffer = async function(buffer) {
+        calls += 1;
+        const mine = calls;
+        await new Promise(resolve => setTimeout(resolve, 500));
+        if (mine === 1) throw new Error('stale read');
+        return original(buffer);
+      };
+    });
+    await page.locator('#monthly-schedule-file').setInputFiles(futureScheduleFile());
+    await page.locator('#monthly-schedule-file').dispatchEvent('change');
+    await page.locator('#monthly-schedule-file').setInputFiles(anonymousScheduleFile());
+    await page.locator('#monthly-schedule-file').dispatchEvent('change');
+    await page.waitForFunction(() => document.getElementById('cycle-result').textContent.includes('roll-anon-schedule.xlsx'));
+    await page.waitForTimeout(800);
+    const raced = await page.locator('#cycle-result').innerText();
+    assert.match(raced, /roll-anon-schedule.xlsx/);
+    assert.equal(raced.includes('roll-anon-future.xlsx'), false);
+    assert.equal(raced.includes('架空の操業では予測しません'), false);
+    await page.locator('#monthly-schedule-file').setInputFiles(futureScheduleFile());
+    await page.locator('#monthly-schedule-file').dispatchEvent('change');
+    await page.locator('#monthly-schedule-file').setInputFiles([]);
+    await page.locator('#monthly-schedule-file').dispatchEvent('change');
+    await page.waitForFunction(() => document.getElementById('cycle-result').textContent.includes('架空の操業では予測しません'));
+    await page.waitForTimeout(800);
     assert.equal((await page.locator('#cycle-result').innerText()).includes('roll-anon-future.xlsx'), false);
     assert.equal(await page.evaluate(() => roles[0].status), 'オンライン');
     assert.equal(await page.evaluate(() => roles[0].status), 'オンライン');

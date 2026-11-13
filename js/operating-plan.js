@@ -1013,6 +1013,22 @@ function simulateExchangeCycle(input) {
     };
 }
 
+function standNumberFromName(name) {
+    const match = String(name || '').normalize('NFKC').trim().match(/#?(\d+)(?:-|$)/);
+    return match ? String(Number(match[1])) : '';
+}
+
+function pairedStandKeys(standKey, size) {
+    const stand = String(standKey || '').replace(/^#/, '').trim();
+    if (!stand) return [];
+    const sizeKey = String(size || '').normalize('NFKC').toUpperCase().replace(/\s+/g, '');
+    const partner = { '6': '7', '7': '6', '8': '9', '9': '8', '10': '11', '11': '10', '14': '15', '15': '14' }[stand];
+    if (partner) return [stand, partner];
+    if ((stand === '12' || stand === '13') && sizeKey === 'D13') return ['12', '13'];
+    if ((stand === '16' || stand === '17') && sizeKey === 'D10') return ['16', '17'];
+    return [stand];
+}
+
 function ledgerFrame(status) {
     if (status === 'オンライン') return 'online';
     if (status === '新品予備（組込完了）') return 'installedSpare';
@@ -1020,9 +1036,14 @@ function ledgerFrame(status) {
     return 'other';
 }
 
-function readLedgerResources(list) {
+function readLedgerResources(list, selection) {
     if (!Array.isArray(list)) return [];
-    return list.filter(item => item && item.id).map(item => {
+    const keys = selection ? pairedStandKeys(selection.standKey, selection.size) : null;
+    return list.filter(item => {
+        if (!item || !item.id) return false;
+        if (!keys) return true;
+        return keys.includes(standNumberFromName(item.name || item.id));
+    }).map(item => {
         const diameter = finiteOrNull(Number(item.currentDiameter));
         const runs = finiteOrNull(Number(item.openingRuns));
         return {
@@ -1041,16 +1062,19 @@ function renderExchangeCycle() {
     const form = readCaliberInputs();
     const schedule = latestMonthlySummary && latestMonthlySummary.ok !== false ? latestMonthlySummary : null;
     const days = schedule && Array.isArray(schedule.days) ? schedule.days : [];
-    const ledger = readLedgerResources(typeof roles === 'undefined' ? [] : roles);
+    const ledgerKeys = pairedStandKeys(form.standKey, form.size);
+    const ledger = readLedgerResources(typeof roles === 'undefined' ? [] : roles, { standKey: form.standKey, size: form.size });
     const online = ledger.find(item => item.frame === 'online');
     const openingRuns = form.openingUsedRuns === undefined ? (online ? online.runs : undefined) : form.openingUsedRuns;
     const openingSource = form.openingUsedRuns === undefined
         ? (online && typeof online.runs === 'number' ? '台帳の現行カリバ' : '未確認')
         : '画面の入力';
     const ledgerText = [
-        ledger.length
-            ? ledger.map(item => `${item.frame} ${item.id} 径${item.diameter === null ? '未確認' : item.diameter}`).join('、')
-            : '台帳の対象はまだ読んでいません。未回答ではありません。',
+        !form.standKey
+            ? 'スタンドが未選択なので、台帳の対象は混ぜません。'
+            : `対象スタンドは${ledgerKeys.join('・')}です。${ledger.length
+                ? ledger.map(item => `${item.frame} ${item.id} 径${item.diameter === null ? '未確認' : item.diameter}`).join('、')
+                : 'このスタンドの対象は台帳にありません。他のスタンドは混ぜません。'}`,
         describeRemainingCalibers(form.standKey, form.size, openingRuns),
         `開始直数の出どころは${openingSource}です。未使用のカリバ本数ではありません。`
     ].join('\n');
@@ -1136,6 +1160,26 @@ function readStandLeadTime(standKey) {
 }
 
 let latestMonthlySummary = null;
+let scheduleReadGeneration = 0;
+
+function beginScheduleRead() {
+    scheduleReadGeneration += 1;
+    return scheduleReadGeneration;
+}
+
+function currentMonthlySummary() {
+    return latestMonthlySummary;
+}
+
+function finishScheduleRead(generation, summary) {
+    if (generation !== scheduleReadGeneration) return false;
+    if (summary && summary.ok !== false && Array.isArray(summary.months)) {
+        latestMonthlySummary = summary;
+        return true;
+    }
+    latestMonthlySummary = null;
+    return true;
+}
 
 function renderMonthlyScheduleSummary(summary) {
     if (summary && summary.ok !== false && Array.isArray(summary.months)) latestMonthlySummary = summary;
@@ -1343,10 +1387,12 @@ function bindMonthlyScheduleFileInput() {
         });
     });
     input.addEventListener('change', async () => {
+        const generation = beginScheduleRead();
         const file = input.files && input.files[0];
         const message = document.getElementById('operating-plan-message');
         if (!file) {
-            latestMonthlySummary = null;
+            finishScheduleRead(generation, null);
+            renderMonthlyScheduleSummary({ ok: false, reason: '生産予定を外したので、循環の予測を無効にしました。' });
             if (message) message.textContent = '生産予定を外したので、循環の予測を無効にしました。';
             renderExchangeCycle();
             return;
@@ -1356,10 +1402,11 @@ function bindMonthlyScheduleFileInput() {
             const referenceDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`;
             const summary = await readMonthlyScheduleFile(file, referenceDate);
             summary.sourceName = file.name;
+            if (!finishScheduleRead(generation, summary)) return;
             renderMonthlyScheduleSummary(summary);
             if (message) message.textContent = '生産予定は端末内で表示しました。ロール本数には保存せず、外部へは送っていません。';
         } catch (error) {
-            latestMonthlySummary = null;
+            if (!finishScheduleRead(generation, null)) return;
             renderMonthlyScheduleSummary({ ok: false, reason: error && error.message ? error.message : '生産予定を読めませんでした。' });
             if (message) message.textContent = '生産予定を読めなかったので、循環の予測を無効にしました。';
             renderExchangeCycle();

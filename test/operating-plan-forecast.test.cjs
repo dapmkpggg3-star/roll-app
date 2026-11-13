@@ -500,6 +500,53 @@ test('different diameters stay with their own roll through rework', () => {
   assert.equal(year.resources.find(item => item.id === 'roll-used').diameter, 74);
 });
 
+test('a selected stand keeps its pair and a late schedule read cannot return', () => {
+  const roles = [
+    { id: 's2', name: '#2-A', status: 'オンライン', currentDiameter: 50 },
+    { id: 's10', name: '#10-A', status: '新品予備（組込完了）', currentDiameter: 81 },
+    { id: 's11', name: '#11-B', status: 'オンライン', currentDiameter: 66 },
+    { id: 's13', name: '#13-A', status: 'オンライン', currentDiameter: 40 }
+  ];
+  const reordered = [roles[3], roles[0], roles[2], roles[1]];
+  const stand10 = context.readLedgerResources(reordered, { standKey: '10', size: 'D10' });
+  assert.deepEqual(stand10.map(item => item.id), ['s11', 's10']);
+  assert.equal(stand10.find(item => item.frame === 'online').id, 's11');
+  assert.equal(stand10.some(item => item.diameter === 50), false);
+  const only12 = context.readLedgerResources([
+    { id: 'a', name: '#12-A', status: 'オンライン', currentDiameter: 1 },
+    { id: 'b', name: '#13-A', status: 'オンライン', currentDiameter: 2 }
+  ], { standKey: '12', size: 'D10' });
+  assert.deepEqual(only12.map(item => item.id), ['a']);
+  const with13 = context.readLedgerResources([
+    { id: 'b', name: '#13-A', status: 'オンライン', currentDiameter: 2 },
+    { id: 'a', name: '#12-A', status: 'オンライン', currentDiameter: 1 }
+  ], { standKey: '12', size: 'D13' });
+  assert.deepEqual(with13.map(item => item.id), ['b', 'a']);
+  const eastWest = context.readLedgerResources([
+    { id: 'e', name: '#17-A', status: 'オンライン', currentDiameter: 4 },
+    { id: 'w', name: '#16-A', status: 'オンライン', currentDiameter: 3 }
+  ], { standKey: '16', size: 'D10' });
+  assert.deepEqual(eastWest.map(item => item.id), ['e', 'w']);
+  const separate = context.readLedgerResources([
+    { id: 'e', name: '#17-A', status: 'オンライン', currentDiameter: 4 },
+    { id: 'w', name: '#16-A', status: 'オンライン', currentDiameter: 3 }
+  ], { standKey: '16', size: 'D13' });
+  assert.deepEqual(separate.map(item => item.id), ['w']);
+  assert.equal(context.readLedgerResources(roles, { standKey: '', size: 'D10' }).length, 0);
+  const first = context.beginScheduleRead();
+  const second = context.beginScheduleRead();
+  assert.equal(context.finishScheduleRead(first, { ok: true, months: [{ month: '2027-04' }], sourceName: 'A', days: [{}] }), false);
+  assert.equal(context.currentMonthlySummary(), null);
+  assert.equal(context.finishScheduleRead(second, { ok: true, months: [{ month: '2027-04' }], sourceName: 'B', days: [{}] }), true);
+  assert.equal(context.currentMonthlySummary().sourceName, 'B');
+  assert.equal(context.finishScheduleRead(first, null), false);
+  assert.equal(context.currentMonthlySummary().sourceName, 'B');
+  const cleared = context.beginScheduleRead();
+  assert.equal(context.finishScheduleRead(second, { ok: true, months: [{ month: '2027-04' }], sourceName: 'A', days: [{}] }), false);
+  assert.equal(context.finishScheduleRead(cleared, null), true);
+  assert.equal(context.currentMonthlySummary(), null);
+});
+
 test('lead time defaults to provisional six months and confirmed is explicit', () => {
   const fallback = context.defaultStandLeadTime('10');
   assert.equal(fallback.standKey, '10');
