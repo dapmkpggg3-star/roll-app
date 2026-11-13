@@ -1461,7 +1461,7 @@ async function syncRoles() {
             }
             return true;
         } else {
-            setSyncMessage('スプレッドシートと同期できませんでした。ブラウザ内には保存されています。', true);
+            setSyncMessage('Google側への保存は確認できませんでした。端末の元データは上書きしていません。再送せず差分を確認してください。', true);
         }
     } catch (error) {
         console.error('syncRoles error:', error);
