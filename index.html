@@ -227,6 +227,8 @@
                         </select>
                     </label>
                     <label>この作業の必要時間 <input id="work-required-hours" type="number" min="0" step="0.5" value=""></label>
+                    <label>人数 <input id="work-people" type="number" min="1" step="1" value=""></label>
+                    <pre id="work-effort">作業種別を選ぶと、既回答の人数と経過時間を表示します。空欄は確認済みにしません。</pre>
                     <label>連続操業
                         <select id="work-continuous">
                             <option value="" selected>未確認</option>
@@ -551,7 +553,7 @@
     <script src="js/online-safety.js?v=20260805-online-safety"></script>
     <script src="js/sync.js?v=20261023-content-auth"></script>
 <script src="js/offline-recovery.js?v=20261113-offline-recovery"></script>
-<script src="js/operating-plan.js?v=20261113-work-confirm"></script>
+<script src="js/operating-plan.js?v=20261113-work-effort"></script>
 <script src="js/csv.js?v=20260805-online-safety"></script>
 <script src="js/app.js?v=20261023-simple-auth"></script>
 

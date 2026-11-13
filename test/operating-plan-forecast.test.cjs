@@ -260,7 +260,7 @@ test('past production tons do not become a future rework or purchase date', () =
   assert.equal(passed.reason.includes('参考候補は2027-04-02'), false);
   assert.equal(passed.reason.includes('超えます'), false);
   const work = (overrides) => ({
-    date: '2027-04-02', period: 'day', reservedHours: 5, workType: 'rollChange', requiredHours: 5,
+    date: '2027-04-02', period: 'day', reservedHours: 5, workType: 'rollChange', requiredHours: 5, people: 1,
     continuous: 'no', changeover: 'yes', threeSet: 'yes', ...overrides
   });
   const schedule = [day('2027-04-01', 8, 'A', 1000), day('2027-04-02', 0, 'B', 0), day('2027-04-03', 8, 'A', 1000), day('2027-04-04', 8, 'A', 1000)];
@@ -303,6 +303,25 @@ test('past production tons do not become a future rework or purchase date', () =
   assert.match(current.reason, /現行使用直数は15直/);
   assert.match(current.reason, /旧参照/);
   assert.match(current.reason, /現行到達の参考候補は2027-04-02/);
+  assert.match(current.reason, /6番から9番へ広げません/);
+  const conflict = context.projectCaliberReplacement({
+    standKey: '2', referenceDate: '2026-11-13', standPass: 'pass', openingUsedRuns: 33,
+    workConfirmation: work({ date: '2027-04-01' }), days: schedule
+  });
+  assert.equal(conflict.shiftReachDate, '2027-04-03');
+  assert.equal(conflict.referenceCandidates.length, 0);
+  assert.match(conflict.reason, /操業と重なる/);
+  const pastWork = context.projectCaliberReplacement({
+    standKey: '2', referenceDate: '2026-11-13', standPass: 'pass', openingUsedRuns: 33,
+    workConfirmation: work({ date: '2026-04-02' }), days: schedule
+  });
+  assert.match(pastWork.reason, /基準日より前/);
+  assert.equal(pastWork.referenceCandidates.length, 0);
+  const caliberEffort = context.knownWorkEffort('10', 'caliberChange');
+  assert.equal(caliberEffort.people, 3);
+  assert.equal(caliberEffort.hours, 1);
+  assert.match(caliberEffort.text, /3時間にはしません/);
+  assert.equal(context.knownWorkEffort('6', 'caliberChange').hours, null);
   assert.match(current.reason, /固定最大にはしません/);
   const skipped = context.projectCaliberReplacement({
     standKey: '2', referenceDate: '2026-11-13', standPass: 'skip', openingUsedRuns: 33,

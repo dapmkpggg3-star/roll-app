@@ -322,11 +322,8 @@ function forecastShiftReach(source, basis, days) {
         return { reach: null, candidate: null, reason: `${blocked.date}は${blocked.kind}です。未確認の使用量を0直にしないため、${label}到達見込みは確定しません。` };
     }
     if (!reach) return { reach: null, candidate: null, reason: `この予定の範囲では${label}${basis.runs}直に達しません。` };
-    const candidate = confirmedWorkCandidate(reach, basis.stand, source.workConfirmation);
-    const slotText = candidate
-        ? `交換作業枠を確認できたため、${label}到達の参考候補は${candidate}です。`
-        : `交換作業枠未確認のため、${label}到達の参考候補は出しません。`;
-    return { reach, candidate, reason: `${label}${basis.runs}直への到達見込みは${reach}です。${slotText}` };
+    const decision = describeWorkCandidate(label, reach, basis.stand, source, days);
+    return { reach, candidate: decision.candidate, reason: `${label}${basis.runs}直への到達見込みは${reach}です。${decision.slotText}` };
 }
 
 function expectedWorkType(stand) {
@@ -336,22 +333,59 @@ function expectedWorkType(stand) {
     return '';
 }
 
-function confirmedWorkCandidate(reachDate, stand, confirmation) {
+function knownWorkEffort(stand, workType) {
+    const number = Number(String(stand || '').replace(/^#/, ''));
+    if ((number === 10 || number === 11) && workType === 'caliberChange') {
+        return { people: 3, hours: 1, kind: '確認', source: '2026-09-05', text: '10番と11番のカリバ替は3人で経過1時間です。3人かける1時間を3時間にはしません。' };
+    }
+    if ((number === 10 || number === 11) && workType === 'rollChange') {
+        return { people: 3, hours: 6, kind: '確認', source: '2026-09-05', text: '10番と11番のロール替は3人で経過6時間です。' };
+    }
+    if (number >= 12 && number <= 17 && workType === 'caliberChange') {
+        return { people: 4, hours: 6, kind: '概算', source: '2026-09-05', text: '12番から17番のカリバ替は4人で6時間くらいです。確定値ではありません。' };
+    }
+    if (((number >= 2 && number <= 5) || number === 16 || number === 17) && workType === 'rollChange') {
+        return { people: null, hours: null, low: 5, high: 6, kind: '旧一般', source: '2026-05-08', text: '2026-05-08の旧一般値は1スタンド5時間から6時間です。このスタンドの後日確定値ではありません。' };
+    }
+    if (number >= 6 && number <= 9 && workType === 'caliberChange') {
+        return { people: null, hours: null, kind: '対象外', source: '2026-09-05', text: '10番と11番の1時間は6番から9番へ広げません。2026-05-08の4時間も、このスタンドの確認値ではありません。' };
+    }
+    return null;
+}
+
+function describeWorkCandidate(label, reach, stand, source, days) {
+    const assessed = confirmedWorkCandidate(reach, stand, source && source.workConfirmation, days, source && source.referenceDate);
+    const slotText = assessed.date
+        ? `交換作業枠を確認できたため、${label}到達の参考候補は${assessed.date}です。${assessed.note}`
+        : (assessed.note || `交換作業枠未確認のため、${label}到達の参考候補は出しません。`);
+    return { candidate: assessed.date, slotText };
+}
+
+function confirmedWorkCandidate(reachDate, stand, confirmation, days, referenceDate) {
     const rules = globalThis.RollPlanningRules;
     const source = confirmation || {};
     const required = source.requiredHours;
     const reserved = source.reservedHours;
+    const people = source.people;
     const expected = expectedWorkType(stand);
-    const ready = Boolean(rules && reachDate && source.date
-        && String(source.date) < reachDate
+    const ready = Boolean(rules && reachDate && referenceDate && source.date
         && source.period === 'day'
         && source.workType === expected
         && typeof required === 'number' && Number.isFinite(required) && required > 0
         && typeof reserved === 'number' && Number.isFinite(reserved) && reserved >= required
+        && typeof people === 'number' && Number.isInteger(people) && people > 0
         && source.continuous === 'no'
         && source.changeover === 'yes'
         && source.threeSet === 'yes');
-    if (!ready) return null;
+    if (!ready) return { date: null, note: '' };
+    if (!(String(source.date) < reachDate)) return { date: null, note: '' };
+    if (String(source.date) < String(referenceDate).slice(0, 10)) {
+        return { date: null, note: '作業日が基準日より前なので、参考候補は保留します。' };
+    }
+    const row = (Array.isArray(days) ? days : []).find(item => item && String(item.date).slice(0, 10) === String(source.date).slice(0, 10));
+    if (!row) return { date: null, note: '作業日が操業予定と照合できないので、参考候補は保留します。' };
+    const producing = Number(row.productionAmount) > 0;
+    if (producing) return { date: null, note: '作業日が操業と重なるので、参考候補は保留します。' };
     const workType = expected === 'rollChange' ? rules.WORK_TYPES.ROLL_CHANGE : rules.WORK_TYPES.CALIBER_CHANGE;
     const allowed = rules.createPlanningRules({ afterProductionAllowedWorkTypes: [] }).validateWorkForSlot({
         type: workType,
@@ -359,9 +393,17 @@ function confirmedWorkCandidate(reachDate, stand, confirmation) {
     }, {
         type: rules.SLOT_TYPES.DAY_MAINTENANCE,
         shift: 'shift1',
-        productionActive: false
+        productionActive: producing
     }).allowed;
-    return allowed ? source.date : null;
+    if (!allowed) return { date: null, note: '作業枠の条件を確認できないので、参考候補は保留します。' };
+    const known = knownWorkEffort(stand, expected);
+    let note = known ? known.text : '';
+    if (known && known.kind === '確認' && (people !== known.people || required !== known.hours)) {
+        return { date: null, note: `${known.text}今回の人数または必要時間がその回答と違うため、参考候補は保留します。` };
+    }
+    if (known && known.kind === '概算' && required !== known.hours) note += '今回の必要時間はその概算と違います。';
+    if (known && known.low && (required < known.low || required > known.high)) note += '今回の必要時間は旧一般値の範囲と違います。';
+    return { date: source.date, note };
 }
 
 function forecastTonReach(source, basis, days) {
@@ -393,11 +435,8 @@ function forecastTonReach(source, basis, days) {
         return { reach: null, candidate: null, reason: `${blocked}の生産量が未確認です。0tにしないため、トン数到達見込みは確定しません。` };
     }
     if (!reach) return { reach: null, candidate: null, reason: `この予定の範囲では基準${formatTons(basis.tons)}に達しません。` };
-    const candidate = confirmedWorkCandidate(reach, basis.stand, source.workConfirmation);
-    const slotText = candidate
-        ? `交換作業枠を確認できたため、トン数到達の参考候補は${candidate}です。`
-        : '交換作業枠未確認のため、トン数到達の参考候補は出しません。';
-    return { reach, candidate, reason: `基準${formatTons(basis.tons)}への到達見込みは${reach}です。${slotText}` };
+    const decision = describeWorkCandidate('トン数', reach, basis.stand, source, days);
+    return { reach, candidate: decision.candidate, reason: `基準${formatTons(basis.tons)}への到達見込みは${reach}です。${decision.slotText}` };
 }
 
 function projectTonUse(input) {
@@ -777,6 +816,7 @@ function readWorkConfirmation(value) {
         reservedHours: reserved === '' ? undefined : Number(reserved),
         workType: value('work-type'),
         requiredHours: required === '' ? undefined : Number(required),
+        people: value('work-people').trim() === '' ? undefined : Number(value('work-people').trim()),
         continuous: value('work-continuous'),
         changeover: value('work-changeover'),
         threeSet: value('work-three-set')
@@ -861,13 +901,30 @@ function saveStandLeadTimeFromForm() {
     renderOperatingPlanPanel();
 }
 
+function suggestKnownWorkEffort() {
+    if (typeof document === 'undefined') return;
+    const stand = document.getElementById('caliber-stand');
+    const type = document.getElementById('work-type');
+    const known = knownWorkEffort(stand && stand.value, type && type.value);
+    const target = document.getElementById('work-effort');
+    if (target) target.textContent = known ? known.text : 'このスタンドと作業の既回答工数は未確認です。空欄のままでは候補にしません。';
+    if (!known || known.kind !== '確認') return;
+    const hours = document.getElementById('work-required-hours');
+    const people = document.getElementById('work-people');
+    if (hours && hours.value === '') hours.value = String(known.hours);
+    if (people && people.value === '') people.value = String(known.people);
+}
+
 function bindMonthlyScheduleFileInput() {
     const input = document.getElementById('monthly-schedule-file');
     if (!input || input.dataset.bound === 'true') return;
     input.dataset.bound = 'true';
-    ['caliber-stand', 'caliber-size', 'caliber-current', 'caliber-opening', 'caliber-opening-tons', 'caliber-pass', 'work-date', 'work-period', 'work-reserved-hours', 'work-type', 'work-required-hours', 'work-continuous', 'work-changeover', 'work-three-set'].forEach(id => {
+    ['caliber-stand', 'caliber-size', 'caliber-current', 'caliber-opening', 'caliber-opening-tons', 'caliber-pass', 'work-date', 'work-period', 'work-reserved-hours', 'work-type', 'work-required-hours', 'work-people', 'work-continuous', 'work-changeover', 'work-three-set'].forEach(id => {
         const field = document.getElementById(id);
-        if (field) field.addEventListener('change', () => renderMonthlyScheduleSummary(latestMonthlySummary));
+        if (field) field.addEventListener('change', () => {
+            suggestKnownWorkEffort();
+            renderMonthlyScheduleSummary(latestMonthlySummary);
+        });
     });
     input.addEventListener('change', async () => {
         const file = input.files && input.files[0];
