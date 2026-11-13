@@ -215,12 +215,30 @@ test('past production tons do not become a future rework or purchase date', () =
   assert.match(roughTons.reason, /確定最大は未確認/);
   assert.equal(roughTons.reason.includes('超えます'), false);
   const rollGuide = context.projectCaliberReplacement({
-    standKey: '4', referenceDate: '2026-11-13', openingUsedTons: 13000
+    standKey: '4', referenceDate: '2026-11-13', openingUsedTons: 13000,
+    days: [day('2027-04-01', 8, 'A', 10000)]
   });
   assert.equal(rollGuide.exchangeDate, null);
-  assert.match(rollGuide.reason, /13,000t/);
-  assert.match(rollGuide.reason, /固定最大ではありません/);
-  assert.match(rollGuide.reason, /目安の範囲/);
+  assert.equal(rollGuide.exceedsOnDate, null);
+  assert.match(rollGuide.reason, /規定37直/);
+  assert.match(rollGuide.reason, /基準15,000tより前/);
+  assert.match(rollGuide.reason, /0直にはしません/);
+  assert.match(rollGuide.reason, /開始時は13,000t/);
+  assert.equal(rollGuide.reason.includes('試算'), false);
+  assert.equal(rollGuide.reason.includes('10000'), false);
+  const atReference = context.projectCaliberReplacement({
+    standKey: '2', referenceDate: '2026-11-13', openingUsedTons: 14000, openingUsedRuns: 35
+  });
+  assert.equal(atReference.exchangeDate, null);
+  assert.match(atReference.reason, /基準14,000tに達して/);
+  assert.match(atReference.reason, /規定35直に達して/);
+  assert.equal(atReference.reason.includes('超えます'), false);
+  const standFive = context.projectCaliberReplacement({
+    standKey: '5', referenceDate: '2026-11-13', openingUsedRuns: 10
+  });
+  assert.match(standFive.reason, /規定31直より前/);
+  assert.match(standFive.reason, /12,500t/);
+  assert.match(standFive.reason, /0tにはしません/);
   const unknownTons = context.projectCaliberReplacement({ standKey: '7', referenceDate: '2026-11-13' });
   assert.match(unknownTons.reason, /0tにはせず/);
   assert.match(short.reason, /提案のまま/);

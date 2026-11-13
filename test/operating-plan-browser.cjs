@@ -218,6 +218,15 @@ async function main() {
     assert.match(tons, /残り6,600t/);
     assert.match(tons, /交換日は出しません/);
     assert.equal(tons.includes('交換候補は'), false);
+    await page.locator('#caliber-stand').fill('4');
+    await page.locator('#caliber-opening').fill('');
+    await page.locator('#caliber-opening-tons').fill('13000');
+    await page.locator('#caliber-opening-tons').dispatchEvent('change');
+    await page.waitForFunction(() => document.getElementById('consumption-link').textContent.includes('基準15,000tより前'));
+    const reference = await page.locator('#consumption-link').innerText();
+    assert.match(reference, /規定37直/);
+    assert.match(reference, /交換日は出しません/);
+    assert.equal(reference.includes('交換候補は'), false);
     assert.equal(await page.evaluate(() => roles[0].status), 'オンライン');
     assert.equal(await page.evaluate(() => roles[0].status), 'オンライン');
     assert.equal(outbound.length, 0);

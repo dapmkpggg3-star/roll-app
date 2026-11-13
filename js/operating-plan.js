@@ -204,7 +204,13 @@ function shiftUseFromHours(hours) {
 
 function knownTonBasis(standKey) {
     const stand = Number(String(standKey || '').replace(/^#/, ''));
-    if (stand >= 2 && stand <= 5) return { kind: '目安', low: 12000, high: 14000, trial: 13000, unit: 'ロール' };
+    const prescribed = {
+        2: { tons: 14000, runs: 35 },
+        3: { tons: 12000, runs: 30 },
+        4: { tons: 15000, runs: 37 },
+        5: { tons: 12500, runs: 31 }
+    };
+    if (prescribed[stand]) return { kind: '基準', stand, ...prescribed[stand] };
     if (stand === 6 || stand === 7) return { kind: '最大', tons: 7600, unit: 'カリバ' };
     if (stand === 8 || stand === 9) return { kind: '概算', tons: 5000, unit: 'カリバ' };
     return null;
@@ -215,7 +221,7 @@ function formatTons(value) {
 }
 
 function basisText(basis) {
-    if (basis.kind === '目安') return `2から5番は1ロールあたり${formatTons(basis.low)}から${formatTons(basis.high)}が使用の目安です。試算は${formatTons(basis.trial)}で、固定最大にはしません。切込み量とは別です`;
+    if (basis.kind === '基準') return `${basis.stand}番は規定${basis.runs}直、基準${formatTons(basis.tons)}です。規定直数と基準トン数は互いに換算せず、基準トン数は固定最大にしません。切込み量とは別です`;
     if (basis.kind === '最大') return `6番と7番は1カリバ最大${formatTons(basis.tons)}です。直数には換算しません`;
     return `8番と9番は1カリバ約${formatTons(basis.tons)}の概算目安です。確定最大ではありません。直数には換算しません`;
 }
@@ -236,6 +242,21 @@ function projectTonUse(input) {
         reviews: [],
         basis
     };
+    if (basis.kind === '基準') {
+        const runs = source.openingUsedRuns;
+        const runsKnown = typeof runs === 'number' && Number.isInteger(runs) && runs >= 0;
+        const tonPlace = !tonsKnown
+            ? '開始時の使用トン数は未確認です。0tにはしません'
+            : `開始時は${formatTons(tons)}で、基準${formatTons(basis.tons)}${tons >= basis.tons ? 'に達しています' : 'より前です'}`;
+        const runPlace = !runsKnown
+            ? '開始時の使用直数は未確認です。0直にはしません'
+            : `開始時は${runs}直で、規定${basis.runs}直${runs >= basis.runs ? 'に達しています' : 'より前です'}`;
+        return {
+            ...base,
+            status: 'guideOnly',
+            reason: `${basisText(basis)}。${tonPlace}。${runPlace}。工場全体の予定トン数は足さず、交換日は出しません。`
+        };
+    }
     if (!tonsKnown) {
         return { ...base, status: 'unknown', reason: `${basisText(basis)}。開始時の使用トン数が未確認なので、0tにはせず交換日は出しません。` };
     }
@@ -256,14 +277,7 @@ function projectTonUse(input) {
                 : `開始時は${formatTons(tons)}で、概算${formatTons(basis.tons)}の目安より前です。確定最大は未確認です。交換日は出しません。`
         };
     }
-    let place = `${formatTons(basis.low)}から${formatTons(basis.high)}の目安より前です`;
-    if (tons > basis.high) place = `教えてもらった範囲の上端${formatTons(basis.high)}を超えています。超過日としては断定しません`;
-    else if (tons >= basis.low) place = `${formatTons(basis.low)}から${formatTons(basis.high)}の目安の範囲です`;
-    return {
-        ...base,
-        status: 'guideOnly',
-        reason: `開始時は${formatTons(tons)}で、${place}。試算の${formatTons(basis.trial)}は固定最大ではありません。工場全体の予定トン数は足さず、交換日は出しません。`
-    };
+    return { ...base, status: 'unknown', reason: 'このスタンドのトン数基準を確認できません。交換日は出しません。' };
 }
 
 function knownCaliberLimit(standKey, size) {
