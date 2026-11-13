@@ -367,9 +367,14 @@ test('future operation reaches remaining caliber, rework count, and spare readin
 test('an anonymous cycle changes the caliber before rework and does not change the ledger', () => {
   const roles = [{ id: 'anon', status: 'オンライン' }];
   const spare = ['anon-2'];
+  const slot = (date, workType) => ({
+    date, period: 'day', workType, requiredHours: 5, reservedHours: 5, people: 1,
+    continuous: 'no', changeover: 'yes', threeSet: 'yes'
+  });
   const cycle = context.simulateExchangeCycle({
     maxRuns: 8, openingRuns: 6, currentCaliberId: 'anon-1', spareCaliberIds: spare,
     currentDiameter: 80, scrapDiameter: 70, adoptedCutMm: 4, installedSpare: 0, reworkDays: 0,
+    workConfirmation: slot('2027-04-03', 'caliberChange'),
     days: [
       { date: '2027-04-01', productionAmount: 10, operatingHours: 8, shift1Team: 'A', shift3Team: '' },
       { date: '2027-04-02', productionAmount: 10, operatingHours: 8, shift1Team: 'A', shift3Team: '' },
@@ -383,37 +388,73 @@ test('an anonymous cycle changes the caliber before rework and does not change t
   const change = cycle.events.find(item => item.kind === 'カリバ替');
   assert.equal(change.caliberRuns, 0);
   assert.equal(change.diameter, 80);
-  assert.match(change.note, /径と改削回数は変えていません/);
   const nextUse = cycle.events.find(item => item.date === '2027-04-04' && item.kind === '操業');
   assert.equal(nextUse.caliberId, 'anon-2');
   assert.equal(nextUse.caliberRuns, 1);
-  const late = context.simulateExchangeCycle({
-    maxRuns: 8, openingRuns: 8, currentCaliberId: 'anon-1', spareCaliberIds: [],
-    currentDiameter: 80, scrapDiameter: 70, adoptedCutMm: 4, installedSpare: 0, reworkDays: 2,
+  const nightOnly = context.simulateExchangeCycle({
+    maxRuns: 2, openingRuns: 1, currentCaliberId: 'anon-1', spareCaliberIds: ['anon-2'],
+    days: [
+      { date: '2027-04-01', productionAmount: 10, operatingHours: 8, shift1Team: 'A', shift3Team: '' },
+      { date: '2027-04-02', productionAmount: 0, operatingHours: 0, shift1Team: '', shift3Team: 'B' }
+    ]
+  });
+  assert.equal(nightOnly.events.some(item => item.kind === 'カリバ替'), false);
+  assert.match(nightOnly.events.map(item => item.note).join('\n'), /夜間/);
+  const shortUse = context.simulateExchangeCycle({
+    maxRuns: 8, openingRuns: 0, currentCaliberId: 'anon-1', spareCaliberIds: [],
+    days: [
+      { date: '2027-04-01', productionAmount: 10, operatingHours: 3, shift1Team: 'A', shift3Team: '' },
+      { date: '2027-04-02', productionAmount: 10, operatingHours: 8, shift1Team: 'A', shift3Team: '' }
+    ]
+  });
+  assert.equal(shortUse.events.some(item => item.date === '2027-04-02'), false);
+  assert.match(shortUse.events[0].note, /後続の直数は確定しません/);
+  const rolls = context.simulateExchangeCycle({
+    maxRuns: 1, openingRuns: 1, currentCaliberId: 'anon-1', spareCaliberIds: [],
+    currentDiameter: 80, scrapDiameter: 70, adoptedCutMm: 4, installedSpare: 1, reworkDays: 1,
+    workConfirmation: slot('2027-05-02', 'rollChange'),
     days: [
       { date: '2027-05-01', productionAmount: 10, operatingHours: 8, shift1Team: 'A', shift3Team: '' },
       { date: '2027-05-02', productionAmount: 0, operatingHours: 0, shift1Team: 'A', shift3Team: '' },
       { date: '2027-05-03', productionAmount: 0, operatingHours: 0, shift1Team: '', shift3Team: 'B' },
-      { date: '2027-05-04', productionAmount: 0, operatingHours: 0, shift1Team: 'A', shift3Team: '' },
-      { date: '2027-05-05', productionAmount: 10, operatingHours: 8, shift1Team: 'A', shift3Team: '' }
+      { date: '2027-05-04', productionAmount: 0, operatingHours: 0, shift1Team: 'A', shift3Team: '' }
     ]
   });
-  const night = late.events.find(item => item.kind === '夜勤予備不足');
-  const assembly = late.events.find(item => item.kind === '昼間組替');
-  assert.ok(night.date < assembly.date);
+  const replaced = rolls.events.find(item => item.kind === 'ロール替');
+  const assembled = rolls.events.find(item => item.kind === '昼間組替');
+  assert.equal(replaced.installedSpare, 0);
+  assert.equal(assembled.installedSpare, 1);
+  assert.equal(rolls.events.some(item => item.installedSpare === 2), false);
+  assert.ok(rolls.events.find(item => item.kind === '夜勤予備不足').date < assembled.date);
+  const unknownCut = context.simulateExchangeCycle({
+    maxRuns: 1, openingRuns: 1, currentCaliberId: 'anon-1', spareCaliberIds: [],
+    currentDiameter: 80, scrapDiameter: 70, installedSpare: 1, reworkDays: 0,
+    workConfirmation: slot('2027-05-02', 'rollChange'),
+    days: [
+      { date: '2027-05-01', productionAmount: 10, operatingHours: 8, shift1Team: 'A', shift3Team: '' },
+      { date: '2027-05-02', productionAmount: 0, operatingHours: 0, shift1Team: 'A', shift3Team: '' }
+    ]
+  });
+  assert.equal(unknownCut.events.some(item => item.kind === '昼間組替'), false);
+  assert.match(unknownCut.events.map(item => item.note).join('\n'), /予備へも戻しません/);
+  assert.equal(unknownCut.events.some(item => item.installedSpare === 2), false);
   const blank = context.simulateExchangeCycle({ maxRuns: 8, currentCaliberId: 'anon-1', days: [] });
   assert.equal(blank.annualRollCount, null);
   assert.match(blank.reason, /0直にはしません/);
   const year = context.simulateExchangeCycle({
     maxRuns: 2, openingRuns: 0, currentCaliberId: 'anon-1', spareCaliberIds: ['anon-2'],
-    currentDiameter: 80, scrapDiameter: 70, adoptedCutMm: 4, installedSpare: 0, reworkDays: 0,
+    currentDiameter: 80, scrapDiameter: 70, adoptedCutMm: 4, installedSpare: 1, reworkDays: 0,
+    workConfirmation: {
+      repeatOnStops: true, workTypes: ['caliberChange', 'rollChange'], period: 'day',
+      requiredHours: 5, reservedHours: 5, people: 1, continuous: 'no', changeover: 'yes', threeSet: 'yes'
+    },
     days: context.anonymousOperatingDays('2027-04-01', 400)
   });
   assert.ok(year.rollChangeCount > 1);
   assert.ok(year.scrapCount >= 1);
   assert.equal(year.annualRollCount, year.rollChangeCount);
   assert.notEqual(year.annualRollCount, 10 * 267);
-  assert.match(year.reason, /生産トン数からは数えません/);
+  assert.match(year.reason, /新規購入の本数にはしません/);
   assert.match(year.events.find(item => item.kind === '廃却需要').note, /確定の購入日ではありません/);
 });
 
