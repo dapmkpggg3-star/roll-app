@@ -458,6 +458,48 @@ test('an anonymous cycle changes the caliber before rework and does not change t
   assert.match(year.events.find(item => item.kind === '廃却需要').note, /確定の購入日ではありません/);
 });
 
+test('different diameters stay with their own roll through rework', () => {
+  const original = [
+    { id: 'roll-online', frame: 'online', diameter: 81, caliberId: 'cal-1', runs: 1 },
+    { id: 'roll-ready', frame: 'installedSpare', diameter: 93 },
+    { id: 'roll-used', frame: 'usedSpare', diameter: 74 }
+  ];
+  const slot = {
+    date: '2027-05-02', period: 'day', workType: 'rollChange', requiredHours: 5, reservedHours: 5, people: 1,
+    continuous: 'no', changeover: 'yes', threeSet: 'yes'
+  };
+  const once = context.simulateExchangeCycle({
+    maxRuns: 1, adoptedCutMm: 4, scrapDiameter: 70, reworkDays: 0, workConfirmation: slot, resources: original,
+    days: [
+      { date: '2027-05-01', productionAmount: 10, operatingHours: 8, shift1Team: 'A', shift3Team: '' },
+      { date: '2027-05-02', productionAmount: 0, operatingHours: 0, shift1Team: 'A', shift3Team: '' }
+    ]
+  });
+  assert.deepEqual(original.map(item => item.diameter), [81, 93, 74]);
+  const byId = Object.fromEntries(once.resources.map(item => [item.id, item]));
+  assert.equal(byId['roll-online'].diameter, 77);
+  assert.equal(byId['roll-online'].frame, 'installedSpare');
+  assert.equal(byId['roll-ready'].diameter, 93);
+  assert.equal(byId['roll-ready'].frame, 'online');
+  assert.equal(byId['roll-used'].diameter, 74);
+  assert.equal(byId['roll-used'].frame, 'usedSpare');
+  assert.match(once.events.find(item => item.kind === '改削完了').note, /再生対象はroll-online/);
+  const blankDiameter = context.readLedgerResources([{ id: 'plain', status: 'オンライン', currentDiameter: '' }]);
+  assert.equal(blankDiameter[0].diameter, null);
+  const year = context.simulateExchangeCycle({
+    maxRuns: 2, adoptedCutMm: 4, scrapDiameter: 70, reworkDays: 0, resources: original.map(item => Object.assign({}, item, { runs: 0 })),
+    workConfirmation: {
+      repeatOnStops: true, workTypes: ['caliberChange', 'rollChange'], period: 'day',
+      requiredHours: 5, reservedHours: 5, people: 1, continuous: 'no', changeover: 'yes', threeSet: 'yes'
+    },
+    spareCaliberIds: ['cal-2'],
+    days: context.anonymousOperatingDays('2027-04-01', 400)
+  });
+  assert.ok(year.rollChangeCount > 1);
+  assert.deepEqual(year.resources.map(item => item.id).sort(), ['roll-online', 'roll-ready', 'roll-used']);
+  assert.equal(year.resources.find(item => item.id === 'roll-used').diameter, 74);
+});
+
 test('lead time defaults to provisional six months and confirmed is explicit', () => {
   const fallback = context.defaultStandLeadTime('10');
   assert.equal(fallback.standKey, '10');

@@ -273,30 +273,39 @@ async function main() {
     await page.locator('#caliber-opening').fill('6');
     await page.locator('#caliber-opening').dispatchEvent('change');
     await page.waitForFunction(() => document.getElementById('consumption-link').textContent.includes('あと2直'));
-    await page.evaluate(() => { latestMonthlySummary = null; });
-    await page.locator('#caliber-current').fill('anon-1');
-    await page.locator('#caliber-opening').fill('6');
-    await page.locator('#cycle-spare-calibers').fill('1');
-    await page.locator('#work-date').fill('2027-06-03');
-    await page.locator('#work-period').selectOption('day');
-    await page.locator('#work-reserved-hours').fill('5');
-    await page.locator('#work-type').selectOption('caliberChange');
-    await page.locator('#work-required-hours').fill('1');
-    await page.locator('#work-people').fill('3');
-    await page.locator('#work-continuous').selectOption('no');
-    await page.locator('#work-changeover').selectOption('yes');
-    await page.locator('#work-three-set').selectOption('yes');
-    await page.locator('#work-three-set').dispatchEvent('change');
-    await page.waitForFunction(() => document.getElementById('cycle-result').textContent.includes('カリバ替'));
-    await page.locator('#work-period').selectOption('night');
-    await page.locator('#work-period').dispatchEvent('change');
-    await page.waitForFunction(() => {
-      const text = document.getElementById('cycle-result').textContent;
-      return text.includes('夜間') && !text.includes('カリバ替');
+    await page.evaluate(() => { latestMonthlySummary = null; renderExchangeCycle(); });
+    await page.waitForFunction(() => document.getElementById('cycle-result').textContent.includes('架空の操業では予測しません'));
+    await page.evaluate(() => {
+      roles.splice(0, roles.length,
+        { id: 'roll-online', name: '#10-A', status: 'オンライン', currentDiameter: 81, memo: '', updatedAt: '2026-11-13T00:00:00.000Z', history: [] },
+        { id: 'roll-ready', name: '#10-B', status: '新品予備（組込完了）', currentDiameter: 93, memo: '', updatedAt: '2026-11-13T00:00:00.000Z', history: [] },
+        { id: 'roll-used', name: '#10-C', status: '中古予備（バラシ前）', currentDiameter: 74, memo: '', updatedAt: '2026-11-13T00:00:00.000Z', history: [] }
+      );
+      renderExchangeCycle();
     });
-    const cycle = await page.locator('#cycle-result').innerText();
-    assert.match(cycle, /本人未回答ではありません|既回答の径はローカル仕様から読みました/);
-    assert.equal(cycle.includes('500'), false);
+    await page.locator('#monthly-schedule-file').setInputFiles(futureScheduleFile());
+    await page.locator('#monthly-schedule-file').dispatchEvent('change');
+    await page.waitForFunction(() => document.getElementById('cycle-result').textContent.includes('roll-anon-future.xlsx'));
+    await page.locator('#monthly-schedule-file').setInputFiles(anonymousScheduleFile());
+    await page.locator('#monthly-schedule-file').dispatchEvent('change');
+    await page.waitForFunction(() => document.getElementById('cycle-result').textContent.includes('roll-anon-schedule.xlsx'));
+    const swapped = await page.locator('#cycle-result').innerText();
+    assert.equal(swapped.includes('roll-anon-future.xlsx'), false);
+    assert.match(swapped, /径81/);
+    assert.match(swapped, /径93/);
+    assert.match(swapped, /径74/);
+    await page.locator('#monthly-schedule-file').setInputFiles([]);
+    await page.locator('#monthly-schedule-file').dispatchEvent('change');
+    await page.waitForFunction(() => document.getElementById('cycle-result').textContent.includes('架空の操業では予測しません'));
+    await page.locator('#monthly-schedule-file').setInputFiles(futureScheduleFile());
+    await page.locator('#monthly-schedule-file').dispatchEvent('change');
+    await page.waitForFunction(() => document.getElementById('cycle-result').textContent.includes('roll-anon-future.xlsx'));
+    const badFile = path.join(os.tmpdir(), 'roll-bad-schedule.txt');
+    fs.writeFileSync(badFile, 'not a workbook');
+    await page.locator('#monthly-schedule-file').setInputFiles(badFile);
+    await page.locator('#monthly-schedule-file').dispatchEvent('change');
+    await page.waitForFunction(() => document.getElementById('cycle-result').textContent.includes('架空の操業では予測しません'));
+    assert.equal((await page.locator('#cycle-result').innerText()).includes('roll-anon-future.xlsx'), false);
     assert.equal(await page.evaluate(() => roles[0].status), 'オンライン');
     assert.equal(await page.evaluate(() => roles[0].status), 'オンライン');
     assert.equal(outbound.length, 0);

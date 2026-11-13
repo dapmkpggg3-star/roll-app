@@ -840,16 +840,23 @@ function simulateExchangeCycle(input) {
     const days = (Array.isArray(source.days) ? source.days : [])
         .map(row => Object.assign({}, row))
         .sort((a, b) => String(a.date).localeCompare(String(b.date)));
+    const resources = Array.isArray(source.resources) ? source.resources.map(item => Object.assign({}, item)) : null;
     const spareCalibers = Array.isArray(source.spareCaliberIds) ? source.spareCaliberIds.slice() : null;
     const knownSpare = finiteOrNull(source.installedSpare);
     const spareRolls = Array.isArray(source.spareRollIds)
         ? source.spareRollIds.slice()
-        : (knownSpare === null ? null : Array.from({ length: knownSpare }, (_, index) => `anon-spare-${index + 1}`));
+        : (resources
+            ? resources.filter(item => item.frame === 'installedSpare').map(item => item.id)
+            : (knownSpare === null ? null : Array.from({ length: knownSpare }, (_, index) => `anon-spare-${index + 1}`)));
     const state = {
-        onlineId: source.onlineRollId || 'anon-online',
-        caliberId: source.currentCaliberId || null,
-        caliberRuns: finiteOrNull(source.openingRuns),
-        diameter: finiteOrNull(source.currentDiameter),
+        onlineId: (resources && (resources.find(item => item.frame === 'online') || {}).id) || source.onlineRollId || 'anon-online',
+        caliberId: source.currentCaliberId || (resources && (resources.find(item => item.frame === 'online') || {}).caliberId) || null,
+        caliberRuns: finiteOrNull(source.openingRuns) === null && resources && resources.find(item => item.frame === 'online')
+            ? finiteOrNull(resources.find(item => item.frame === 'online').runs)
+            : finiteOrNull(source.openingRuns),
+        diameter: resources && resources.find(item => item.frame === 'online')
+            ? finiteOrNull(resources.find(item => item.frame === 'online').diameter)
+            : finiteOrNull(source.currentDiameter),
         scrapDiameter: finiteOrNull(source.scrapDiameter),
         cutMm: finiteOrNull(source.adoptedCutMm),
         phase: 'operating',
@@ -877,15 +884,19 @@ function simulateExchangeCycle(input) {
     }
     const finishRework = date => {
         if (!state.rework || state.rework.status === 'held') return;
-        if (state.cutMm === null || state.diameter === null) {
+        const target = resources && resources.find(item => item.id === state.rework.id);
+        const targetDiameter = target ? finiteOrNull(target.diameter) : state.diameter;
+        if (state.cutMm === null || targetDiameter === null) {
             state.rework.status = 'held';
             push(date, '改削保留', '採用改削量が未確認なので、径は変えず、予備へも戻しません。');
             return;
         }
-        state.diameter = Math.round((state.diameter - state.cutMm) * 10) / 10;
+        const nextDiameter = Math.round((targetDiameter - state.cutMm) * 10) / 10;
+        if (target) target.diameter = nextDiameter;
+        if (!resources || target && target.frame === 'online') state.diameter = nextDiameter;
         state.rework.status = 'awaitingAssembly';
-        push(date, '改削完了', '改削は完了しました。組替前なので予備にはしません。');
-        if (state.scrapDiameter !== null && state.diameter <= state.scrapDiameter) {
+        push(date, '改削完了', `再生対象は${state.rework.id}です。径は${nextDiameter}です。組替前なので予備にはしません。`);
+        if (state.scrapDiameter !== null && nextDiameter <= state.scrapDiameter) {
             state.rework.status = 'scrap';
             const conditional = addMonths(date, -PROVISIONAL_LEAD_TIME_MONTHS);
             push(date, '廃却需要', `廃却径以下です。暫定6か月を戻した条件付きの時期は${conditional}です。確定の購入日ではありません。`);
@@ -893,6 +904,10 @@ function simulateExchangeCycle(input) {
     };
     const finishAssembly = date => {
         if (!state.rework || state.rework.status !== 'awaitingAssembly' || !spareRolls) return;
+        if (resources) {
+            const returning = resources.find(item => item.id === state.rework.id);
+            if (returning) returning.frame = 'installedSpare';
+        }
         spareRolls.push(state.rework.id);
         state.rework = null;
         push(date, '昼間組替', '再生を終えた対象だけを予備へ戻しました。本数は増やしていません。');
@@ -935,7 +950,16 @@ function simulateExchangeCycle(input) {
                     push(date, 'ロール替需要', '予備がないか、改削日数が未確認なので、ロール替は成立させていません。');
                     return;
                 }
-                state.rework = { id: state.onlineId, readyOn: addDays(date, reworkDays), status: 'rework' };
+                const leavingId = state.onlineId;
+                const enteringId = spareRolls[0];
+                state.rework = { id: leavingId, readyOn: addDays(date, reworkDays), status: 'rework' };
+                if (resources) {
+                    const leaving = resources.find(item => item.id === leavingId);
+                    const entering = resources.find(item => item.id === enteringId);
+                    if (leaving) leaving.frame = 'rework';
+                    if (entering) entering.frame = 'online';
+                    state.diameter = entering ? finiteOrNull(entering.diameter) : state.diameter;
+                }
                 state.onlineId = spareRolls.shift();
                 state.caliberRuns = 0;
                 state.pending = null;
@@ -983,46 +1007,67 @@ function simulateExchangeCycle(input) {
         rollChangeCount,
         scrapCount,
         annualRollCount: rollChangeCount,
+        resources,
         statusChanged: false,
         reason: `${horizon}ロール替の回数は再利用の交換です。新規購入の本数にはしません。生産トン数からも数えません。`
     };
 }
 
-function cycleDaysFromScreen(work, scheduleDays) {
-    const stopDate = work && work.date ? work.date : '';
-    if (Array.isArray(scheduleDays) && scheduleDays.length) return scheduleDays.map(row => Object.assign({}, row));
-    if (!stopDate) return [];
-    const night = work.period === 'night';
-    return [
-        { date: addDays(stopDate, -2), productionAmount: 10, operatingHours: 8, shift1Team: 'A', shift3Team: '' },
-        { date: addDays(stopDate, -1), productionAmount: 10, operatingHours: 8, shift1Team: 'A', shift3Team: '' },
-        { date: stopDate, productionAmount: 0, operatingHours: 0, shift1Team: night ? '' : 'A', shift3Team: night ? 'B' : '' },
-        { date: addDays(stopDate, 1), productionAmount: 10, operatingHours: 8, shift1Team: 'A', shift3Team: '' }
-    ];
+function ledgerFrame(status) {
+    if (status === 'オンライン') return 'online';
+    if (status === '新品予備（組込完了）') return 'installedSpare';
+    if (status === '中古予備（バラシ前）' || status === '中古予備') return 'usedSpare';
+    return 'other';
+}
+
+function readLedgerResources(list) {
+    if (!Array.isArray(list)) return [];
+    return list.filter(item => item && item.id).map(item => {
+        const diameter = finiteOrNull(Number(item.currentDiameter));
+        const runs = finiteOrNull(Number(item.openingRuns));
+        return {
+            id: String(item.id),
+            frame: ledgerFrame(item.status),
+            diameter: item.currentDiameter === undefined || item.currentDiameter === null || item.currentDiameter === '' ? null : diameter,
+            caliberId: item.currentCaliber || null,
+            runs: item.openingRuns === undefined || item.openingRuns === null || item.openingRuns === '' ? null : runs
+        };
+    });
 }
 
 function renderExchangeCycle() {
     const target = document.getElementById('cycle-result');
     if (!target || typeof simulateExchangeCycle !== 'function' || typeof readCaliberInputs !== 'function') return;
     const form = readCaliberInputs();
+    const schedule = latestMonthlySummary && latestMonthlySummary.ok !== false ? latestMonthlySummary : null;
+    const days = schedule && Array.isArray(schedule.days) ? schedule.days : [];
+    const ledger = readLedgerResources(typeof roles === 'undefined' ? [] : roles);
+    const ledgerText = ledger.length
+        ? ledger.map(item => `${item.frame} ${item.id} 径${item.diameter === null ? '未確認' : item.diameter}`).join('、')
+        : '台帳の対象はまだ読んでいません。未回答ではありません。';
+    if (!days.length) {
+        target.textContent = `生産予定が無いので、架空の操業では予測しません。\n${ledgerText}`;
+        loadStandPremisesNote(target);
+        return;
+    }
     const limit = knownCaliberLimit(form.standKey, form.size);
-    const spareCaliberCount = form.spareCaliberCount;
+    const online = ledger.find(item => item.frame === 'online');
     const result = simulateExchangeCycle({
         maxRuns: limit && limit.kind === '最大' ? limit.runs : undefined,
-        openingRuns: form.openingUsedRuns,
-        currentCaliberId: form.currentCaliber || null,
-        spareCaliberIds: spareCaliberCount === undefined ? null : Array.from({ length: spareCaliberCount }, (_, index) => `anon-caliber-${index + 1}`),
-        currentDiameter: form.currentDiameter,
+        openingRuns: form.openingUsedRuns === undefined ? (online ? online.runs : undefined) : form.openingUsedRuns,
+        currentCaliberId: form.currentCaliber || (online && online.caliberId) || null,
+        spareCaliberIds: form.spareCaliberCount === undefined ? null : Array.from({ length: form.spareCaliberCount }, (_, index) => `anon-caliber-${index + 1}`),
         scrapDiameter: form.scrapDiameter,
         adoptedCutMm: form.cutMm,
-        installedSpare: form.spareCount,
         reworkDays: form.reworkDays,
         workConfirmation: form.workConfirmation,
-        days: cycleDaysFromScreen(form.workConfirmation, latestMonthlySummary && latestMonthlySummary.days)
+        resources: ledger.filter(item => item.frame !== 'other'),
+        days
     });
-    const line = item => `${item.date} ${item.kind} ${item.note} 予備${item.installedSpare === null ? '未確認' : item.installedSpare}`;
+    const line = item => `${item.date} ${item.kind} ${item.note}`;
     target.textContent = [
-        '画面の入力で計算しています。4mmや80mmを入れても設備の値にはしません。',
+        `予定「${schedule.sourceName || '名前なし'}」で計算しています。架空の操業日は足していません。`,
+        ledgerText,
         result.reason,
         result.events.map(line).join('\n')
     ].join('\n');
@@ -1085,7 +1130,8 @@ function readStandLeadTime(standKey) {
 let latestMonthlySummary = null;
 
 function renderMonthlyScheduleSummary(summary) {
-    if (summary) latestMonthlySummary = summary;
+    if (summary && summary.ok !== false && Array.isArray(summary.months)) latestMonthlySummary = summary;
+    if (summary && summary.ok === false) latestMonthlySummary = null;
     const target = document.getElementById('monthly-schedule-summary');
     if (!target) return;
     if (!summary || summary.ok === false) {
@@ -1106,6 +1152,7 @@ function renderMonthlyScheduleSummary(summary) {
     const pastNote = pastOnly ? 'この予定は基準日より前です。今の実績にも、これからの年間計画にも使いません。' : '過去の月は実績にしません。これからの月も年間計画にはしません。';
     target.textContent = `${lines.join('\n')}\n${pastNote}\n${summary.reason}`;
     renderConsumptionLink(summary);
+    renderExchangeCycle();
 }
 
 function renderConsumptionLink(summary) {
@@ -1290,15 +1337,24 @@ function bindMonthlyScheduleFileInput() {
     input.addEventListener('change', async () => {
         const file = input.files && input.files[0];
         const message = document.getElementById('operating-plan-message');
-        if (!file) return;
+        if (!file) {
+            latestMonthlySummary = null;
+            if (message) message.textContent = '生産予定を外したので、循環の予測を無効にしました。';
+            renderExchangeCycle();
+            return;
+        }
         try {
             const today = new Date();
             const referenceDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`;
             const summary = await readMonthlyScheduleFile(file, referenceDate);
+            summary.sourceName = file.name;
             renderMonthlyScheduleSummary(summary);
             if (message) message.textContent = '生産予定は端末内で表示しました。ロール本数には保存せず、外部へは送っていません。';
         } catch (error) {
+            latestMonthlySummary = null;
             renderMonthlyScheduleSummary({ ok: false, reason: error && error.message ? error.message : '生産予定を読めませんでした。' });
+            if (message) message.textContent = '生産予定を読めなかったので、循環の予測を無効にしました。';
+            renderExchangeCycle();
         }
     });
 }

@@ -257,7 +257,7 @@
                     <label>切込み <input id="life-cut" type="number" min="0" step="0.1" value=""></label>
                     <label>使用できる予備 <input id="life-spare" type="number" min="0" step="1" value=""></label>
                     <h3>交換と再生の1周</h3>
-                    <p>下の作業枠と開始直数を変えると、同じ計算の結果が変わります。0tや夜間だけでは交換しません。切込みが空なら予備へ戻しません。</p>
+                    <p>生産予定を読み込んだときだけ計算します。予定が無い日を作りません。ファイルを替える、外す、読めないときは結果を無効にします。</p>
                     <label>予備カリバの数 <input id="cycle-spare-calibers" type="number" min="0" step="1" value=""></label>
                     <label>改削に要する日数 <input id="cycle-rework-days" type="number" min="0" step="1" value=""></label>
                     <pre id="cycle-result">交換と再生の計算を準備しています。</pre>
@@ -564,7 +564,7 @@
     <script src="js/online-safety.js?v=20260805-online-safety"></script>
     <script src="js/sync.js?v=20261023-content-auth"></script>
 <script src="js/offline-recovery.js?v=20261113-offline-recovery"></script>
-<script src="js/operating-plan.js?v=20261113-cycle-audit"></script>
+<script src="js/operating-plan.js?v=20261113-schedule-ledger"></script>
 <script src="js/csv.js?v=20260805-online-safety"></script>
 <script src="js/app.js?v=20261023-simple-auth"></script>
 
