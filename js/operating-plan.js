@@ -952,13 +952,19 @@ function simulateExchangeCycle(input) {
                 }
                 const leavingId = state.onlineId;
                 const enteringId = spareRolls[0];
+                const entering = resources && resources.find(item => item.id === enteringId);
+                if (resources && (!entering || !entering.caliberId)) {
+                    push(date, 'ロール替需要', '交換先のカリバが未確認です。前のカリバは使いません。');
+                    blocked = true;
+                    return;
+                }
                 state.rework = { id: leavingId, readyOn: addDays(date, reworkDays), status: 'rework' };
                 if (resources) {
                     const leaving = resources.find(item => item.id === leavingId);
-                    const entering = resources.find(item => item.id === enteringId);
                     if (leaving) leaving.frame = 'rework';
-                    if (entering) entering.frame = 'online';
-                    state.diameter = entering ? finiteOrNull(entering.diameter) : state.diameter;
+                    entering.frame = 'online';
+                    state.diameter = finiteOrNull(entering.diameter);
+                    state.caliberId = entering.caliberId;
                 }
                 state.onlineId = spareRolls.shift();
                 state.caliberRuns = 0;
@@ -1241,30 +1247,29 @@ function writeForecastFields(value) {
     applyingForecastSetting = false;
 }
 
+function applyForecastContextChange(previous, next, snapshot) {
+    if (!previous) return { context: next, value: recallForecastSetting(next).value };
+    if (forecastSettingKey(previous) === forecastSettingKey(next)) {
+        return { context: next, value: rememberForecastSetting(Object.assign({}, next, snapshot)).value };
+    }
+    rememberForecastSetting(Object.assign({}, previous, snapshot));
+    return { context: next, value: recallForecastSetting(next).value };
+}
+
 function syncForecastSettingContext() {
     if (typeof document === 'undefined' || applyingForecastSetting) return null;
     const next = currentForecastContext();
     const previous = activeForecastContext;
     const form = readCaliberInputs();
     const snapshot = { caliberId: form.currentCaliber || '', openingRuns: form.openingUsedRuns, openingTons: form.openingUsedTons };
+    const changed = applyForecastContextChange(previous, next, snapshot);
     if (!previous) {
-        activeForecastContext = next;
-        const recalled = recallForecastSetting(next);
-        if (recalled.value) writeForecastFields(recalled.value);
-        return recalled;
+        if (changed.value) writeForecastFields(changed.value);
+    } else if (forecastSettingKey(previous) !== forecastSettingKey(next)) {
+        writeForecastFields(changed.value || { caliberId: '', openingRuns: null, openingTons: null });
     }
-    if (forecastSettingKey(previous) === forecastSettingKey(next)) {
-        return rememberForecastSetting(Object.assign({}, next, snapshot));
-    }
-    rememberForecastSetting(Object.assign({}, previous, snapshot));
-    const samePlace = String(previous.rollId || '') === String(next.rollId || '')
-        && String(previous.standKey || '') === String(next.standKey || '')
-        && String(previous.size || '').normalize('NFKC').toUpperCase().replace(/\s+/g, '') === String(next.size || '').normalize('NFKC').toUpperCase().replace(/\s+/g, '');
-    const recalled = recallForecastSetting(next);
-    if (samePlace) rememberForecastSetting(Object.assign({}, next, snapshot));
-    else writeForecastFields(recalled.value || { caliberId: '', openingRuns: null, openingTons: null });
-    activeForecastContext = next;
-    return recallForecastSetting(next);
+    activeForecastContext = changed.context;
+    return recallForecastSetting(changed.context);
 }
 let scheduleReadGeneration = 0;
 

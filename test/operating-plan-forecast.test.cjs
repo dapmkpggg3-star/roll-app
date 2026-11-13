@@ -465,8 +465,8 @@ test('an anonymous cycle changes the caliber before rework and does not change t
 test('different diameters stay with their own roll through rework', () => {
   const original = [
     { id: 'roll-online', frame: 'online', diameter: 81, caliberId: 'cal-1', runs: 1 },
-    { id: 'roll-ready', frame: 'installedSpare', diameter: 93 },
-    { id: 'roll-used', frame: 'usedSpare', diameter: 74 }
+    { id: 'roll-ready', frame: 'installedSpare', diameter: 93, caliberId: 'cal-ready' },
+    { id: 'roll-used', frame: 'usedSpare', diameter: 74, caliberId: 'cal-used' }
   ];
   const slot = {
     date: '2027-05-02', period: 'day', workType: 'rollChange', requiredHours: 5, reservedHours: 5, people: 1,
@@ -487,7 +487,25 @@ test('different diameters stay with their own roll through rework', () => {
   assert.equal(byId['roll-ready'].frame, 'online');
   assert.equal(byId['roll-used'].diameter, 74);
   assert.equal(byId['roll-used'].frame, 'usedSpare');
+  assert.equal(once.events.find(item => item.kind === 'ロール替').caliberId, 'cal-ready');
   assert.match(once.events.find(item => item.kind === '改削完了').note, /再生対象はroll-online/);
+  const missingCaliber = context.simulateExchangeCycle({
+    maxRuns: 1, adoptedCutMm: 4, scrapDiameter: 70, reworkDays: 0, workConfirmation: slot,
+    resources: [
+      { id: 'roll-online', frame: 'online', diameter: 81, caliberId: 'cal-1', runs: 1 },
+      { id: 'roll-ready', frame: 'installedSpare', diameter: 93 }
+    ],
+    days: [
+      { date: '2027-05-01', productionAmount: 10, operatingHours: 8, shift1Team: 'A', shift3Team: '' },
+      { date: '2027-05-02', productionAmount: 0, operatingHours: 0, shift1Team: 'A', shift3Team: '' },
+      { date: '2027-05-03', productionAmount: 10, operatingHours: 8, shift1Team: 'A', shift3Team: '' }
+    ]
+  });
+  assert.equal(missingCaliber.events.some(item => item.kind === 'ロール替'), false);
+  assert.match(missingCaliber.events.find(item => item.kind === 'ロール替需要').note, /前のカリバは使いません/);
+  assert.equal(missingCaliber.events.some(item => item.date === '2027-05-03'), false);
+  assert.equal(missingCaliber.resources.find(item => item.id === 'roll-online').frame, 'online');
+  assert.equal(missingCaliber.resources.find(item => item.id === 'roll-ready').frame, 'installedSpare');
   const blankDiameter = context.readLedgerResources([{ id: 'plain', status: 'オンライン', currentDiameter: '' }]);
   assert.equal(blankDiameter[0].diameter, null);
   const year = context.simulateExchangeCycle({
@@ -567,6 +585,22 @@ test('forecast settings stay with one roll, stand, size, and reference point', (
   assert.equal(context.recallForecastSetting(stand10).value.openingRuns, 6);
   assert.equal(context.recallForecastSetting({ rollId: 'roll-10', standKey: '11', size: 'D10', referenceAt: '2026-11-01' }).value.openingTons, 12);
   assert.equal(context.forecastSettingKey(stand10).includes('ロール未選択'), false);
+  const dateA = { rollId: 'roll-10', standKey: '10', size: 'D10', referenceAt: '2026-11-01' };
+  const dateB = { rollId: 'roll-10', standKey: '10', size: 'D10', referenceAt: '2026-12-01' };
+  const dateC = { rollId: 'roll-10', standKey: '10', size: 'D10', referenceAt: '2027-01-01' };
+  context.rememberForecastSetting(Object.assign({}, dateA, { caliberId: 'anon-A', openingRuns: 6, openingTons: '' }));
+  context.rememberForecastSetting(Object.assign({}, dateB, { caliberId: 'anon-B', openingRuns: 2, openingTons: '' }));
+  const toB = context.applyForecastContextChange(dateA, dateB, { caliberId: 'anon-A', openingRuns: 6, openingTons: '' });
+  assert.equal(toB.value.caliberId, 'anon-B');
+  assert.equal(toB.value.openingRuns, 2);
+  assert.equal(context.recallForecastSetting(dateA).value.caliberId, 'anon-A');
+  assert.equal(context.recallForecastSetting(dateA).value.openingRuns, 6);
+  const toC = context.applyForecastContextChange(dateB, dateC, { caliberId: 'anon-B', openingRuns: 2, openingTons: '' });
+  assert.equal(toC.value, null);
+  assert.equal(context.recallForecastSetting(dateB).value.openingRuns, 2);
+  const backToA = context.applyForecastContextChange(dateC, dateA, { caliberId: '', openingRuns: '', openingTons: '' });
+  assert.equal(backToA.value.caliberId, 'anon-A');
+  assert.equal(backToA.value.openingRuns, 6);
 });
 
 test('lead time defaults to provisional six months and confirmed is explicit', () => {
