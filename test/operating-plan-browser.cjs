@@ -116,7 +116,7 @@ function normalGuideFile() {
   return file;
 }
 const root = path.resolve(__dirname, '..');
-const mime = { '.html': 'text/html; charset=utf-8', '.js': 'application/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8' };
+const mime = { '.html': 'text/html; charset=utf-8', '.js': 'application/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8' };
 
 async function main() {
   const browser = await chromium.launch({ headless: true, args: ['--no-sandbox'] });
@@ -271,15 +271,16 @@ async function main() {
     assert.equal(await page.locator('#work-required-hours').inputValue(), '1');
     assert.equal(await page.locator('#work-people').inputValue(), '3');
     await page.locator('#caliber-opening').fill('6');
-    await page.locator('#life-diameter').fill('500');
-    await page.locator('#life-scrap').fill('400');
-    await page.locator('#life-cut').fill('7');
-    await page.locator('#life-spare').fill('0');
-    await page.locator('#life-spare').dispatchEvent('change');
+    await page.locator('#caliber-opening').dispatchEvent('change');
+    await page.waitForFunction(() => document.getElementById('consumption-link').textContent.includes('あと2直'));
     await page.waitForFunction(() => {
-      const text = document.getElementById('consumption-link').textContent;
-      return text.includes('あと2直') && text.includes('改削残回数は14回') && text.includes('予備は0本') && text.includes('判定不能');
+      const text = document.getElementById('cycle-result').textContent;
+      return text.includes('カリバ替') && text.includes('径と改削回数は変えていません') && text.includes('夜勤予備不足') && text.includes('昼間組替') && text.includes('13か月');
     });
+    const cycle = await page.locator('#cycle-result').innerText();
+    assert.match(cycle, /本人未回答ではありません|既回答の径はローカル仕様から読みました/);
+    assert.equal(cycle.includes('500'), false);
+    assert.equal(cycle.includes('不足なしです'), false);
     assert.equal(await page.evaluate(() => roles[0].status), 'オンライン');
     assert.equal(await page.evaluate(() => roles[0].status), 'オンライン');
     assert.equal(outbound.length, 0);

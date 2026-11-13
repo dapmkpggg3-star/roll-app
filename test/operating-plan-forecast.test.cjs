@@ -349,12 +349,12 @@ test('future operation reaches remaining caliber, rework count, and spare readin
   ], '2026-11-13');
   const life = context.describeLifeChain({
     standKey: '10', size: 'D10', openingUsedRuns: 6,
-    currentDiameter: 500, scrapDiameter: 400, cutMm: 7, spareCount: 0,
+    currentDiameter: 80, scrapDiameter: 70, cutMm: 4, spareCount: 0,
     schedule: summary, caliber: { exchangeDate: null, referenceCandidates: [] }
   });
   assert.match(life, /3セットはロール3本のことではありません/);
   assert.match(life, /あと2直/);
-  assert.match(life, /改削残回数は14回/);
+  assert.match(life, /改削残回数は2回/);
   assert.match(life, /予備は0本/);
   assert.match(life, /12か月以上の廃却需要と購入需要は判定不能/);
   assert.match(life, /暫定6か月/);
@@ -362,6 +362,59 @@ test('future operation reaches remaining caliber, rework count, and spare readin
   const blank = context.describeLifeChain({ standKey: '10', size: 'D10', schedule: summary, caliber: {} });
   assert.match(blank, /0回にしません/);
   assert.match(blank, /開始直数が未確認/);
+});
+
+test('an anonymous cycle changes the caliber before rework and does not change the ledger', () => {
+  const roles = [{ id: 'anon', status: 'オンライン' }];
+  const spare = ['anon-2'];
+  const cycle = context.simulateExchangeCycle({
+    maxRuns: 8, openingRuns: 6, currentCaliberId: 'anon-1', spareCaliberIds: spare,
+    currentDiameter: 80, scrapDiameter: 70, adoptedCutMm: 4, installedSpare: 0, reworkDays: 0,
+    days: [
+      { date: '2027-04-01', productionAmount: 10, operatingHours: 8, shift1Team: 'A', shift3Team: '' },
+      { date: '2027-04-02', productionAmount: 10, operatingHours: 8, shift1Team: 'A', shift3Team: '' },
+      { date: '2027-04-03', productionAmount: 0, operatingHours: 0, shift1Team: 'A', shift3Team: '' },
+      { date: '2027-04-04', productionAmount: 10, operatingHours: 8, shift1Team: 'A', shift3Team: '' }
+    ]
+  });
+  assert.equal(spare.length, 1);
+  assert.equal(cycle.statusChanged, false);
+  assert.deepEqual(roles, [{ id: 'anon', status: 'オンライン' }]);
+  const change = cycle.events.find(item => item.kind === 'カリバ替');
+  assert.equal(change.caliberRuns, 0);
+  assert.equal(change.diameter, 80);
+  assert.match(change.note, /径と改削回数は変えていません/);
+  const nextUse = cycle.events.find(item => item.date === '2027-04-04' && item.kind === '操業');
+  assert.equal(nextUse.caliberId, 'anon-2');
+  assert.equal(nextUse.caliberRuns, 1);
+  const late = context.simulateExchangeCycle({
+    maxRuns: 8, openingRuns: 8, currentCaliberId: 'anon-1', spareCaliberIds: [],
+    currentDiameter: 80, scrapDiameter: 70, adoptedCutMm: 4, installedSpare: 0, reworkDays: 2,
+    days: [
+      { date: '2027-05-01', productionAmount: 10, operatingHours: 8, shift1Team: 'A', shift3Team: '' },
+      { date: '2027-05-02', productionAmount: 0, operatingHours: 0, shift1Team: 'A', shift3Team: '' },
+      { date: '2027-05-03', productionAmount: 0, operatingHours: 0, shift1Team: '', shift3Team: 'B' },
+      { date: '2027-05-04', productionAmount: 0, operatingHours: 0, shift1Team: 'A', shift3Team: '' },
+      { date: '2027-05-05', productionAmount: 10, operatingHours: 8, shift1Team: 'A', shift3Team: '' }
+    ]
+  });
+  const night = late.events.find(item => item.kind === '夜勤予備不足');
+  const assembly = late.events.find(item => item.kind === '昼間組替');
+  assert.ok(night.date < assembly.date);
+  const blank = context.simulateExchangeCycle({ maxRuns: 8, currentCaliberId: 'anon-1', days: [] });
+  assert.equal(blank.annualRollCount, null);
+  assert.match(blank.reason, /0直にはしません/);
+  const year = context.simulateExchangeCycle({
+    maxRuns: 2, openingRuns: 0, currentCaliberId: 'anon-1', spareCaliberIds: ['anon-2'],
+    currentDiameter: 80, scrapDiameter: 70, adoptedCutMm: 4, installedSpare: 0, reworkDays: 0,
+    days: context.anonymousOperatingDays('2027-04-01', 400)
+  });
+  assert.ok(year.rollChangeCount > 1);
+  assert.ok(year.scrapCount >= 1);
+  assert.equal(year.annualRollCount, year.rollChangeCount);
+  assert.notEqual(year.annualRollCount, 10 * 267);
+  assert.match(year.reason, /生産トン数からは数えません/);
+  assert.match(year.events.find(item => item.kind === '廃却需要').note, /確定の購入日ではありません/);
 });
 
 test('lead time defaults to provisional six months and confirmed is explicit', () => {
