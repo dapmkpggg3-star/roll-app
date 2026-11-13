@@ -220,8 +220,17 @@
     }
 
     function presentNumber(value) {
-        if (value === undefined || value === null || value === '') return null;
-        const numeric = typeof value === 'number' ? value : Number(String(value).replace(/,/g, '').trim());
+        if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+        if (value === undefined || value === null) return null;
+        const text = String(value).normalize('NFKC').replace(/[\s\u3000\u00a0\u200b]/g, '');
+        if (text === '') return null;
+        const grouped = /^-?\d{1,3}(,\d{3})+(\.\d+)?$/;
+        const plain = /^-?\d+(\.\d+)?$/;
+        const canonical = text.includes(',')
+            ? (grouped.test(text) ? text.replace(/,/g, '') : '')
+            : (plain.test(text) ? text : '');
+        if (canonical === '') return null;
+        const numeric = Number(canonical);
         return Number.isFinite(numeric) ? numeric : null;
     }
 
@@ -290,9 +299,7 @@
                 : (aProduction !== null && bProduction !== null ? aProduction + bProduction : null);
             const shift1Team = normalizeTeam(cells.H);
             const shift3Team = normalizeTeam(cells.I);
-            const hourText = typeof cells.P === 'string' ? cells.P.replace(/,/g, '').trim() : cells.P;
-            const hourNumber = typeof hourText === 'number' ? hourText : Number(hourText);
-            const operatingHours = hourText === undefined || hourText === null || hourText === '' || !Number.isFinite(hourNumber) ? null : hourNumber;
+            const operatingHours = presentNumber(cells.P);
             const productionByTeam = { A: aProduction, B: bProduction };
             return {
                 date: isoDate(period.year, period.month, item.day),
@@ -572,6 +579,7 @@
         parseYearMonth,
         parseMaintenanceYearMonth,
         findDaySequence,
+        presentNumber,
         parseProductionWorksheet,
         parseMaintenanceWorksheet,
         parseXlsxArrayBuffer,

@@ -1,7 +1,72 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const { chromium } = require('playwright');
+
+function uint16(value) {
+  const buffer = Buffer.alloc(2);
+  buffer.writeUInt16LE(value);
+  return buffer;
+}
+function uint32(value) {
+  const buffer = Buffer.alloc(4);
+  buffer.writeUInt32LE(value >>> 0);
+  return buffer;
+}
+function storedZip(files) {
+  const locals = [];
+  const centrals = [];
+  let offset = 0;
+  Object.entries(files).forEach(([name, content]) => {
+    const nameBytes = Buffer.from(name);
+    const data = Buffer.from(content);
+    const local = Buffer.concat([
+      uint32(0x04034b50), uint16(20), uint16(0), uint16(0), uint16(0), uint16(0),
+      uint32(0), uint32(data.length), uint32(data.length), uint16(nameBytes.length), uint16(0),
+      nameBytes, data
+    ]);
+    const central = Buffer.concat([
+      uint32(0x02014b50), uint16(20), uint16(20), uint16(0), uint16(0), uint16(0), uint16(0),
+      uint32(0), uint32(data.length), uint32(data.length), uint16(nameBytes.length), uint16(0),
+      uint16(0), uint16(0), uint16(0), uint32(0), uint32(offset), nameBytes
+    ]);
+    locals.push(local);
+    centrals.push(central);
+    offset += local.length;
+  });
+  const central = Buffer.concat(centrals);
+  const end = Buffer.concat([
+    uint32(0x06054b50), uint16(0), uint16(0), uint16(centrals.length), uint16(centrals.length),
+    uint32(central.length), uint32(offset), uint16(0)
+  ]);
+  return Buffer.concat([...locals, central, end]);
+}
+function anonymousScheduleFile() {
+  const rows = [];
+  for (let day = 1; day <= 20; day += 1) {
+    const row = day + 15;
+    const amount = day === 2 ? `<c r="J${row}" t="s"><v>1</v></c>` : `<c r="J${row}"><v>10</v></c>`;
+    const hours = day === 2 ? `<c r="P${row}" t="s"><v>1</v></c>` : `<c r="P${row}" t="str"><v>7.00</v></c>`;
+    rows.push(`<row r="${row}">${[
+      `<c r="D${row}"><v>${day}</v></c>`,
+      `<c r="G${row}" t="s"><v>0</v></c>`,
+      `<c r="H${row}" t="s"><v>2</v></c>`,
+      `<c r="I${row}" t="s"><v>3</v></c>`,
+      amount,
+      hours
+    ].join('')}</row>`);
+  }
+  const sheet = `<?xml version="1.0"?><worksheet><sheetData>${rows.join('')}</sheetData></worksheet>`;
+  const file = path.join(os.tmpdir(), 'roll-anon-schedule.xlsx');
+  fs.writeFileSync(file, storedZip({
+    'xl/workbook.xml': '<?xml version="1.0"?><workbook xmlns:r="r"><sheets><sheet name="25.04 生産予定" sheetId="1" r:id="rId1"/></sheets></workbook>',
+    'xl/_rels/workbook.xml.rels': '<?xml version="1.0"?><Relationships><Relationship Id="rId1" Target="worksheets/sheet1.xml"/></Relationships>',
+    'xl/sharedStrings.xml': '<sst><si><t>D1</t></si><si><t> </t></si><si><t>A</t></si><si><t>B</t></si></sst>',
+    'xl/worksheets/sheet1.xml': sheet
+  }));
+  return file;
+}
 const root = path.resolve(__dirname, '..');
 const mime = { '.html': 'text/html; charset=utf-8', '.js': 'application/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8' };
 
@@ -67,6 +132,15 @@ async function main() {
     });
     assert.match(hoursText, /操業時間7/);
     assert.match(hoursText, /今の実績にも/);
+    await page.locator('#monthly-schedule-file').setInputFiles(anonymousScheduleFile());
+    await page.waitForFunction(() => document.getElementById('monthly-schedule-summary').textContent.includes('2025-04'));
+    const imported = await page.locator('#monthly-schedule-summary').innerText();
+    assert.match(imported, /2025-04 過去の予定/);
+    assert.match(imported, /トン数未確認/);
+    assert.match(imported, /操業時間は未確認/);
+    assert.match(imported, /今の実績にも、これからの年間計画にも使いません/);
+    assert.match(imported, /不足なしとは判定しません/);
+    assert.equal(await page.evaluate(() => roles[0].status), 'オンライン');
     assert.equal(outbound.length, 0);
     console.log('OPERATING PLAN browser PASS');
   } finally {

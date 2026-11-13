@@ -138,6 +138,39 @@ test('a complete xlsx zip is parsed without uploading or external libraries', as
     assert.equal(planning.sizeChanges[0].recommendation.slot.shift, 'shift1');
 });
 
+test('blank text is missing and only grouped commas are numbers', () => {
+    assert.equal(importer.presentNumber(' '), null);
+    assert.equal(importer.presentNumber('　'), null);
+    assert.equal(importer.presentNumber('\t'), null);
+    assert.equal(importer.presentNumber('\u00a0'), null);
+    assert.equal(importer.presentNumber(','), null);
+    assert.equal(importer.presentNumber('1,2,3'), null);
+    assert.equal(importer.presentNumber(0), 0);
+    assert.equal(importer.presentNumber('0'), 0);
+    assert.equal(importer.presentNumber('12.5'), 12.5);
+    assert.equal(importer.presentNumber('1,234'), 1234);
+});
+
+test('a whitespace production cell stays missing for the month', () => {
+    const rows = [];
+    for (let day = 1; day <= 20; day += 1) {
+        const row = day + 15;
+        const amount = day === 2 ? sharedCell(`J${row}`, 1) : numberCell(`J${row}`, 10);
+        rows.push(`<row r="${row}">${[
+            numberCell(`D${row}`, day),
+            sharedCell(`G${row}`, 0),
+            amount,
+            day === 2 ? sharedCell(`P${row}`, 1) : numberCell(`P${row}`, 7)
+        ].join('')}</row>`);
+    }
+    const xml = `<?xml version="1.0"?><worksheet><sheetData>${rows.join('')}</sheetData></worksheet>`;
+    const parsed = importer.parseProductionWorksheet(xml, ['D1', ' '], '25.04 生産予定');
+    assert.equal(parsed[1].productionAmount, null);
+    assert.equal(parsed[1].operatingHours, null);
+    assert.equal(parsed[0].productionAmount, 10);
+    assert.equal(parsed[0].size, 'D1');
+});
+
 test('missing tons and hours stay unknown instead of zero', () => {
     const rows = [];
     for (let day = 1; day <= 20; day += 1) {
