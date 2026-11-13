@@ -1316,6 +1316,24 @@ async function syncRoles() {
             return;
         }
 
+        // Fail closed on corrupt stored JSON. Normalizing malformed data to []
+        // would conceal data loss behind an apparently stable sync signature.
+        const rawRoles = localStorage.getItem('roles');
+        const rawDeleted = localStorage.getItem(DELETED_ROLE_IDS_KEY);
+        for (const [label, raw] of [['roles', rawRoles], ['deletedRoleIds', rawDeleted]]) {
+            if (raw === null) continue;
+            let parsed;
+            try {
+                parsed = JSON.parse(raw);
+            } catch (_) {
+                setSyncMessage(label + ' の保存データが破損しています。同期を停止しました。', true);
+                return false;
+            }
+            if (!Array.isArray(parsed)) {
+                setSyncMessage(label + ' の保存形式が不正です。同期を停止しました。', true);
+                return false;
+            }
+        }
         const syncStartRolesSnapshot = getStoredRolesSnapshot();
         const syncStartLocalStorageSignature = getLocalStorageSyncSignature();
         const localRoles = getLocalRolesFromSnapshot(syncStartRolesSnapshot);
