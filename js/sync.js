@@ -221,6 +221,11 @@ function storeIndependentSyncOriginals(localRoles, remoteRoles) {
     const savedAt = new Date().toISOString();
     const localOriginal = cloneSyncOriginalRoles(localRoles);
     const remoteOriginal = cloneSyncOriginalRoles(remoteRoles);
+    // Persist the paired originals in one atomic storage value first. If any
+    // later legacy write fails, the consistent pair remains recoverable.
+    localStorage.setItem('roles_sync_original_pair_v1', JSON.stringify({
+        savedAt, localOriginal, remoteOriginal
+    }));
     localStorage.setItem(SYNC_LOCAL_ORIGINAL_KEY, JSON.stringify(localOriginal));
     localStorage.setItem(SYNC_REMOTE_ORIGINAL_KEY, JSON.stringify(remoteOriginal));
     localStorage.setItem(`${SYNC_LOCAL_ORIGINAL_KEY}_saved_at`, savedAt);
@@ -229,6 +234,14 @@ function storeIndependentSyncOriginals(localRoles, remoteRoles) {
 }
 
 function readIndependentSyncOriginals() {
+    try {
+        const pair = JSON.parse(localStorage.getItem('roles_sync_original_pair_v1') || 'null');
+        if (pair && Array.isArray(pair.localOriginal) && Array.isArray(pair.remoteOriginal)) {
+            return { localOriginal: pair.localOriginal, remoteOriginal: pair.remoteOriginal };
+        }
+    } catch (error) {
+        console.error('readIndependentSyncOriginals pair error:', error);
+    }
     return {
         localOriginal: parseStoredJsonArray(SYNC_LOCAL_ORIGINAL_KEY),
         remoteOriginal: parseStoredJsonArray(SYNC_REMOTE_ORIGINAL_KEY)
