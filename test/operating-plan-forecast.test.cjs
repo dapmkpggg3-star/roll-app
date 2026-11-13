@@ -197,6 +197,33 @@ test('past production tons do not become a future rework or purchase date', () =
   assert.equal(confirmedMax.exchangeDate, '2027-04-02');
   assert.equal(confirmedMax.exceedsOnDate, '2027-04-03');
   assert.match(confirmedMax.reason, /最大12直を超えます/);
+  const maximumTons = context.projectCaliberReplacement({
+    standKey: '6', referenceDate: '2026-11-13', openingUsedTons: 1000,
+    days: [day('2027-04-01', 8, 'A', 10000)]
+  });
+  assert.equal(maximumTons.exchangeDate, null);
+  assert.match(maximumTons.reason, /7,600t/);
+  assert.match(maximumTons.reason, /残り6,600t/);
+  assert.match(maximumTons.reason, /交換日は出しません/);
+  assert.equal(maximumTons.reason.includes('10000'), false);
+  const roughTons = context.projectCaliberReplacement({
+    standKey: '8', referenceDate: '2026-11-13', openingUsedTons: 5000
+  });
+  assert.equal(roughTons.exchangeDate, null);
+  assert.equal(roughTons.exceedsOnDate, null);
+  assert.match(roughTons.reason, /概算5,000t/);
+  assert.match(roughTons.reason, /確定最大は未確認/);
+  assert.equal(roughTons.reason.includes('超えます'), false);
+  const rollGuide = context.projectCaliberReplacement({
+    standKey: '4', referenceDate: '2026-11-13', openingUsedTons: 13000
+  });
+  assert.equal(rollGuide.exchangeDate, null);
+  assert.match(rollGuide.reason, /13,000t/);
+  assert.match(rollGuide.reason, /固定最大ではありません/);
+  assert.match(rollGuide.reason, /目安の範囲/);
+  const unknownTons = context.projectCaliberReplacement({ standKey: '7', referenceDate: '2026-11-13' });
+  assert.match(unknownTons.reason, /0tにはせず/);
+  assert.match(short.reason, /提案のまま/);
 });
 
 test('lead time defaults to provisional six months and confirmed is explicit', () => {

@@ -210,6 +210,14 @@ async function main() {
     const guide = await page.locator('#consumption-link').innerText();
     assert.match(guide, /確定最大は未確認/);
     assert.equal(guide.includes('交換候補は'), false);
+    await page.locator('#caliber-stand').fill('7');
+    await page.locator('#caliber-opening-tons').fill('1000');
+    await page.locator('#caliber-opening-tons').dispatchEvent('change');
+    await page.waitForFunction(() => document.getElementById('consumption-link').textContent.includes('7,600t'));
+    const tons = await page.locator('#consumption-link').innerText();
+    assert.match(tons, /残り6,600t/);
+    assert.match(tons, /交換日は出しません/);
+    assert.equal(tons.includes('交換候補は'), false);
     assert.equal(await page.evaluate(() => roles[0].status), 'オンライン');
     assert.equal(await page.evaluate(() => roles[0].status), 'オンライン');
     assert.equal(outbound.length, 0);

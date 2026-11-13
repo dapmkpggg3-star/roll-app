@@ -175,8 +175,9 @@ function linkProductionToConsumption(input) {
     const tonsPerRollUse = source.conversion && source.conversion.confirmed === true ? Number(source.conversion.tonsPerRollUse) : null;
     if (!Number.isFinite(standTons) || standTons < 0) gaps.push('スタンドごとの使用トン数');
     if (!Number.isFinite(tonsPerRollUse) || tonsPerRollUse <= 0) {
-        gaps.push(standNumber >= 2 && standNumber <= 5
-            ? '2から5番スタンドの使用トン数の基準'
+        const basis = knownTonBasis(standNumber);
+        gaps.push(basis
+            ? `${basisText(basis)}。工場全体の予定トン数は、このスタンドの使用量にしません`
             : 'カリバをどれだけ使うかの基準');
     }
     const sizes = [...new Set(future.flatMap(item => item.sizes || []))];
@@ -199,6 +200,70 @@ function shiftUseFromHours(hours) {
     if (hours >= 4) return 'full';
     if (hours < 2) return 'underTwo';
     return 'short';
+}
+
+function knownTonBasis(standKey) {
+    const stand = Number(String(standKey || '').replace(/^#/, ''));
+    if (stand >= 2 && stand <= 5) return { kind: '目安', low: 12000, high: 14000, trial: 13000, unit: 'ロール' };
+    if (stand === 6 || stand === 7) return { kind: '最大', tons: 7600, unit: 'カリバ' };
+    if (stand === 8 || stand === 9) return { kind: '概算', tons: 5000, unit: 'カリバ' };
+    return null;
+}
+
+function formatTons(value) {
+    return `${Number(value).toLocaleString('ja-JP')}t`;
+}
+
+function basisText(basis) {
+    if (basis.kind === '目安') return `2から5番は1ロールあたり${formatTons(basis.low)}から${formatTons(basis.high)}が使用の目安です。試算は${formatTons(basis.trial)}で、固定最大にはしません。切込み量とは別です`;
+    if (basis.kind === '最大') return `6番と7番は1カリバ最大${formatTons(basis.tons)}です。直数には換算しません`;
+    return `8番と9番は1カリバ約${formatTons(basis.tons)}の概算目安です。確定最大ではありません。直数には換算しません`;
+}
+
+function projectTonUse(input) {
+    const source = input || {};
+    const basis = knownTonBasis(source.standKey);
+    if (!basis) return null;
+    const tons = source.openingUsedTons;
+    const tonsKnown = typeof tons === 'number' && Number.isFinite(tons) && tons >= 0;
+    const base = {
+        exchangeDate: null,
+        exceedsOnDate: null,
+        lastAllowedDate: null,
+        reworkTiming: 'unknown',
+        purchaseTiming: 'unknown',
+        statusChanged: false,
+        reviews: [],
+        basis
+    };
+    if (!tonsKnown) {
+        return { ...base, status: 'unknown', reason: `${basisText(basis)}。開始時の使用トン数が未確認なので、0tにはせず交換日は出しません。` };
+    }
+    if (basis.kind === '最大') {
+        const remaining = basis.tons - tons;
+        const reason = remaining > 0
+            ? `開始時は${formatTons(tons)}です。最大${formatTons(basis.tons)}まで残り${formatTons(remaining)}です。工場全体の予定トン数はこのスタンドの使用量ではないため、交換日は出しません。`
+            : `開始時は${formatTons(tons)}で、1カリバの最大${formatTons(basis.tons)}に達しています。工場全体の予定からは交換日を出せません。`;
+        return { ...base, status: remaining > 0 ? 'withinMaximum' : 'atMaximum', reason };
+    }
+    if (basis.kind === '概算') {
+        const reached = tons >= basis.tons;
+        return {
+            ...base,
+            status: 'guideOnly',
+            reason: reached
+                ? `開始時は${formatTons(tons)}で、概算${formatTons(basis.tons)}の目安に達しています。確定最大は未確認のため、超過日と交換日は出しません。`
+                : `開始時は${formatTons(tons)}で、概算${formatTons(basis.tons)}の目安より前です。確定最大は未確認です。交換日は出しません。`
+        };
+    }
+    let place = `${formatTons(basis.low)}から${formatTons(basis.high)}の目安より前です`;
+    if (tons > basis.high) place = `教えてもらった範囲の上端${formatTons(basis.high)}を超えています。超過日としては断定しません`;
+    else if (tons >= basis.low) place = `${formatTons(basis.low)}から${formatTons(basis.high)}の目安の範囲です`;
+    return {
+        ...base,
+        status: 'guideOnly',
+        reason: `開始時は${formatTons(tons)}で、${place}。試算の${formatTons(basis.trial)}は固定最大ではありません。工場全体の予定トン数は足さず、交換日は出しません。`
+    };
 }
 
 function knownCaliberLimit(standKey, size) {
@@ -241,6 +306,8 @@ function projectCaliberReplacement(input) {
     const reference = String(source.referenceDate || '').slice(0, 10);
     const days = (Array.isArray(source.days) ? source.days : [])
         .filter(row => row && String(row.date || '') >= reference && (!source.caliberActiveUntil || row.date <= source.caliberActiveUntil));
+    const tonUse = projectTonUse(source);
+    if (tonUse) return tonUse;
     const limit = knownCaliberLimit(source.standKey, source.size);
     const base = {
         exchangeDate: null,
@@ -303,6 +370,9 @@ function projectCaliberReplacement(input) {
     let reason;
     if (blocked && !unknownIsAfterDecision) {
         reason = `${blocked.date}は${blocked.kind}です。未確認の使用量を0直にしないため、この先の交換日と超過日は確定しません。`;
+        if (blocked.kind === '2時間以上4時間未満') {
+            reason += 'この時間を1直と数える案は提案のままです。確定した交換日には使わず、実際の時間は別に残します。';
+        }
     } else if (!confirmedMaximum) {
         reason = guideOrExceedDate
             ? `${guideOrExceedDate}は通常${limit.runs}直の目安に達する見込みです。確定最大は未確認のため、交換候補日と超過日は出しません。`
@@ -454,6 +524,7 @@ function renderConsumptionLink(summary) {
         size: form.size,
         currentCaliber: form.currentCaliber,
         openingUsedRuns: form.openingUsedRuns,
+        openingUsedTons: form.openingUsedTons,
         days: summary && summary.days,
         referenceDate: summary && summary.referenceDate
     });
@@ -466,11 +537,13 @@ function readCaliberInputs() {
         return element ? element.value : '';
     };
     const opening = value('caliber-opening').trim();
+    const openingTons = value('caliber-opening-tons').trim();
     return {
         standKey: value('caliber-stand').trim(),
         size: value('caliber-size').trim(),
         currentCaliber: value('caliber-current').trim(),
-        openingUsedRuns: opening === '' ? undefined : Number(opening)
+        openingUsedRuns: opening === '' ? undefined : Number(opening),
+        openingUsedTons: openingTons === '' ? undefined : Number(openingTons)
     };
 }
 
@@ -556,7 +629,7 @@ function bindMonthlyScheduleFileInput() {
     const input = document.getElementById('monthly-schedule-file');
     if (!input || input.dataset.bound === 'true') return;
     input.dataset.bound = 'true';
-    ['caliber-stand', 'caliber-size', 'caliber-current', 'caliber-opening'].forEach(id => {
+    ['caliber-stand', 'caliber-size', 'caliber-current', 'caliber-opening', 'caliber-opening-tons'].forEach(id => {
         const field = document.getElementById(id);
         if (field) field.addEventListener('change', () => renderMonthlyScheduleSummary(latestMonthlySummary));
     });
