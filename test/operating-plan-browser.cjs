@@ -275,6 +275,10 @@ async function main() {
     await page.waitForFunction(() => document.getElementById('consumption-link').textContent.includes('あと2直'));
     await page.evaluate(() => { latestMonthlySummary = null; renderExchangeCycle(); });
     await page.waitForFunction(() => document.getElementById('cycle-result').textContent.includes('架空の操業では予測しません'));
+    const withheld = await page.locator('#cycle-result').innerText();
+    assert.match(withheld, /残カリバは最大8直まであと2直です/);
+    assert.match(withheld, /未使用のカリバ本数ではありません/);
+    assert.match(withheld, /画面の入力/);
     await page.evaluate(() => {
       roles.splice(0, roles.length,
         { id: 'roll-online', name: '#10-A', status: 'オンライン', currentDiameter: 81, memo: '', updatedAt: '2026-11-13T00:00:00.000Z', history: [] },

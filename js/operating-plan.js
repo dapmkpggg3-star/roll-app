@@ -1042,19 +1042,27 @@ function renderExchangeCycle() {
     const schedule = latestMonthlySummary && latestMonthlySummary.ok !== false ? latestMonthlySummary : null;
     const days = schedule && Array.isArray(schedule.days) ? schedule.days : [];
     const ledger = readLedgerResources(typeof roles === 'undefined' ? [] : roles);
-    const ledgerText = ledger.length
-        ? ledger.map(item => `${item.frame} ${item.id} 径${item.diameter === null ? '未確認' : item.diameter}`).join('、')
-        : '台帳の対象はまだ読んでいません。未回答ではありません。';
+    const online = ledger.find(item => item.frame === 'online');
+    const openingRuns = form.openingUsedRuns === undefined ? (online ? online.runs : undefined) : form.openingUsedRuns;
+    const openingSource = form.openingUsedRuns === undefined
+        ? (online && typeof online.runs === 'number' ? '台帳の現行カリバ' : '未確認')
+        : '画面の入力';
+    const ledgerText = [
+        ledger.length
+            ? ledger.map(item => `${item.frame} ${item.id} 径${item.diameter === null ? '未確認' : item.diameter}`).join('、')
+            : '台帳の対象はまだ読んでいません。未回答ではありません。',
+        describeRemainingCalibers(form.standKey, form.size, openingRuns),
+        `開始直数の出どころは${openingSource}です。未使用のカリバ本数ではありません。`
+    ].join('\n');
     if (!days.length) {
         target.textContent = `生産予定が無いので、架空の操業では予測しません。\n${ledgerText}`;
         loadStandPremisesNote(target);
         return;
     }
     const limit = knownCaliberLimit(form.standKey, form.size);
-    const online = ledger.find(item => item.frame === 'online');
     const result = simulateExchangeCycle({
         maxRuns: limit && limit.kind === '最大' ? limit.runs : undefined,
-        openingRuns: form.openingUsedRuns === undefined ? (online ? online.runs : undefined) : form.openingUsedRuns,
+        openingRuns,
         currentCaliberId: form.currentCaliber || (online && online.caliberId) || null,
         spareCaliberIds: form.spareCaliberCount === undefined ? null : Array.from({ length: form.spareCaliberCount }, (_, index) => `anon-caliber-${index + 1}`),
         scrapDiameter: form.scrapDiameter,
