@@ -413,9 +413,13 @@ test('an anonymous cycle changes the caliber before rework and does not change t
   });
   assert.equal(shortUse.events.some(item => item.date === '2027-04-02'), false);
   assert.match(shortUse.events[0].note, /後続の直数は確定しません/);
+  const namedRolls = [
+    { id: 'roll-a', frame: 'online', diameter: 80, caliberId: 'anon-1', runs: 1 },
+    { id: 'roll-b', frame: 'installedSpare', diameter: 90, caliberId: 'anon-b', runs: 0 }
+  ];
   const rolls = context.simulateExchangeCycle({
     maxRuns: 1, openingRuns: 1, currentCaliberId: 'anon-1', spareCaliberIds: [],
-    currentDiameter: 80, scrapDiameter: 70, adoptedCutMm: 4, installedSpare: 1, reworkDays: 1,
+    currentDiameter: 80, scrapDiameter: 70, adoptedCutMm: 4, reworkDays: 1, resources: namedRolls,
     workConfirmation: slot('2027-05-02', 'rollChange'),
     days: [
       { date: '2027-05-01', productionAmount: 10, operatingHours: 8, shift1Team: 'A', shift3Team: '' },
@@ -432,7 +436,8 @@ test('an anonymous cycle changes the caliber before rework and does not change t
   assert.ok(rolls.events.find(item => item.kind === '夜勤予備不足').date < assembled.date);
   const unknownCut = context.simulateExchangeCycle({
     maxRuns: 1, openingRuns: 1, currentCaliberId: 'anon-1', spareCaliberIds: [],
-    currentDiameter: 80, scrapDiameter: 70, installedSpare: 1, reworkDays: 0,
+    currentDiameter: 80, scrapDiameter: 70, reworkDays: 0,
+    resources: namedRolls.map(item => Object.assign({}, item)),
     workConfirmation: slot('2027-05-02', 'rollChange'),
     days: [
       { date: '2027-05-01', productionAmount: 10, operatingHours: 8, shift1Team: 'A', shift3Team: '' },
@@ -445,9 +450,23 @@ test('an anonymous cycle changes the caliber before rework and does not change t
   const blank = context.simulateExchangeCycle({ maxRuns: 8, currentCaliberId: 'anon-1', days: [] });
   assert.equal(blank.annualRollCount, null);
   assert.match(blank.reason, /0直にはしません/);
+  const counted = context.simulateExchangeCycle({
+    maxRuns: 1, openingRuns: 1, currentCaliberId: 'anon-1', installedSpare: 2, reworkDays: 0,
+    workConfirmation: slot('2027-05-02', 'rollChange'),
+    days: [
+      { date: '2027-05-01', productionAmount: 10, operatingHours: 8, shift1Team: 'A', shift3Team: '' },
+      { date: '2027-05-02', productionAmount: 0, operatingHours: 0, shift1Team: 'A', shift3Team: '' }
+    ]
+  });
+  assert.equal(counted.events.some(item => item.kind === 'ロール替'), false);
+  assert.match(counted.events.map(item => item.note).join('\n'), /架空のIDは作りません/);
   const year = context.simulateExchangeCycle({
     maxRuns: 2, openingRuns: 0, currentCaliberId: 'anon-1', spareCaliberIds: ['anon-2'],
-    currentDiameter: 80, scrapDiameter: 70, adoptedCutMm: 4, installedSpare: 1, reworkDays: 0,
+    scrapDiameter: 70, adoptedCutMm: 4, reworkDays: 0,
+    resources: [
+      { id: 'roll-a', frame: 'online', diameter: 80, caliberId: 'anon-1', runs: 0 },
+      { id: 'roll-b', frame: 'installedSpare', diameter: 76, caliberId: 'anon-b', runs: 0 }
+    ],
     workConfirmation: {
       repeatOnStops: true, workTypes: ['caliberChange', 'rollChange'], period: 'day',
       requiredHours: 5, reservedHours: 5, people: 1, continuous: 'no', changeover: 'yes', threeSet: 'yes'

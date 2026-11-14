@@ -91,6 +91,32 @@ function futureScheduleFile() {
   }));
   return file;
 }
+function daytimeExchangeFile() {
+  const rows = [];
+  for (let day = 1; day <= 20; day += 1) {
+    const row = day + 15;
+    const produce = day === 1 || day === 5;
+    const night = day === 3;
+    const shift1 = produce || day === 2 || day === 4 ? `<c r="H${row}" t="s"><v>2</v></c>` : '';
+    const shift3 = night ? `<c r="I${row}" t="s"><v>3</v></c>` : '';
+    rows.push(`<row r="${row}">${[
+      `<c r="D${row}"><v>${day}</v></c>`,
+      `<c r="G${row}" t="s"><v>0</v></c>`,
+      shift1,
+      shift3,
+      `<c r="J${row}"><v>${produce ? 10 : 0}</v></c>`,
+      `<c r="P${row}"><v>${produce ? 8 : 0}</v></c>`
+    ].join('')}</row>`);
+  }
+  const file = path.join(os.tmpdir(), 'roll-anon-day.xlsx');
+  fs.writeFileSync(file, storedZip({
+    'xl/workbook.xml': '<?xml version="1.0"?><workbook xmlns:r="r"><sheets><sheet name="27.04 生産予定" sheetId="1" r:id="rId1"/></sheets></workbook>',
+    'xl/_rels/workbook.xml.rels': '<?xml version="1.0"?><Relationships><Relationship Id="rId1" Target="worksheets/sheet1.xml"/></Relationships>',
+    'xl/sharedStrings.xml': '<sst><si><t>D10</t></si><si><t> </t></si><si><t>A</t></si><si><t>B</t></si></sst>',
+    'xl/worksheets/sheet1.xml': `<?xml version="1.0"?><worksheet><sheetData>${rows.join('')}</sheetData></worksheet>`
+  }));
+  return file;
+}
 function normalGuideFile() {
   const rows = [];
   for (let day = 1; day <= 20; day += 1) {
@@ -475,7 +501,24 @@ async function main() {
     assert.match(horizon, /カリバcal-b/);
     assert.match(horizon, /開始2/);
     assert.equal(horizon.includes('anon-caliber-1'), false);
-    assert.equal(horizon.includes('架空の操業日は足していません') || horizon.includes('生産予定が無いので'), true);
+    assert.match(horizon, /再利用です/);
+    assert.match(horizon, /確定の購入日ではありません/);
+    await page.locator('#cycle-rework-days').fill('1');
+    await page.locator('#life-diameter').fill('80');
+    await page.locator('#life-scrap').fill('70');
+    await page.locator('#life-cut').fill('4');
+    await page.locator('#monthly-schedule-file').setInputFiles(daytimeExchangeFile());
+    await page.locator('#monthly-schedule-file').dispatchEvent('change');
+    await page.waitForFunction(() => document.getElementById('cycle-result').textContent.includes('roll-anon-day.xlsx'));
+    const timeline = await page.locator('#cycle-result').innerText();
+    assert.match(timeline, /架空の操業日は足していません/);
+    assert.match(timeline, /ロール替/);
+    assert.match(timeline, /カリバcal-b/);
+    assert.match(timeline, /夜勤予備不足/);
+    assert.match(timeline, /昼間組替/);
+    assert.match(timeline, /匿名の13か月です/);
+    assert.equal(timeline.includes('anon-spare'), false);
+    assert.equal(timeline.includes('anon-caliber-1'), false);
     assert.equal(await page.evaluate(() => roles[0].status), 'オンライン');
     assert.equal(await page.evaluate(() => roles[0].status), 'オンライン');
     assert.equal(outbound.length, 0);

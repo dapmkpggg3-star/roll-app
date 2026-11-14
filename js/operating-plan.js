@@ -847,7 +847,7 @@ function simulateExchangeCycle(input) {
         ? source.spareRollIds.slice()
         : (resources
             ? resources.filter(item => item.frame === 'installedSpare').map(item => item.id)
-            : (knownSpare === null ? null : Array.from({ length: knownSpare }, (_, index) => `anon-spare-${index + 1}`)));
+            : null);
     const state = {
         onlineId: (resources && (resources.find(item => item.frame === 'online') || {}).id) || source.onlineRollId || 'anon-online',
         caliberId: source.currentCaliberId || (resources && (resources.find(item => item.frame === 'online') || {}).caliberId) || null,
@@ -947,7 +947,10 @@ function simulateExchangeCycle(input) {
             if (state.pending === 'roll') {
                 const reworkDays = finiteOrNull(source.reworkDays);
                 if (!spareRolls || spareRolls.length === 0 || reworkDays === null) {
-                    push(date, 'ロール替需要', '予備がないか、改削日数が未確認なので、ロール替は成立させていません。');
+                    const unnamed = !resources && !Array.isArray(source.spareRollIds) && knownSpare !== null;
+                    push(date, 'ロール替需要', unnamed
+                        ? '予備の本数だけでは交換できるロールが分かりません。架空のIDは作りません。'
+                        : '予備がないか、改削日数が未確認なので、ロール替は成立させていません。');
                     return;
                 }
                 const leavingId = state.onlineId;
@@ -1146,6 +1149,7 @@ function renderExchangeCycle() {
             `予定「${schedule.sourceName || '名前なし'}」で計算しています。架空の操業日は足していません。`,
             result.reason,
             uncovered,
+            describeCycleTimeline(result),
             result.events.map(line).join('\n')
         ].filter(Boolean).join('\n');
     }
@@ -1175,13 +1179,35 @@ function describeAnonymousHorizon(form, online, resources, limit) {
         resources,
         days: anonymousOperatingDays(form.forecastReference, 400)
     });
-    const notable = result.events.find(item => item.kind === 'ロール替' || item.kind === 'ロール替需要');
     return [
         '匿名の13か月です。読み込んだ予定の日ではありません。',
         result.reason,
-        notable ? `${notable.date} ${notable.kind} ${notable.note} カリバ${notable.caliberId || '未確認'} 開始${notable.caliberRuns === null || notable.caliberRuns === undefined ? '未確認' : notable.caliberRuns}` : '匿名の13か月に交換は出ていません。',
+        describeCycleTimeline(result),
         confirmed ? '' : '作業枠が未確認なので、匿名の13か月でも交換は成立させません。'
     ].filter(Boolean).join('\n');
+}
+
+function describeCycleTimeline(result) {
+    const wanted = ['交換待ち', 'ロール替', 'カリバ替', '改削完了', '昼間組替', '夜勤予備不足', 'ロール替需要', '交換需要', '改削保留', '廃却需要'];
+    const picked = [];
+    let showUse = false;
+    for (const item of result.events || []) {
+        if (wanted.includes(item.kind)) {
+            picked.push(item);
+            showUse = item.kind === 'ロール替';
+        } else if (showUse && item.kind === '操業') {
+            picked.push(item);
+            showUse = false;
+        }
+        if (picked.length >= 12) break;
+    }
+    const lines = picked.map(item => `${item.date} ${item.kind} ${item.note} カリバ${item.caliberId || '未確認'} 開始${item.caliberRuns === null || item.caliberRuns === undefined ? '未確認' : item.caliberRuns}`);
+    const changes = result && result.rollChangeCount;
+    return [
+        changes === null ? 'ロール替の回数は未確認です。0回にはしません。' : `ロール替${changes}回は再利用です。新規購入の本数ではありません。`,
+        '暫定6か月を戻した時期は確定の購入日ではありません。',
+        lines.join('\n') || '日付順の交換はまだ出ていません。'
+    ].join('\n');
 }
 
 async function loadStandPremisesNote(target, standKey, generation) {
