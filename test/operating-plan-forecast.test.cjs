@@ -473,7 +473,12 @@ test('an anonymous cycle changes the caliber before rework and does not change t
       requiredHours: 5, reservedHours: 5, people: 1,       continuous: 'no', changeover: 'yes', threeSet: 'yes'
     },
     assemblyConfirmation: { repeatOnStops: true, period: 'day', requiredHours: 5, reservedHours: 5, people: 1, prepared: 'reworkInbound', preparedTarget: 'roll-a', preparedOn: '2027-04-01' },
-    days: context.anonymousOperatingDays('2027-04-01', 400)
+    standKey: '10', currentSize: 'D10', referenceAt: '2027-04-01',
+    reworkOpenings: ['roll-a', 'roll-b'].flatMap(rollId => Array.from({ length: 160 }, (_, index) => ({
+      owner: { rollId, standKey: '10', size: 'D10', referenceAt: '2027-04-01' },
+      generation: index + 1, caliberId: `${rollId}-g${index + 1}`, runs: 0
+    }))),
+    days: context.anonymousOperatingDays('2027-04-01', 400).map(row => Object.assign({}, row, { size: 'D10' }))
   });
   assert.ok(year.rollChangeCount > 1);
   assert.ok(year.scrapCount >= 1);
@@ -538,7 +543,12 @@ test('different diameters stay with their own roll through rework', () => {
     },
     spareCaliberIds: ['cal-2'],
     assemblyConfirmation: { repeatOnStops: true, period: 'day', requiredHours: 5, reservedHours: 5, people: 1, prepared: 'reworkInbound', preparedTarget: 'roll-a', preparedOn: '2027-04-01' },
-    days: context.anonymousOperatingDays('2027-04-01', 400)
+    standKey: '10', currentSize: 'D10', referenceAt: '2027-04-01',
+    reworkOpenings: ['roll-online', 'roll-ready'].flatMap(rollId => Array.from({ length: 160 }, (_, index) => ({
+      owner: { rollId, standKey: '10', size: 'D10', referenceAt: '2027-04-01' },
+      generation: index + 1, caliberId: `${rollId}-g${index + 1}`, runs: 0
+    }))),
+    days: context.anonymousOperatingDays('2027-04-01', 400).map(row => Object.assign({}, row, { size: 'D10' }))
   });
   assert.ok(year.rollChangeCount > 1);
   assert.deepEqual(year.resources.map(item => item.id).sort(), ['roll-online', 'roll-ready', 'roll-used']);

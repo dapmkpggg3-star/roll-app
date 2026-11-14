@@ -412,3 +412,104 @@ test('the final confirmed operation and first hold survive a long bounded excerp
   assert.equal(text.indexOf('2027-04-21 操業') < text.indexOf('2027-04-22 保留'), true);
   assert.match(c.describeCycleTimeline({ events: [events.at(-1)], rollChangeCount: 0 }), /計算できた操業はありません/);
 });
+
+function twoCycle(c, openings) {
+  const owner = rollId => ({ rollId, standKey: '10', size: 'D10', referenceAt: '2027-04-01' });
+  const work = (date, rollId) => ({ date, period: 'day', workType: 'rollChange', requiredHours: 6, reservedHours: 6,
+    people: 3, continuous: 'no', changeover: 'yes', threeSet: 'yes', owner: owner(rollId) });
+  const assembly = (date, rollId) => ({ owner: owner(rollId), date, period: 'day', requiredHours: 6, reservedHours: 6,
+    people: 3, prepared: 'reworkInbound', preparedTarget: rollId, preparedOn: date });
+  const day = (date, amount) => ({ date, size: 'D10', productionAmount: amount, operatingHours: amount ? 8 : 0, shift1Team: 'A', shift3Team: '' });
+  const days = [day('2027-04-01', 10), day('2027-04-02', 0), day('2027-04-03', 0)];
+  for (let index = 4; index <= 11; index += 1) days.push(day(`2027-04-${String(index).padStart(2, '0')}`, index === 10 || index === 11 ? 0 : 10));
+  return {
+    standKey: '10', currentSize: 'D10', referenceAt: '2027-04-01', maxRuns: 8, reworkDays: 1,
+    adoptedCutMm: 4, scrapDiameter: 50,
+    resources: [
+      { id: 'A', frame: 'online', caliberId: 'ca', runs: 7, diameter: 81 },
+      { id: 'B', frame: 'installedSpare', caliberId: 'cb', runs: 2, diameter: 93 }
+    ],
+    days,
+    workSlots: [work('2027-04-02', 'A'), work('2027-04-10', 'B')],
+    assemblySlots: [assembly('2027-04-03', 'A'), assembly('2027-04-11', 'B')],
+    reworkOpenings: openings
+  };
+}
+
+test('a reworked roll continues only with its own later generation and keeps two repair cycles', () => {
+  const c = api();
+  const opening = { owner: { rollId: 'A', standKey: '10', size: 'D10', referenceAt: '2027-04-01' }, generation: 1, caliberId: 'ca2', runs: 1 };
+  const result = c.simulateExchangeCycle(twoCycle(c, [opening]));
+  assert.equal(result.stopRecord, null);
+  assert.equal(result.events.filter(e => e.kind === 'ロール替').length, 2);
+  assert.equal(result.events.filter(e => e.kind === '組替完了').length, 2);
+  const returned = result.events.filter(e => e.kind === 'ロール替')[1];
+  assert.equal(returned.date, '2027-04-10');
+  assert.equal(returned.onlineId, 'A');
+  assert.equal(returned.caliberId, 'ca2');
+  assert.equal(returned.caliberRuns, 1);
+  assert.equal(result.resources.find(r => r.id === 'A').diameter, 77);
+  assert.equal(result.resources.find(r => r.id === 'A').caliberId, 'ca2');
+  const zero = twoCycle(c, [{ ...opening, runs: 0 }]);
+  assert.equal(c.simulateExchangeCycle(zero).events.filter(e => e.kind === 'ロール替')[1].caliberRuns, 0);
+});
+
+test('a missing or foreign post-rework opening does not copy the old caliber or become zero', () => {
+  const c = api();
+  const owner = { rollId: 'A', standKey: '10', size: 'D10', referenceAt: '2027-04-01' };
+  const base = twoCycle(c, []);
+  const stopped = c.simulateExchangeCycle(base);
+  assert.equal(stopped.stopRecord.date, '2027-04-10');
+  assert.equal(stopped.stopRecord.id, 'A');
+  assert.match(stopped.reason, /不足なしとは判定しません/);
+  assert.equal(stopped.events.filter(e => e.kind === 'ロール替').length, 1);
+  assert.equal(stopped.resources.find(r => r.id === 'A').caliberId, 'ca');
+  assert.equal(stopped.resources.find(r => r.id === 'A').frame, 'installedSpare');
+  assert.equal(stopped.events.some(e => e.date > '2027-04-10'), false);
+  for (const patch of [{ runs: -1 }, { runs: 0.5 }, { runs: 8 }, { caliberId: '' }, { generation: 2 }, { owner: { ...owner, standKey: '17' } }, { owner: { ...owner, size: 'D13' } }, { owner: { ...owner, referenceAt: '2027-05-01' } }, { owner: { ...owner, rollId: 'B' } }]) {
+    const input = twoCycle(c, [{ owner, generation: 1, caliberId: 'ca2', runs: 1, ...patch }]);
+    const result = c.simulateExchangeCycle(input);
+    assert.equal(result.stopRecord.date, '2027-04-10');
+    assert.equal(result.resources.find(r => r.id === 'A').caliberId, 'ca');
+  }
+  const duplicated = twoCycle(c, [
+    { owner, generation: 1, caliberId: 'ca2', runs: 1 },
+    { owner: { ...owner }, generation: 1, caliberId: 'other', runs: 1 }
+  ]);
+  assert.equal(c.simulateExchangeCycle(duplicated).stopRecord.date, '2027-04-10');
+});
+
+test('used spare calibers are not restarted from the first one', () => {
+  const c = api();
+  const work = { date: '2027-04-02', period: 'day', repeatOnStops: true, workTypes: ['caliberChange', 'rollChange'],
+    requiredHours: 6, reservedHours: 6, people: 3, continuous: 'no', changeover: 'yes', threeSet: 'yes' };
+  const day = (date, amount) => ({ date, size: 'D10', productionAmount: amount, operatingHours: amount ? 8 : 0, shift1Team: 'A', shift3Team: '' });
+  const result = c.simulateExchangeCycle({
+    standKey: '10', currentSize: 'D10', maxRuns: 2, reworkDays: 1, spareCaliberIds: ['c2'], workConfirmation: work,
+    resources: [{ id: 'A', frame: 'online', caliberId: 'c1', runs: 1, diameter: 80 }],
+    days: [day('2027-04-01', 10), day('2027-04-02', 0), day('2027-04-03', 10), day('2027-04-04', 10), day('2027-04-05', 0)]
+  });
+  assert.equal(result.events.filter(e => e.kind === 'カリバ替').length, 1);
+  assert.equal(result.events.filter(e => e.kind === 'カリバ替')[0].caliberId, 'c2');
+  assert.equal(result.events.filter(e => e.kind === 'ロール替需要').length, 1);
+  assert.equal(result.events.some(e => e.kind === 'ロール替'), false);
+});
+
+test('a supplied anonymous horizon can pass thirteen months and a stopped return stays short of that claim', () => {
+  const c = api();
+  const days = [];
+  for (let index = 0; index < 400; index += 1) {
+    const date = new Date(Date.UTC(2027, 3, 1 + index)).toISOString().slice(0, 10);
+    days.push({ date, size: 'D10', productionAmount: 10, operatingHours: 8, shift1Team: 'A', shift3Team: '' });
+  }
+  const full = c.simulateExchangeCycle({
+    standKey: '10', currentSize: 'D10', maxRuns: 500, openingRuns: 0, currentCaliberId: 'c', days,
+    resources: [{ id: 'A', frame: 'online', caliberId: 'c', runs: 0, diameter: 80 }]
+  });
+  assert.match(full.reason, /13か月の範囲まで同じ計算を繰り返しました/);
+  assert.match(full.reason, /不足なしとは判定しません/);
+  const stopped = c.simulateExchangeCycle(twoCycle(c, []));
+  assert.equal(stopped.confirmedThrough < '2027-04-11', true);
+  assert.match(stopped.reason, /対象期間は2027-04-01から2027-04-11です/);
+  assert.match(stopped.reason, /確定して計算できた最終日は2027-04-09です/);
+});

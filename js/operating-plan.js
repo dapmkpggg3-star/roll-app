@@ -865,7 +865,7 @@ function simulateExchangeCycle(input) {
         .map(row => Object.assign({}, row))
         .sort((a, b) => String(a.date).localeCompare(String(b.date)));
     const resources = Array.isArray(source.resources) ? source.resources.map(item => Object.assign({}, item)) : null;
-    const spareCalibers = Array.isArray(source.spareCaliberIds) ? source.spareCaliberIds.slice() : null;
+    let spareCalibers = Array.isArray(source.spareCaliberIds) ? source.spareCaliberIds.slice() : null;
     const knownSpare = finiteOrNull(source.installedSpare);
     const spareRolls = Array.isArray(source.spareRollIds)
         ? source.spareRollIds.slice()
@@ -896,6 +896,17 @@ function simulateExchangeCycle(input) {
     let assemblyConfirmation = source.assemblyConfirmation;
     const sizeUsage = new Map();
     const reworkedIds = new Set();
+    const reworkCounts = new Map();
+    const generationOpening = (rollId, size, generation) => {
+        const matches = (source.reworkOpenings || []).filter(item => item && item.generation === generation
+            && confirmationOwnerMatches(item, {
+                standKey: source.standKey, rollId, size, referenceAt: source.referenceAt
+            }, true));
+        return matches.length === 1 ? matches[0] : null;
+    };
+    const openingReady = (opening, limitRuns) => Boolean(opening)
+        && Boolean(String(opening.caliberId || '').trim())
+        && Number.isInteger(opening.runs) && opening.runs >= 0 && opening.runs < limitRuns;
     for (const item of resources || []) {
         if (initialSize && item.caliberId && typeof item.runs === 'number') sizeUsage.set(item.id + '|' + initialSize, { caliberId: item.caliberId, runs: item.runs });
     }
@@ -948,6 +959,7 @@ function simulateExchangeCycle(input) {
             const missingLead = leadMonths === null ? '購入期間が未確認なので、手配目安は出しません。0か月にはしません。' : conditional;
             push(date, '廃却需要', `対象は${item.id}です。廃却径以下です。${missingLead}確定の購入日ではありません。`);
         }
+        if (item.status === 'awaitingAssembly') reworkCounts.set(item.id, (reworkCounts.get(item.id) || 0) + 1);
     };
     const finishDueReworks = date => {
         state.reworks.filter(item => item.status === 'rework' && date >= item.readyOn)
@@ -1040,11 +1052,14 @@ function simulateExchangeCycle(input) {
                 && !(state.pending && confirmation.date === date && exchangeSlotReady(workConfirmation, slotRow[0], state.pending === 'caliber' ? 'caliberChange' : 'rollChange'))
                 && exchangeSlotReady(confirmation, slotRow[0], 'sizeChange');
             const nextLimit = knownCaliberLimit(source.standKey, nextSize);
-            const cached = sizeUsage.get(state.onlineId + '|' + nextSize);
+            const generation = reworkCounts.get(state.onlineId) || 0;
+            const cached = generation > 0 ? null : sizeUsage.get(state.onlineId + '|' + nextSize);
             const openings = (source.sizeOpenings || []).filter(item => confirmationOwnerMatches(item, {
                 ...target, size: nextSize
             }, true));
-            const opening = cached || (!reworkedIds.has(state.onlineId) && openings.length === 1 ? openings[0] : null);
+            const opening = generation > 0
+                ? generationOpening(state.onlineId, nextSize, generation)
+                : (cached || (!reworkedIds.has(state.onlineId) && openings.length === 1 ? openings[0] : null));
             const ready = slotReady && nextLimit && nextLimit.kind === '最大' && opening && String(opening.caliberId || '').trim()
                 && typeof opening.runs === 'number' && Number.isInteger(opening.runs) && opening.runs >= 0 && opening.runs < nextLimit.runs;
             if (!ready) {
@@ -1053,7 +1068,8 @@ function simulateExchangeCycle(input) {
                     + (!opening || !String(opening.caliberId || '').trim() || !Number.isInteger(opening.runs) || opening.runs < 0 ? ' このロールの次サイズの保存開始条件が未記録です。今のカリバは流用しません。' : '')
                     + (!nextLimit || nextLimit.kind !== '最大' ? ' 次サイズの確定最大は未確認です。' : '')
                     + (opening && nextLimit && opening.runs >= nextLimit.runs ? ' 次サイズは開始時点で最大に達しています。' : '')
-                    + (reworkedIds.has(state.onlineId) && !cached ? ' 改削前の開始条件は再利用しません。' : '');
+                    + (generation > 0 && !openingReady(opening, nextLimit && nextLimit.runs) ? ` 改削後${generation}世代の次サイズ開始は未記録です。0直にはしません。` : '')
+                    + (generation === 0 && reworkedIds.has(state.onlineId) && !cached ? ' 改削前の開始条件は再利用しません。' : '');
                 push(date, '保留', reason);
                 stopAt(date, reason);
                 Object.assign(stopRecord, { kind: 'sizeChange', ...boundary });
@@ -1120,7 +1136,25 @@ function simulateExchangeCycle(input) {
                 }
                 const enteringId = spareRolls[0];
                 const entering = resources && resources.find(item => item.id === enteringId);
-                if (sizeChanged && entering) {
+                const generation = reworkCounts.get(enteringId) || 0;
+                let forcedCaliber = null;
+                let forcedRuns = null;
+                if (generation > 0) {
+                    const opening = generationOpening(enteringId, activeSize, generation);
+                    if (!openingReady(opening, maxRuns)) {
+                        push(date, 'ロール替需要', `${enteringId}の改削後${generation}世代のカリバID・開始量が未記録です。改削前の値は使わず、0直にもしません。`);
+                        stopAt(date, `${enteringId}の改削後${generation}世代のカリバID・開始量が未記録です。以後は計算済みにしません。`);
+                        stopRecord.id = enteringId;
+                        return;
+                    }
+                    forcedCaliber = String(opening.caliberId).trim();
+                    forcedRuns = opening.runs;
+                    if (entering) {
+                        entering.caliberId = forcedCaliber;
+                        entering.runs = forcedRuns;
+                    }
+                    spareCalibers = Array.isArray(opening.spareCaliberIds) ? opening.spareCaliberIds.slice() : [];
+                } else if (sizeChanged && entering) {
                     const recorded = (source.sizeOpenings || []).filter(item => confirmationOwnerMatches(item, {
                         standKey: source.standKey, rollId: enteringId, size: activeSize, referenceAt: source.referenceAt
                     }, true));
@@ -1150,6 +1184,9 @@ function simulateExchangeCycle(input) {
                     state.diameter = finiteOrNull(entering.diameter);
                     state.caliberId = entering.caliberId;
                     state.caliberRuns = enteringRuns;
+                } else if (forcedRuns !== null) {
+                    state.caliberId = forcedCaliber;
+                    state.caliberRuns = forcedRuns;
                 } else {
                     state.caliberRuns = 0;
                 }
@@ -1403,6 +1440,7 @@ function renderExchangeCycle() {
             sizeChanges: applicableSizeChanges(schedule),
             workSlots: applicableCycleSlots(schedule, 'work'),
             assemblySlots: applicableCycleSlots(schedule, 'assembly'),
+            reworkOpenings: applicableReworkOpenings(schedule),
             maxRuns: limit && limit.kind === '最大' ? limit.runs : undefined,
             openingRuns,
             currentCaliberId: form.currentCaliber || (online && online.caliberId) || null,
@@ -1862,8 +1900,10 @@ function beginScheduleRead() {
     scheduleReadGeneration += 1;
     sizeChangeConfirmations = [];
     cycleSlotConfirmations = [];
+    reworkOpeningConfirmations = [];
     renderSizeChangeRecords();
     renderCycleSlotRecords();
+    renderReworkOpeningRecords();
     return scheduleReadGeneration;
 }
 
@@ -1886,8 +1926,10 @@ function renderMonthlyScheduleSummary(summary) {
     if (summary !== latestMonthlySummary) {
         sizeChangeConfirmations = [];
         cycleSlotConfirmations = [];
+        reworkOpeningConfirmations = [];
         renderSizeChangeRecords();
         renderCycleSlotRecords();
+        renderReworkOpeningRecords();
     }
     if (summary && summary.ok !== false && Array.isArray(summary.months)) latestMonthlySummary = summary;
     if (summary && summary.ok === false) latestMonthlySummary = null;
@@ -2163,6 +2205,7 @@ function forecastSizeOpenings(resources, standKey, days, referenceAt) {
 
 let sizeChangeConfirmations = [];
 let cycleSlotConfirmations = [];
+let reworkOpeningConfirmations = [];
 
 function scopedCycleSlots(slots, target, date, matchRoll) {
     return (Array.isArray(slots) ? slots : []).filter(slot => slot && slot.date === date
@@ -2172,6 +2215,46 @@ function scopedCycleSlots(slots, target, date, matchRoll) {
 function applicableCycleSlots(schedule, kind) {
     if (!schedule || schedule.ok === false) return [];
     return cycleSlotConfirmations.filter(item => item.schedule === schedule && item.kind === kind).map(item => item.value);
+}
+
+function applicableReworkOpenings(schedule) {
+    if (!schedule || schedule.ok === false) return [];
+    return reworkOpeningConfirmations.filter(item => item.schedule === schedule).map(item => item.value);
+}
+
+function renderReworkOpeningRecords() {
+    if (typeof document === 'undefined') return;
+    const list = document.getElementById('rework-opening-records');
+    if (!list) return;
+    const records = reworkOpeningConfirmations.filter(item => item.schedule === latestMonthlySummary);
+    list.textContent = records.length ? records.map(item => {
+        const slot = item.value;
+        return `改削後${slot.generation}世代 ${slot.owner.standKey}番 ${slot.owner.rollId}、${slot.owner.size}、基準日${slot.owner.referenceAt}、カリバ${slot.caliberId}、開始${slot.runs}直`;
+    }).join('\n') : 'この予定の改削後開始は未登録です。未記録を0直にはしません。';
+}
+
+function registerReworkOpening() {
+    const owner = slotOwnerFromContext();
+    const schedule = latestMonthlySummary;
+    const message = document.getElementById('rework-opening-message');
+    const generation = Number(document.getElementById('rework-generation').value);
+    const runsText = String(document.getElementById('rework-runs').value);
+    const runs = runsText.trim() === '' ? null : Number(runsText);
+    const caliberId = String(document.getElementById('rework-caliber').value || '').trim();
+    if (!schedule || schedule.ok === false || !owner.rollId || !owner.referenceAt || !owner.size
+        || !Number.isInteger(generation) || generation < 1 || !caliberId
+        || !Number.isInteger(runs) || runs < 0) {
+        message.textContent = '対象ロール・サイズ・基準日と、改削後の世代・カリバID・開始直数を確認してください。空欄は0直にしません。';
+        return;
+    }
+    const value = { owner: { ...owner }, generation, caliberId, runs };
+    reworkOpeningConfirmations = reworkOpeningConfirmations.filter(item => !(item.schedule === schedule
+        && item.value.generation === generation && forecastSettingKey(item.value.owner) === forecastSettingKey(owner)));
+    reworkOpeningConfirmations.push({ schedule, value });
+    message.textContent = 'この予定の予測用に登録しました。改削前の開始量は使いません。実台帳や通常の保存には書いていません。';
+    renderReworkOpeningRecords();
+    renderExchangeCycle();
+    renderStandDemandList();
 }
 
 function renderCycleSlotRecords() {
@@ -2300,7 +2383,14 @@ function ensureSizeChangeControls() {
         + '<button id="cycle-work-register" type="button">選択ロールの交換枠を登録</button>'
         + '<button id="cycle-assembly-register" type="button">選択ロールの組替枠を登録</button>'
         + '<button id="cycle-slots-clear" type="button">交換・組替の登録をすべて解除</button>'
-        + '<pre id="cycle-slot-records"></pre><p id="cycle-slot-message" aria-live="polite"></p></fieldset>');
+        + '<pre id="cycle-slot-records"></pre><p id="cycle-slot-message" aria-live="polite"></p>'
+        + '<h4>改削後の開始</h4><p>改削が終わった世代ごとに、そのロール・サイズ・基準日のカリバIDと開始直数を登録します。改削前の値はコピーしません。空欄は0直にしません。実台帳には保存しません。</p>'
+        + '<label>世代 <input id="rework-generation" type="number" min="1" step="1"></label>'
+        + '<label>改削後カリバ <input id="rework-caliber" type="text"></label>'
+        + '<label>開始直数 <input id="rework-runs" type="number" min="0" step="1"></label>'
+        + '<button id="rework-opening-register" type="button">選択ロールの改削後開始を登録</button>'
+        + '<button id="rework-opening-clear" type="button">改削後開始の登録をすべて解除</button>'
+        + '<pre id="rework-opening-records"></pre><p id="rework-opening-message" aria-live="polite"></p></fieldset>');
     document.getElementById('sizechange-register').addEventListener('click', registerSizeChange);
     document.getElementById('sizechange-example').addEventListener('click', openAnonymousSizeExample);
     document.getElementById('cycle-work-register').addEventListener('click', () => registerCycleSlot('work'));
@@ -2308,6 +2398,13 @@ function ensureSizeChangeControls() {
     document.getElementById('cycle-slots-clear').addEventListener('click', () => {
         cycleSlotConfirmations = [];
         renderCycleSlotRecords();
+        renderExchangeCycle();
+        renderStandDemandList();
+    });
+    document.getElementById('rework-opening-register').addEventListener('click', registerReworkOpening);
+    document.getElementById('rework-opening-clear').addEventListener('click', () => {
+        reworkOpeningConfirmations = [];
+        renderReworkOpeningRecords();
         renderExchangeCycle();
         renderStandDemandList();
     });
@@ -2319,6 +2416,7 @@ function ensureSizeChangeControls() {
     });
     renderSizeChangeRecords();
     renderCycleSlotRecords();
+    renderReworkOpeningRecords();
 }
 
 let workSlotOwner = null;
@@ -2474,6 +2572,7 @@ function buildStandDemandList(input) {
         let scrap = '日付の予定が無いので、廃却と補充の日は出していません。';
         let night = '日付の予定が無いので、夜勤の予備不足は出していません。';
         let order = `廃却日が無いので、手配目安は出していません。${leadText}`;
+        let timeline = '';
         const blocked = [fact.diameterReason, fact.cutReason].filter(Boolean);
         const standDays = countedDays;
         const onlinePreview = standRolls.find(item => item.status === 'オンライン');
@@ -2514,6 +2613,7 @@ function buildStandDemandList(input) {
                     sizeChanges: source.sizeChanges,
                     workSlots: source.workSlots,
                     assemblySlots: source.assemblySlots,
+                    reworkOpenings: source.reworkOpenings,
                     maxRuns: limit.runs,
                     scrapDiameter: fact.scrapDiameter,
                     adoptedCutMm: fact.adoptedCutMm,
@@ -2526,6 +2626,7 @@ function buildStandDemandList(input) {
                     days: standDays
                 });
                 period = result.reason;
+                timeline = describeCycleTimeline(result);
                 if (result.stopRecord) blocked.push(`${result.stopRecord.date} 対象${result.stopRecord.id}: ${result.stopRecord.reason}`);
                 const scraps = result.events.filter(item => item.kind === '廃却需要');
                 const nights = result.events.filter(item => item.kind === '夜勤予備不足');
@@ -2542,8 +2643,9 @@ function buildStandDemandList(input) {
             `廃却と補充: ${scrap}`,
             `夜勤の予備不足: ${night}`,
             `手配目安: ${order}`,
-            `計算できない項目: ${blocked.filter(Boolean).join(' ') || 'このスタンドで止まった項目はありません。他のスタンドは続けます。'}`
-        ].join('\n');
+            `計算できない項目: ${blocked.filter(Boolean).join(' ') || 'このスタンドで止まった項目はありません。他のスタンドは続けます。'}`,
+            timeline
+        ].filter(Boolean).join('\n');
     });
     return header.concat(blocks).join('\n\n');
 }
@@ -2576,6 +2678,7 @@ function renderStandDemandList() {
         sizeChanges: applicableSizeChanges(schedule),
         workSlots: applicableCycleSlots(schedule, 'work'),
         assemblySlots: applicableCycleSlots(schedule, 'assembly'),
+        reworkOpenings: applicableReworkOpenings(schedule),
         leadTimes: anonymousForecastCheck ? {} : readStandLeadTimes()
     });
     if (!anonymousForecastCheck && standPremisesCache.status === 'waiting' && typeof fetch === 'function') {
