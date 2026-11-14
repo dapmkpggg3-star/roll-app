@@ -421,7 +421,7 @@ test('an anonymous cycle changes the caliber before rework and does not change t
     maxRuns: 1, openingRuns: 1, currentCaliberId: 'anon-1', spareCaliberIds: [],
     currentDiameter: 80, scrapDiameter: 70, adoptedCutMm: 4, reworkDays: 1, resources: namedRolls,
     workConfirmation: slot('2027-05-02', 'rollChange'),
-    assemblyConfirmation: { date: '2027-05-04', period: 'day', requiredHours: 5, reservedHours: 5, people: 1, prepared: 'yes' },
+    assemblyConfirmation: { date: '2027-05-04', period: 'day', requiredHours: 5, reservedHours: 5, people: 1, prepared: 'reworkInbound', preparedTarget: 'roll-a', preparedOn: '2027-04-01' },
     days: [
       { date: '2027-05-01', productionAmount: 10, operatingHours: 8, shift1Team: 'A', shift3Team: '' },
       { date: '2027-05-02', productionAmount: 0, operatingHours: 0, shift1Team: 'A', shift3Team: '' },
@@ -472,7 +472,7 @@ test('an anonymous cycle changes the caliber before rework and does not change t
       repeatOnStops: true, workTypes: ['caliberChange', 'rollChange'], period: 'day',
       requiredHours: 5, reservedHours: 5, people: 1,       continuous: 'no', changeover: 'yes', threeSet: 'yes'
     },
-    assemblyConfirmation: { repeatOnStops: true, period: 'day', requiredHours: 5, reservedHours: 5, people: 1, prepared: 'yes' },
+    assemblyConfirmation: { repeatOnStops: true, period: 'day', requiredHours: 5, reservedHours: 5, people: 1, prepared: 'reworkInbound', preparedTarget: 'roll-a', preparedOn: '2027-04-01' },
     days: context.anonymousOperatingDays('2027-04-01', 400)
   });
   assert.ok(year.rollChangeCount > 1);
@@ -495,7 +495,7 @@ test('different diameters stay with their own roll through rework', () => {
   };
   const once = context.simulateExchangeCycle({
     maxRuns: 1, adoptedCutMm: 4, scrapDiameter: 70, reworkDays: 0, workConfirmation: slot, resources: original,
-    assemblyConfirmation: { date: '2027-05-02', period: 'day', requiredHours: 5, reservedHours: 5, people: 1, prepared: 'yes' },
+    assemblyConfirmation: { date: '2027-05-02', period: 'day', requiredHours: 5, reservedHours: 5, people: 1, prepared: 'reworkInbound', preparedTarget: 'roll-a', preparedOn: '2027-04-01' },
     days: [
       { date: '2027-05-01', productionAmount: 10, operatingHours: 8, shift1Team: 'A', shift3Team: '' },
       { date: '2027-05-02', productionAmount: 0, operatingHours: 0, shift1Team: 'A', shift3Team: '' }
@@ -537,7 +537,7 @@ test('different diameters stay with their own roll through rework', () => {
       requiredHours: 5, reservedHours: 5, people: 1, continuous: 'no', changeover: 'yes', threeSet: 'yes'
     },
     spareCaliberIds: ['cal-2'],
-    assemblyConfirmation: { repeatOnStops: true, period: 'day', requiredHours: 5, reservedHours: 5, people: 1, prepared: 'yes' },
+    assemblyConfirmation: { repeatOnStops: true, period: 'day', requiredHours: 5, reservedHours: 5, people: 1, prepared: 'reworkInbound', preparedTarget: 'roll-a', preparedOn: '2027-04-01' },
     days: context.anonymousOperatingDays('2027-04-01', 400)
   });
   assert.ok(year.rollChangeCount > 1);
@@ -685,7 +685,7 @@ test('a spare roll continues from its own saved opening', () => {
   const overlapped = context.simulateExchangeCycle({
     maxRuns: 1, openingRuns: 1, currentCaliberId: 'cal-a', reworkDays: 9, adoptedCutMm: 4, scrapDiameter: 70,
     workConfirmation: Object.assign({ repeatOnStops: true, workTypes: ['rollChange'] }, slot),
-    assemblyConfirmation: { date: '2027-04-11', period: 'day', requiredHours: 5, reservedHours: 5, people: 1, prepared: 'yes' },
+    assemblyConfirmation: { date: '2027-04-11', period: 'day', requiredHours: 5, reservedHours: 5, people: 1, prepared: 'reworkInbound', preparedTarget: 'roll-a', preparedOn: '2027-04-01' },
     resources: [
       { id: 'roll-a', frame: 'online', diameter: 80, caliberId: 'cal-a', runs: 1 },
       { id: 'roll-b', frame: 'installedSpare', diameter: 90, caliberId: 'cal-b', runs: 0 },
@@ -783,7 +783,7 @@ test('a zero-ton day without an assembly slot does not return a roll to spare', 
   assert.match(bare.events.map(item => `${item.kind} ${item.note}`).join('\n'), /0tだけでは完了にしません/);
   assert.notEqual(bare.resources.find(item => item.id === 'roll-a').frame, 'installedSpare');
   const crewed = days.map(row => row.date === '2027-04-03' ? Object.assign({}, row, { shift1Team: 'A' }) : row);
-  const ready = { date: '2027-04-03', period: 'day', requiredHours: 5, reservedHours: 5, people: 1, prepared: 'yes' };
+  const ready = { date: '2027-04-03', period: 'day', requiredHours: 5, reservedHours: 5, people: 1, prepared: 'reworkInbound', preparedTarget: 'roll-a', preparedOn: '2027-04-01' };
   const done = context.simulateExchangeCycle(Object.assign({ resources: resources(), days: crewed, assemblyConfirmation: ready }, base));
   assert.equal(done.events.some(item => item.date === '2027-04-03' && item.kind === '組替完了'), true);
   assert.equal(done.resources.find(item => item.id === 'roll-a').frame, 'installedSpare');
@@ -793,14 +793,14 @@ test('a zero-ton day without an assembly slot does not return a roll to spare', 
   assert.equal(short.events.some(item => item.kind === '組替完了'), false);
   assert.match(short.events.map(item => item.note).join('\n'), /確保時間が足りません/);
   const cleared = context.simulateExchangeCycle(Object.assign({
-    resources: resources(), days: crewed, assemblyConfirmation: { period: 'day', prepared: 'yes', requiredHours: 5, reservedHours: 5, people: 1 }
+    resources: resources(), days: crewed, assemblyConfirmation: { period: 'day', prepared: 'reworkInbound', preparedTarget: 'roll-a', preparedOn: '2027-04-01', requiredHours: 5, reservedHours: 5, people: 1 }
   }, base));
   assert.equal(cleared.events.some(item => item.kind === '組替完了'), false);
   const unprepared = context.simulateExchangeCycle(Object.assign({
     resources: resources(), days: crewed, assemblyConfirmation: Object.assign({}, ready, { prepared: 'no' })
   }, base));
   assert.equal(unprepared.events.some(item => item.kind === '使用可能予備'), false);
-  assert.match(unprepared.events.map(item => item.note).join('\n'), /新品側の準備が未確認/);
+  assert.match(unprepared.events.map(item => item.note).join('\n'), /発注や改削見込日数だけでは準備にしません/);
 });
 
 test('lead time defaults to provisional six months and confirmed is explicit', () => {

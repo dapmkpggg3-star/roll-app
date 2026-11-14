@@ -851,7 +851,11 @@ function assemblySlotReady(confirmation, row) {
     if (!(typeof required === 'number' && Number.isFinite(required) && required > 0)) return { ok: false, reason: '組替の必要時間が未確認です。' };
     if (!(typeof reserved === 'number' && Number.isFinite(reserved) && reserved >= required)) return { ok: false, reason: '組替の確保時間が足りません。短い枠では完了にしません。' };
     if (!(typeof people === 'number' && Number.isInteger(people) && people > 0)) return { ok: false, reason: '組替の人数が未確認です。' };
-    if (source.prepared !== 'yes') return { ok: false, reason: '中古予備をばらす前の、改削済ロールの搬入または新品側の準備が未確認です。' };
+    if (source.prepared !== 'reworkInbound' && source.prepared !== 'newSide') {
+        return { ok: false, reason: '準備の種類が未確認です。発注や改削見込日数だけでは準備にしません。' };
+    }
+    if (!String(source.preparedTarget || '').trim()) return { ok: false, reason: '確認した対象が未入力です。発注や見込日数だけでは準備にしません。' };
+    if (!String(source.preparedOn || '').slice(0, 10)) return { ok: false, reason: '確認した日が未入力です。発注や見込日数だけでは準備にしません。' };
     return { ok: true, reason: '' };
 }
 
@@ -937,7 +941,9 @@ function simulateExchangeCycle(input) {
         if (!spareRolls) return;
         const waiting = state.reworks.filter(item => item.status === 'awaitingAssembly');
         if (!waiting.length) return;
-        push(date, '組替可能', '昼間の組替枠と、改削済の搬入または新品側の準備を確認しました。');
+        const preparation = source.assemblyConfirmation || {};
+        const preparationLabel = preparation.prepared === 'newSide' ? '新品側の準備' : '改削済ロールの搬入';
+        push(date, '組替可能', `${preparation.preparedOn || '日未確認'}に${preparation.preparedTarget || '対象未確認'}の${preparationLabel}を確認しました。これは組替完了そのものではなく、予測であり実ロールの状態は変えていません。`);
         waiting.forEach(item => {
             push(date, '搬入', `改削済の${item.id}を組替場所へ入れました。まだ使用可能な予備ではありません。`);
             if (resources) {
@@ -1174,7 +1180,8 @@ function renderExchangeCycle() {
     const schedule = latestMonthlySummary && latestMonthlySummary.ok !== false ? latestMonthlySummary : null;
     const days = schedule && Array.isArray(schedule.days) ? schedule.days : [];
     const ledgerKeys = pairedStandKeys(form.standKey, form.size);
-    const ledger = readLedgerResources(typeof roles === 'undefined' ? [] : roles, { standKey: form.standKey, size: form.size });
+    const ledgerSource = anonymousForecastCheck ? anonymousCheckLedger() : (typeof roles === 'undefined' ? [] : roles);
+    const ledger = readLedgerResources(ledgerSource, { standKey: form.standKey, size: form.size });
     const selectedStand = String(form.standKey || '').replace(/^#/, '').trim();
     const referenceAt = form.forecastReference || (schedule && schedule.referenceDate) || '';
     const cycleResources = withSavedOpenings(
@@ -1206,6 +1213,7 @@ function renderExchangeCycle() {
     const limit = knownCaliberLimit(form.standKey, form.size);
     const line = item => `${item.date} ${item.kind} ${item.note}`;
     let scheduleText = '生産予定が無いので、架空の操業では予測しません。';
+    let scheduleResult = null;
     if (form.forecastRoll && !online) {
         scheduleText = '選んだロールはこのスタンドのオンラインではないので、状態は変えず交換もしません。';
     } else if (days.length) {
@@ -1222,6 +1230,7 @@ function renderExchangeCycle() {
             resources: cycleResources,
             days
         });
+        scheduleResult = result;
         const uncovered = result.reason.includes('13か月全体の不足なしは判定できません')
             ? '読み込んだ予定が13か月に満たない範囲は、不足なしにしません。'
             : '';
@@ -1233,8 +1242,25 @@ function renderExchangeCycle() {
             result.events.map(line).join('\n')
         ].filter(Boolean).join('\n');
     }
-    target.textContent = [scheduleText, ledgerText, describeAnonymousHorizon(form, online, cycleResources, limit)].join('\n');
+    const banner = anonymousForecastCheck
+        ? '匿名の確認です。実台帳は読んでいません。保存もしません。予測は実ロールの状態を変えません。仮の13か月は購入不足の判定ではありません。'
+        : '';
+    target.textContent = [banner, describeCheckFocus(cycleResources, scheduleResult), scheduleText, ledgerText, describeAnonymousHorizon(form, online, cycleResources, limit)].filter(Boolean).join('\n');
     loadStandPremisesNote(target, form.standKey, generation);
+}
+
+function describeCheckFocus(resources, result) {
+    const list = Array.isArray(resources) ? resources : [];
+    const names = frame => list.filter(item => item.frame === frame).map(item => item.id).join('、') || '未確認';
+    const change = result && result.events && result.events.find(item => item.kind === 'ロール替');
+    return [
+        `交換前のオンラインは${names('online')}、組込済み予備は${names('installedSpare')}です。`,
+        change
+            ? `交換後は${change.onlineId || '未確認'}のカリバ${change.caliberId || '未確認'}、開始${change.caliberRuns === null || change.caliberRuns === undefined ? '未確認' : change.caliberRuns}です。相手自身の値です。`
+            : '交換はまだ成立していません。',
+        '使用可能な予備になるのは、昼の組替が成立したあとだけです。',
+        '未確認と予備不足は、組替需要・夜勤予備不足・保留の行に対象と理由を出します。'
+    ].join('\n');
 }
 
 function describeAnonymousHorizon(form, online, resources, limit) {
@@ -1243,7 +1269,9 @@ function describeAnonymousHorizon(form, online, resources, limit) {
     }
     const work = form.workConfirmation || {};
     const assembly = form.assemblyConfirmation || {};
-    const assemblyReady = Boolean(assembly.date) && assembly.period === 'day' && assembly.prepared === 'yes'
+    const assemblyReady = Boolean(assembly.date) && assembly.period === 'day'
+        && (assembly.prepared === 'reworkInbound' || assembly.prepared === 'newSide')
+        && Boolean(String(assembly.preparedTarget || '').trim()) && Boolean(String(assembly.preparedOn || '').slice(0, 10))
         && typeof assembly.requiredHours === 'number' && assembly.requiredHours > 0
         && typeof assembly.reservedHours === 'number' && assembly.reservedHours >= assembly.requiredHours
         && Number.isInteger(assembly.people) && assembly.people > 0;
@@ -1380,9 +1408,34 @@ function forecastSettingKey(input) {
     return [rollId || 'ロール未選択', stand || 'スタンド未選択', size || 'サイズ未選択', reference || '基準時点未設定'].join('|');
 }
 
+let anonymousForecastCheck = false;
+
+function forecastSettingsStorageKey() {
+    return anonymousForecastCheck ? 'caliber_forecast_settings_anon_v1' : 'caliber_forecast_settings_v1';
+}
+
+function anonymousCheckLedger() {
+    return [
+        { id: 'anon-online', name: '#10-A', status: 'オンライン', currentDiameter: 81 },
+        { id: 'anon-spare', name: '#10-B', status: '新品予備（組込完了）', currentDiameter: 93 },
+        { id: 'anon-used', name: '#10-C', status: '中古予備（バラシ前）', currentDiameter: 74 }
+    ];
+}
+
+function startAnonymousForecastCheck() {
+    anonymousForecastCheck = true;
+    const stand = document.getElementById('caliber-stand');
+    const size = document.getElementById('caliber-size');
+    if (stand) stand.value = '10';
+    if (size) size.value = 'D10';
+    const forecast = document.getElementById('forecast-roll');
+    if (forecast) forecast.value = '';
+    renderExchangeCycle();
+}
+
 function readForecastSettings() {
     try {
-        const parsed = JSON.parse(localStorage.getItem('caliber_forecast_settings_v1') || '{}');
+        const parsed = JSON.parse(localStorage.getItem(forecastSettingsStorageKey()) || '{}');
         return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
     } catch (error) {
         return {};
@@ -1404,7 +1457,7 @@ function rememberForecastSetting(input) {
         openingRuns: blankForecastAmount(source.openingRuns),
         openingTons: blankForecastAmount(source.openingTons)
     };
-    localStorage.setItem('caliber_forecast_settings_v1', JSON.stringify(stored));
+    localStorage.setItem(forecastSettingsStorageKey(), JSON.stringify(stored));
     return { key, value: stored[key] };
 }
 
@@ -1417,7 +1470,7 @@ function recallForecastSetting(input) {
 function currentForecastContext() {
     const form = readCaliberInputs();
     const selected = String(form.standKey || '').replace(/^#/, '').trim();
-    const ledger = readLedgerResources(typeof roles === 'undefined' ? [] : roles, { standKey: form.standKey, size: form.size });
+    const ledger = readLedgerResources(anonymousForecastCheck ? anonymousCheckLedger() : (typeof roles === 'undefined' ? [] : roles), { standKey: form.standKey, size: form.size });
     const online = ledger.find(item => item.standKey === selected && item.frame === 'online');
     const chosen = typeof document !== 'undefined' && document.getElementById('forecast-roll');
     const referenceField = typeof document !== 'undefined' && document.getElementById('forecast-reference');
@@ -1602,7 +1655,9 @@ function readAssemblyConfirmation(value) {
         reservedHours: reserved === '' ? undefined : Number(reserved),
         requiredHours: required === '' ? undefined : Number(required),
         people: value('assembly-people').trim() === '' ? undefined : Number(value('assembly-people').trim()),
-        prepared: value('assembly-prepared')
+        prepared: value('assembly-prepared'),
+        preparedTarget: value('assembly-prepared-target').trim(),
+        preparedOn: value('assembly-prepared-on').trim()
     };
 }
 
@@ -1704,7 +1759,12 @@ function bindMonthlyScheduleFileInput() {
     input.dataset.bound = 'true';
     syncForecastSettingContext();
     renderExchangeCycle();
-    ['forecast-roll', 'forecast-reference', 'caliber-stand', 'caliber-size', 'caliber-current', 'caliber-opening', 'caliber-opening-tons', 'caliber-pass', 'work-date', 'work-period', 'work-reserved-hours', 'work-type', 'work-required-hours', 'work-people', 'work-continuous', 'work-changeover', 'work-three-set', 'assembly-date', 'assembly-period', 'assembly-reserved-hours', 'assembly-required-hours', 'assembly-people', 'assembly-prepared', 'life-diameter', 'life-scrap', 'life-cut', 'life-spare', 'cycle-spare-calibers', 'cycle-rework-days'].forEach(id => {
+    const anonymousButton = document.getElementById('start-anonymous-check');
+    if (anonymousButton && anonymousButton.dataset.bound !== 'true') {
+        anonymousButton.dataset.bound = 'true';
+        anonymousButton.addEventListener('click', startAnonymousForecastCheck);
+    }
+    ['forecast-roll', 'forecast-reference', 'caliber-stand', 'caliber-size', 'caliber-current', 'caliber-opening', 'caliber-opening-tons', 'caliber-pass', 'work-date', 'work-period', 'work-reserved-hours', 'work-type', 'work-required-hours', 'work-people', 'work-continuous', 'work-changeover', 'work-three-set', 'assembly-date', 'assembly-period', 'assembly-reserved-hours', 'assembly-required-hours', 'assembly-people', 'assembly-prepared', 'assembly-prepared-target', 'assembly-prepared-on', 'life-diameter', 'life-scrap', 'life-cut', 'life-spare', 'cycle-spare-calibers', 'cycle-rework-days'].forEach(id => {
         const field = document.getElementById(id);
         if (field) field.addEventListener('change', () => {
             if (applyingForecastSetting) return;

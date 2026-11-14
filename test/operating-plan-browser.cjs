@@ -526,8 +526,10 @@ async function main() {
     await page.locator('#assembly-reserved-hours').fill('5');
     await page.locator('#assembly-required-hours').fill('5');
     await page.locator('#assembly-people').fill('1');
-    await page.locator('#assembly-prepared').selectOption('yes');
-    await page.locator('#assembly-prepared').dispatchEvent('change');
+    await page.locator('#assembly-prepared').selectOption('reworkInbound');
+    await page.locator('#assembly-prepared-target').fill('roll-online');
+    await page.locator('#assembly-prepared-on').fill('2027-04-01');
+    await page.locator('#assembly-prepared-on').dispatchEvent('change');
     const established = await page.locator('#cycle-result').innerText();
     assert.match(established, /組替完了/);
     assert.match(established, /使用可能予備/);
@@ -549,6 +551,16 @@ async function main() {
     assert.equal(await page.evaluate(() => roles[0].status), 'オンライン');
     assert.equal(await page.evaluate(() => roles[0].status), 'オンライン');
     assert.equal(outbound.length, 0);
+    assert.match(await page.locator('#operating-plan-panel').innerText(), /見る順は4つです/);
+    await page.evaluate(() => localStorage.setItem('roles', '["real-ledger"]'));
+    const beforeIds = await page.evaluate(() => roles.map(item => item.id).join(','));
+    await page.locator('#start-anonymous-check').click();
+    const anonText = await page.locator('#cycle-result').innerText();
+    assert.match(anonText, /実台帳は読んでいません/);
+    assert.match(anonText, /anon-online/);
+    assert.equal(anonText.includes('roll-online'), false);
+    assert.equal(await page.evaluate(() => localStorage.getItem('roles')), '["real-ledger"]');
+    assert.equal(await page.evaluate(() => roles.map(item => item.id).join(',')), beforeIds);
     console.log('OPERATING PLAN browser PASS');
   } finally {
     await browser.close();
