@@ -970,3 +970,43 @@ test('a producing night with no usable spare is reported and later unknowns keep
   assert.match(context.describeReplenishment(separate, 'この読込予定の補充需要'), /対象はanon-online/);
   assert.match(context.describeReplenishment(separate, 'この読込予定の補充需要'), /トン数やロール替の回数からは出しません/);
 });
+
+test('the latest plan lists each stand without inventing days or copying another stand', () => {
+  const premises = { status: 'loaded', data: { diametersMm: { '10': { scrapDiameter: 292 }, '17': { scrapDiameter: 292, adoptedCutMm: 2.5 } } } };
+  const rolls = [
+    { id: 'roll-10', name: '#10-A', status: 'オンライン' },
+    { id: 'roll-17', name: '#17-A', status: 'オンライン', currentCaliber: 'cal-17', openingRuns: 1, currentDiameter: 300 }
+  ];
+  const first = { id: 'plan-a', updatedAt: '2026-11-01T00:00:00.000Z', targetMonths: ['2027-04'], rows: [{ standKey: '10', month: '2027-04', plannedUseCount: 1, actualUseCount: null }] };
+  const monthly = context.buildStandDemandList({ plan: first, rolls, premises });
+  assert.match(monthly, /表示中の版はplan-a/);
+  assert.match(monthly, /操業日は作っていません/);
+  assert.match(monthly, /roll-10: 現在のカリバは未記録です/);
+  assert.match(monthly, /開始直数は未記録です/);
+  assert.match(monthly, /17番の2\.5mmは使いません/);
+  assert.equal(monthly.includes('2027-04-01'), false);
+  const second = { id: 'plan-b', updatedAt: '2026-12-01T00:00:00.000Z', targetMonths: ['2027-05'], rows: [{ standKey: '17', month: '2027-05', plannedUseCount: 1, actualUseCount: null }] };
+  const replaced = context.buildStandDemandList({ plan: second, rolls, premises, days: [{ date: '2027-04-02', productionAmount: 10, operatingHours: 8, shift1Team: 'A', shift3Team: '' }] });
+  assert.match(replaced, /表示中の版はplan-b/);
+  assert.equal(replaced.includes('plan-a'), false);
+  assert.match(replaced, /対象月の外の日付1件/);
+  assert.match(replaced, /操業日は作っていません/);
+  const daily = context.buildStandDemandList({
+    plan: { id: 'plan-days', updatedAt: '2027-04-01T00:00:00.000Z', targetMonths: ['2027-04'], rows: [{ standKey: '17', month: '2027-04', plannedUseCount: 1, actualUseCount: null }] },
+    rolls: rolls.concat([{ id: 'roll-17b', name: '#17-B', status: '新品予備（組込完了）', currentCaliber: 'cal-17b', openingRuns: 0, currentDiameter: 310 }]),
+    premises,
+    size: 'D10',
+    reworkDays: 1,
+    workConfirmation: { date: '2027-04-02', period: 'day', reservedHours: 5, workType: 'rollChange', requiredHours: 5, people: 1, continuous: 'no', changeover: 'yes', threeSet: 'yes' },
+    days: [
+      { date: '2027-04-01', productionAmount: 10, operatingHours: 8, shift1Team: 'A', shift3Team: '' },
+      { date: '2027-04-02', productionAmount: 0, operatingHours: 0, shift1Team: 'A', shift3Team: '' }
+    ]
+  });
+  assert.match(daily, /日付の予定は2日あります/);
+  assert.match(daily, /roll-10/);
+  assert.match(daily, /現在のカリバは未記録です/);
+  assert.match(daily, /対象期間は2027-04-01から2027-04-02です/);
+  assert.match(daily, /#10[\s\S]*17番の2\.5mmは使いません/);
+  assert.match(daily, /計算できた範囲に廃却はありません/);
+});

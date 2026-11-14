@@ -1763,6 +1763,7 @@ function renderMonthlyScheduleSummary(summary) {
     target.textContent = `${lines.join('\n')}\n${pastNote}\n${summary.reason}`;
     renderConsumptionLink(summary);
     renderExchangeCycle();
+    renderStandDemandList();
 }
 
 function renderConsumptionLink(summary) {
@@ -1865,6 +1866,174 @@ async function readMonthlyScheduleFile(file, referenceDate) {
     return { ...summarizeMonthlyProductionSchedule(parsed.schedule, referenceDate), days: parsed.schedule, referenceDate };
 }
 
+function knownUseBasisText(standKey) {
+    const stand = String(standKey || '').replace(/^#/, '');
+    const table = {
+        '2': '規定35直、基準14000t。直数とトン数は別です。',
+        '3': '規定30直、基準12000t。直数とトン数は別です。',
+        '4': '規定37直、基準15000t。直数とトン数は別です。',
+        '5': '規定31直、基準12500t。直数とトン数は別です。',
+        '6': '現行15直。6075tは固定最大にしません。',
+        '7': '現行15直。6075tは固定最大にしません。',
+        '8': '原資料の13直と5265tは確認済み最大にしていません。',
+        '9': '原資料の13直と5265tは確認済み最大にしていません。',
+        '10': '最大8直。',
+        '11': '最大8直。',
+        '12': '通常11直。最大ではありません。',
+        '13': 'D10は通常6直、D13は最大12直。',
+        '14': 'D10は通常5直、D13は最大7直。',
+        '15': 'D10は通常5直、D13は最大7直。',
+        '16': 'D10は最大13直、D13は最大14直。',
+        '17': 'D10もD13も最大6直。'
+    };
+    return table[stand] || 'このスタンドの使用基準は既回答の表にありません。0直にはしません。';
+}
+
+function premisesFact(premises, standKey) {
+    const stand = String(standKey || '').replace(/^#/, '');
+    if (!premises || premises.status !== 'loaded' || !premises.data) {
+        return {
+            scrapDiameter: null,
+            adoptedCutMm: null,
+            diameterReason: '新品時の径と廃却径はローカル仕様が未読込なので取得待ちです。本人未回答ではありません。',
+            cutReason: '採用改削量は改削マスタが未読込なので取得待ちです。他スタンドの値は使いません。'
+        };
+    }
+    const row = premises.data.diametersMm && premises.data.diametersMm[stand];
+    if (!row) {
+        return {
+            scrapDiameter: null,
+            adoptedCutMm: null,
+            diameterReason: `${stand}番の径はローカル仕様に記録がありません。未記録です。他スタンドの径は使いません。`,
+            cutReason: `${stand}番の採用改削量はローカル仕様に記録がありません。未記録です。`
+        };
+    }
+    const cut = finiteOrNull(row.adoptedCutMm);
+    return {
+        scrapDiameter: finiteOrNull(row.scrapDiameter),
+        adoptedCutMm: cut,
+        diameterReason: row.scrapDiameter === undefined ? `${stand}番の廃却径は未記録です。` : '',
+        cutReason: cut === null ? `${stand}番の採用改削量は手元の仕様に無いので取得待ちです。17番の2.5mmは使いません。` : ''
+    };
+}
+
+function buildStandDemandList(input) {
+    const source = input || {};
+    const plan = source.plan || null;
+    const rolls = Array.isArray(source.rolls) ? source.rolls : [];
+    const days = Array.isArray(source.days) ? source.days : [];
+    const premises = source.premises || { status: 'waiting' };
+    if (!plan) {
+        return '計画の版がありません。月別の集計から操業日は作っていません。';
+    }
+    const months = plan.targetMonths || [];
+    const planDays = days.filter(row => row && months.includes(String(row.date || '').slice(0, 7)));
+    const ignored = days.length - planDays.length;
+    const standKeys = Array.from(new Set([
+        ...(plan.rows || []).map(row => String(row.standKey)),
+        ...rolls.map(item => standNumberFromName(item.name || item.id)).filter(Boolean)
+    ])).sort((a, b) => Number(a) - Number(b));
+    const header = [
+        `表示中の版は${plan.id}、更新${plan.updatedAt}、対象月は${months.join('、')}です。`,
+        ignored > 0 ? `対象月の外の日付${ignored}件は、この版の一覧に使っていません。` : '',
+        planDays.length ? `日付の予定は${planDays.length}日あります。無い日は作っていません。` : '月別の本数だけなので、操業日は作っていません。'
+    ].filter(Boolean);
+    const blocks = standKeys.map(standKey => {
+        const fact = premisesFact(premises, standKey);
+        const standRolls = rolls.filter(item => standNumberFromName(item.name || item.id) === standKey);
+        const limit = knownCaliberLimit(standKey, source.size || '');
+        const lead = source.leadTimes && source.leadTimes[standKey] ? source.leadTimes[standKey] : { months: PROVISIONAL_LEAD_TIME_MONTHS, status: 'provisional' };
+        const leadText = lead.status === 'confirmed'
+            ? `購入期間は確認済み${lead.months}か月です。期間だけでは不足なしにしません。`
+            : `購入期間は暫定${lead.months}か月です。確定の納期ではありません。`;
+        const rollLines = standRolls.length ? standRolls.map(item => {
+            const missing = [];
+            if (!item.currentCaliber) missing.push('現在のカリバは未記録です');
+            if (item.openingRuns === undefined || item.openingRuns === null || item.openingRuns === '') missing.push('開始直数は未記録です。0直にはしません');
+            if (item.currentDiameter === undefined || item.currentDiameter === null || item.currentDiameter === '') missing.push('現在径は未記録です。新品時の径では埋めません');
+            return `${item.id}: ${missing.length ? missing.join('。') : 'カリバと開始直数は記録にあります'}。`;
+        }) : ['ロールIDは未記録です。架空のIDは作りません。'];
+        let period = '月別の本数だけなので、計算できた操業期間はありません。';
+        let scrap = '日付の予定が無いので、廃却と補充の日は出していません。';
+        let night = '日付の予定が無いので、夜勤の予備不足は出していません。';
+        let order = `廃却日が無いので、手配目安は出していません。${leadText}`;
+        const blocked = [fact.diameterReason, fact.cutReason].filter(Boolean);
+        if (planDays.length && standRolls.length) {
+            const resources = readLedgerResources(standRolls, { standKey, size: source.size || '' });
+            const online = resources.find(item => item.frame === 'online');
+            if (!online || !online.caliberId || online.runs === null) {
+                blocked.push('現在のカリバまたは開始直数が未記録なので、このスタンドの日付計算はしていません。');
+            } else if (!limit || limit.kind !== '最大') {
+                blocked.push('最大直数が記録されていないので、日付の交換計算はしていません。使用基準のトン数からは日を作りません。');
+            } else {
+                const result = simulateExchangeCycle({
+                    maxRuns: limit.runs,
+                    scrapDiameter: fact.scrapDiameter,
+                    adoptedCutMm: fact.adoptedCutMm,
+                    reworkDays: source.reworkDays,
+                    leadMonths: lead.months,
+                    leadStatus: lead.status,
+                    workConfirmation: source.workConfirmation,
+                    assemblyConfirmation: source.assemblyConfirmation,
+                    resources,
+                    days: planDays
+                });
+                period = result.reason;
+                const scraps = result.events.filter(item => item.kind === '廃却需要');
+                const nights = result.events.filter(item => item.kind === '夜勤予備不足');
+                scrap = scraps.length ? scraps.map(item => `${item.date} ${item.note}`).join(' / ') : '計算できた範囲に廃却はありません。0本にはしません。';
+                night = nights.length ? nights.map(item => `${item.date} 操業中${item.onlineId || '未確認'} ${item.note}`).join(' / ') : '計算できた範囲に夜勤の予備不足はありません。期間の外は未確認です。';
+                order = scraps.length ? `${leadText}${scraps.map(item => item.note).join(' / ')}` : `廃却日が無いので、手配目安は出していません。${leadText}`;
+            }
+        }
+        return [
+            `#${standKey} ${knownUseBasisText(standKey)}`,
+            rollLines.join('\n'),
+            `計算できた期間: ${period}`,
+            `廃却と補充: ${scrap}`,
+            `夜勤の予備不足: ${night}`,
+            `手配目安: ${order}`,
+            `計算できない項目: ${blocked.filter(Boolean).join(' ') || 'このスタンドで止まった項目はありません。他のスタンドは続けます。'}`
+        ].join('\n');
+    });
+    return header.concat(blocks).join('\n\n');
+}
+
+let standPremisesCache = { status: 'waiting' };
+
+function renderStandDemandList() {
+    const target = typeof document !== 'undefined' ? document.getElementById('stand-demand-list') : null;
+    if (!target) return;
+    const plan = anonymousForecastCheck ? null : (readOperatingPlanState().slice(-1)[0] || null);
+    const schedule = latestMonthlySummary && latestMonthlySummary.ok !== false ? latestMonthlySummary : null;
+    const form = typeof readCaliberInputs === 'function' ? readCaliberInputs() : {};
+    const ledger = anonymousForecastCheck ? anonymousCheckLedger() : (typeof roles === 'undefined' ? [] : roles);
+    target.textContent = buildStandDemandList({
+        plan,
+        rolls: ledger,
+        days: schedule && Array.isArray(schedule.days) ? schedule.days : [],
+        premises: anonymousForecastCheck ? { status: 'waiting' } : standPremisesCache,
+        size: form.size,
+        reworkDays: form.reworkDays,
+        workConfirmation: form.workConfirmation,
+        assemblyConfirmation: form.assemblyConfirmation,
+        leadTimes: anonymousForecastCheck ? {} : readStandLeadTimes()
+    });
+    if (!anonymousForecastCheck && standPremisesCache.status === 'waiting' && typeof fetch === 'function') {
+        standPremisesCache = { status: 'reading' };
+        fetch('local/stand-premises.json').then(response => {
+            if (!response.ok) throw new Error('missing');
+            return response.json();
+        }).then(data => {
+            standPremisesCache = { status: 'loaded', data };
+            renderStandDemandList();
+        }).catch(() => {
+            standPremisesCache = { status: 'missing' };
+            renderStandDemandList();
+        });
+    }
+}
+
 function renderOperatingPlanPanel() {
     const revisions = readOperatingPlanState();
     const revisionList = document.getElementById('operating-plan-revisions');
@@ -1889,6 +2058,7 @@ function renderOperatingPlanPanel() {
         });
         leads.textContent = lines.length ? lines.join('\n') : '未保存のスタンドは暫定6か月です。暫定は安全判定にしません。';
     }
+    renderStandDemandList();
 }
 
 function saveOperatingPlanFromForm() {
@@ -2005,6 +2175,7 @@ function bindMonthlyScheduleFileInput() {
         input.dataset.bound = 'true';
         syncForecastSettingContext();
         renderExchangeCycle();
+        renderStandDemandList();
     }
     if (!input) return;
     input.addEventListener('change', async () => {

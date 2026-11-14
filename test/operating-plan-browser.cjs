@@ -181,6 +181,12 @@ async function main() {
     await page.locator('#operating-plan-actual').fill('1');
     await page.locator('#save-operating-plan').click();
     assert.match(await page.locator('#operating-plan-diff').innerText(), /変更2/);
+    const demand = await page.locator('#stand-demand-list').innerText();
+    assert.match(demand, /表示中の版はplan-anon-2/);
+    assert.match(demand, /操業日は作っていません/);
+    assert.match(demand, /未記録/);
+    assert.equal(demand.includes('2026-04-01'), false);
+    assert.equal(demand.includes('plan-anon /'), false);
     assert.equal(await page.evaluate(() => roles[0].status), 'オンライン');
     const forecast = await page.evaluate(() => forecastThreeSetFromPlan({
       standKey: '10', revision: null, remainingCutCount: 2, activeThreeSetCount: 3, leadTime: defaultStandLeadTime('10')

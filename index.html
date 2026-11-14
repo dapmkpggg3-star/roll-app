@@ -314,6 +314,9 @@
                     <button type="button" id="save-operating-plan" onclick="saveOperatingPlanFromForm()">計画の版を保存</button>
                     <pre id="operating-plan-revisions"></pre>
                     <pre id="operating-plan-diff"></pre>
+                    <h2>スタンド別の補充需要</h2>
+                    <p>最新の版だけを表示します。月別の本数から操業日は作りません。径と改削量が未読込なら取得待ち、台帳に無いカリバや開始量は未記録です。</p>
+                    <pre id="stand-demand-list">計画の版を保存すると、スタンドとロールIDごとの一覧を出します。</pre>
                     <h2>スタンド別購入リードタイム</h2>
                     <p>未保存は全スタンド暫定6か月です。暫定は確認済みと区別し、安全判定には使いません。</p>
                     <label>スタンド <input id="lead-time-stand" type="text" value="10"></label>
@@ -604,7 +607,7 @@
     <script src="js/online-safety.js?v=20260805-online-safety"></script>
     <script src="js/sync.js?v=20261023-content-auth"></script>
 <script src="js/offline-recovery.js?v=20261113-offline-recovery"></script>
-<script src="js/operating-plan.js?v=20261114-night-spare"></script>
+<script src="js/operating-plan.js?v=20261114-stand-list"></script>
 <script src="js/csv.js?v=20260805-online-safety"></script>
 <script src="js/app.js?v=20261114-anon-page"></script>
 
