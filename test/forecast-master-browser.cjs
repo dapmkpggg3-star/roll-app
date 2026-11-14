@@ -123,6 +123,15 @@ async function main() {
     await page.evaluate(() => renderMonthlyScheduleSummary({ ...window.sizeFixture, sourceName: 'replacement.xlsx' }));
     assert.match(await page.locator('#sizechange-records').innerText(), /未登録/);
     assert.match(await page.locator('#cycle-result').innerText(), /2027-04-03にAを止めました/);
+    await page.evaluate(() => renderMonthlyScheduleSummary({ ...window.sizeFixture, sourceName: 'new-size-stopped.xlsx', days: window.sizeFixture.days.map(row => row.date === '2027-04-02' ? { ...row, size: 'D13', shift1Team: '', shift3Team: 'A' } : row) }));
+    assert.match(await page.locator('#cycle-result').innerText(), /2027-04-02にAを止めました/);
+    assert.equal((await page.locator('#cycle-result').innerText()).includes('2027-04-02 夜勤予備不足'), false);
+    assert.match(await page.locator('#stand-demand-list').innerText(), /2027-04-02にAを止めました/);
+    // A real matching daytime frame also supports a new-size label on its stopped day.
+    await page.evaluate(() => renderMonthlyScheduleSummary({ ...window.sizeFixture, sourceName: 'new-size-daytime.xlsx', days: window.sizeFixture.days.map(row => row.date === '2027-04-02' ? { ...row, size: 'D13' } : row) }));
+    await page.locator('#sizechange-register').click();
+    assert.match(await page.locator('#cycle-result').innerText(), /2027-04-02 サイズ替/);
+    assert.match(await page.locator('#cycle-result').innerText(), /2027-04-03 操業 a13の使用は3直/);
     assert.equal(await page.evaluate(() => JSON.stringify(roles) === window.sizeLedgerBefore), true);
     fs.mkdirSync(path.join(root, 'artifacts/roll001-dom'), { recursive: true });
     await page.screenshot({ path: path.join(root, 'artifacts/roll001-dom/forecast-master.png'), fullPage: true });

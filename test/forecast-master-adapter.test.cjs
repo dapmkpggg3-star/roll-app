@@ -236,3 +236,50 @@ test('the opening adapter only reads explicit saved size conditions and never bo
   const result = c.buildStandDemandList({ ...input, sizeOpenings: openings });
   assert.match(result, /確定して計算できた最終日は2027-04-05/);
 });
+
+test('a zero-ton new-size night stops before night calculations and preserves earlier real demand', () => {
+  const c = api();
+  const input = scenario();
+  input.days.push(
+    { date: '2027-04-03', size: 'D10', productionAmount: 10, operatingHours: 8, shift3Team: 'A' },
+    { date: '2027-04-04', size: 'D13', productionAmount: 0, operatingHours: 0, shift3Team: 'A' },
+    { date: '2027-04-05', size: 'D13', productionAmount: 10, operatingHours: 8, shift1Team: 'A' }
+  );
+  const result = c.simulateExchangeCycle({ ...input, standKey: '10', currentSize: 'D10', maxRuns: 8,
+    resources: c.readLedgerResources(input.rolls), scrapDiameter: 70, adoptedCutMm: 12 });
+  assert.equal(result.stopRecord.date, '2027-04-04');
+  assert.equal(result.stopRecord.id, 'B');
+  assert.equal(result.confirmedThrough, '2027-04-03');
+  assert.equal(result.scrapCount, 1);
+  assert.deepEqual(Array.from(result.events.filter(e => e.kind === '夜勤予備不足'), e => e.date), ['2027-04-03']);
+  assert.equal(result.events.some(e => e.date === '2027-04-05'), false);
+});
+
+test('an explicit new size on a stopped day can continue only with the matching daytime slot and opening', () => {
+  const c = api();
+  const input = sizeCycle(c);
+  input.days[1].size = 'D13';
+  const result = c.simulateExchangeCycle(input);
+  assert.equal(result.stopRecord, null);
+  assert.equal(result.events.find(e => e.kind === 'サイズ替').date, '2027-04-02');
+  assert.equal(result.events.find(e => e.date === '2027-04-03' && e.kind === '操業').caliberRuns, 3);
+  input.sizeChanges = [];
+  assert.equal(c.simulateExchangeCycle(input).stopRecord.date, '2027-04-02');
+  input.sizeChanges = sizeCycle(c).sizeChanges;
+  input.resources[0].runs = 7;
+  assert.equal(c.simulateExchangeCycle(input).stopRecord.date, '2027-04-02');
+});
+
+test('a usual guide for the next size never substitutes for its unconfirmed maximum', () => {
+  const c = api();
+  const input = sizeCycle(c);
+  input.standKey = '13';
+  input.currentSize = 'D13';
+  input.maxRuns = 12;
+  input.days = input.days.slice(0, 3).map(row => ({ ...row, size: row.date === '2027-04-03' ? 'D10' : 'D13' }));
+  input.sizeChanges = [{ ...input.sizeChanges[0], fromSize: 'D13', toSize: 'D10', owner: { rollId: 'A', standKey: '13', size: 'D13', referenceAt: input.referenceAt } }];
+  input.sizeOpenings = [{ owner: { rollId: 'A', standKey: '13', size: 'D10', referenceAt: input.referenceAt }, caliberId: 'a10', runs: 0 }];
+  const result = c.simulateExchangeCycle(input);
+  assert.equal(result.stopRecord.date, '2027-04-03');
+  assert.match(result.stopRecord.reason, /次サイズの確定最大は未確認/);
+});

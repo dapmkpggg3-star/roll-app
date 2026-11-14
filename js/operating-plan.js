@@ -995,19 +995,22 @@ function simulateExchangeCycle(input) {
         }
         const stopped = amount === 0;
         const nextSize = normalizeForecastSize(row.size);
-        if (!stopped && activeSize && nextSize !== activeSize) {
+        if (activeSize && nextSize !== activeSize && (!stopped || /^D\d+$/.test(nextSize))) {
             const boundary = { date, fromSize: activeSize, toSize: nextSize || '未確認' };
+            const nextOperation = days.slice(index).find(item => item.productionAmount > 0);
+            const operationDate = nextOperation && normalizeForecastSize(nextOperation.size) === nextSize ? nextOperation.date : null;
             const target = { standKey: source.standKey, rollId: state.onlineId, size: activeSize, referenceAt: source.referenceAt };
-            const matching = (source.sizeChanges || []).filter(item => item.operationDate === date
+            const matching = (source.sizeChanges || []).filter(item => operationDate && item.operationDate === operationDate
                 && normalizeForecastSize(item.fromSize) === activeSize && normalizeForecastSize(item.toSize) === nextSize
                 && confirmationOwnerMatches(item, target, true));
             const confirmation = matching.length === 1 ? matching[0] : null;
-            const slotRow = confirmation && days.slice(0, index).filter(item => item.date === confirmation.date);
+            const slotRow = confirmation && days.slice(0, index + 1).filter(item => item.date === confirmation.date);
             const priorUse = days.slice(0, index).filter(item => item.productionAmount > 0).at(-1);
             const slotReady = confirmation && nextSize && slotRow.length === 1 && Boolean(slotRow[0].shift1Team)
-                && confirmation.date < date && (!priorUse || confirmation.date > priorUse.date)
+                && confirmation.date <= date && confirmation.date < operationDate && (!priorUse || confirmation.date > priorUse.date)
                 && (!source.referenceAt || confirmation.date >= source.referenceAt)
                 && !events.some(item => item.date === confirmation.date && ['ロール替', 'カリバ替', '組替完了'].includes(item.kind))
+                && !(state.pending && confirmation.date === date && exchangeSlotReady(workConfirmation, slotRow[0], state.pending === 'caliber' ? 'caliberChange' : 'rollChange'))
                 && exchangeSlotReady(confirmation, slotRow[0], 'sizeChange');
             const nextLimit = knownCaliberLimit(source.standKey, nextSize);
             const cached = sizeUsage.get(state.onlineId + '|' + nextSize);
@@ -2258,9 +2261,10 @@ function productionSizeBoundary(days, currentSize) {
     let activeSize = normalize(currentSize);
     for (let index = 0; index < (days || []).length; index += 1) {
         const row = days[index];
-        if (!row || typeof row.productionAmount !== 'number' || row.productionAmount <= 0) continue;
+        if (!row || typeof row.productionAmount !== 'number' || row.productionAmount < 0) continue;
         const nextSize = normalize(row.size);
-        if (!activeSize && nextSize) activeSize = nextSize;
+        if (row.productionAmount === 0 && !/^D\d+$/.test(nextSize)) continue;
+        if (!activeSize && nextSize && row.productionAmount > 0) activeSize = nextSize;
         if (activeSize && (!nextSize || nextSize !== activeSize)) {
             return {
                 index, date: String(row.date || '').slice(0, 10), fromSize: activeSize, toSize: nextSize || '未確認',
