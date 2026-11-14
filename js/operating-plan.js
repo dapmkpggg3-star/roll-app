@@ -889,6 +889,7 @@ function simulateExchangeCycle(input) {
     };
     const events = [];
     const maxRuns = finiteOrNull(source.maxRuns);
+    const sizeBoundary = productionSizeBoundary(days, source.currentSize);
     let blocked = false;
     let confirmedThrough = null;
     let stopRecord = null;
@@ -971,7 +972,7 @@ function simulateExchangeCycle(input) {
         return false;
     };
     const nightOnly = row => Boolean(row.shift3Team) && !row.shift1Team;
-    days.forEach(row => {
+    days.forEach((row, index) => {
         if (blocked) return;
         const date = String(row.date).slice(0, 10);
         const amount = row.productionAmount;
@@ -981,6 +982,12 @@ function simulateExchangeCycle(input) {
             return;
         }
         const stopped = amount === 0;
+        if (sizeBoundary && index === sizeBoundary.index) {
+            push(date, '保留', sizeBoundary.reason);
+            stopAt(date, sizeBoundary.reason);
+            Object.assign(stopRecord, { kind: 'sizeChange', fromSize: sizeBoundary.fromSize, toSize: sizeBoundary.toSize });
+            return;
+        }
         finishDueReworks(date);
         if (stopped && state.reworks.some(item => item.status === 'awaitingAssembly')) {
             if (nightOnly(row)) {
@@ -1288,10 +1295,9 @@ function renderExchangeCycle() {
     }, false);
     if (form.forecastRoll && !online) {
         scheduleText = '選んだロールはこのスタンドのオンラインではないので、状態は変えず交換もしません。';
-    } else if (hasMixedProductionSizes(countedDays)) {
-        scheduleText = `予定「${schedule.sourceName || '名前なし'}」はサイズが切り替わります。サイズ別の開始条件と切替工程が未確認のため日付計算を止めています。選択中の1サイズには丸めません。`;
     } else if (countedDays.length) {
         const result = simulateExchangeCycle({
+            currentSize: form.size,
             maxRuns: limit && limit.kind === '最大' ? limit.runs : undefined,
             openingRuns,
             currentCaliberId: form.currentCaliber || (online && online.caliberId) || null,
@@ -1796,11 +1802,9 @@ function renderConsumptionLink(summary) {
     if (!target) return;
     const form = resolvedLifePremises(readCaliberInputs());
     const reference = activeForecastReference(form, summary);
-    const days = summary && Array.isArray(summary.days) ? summary.days.filter(row => !reference || String(row.date || '') >= reference) : [];
-    if (hasMixedProductionSizes(days)) {
-        target.textContent = 'サイズ別の開始条件と切替工程が未確認です。複数サイズの予定を1サイズへ丸めて消耗日や交換日を出しません。';
-        return;
-    }
+    const days = summary && Array.isArray(summary.days) ? summary.days.filter(row => !reference || String(row.date || '') >= reference).slice().sort((a, b) => String(a.date).localeCompare(String(b.date))) : [];
+    const boundary = productionSizeBoundary(days, form.size);
+    const prefixDays = boundary ? days.slice(0, boundary.index) : days;
     const linked = linkProductionToConsumption({ schedule: summary, standKey: form.standKey });
     const caliber = projectCaliberReplacement({
         standKey: form.standKey,
@@ -1815,7 +1819,7 @@ function renderConsumptionLink(summary) {
             size: form.size,
             referenceAt: activeForecastReference(form, summary)
         }, Boolean(form.forecastRoll)).slot,
-        days: summary && summary.days,
+        days: prefixDays,
         referenceDate: activeForecastReference(form) || (summary && summary.referenceDate)
     });
     const life = describeLifeChain({
@@ -1829,7 +1833,7 @@ function renderConsumptionLink(summary) {
         schedule: summary,
         caliber
     });
-    target.textContent = `${linked.reason}\n${caliber.reason}\n${life}`;
+    target.textContent = `${linked.reason}\n${caliber.reason}\n${life}${boundary ? '\n' + boundary.date + ' ' + boundary.reason : ''}`;
 }
 
 function readCaliberInputs() {
@@ -2089,15 +2093,32 @@ function confirmationForStand(confirmation, standKey, standSize, referenceAt, ro
 
 function sizeForStand(standKey, source, planDays) {
     const sizes = Array.from(new Set((planDays || []).filter(row => row && row.productionAmount !== 0).map(row => row.size).filter(Boolean)));
-    if (hasMixedProductionSizes(planDays)) return '';
     const selected = String(source.standKey || '').replace(/^#/, '') === String(standKey);
     if (selected && source.size) return source.size;
-    if (sizes.length === 1) return sizes[0];
+    if (sizes.length) return sizes[0];
     return '';
 }
 
 function hasMixedProductionSizes(days) {
     return new Set((days || []).filter(row => row && row.productionAmount !== 0).map(row => row.size).filter(Boolean)).size > 1;
+}
+
+function productionSizeBoundary(days, currentSize) {
+    const normalize = value => String(value || '').normalize('NFKC').trim().toUpperCase();
+    let activeSize = normalize(currentSize);
+    for (let index = 0; index < (days || []).length; index += 1) {
+        const row = days[index];
+        if (!row || typeof row.productionAmount !== 'number' || row.productionAmount <= 0) continue;
+        const nextSize = normalize(row.size);
+        if (!activeSize && nextSize) activeSize = nextSize;
+        if (activeSize && (!nextSize || nextSize !== activeSize)) {
+            return {
+                index, date: String(row.date || '').slice(0, 10), fromSize: activeSize, toSize: nextSize || '未確認',
+                reason: `サイズが${activeSize}から${nextSize || '未確認'}へ変わるため、ここから未確認です。次サイズのカリバID・開始量・サイズ替作業枠の接続が未確認です。選択中の1サイズには丸めません。`
+            };
+        }
+    }
+    return null;
 }
 
 function buildStandDemandList(input) {
@@ -2119,6 +2140,7 @@ function buildStandDemandList(input) {
     const countedDays = referenceAt
         ? planDays.filter(row => String(row.date || '').slice(0, 10) >= referenceAt)
         : planDays.slice();
+    countedDays.sort((a, b) => String(a.date).localeCompare(String(b.date)));
     const ignored = days.length - planDays.length;
     const beforeReference = planDays.length - countedDays.length;
     const standKeys = Array.from(new Set([
@@ -2188,6 +2210,7 @@ function buildStandDemandList(input) {
                 blocked.push('最大直数が記録されていないので、日付の交換計算はしていません。使用基準のトン数からは日を作りません。');
             } else {
                 const result = simulateExchangeCycle({
+                    currentSize: standSize,
                     maxRuns: limit.runs,
                     scrapDiameter: fact.scrapDiameter,
                     adoptedCutMm: fact.adoptedCutMm,
@@ -2200,6 +2223,7 @@ function buildStandDemandList(input) {
                     days: standDays
                 });
                 period = result.reason;
+                if (result.stopRecord) blocked.push(`${result.stopRecord.date} 対象${result.stopRecord.id}: ${result.stopRecord.reason}`);
                 const scraps = result.events.filter(item => item.kind === '廃却需要');
                 const nights = result.events.filter(item => item.kind === '夜勤予備不足');
                 scrap = scraps.length ? scraps.map(item => `${item.date} ${item.note}`).join(' / ') : '計算できた範囲に廃却はありません。0本にはしません。';

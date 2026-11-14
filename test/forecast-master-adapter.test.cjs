@@ -77,13 +77,43 @@ test('reading already loaded maps does not fetch and anonymous mode never calls 
   assert.equal(getterCalls, 2);
 });
 
-test('a mixed-size horizon does not become a single selected-size depletion forecast', () => {
+test('a mixed-size horizon keeps known demand before the transition and holds the rest', () => {
   const c = api();
   const input = scenario();
   input.days.push({ date: '2027-04-03', size: 'D13', productionAmount: 10, operatingHours: 8, shift1Team: 'A' });
   const result = c.buildStandDemandList(input);
   assert.match(result, /選択中の1サイズには丸めません/);
-  assert.equal(result.includes('対象はAです。廃却径以下'), false);
+  assert.match(result, /2027-04-02 対象はAです。廃却径以下/);
+  assert.match(result, /2027-04-03にBを止めました/);
+  assert.match(result, /サイズがD10からD13/);
+  assert.match(result, /対象B: サイズがD10からD13/);
+});
+
+test('a size transition keeps the current resource id and does not consume later operation', () => {
+  const c = api();
+  const input = scenario();
+  input.days.push({ date: '2027-04-03', size: 'D13', productionAmount: 10, operatingHours: 8, shift1Team: 'A' });
+  input.days.push({ date: '2027-04-04', size: 'D10', productionAmount: 10, operatingHours: 8, shift1Team: 'A' });
+  const resources = c.readLedgerResources(input.rolls);
+  const result = c.simulateExchangeCycle({ currentSize: 'D10', maxRuns: 8, resources, adoptedCutMm: 12, scrapDiameter: 70, reworkDays: 0, workConfirmation: input.workConfirmation, days: input.days.slice().reverse() });
+  assert.equal(result.confirmedThrough, '2027-04-02');
+  assert.equal(result.stopRecord.id, 'B');
+  assert.equal(result.stopRecord.fromSize, 'D10');
+  assert.equal(result.stopRecord.toSize, 'D13');
+  assert.equal(result.events.some(item => item.date === '2027-04-04'), false);
+  assert.equal(result.events.filter(item => item.kind === '操業').length, 1);
+  assert.equal(result.resources.find(item => item.id === 'B').runs, 2);
+  assert.equal(input.rolls[0].currentDiameter, 81);
+});
+
+test('a different first productive size stops before adding anything to the saved opening', () => {
+  const c = api();
+  const input = scenario();
+  const result = c.simulateExchangeCycle({ currentSize: 'D13', maxRuns: 8, resources: c.readLedgerResources(input.rolls), days: input.days });
+  assert.equal(result.confirmedThrough, null);
+  assert.equal(result.stopRecord.date, '2027-04-01');
+  assert.equal(result.stopRecord.id, 'A');
+  assert.equal(result.events.some(item => item.kind === '操業'), false);
 });
 
 test('detail and list resolve the same loaded master while explicit trial inputs stay labelled', () => {

@@ -54,8 +54,10 @@ async function main() {
     });
     text = await page.locator('#stand-demand-list').innerText();
     assert.match(text, /選択中の1サイズには丸めません/);
+    assert.match(text, /2027-04-02 対象はAです。廃却径以下/);
+    assert.match(text, /2027-04-03にBを止めました/);
     assert.match(await page.locator('#cycle-result').innerText(), /選択中の1サイズには丸めません/);
-    assert.equal(text.includes('対象はAです。廃却径以下'), false);
+    assert.match(text, /それより前に出た不足は残します/);
     fs.mkdirSync(path.join(root, 'artifacts/roll001-dom'), { recursive: true });
     await page.screenshot({ path: path.join(root, 'artifacts/roll001-dom/forecast-master.png'), fullPage: true });
     const anonymous = await context.newPage();
