@@ -149,7 +149,20 @@ function applyResponsiveLayoutMode() {
 }
 
 // ログイン状態チェック
+function anonymousLaunchRequested() {
+    if (typeof location === 'undefined') return false;
+    const path = String(location.pathname || '');
+    const search = String(location.search || '');
+    return /anonymous-check\.html$/.test(path) || /(?:\?|&)anonymous=1(?:&|$)/.test(search);
+}
+
 function checkLoginStatus() {
+    if (anonymousLaunchRequested() || (typeof isAnonymousEntryOpen === 'function' && isAnonymousEntryOpen())) {
+        if (anonymousLaunchRequested() && !/anonymous-check\.html$/.test(String(location.pathname || '')) && typeof location.replace === 'function') {
+            location.replace('anonymous-check.html');
+        }
+        return;
+    }
     const isLoggedIn = Boolean(globalThis.RollAuth && RollAuth.currentUser());
     const loginScreen = document.getElementById('login-screen');
     const mainScreen = document.getElementById('main-screen');
@@ -167,9 +180,6 @@ function checkLoginStatus() {
             loadRemoteRoles();
             Promise.all([loadStandMaster(), loadCuttingMaster()]).then(() => renderRoles());
         }
-    } else if (typeof isAnonymousEntryOpen === 'function' && isAnonymousEntryOpen()) {
-        loginScreen.style.display = 'none';
-        mainScreen.style.display = 'block';
     } else {
         loginScreen.style.display = 'flex';
         mainScreen.style.display = 'none';
@@ -2939,7 +2949,7 @@ function autoMoveUsedStandbyToReworkReadyForNewInstalled(sourceRole, changedAt =
     return changedRoles;
 }
 
-if (!(typeof location !== 'undefined' && /(?:\?|&)anonymous=1(?:&|$)/.test(String(location.search || '')))) {
+if (typeof anonymousLaunchRequested !== 'function' || !anonymousLaunchRequested()) {
     loadLocalRoles();
 }
 

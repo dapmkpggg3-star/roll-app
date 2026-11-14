@@ -906,7 +906,9 @@ test('anonymous examples show a shortage, a return, and an unknown stop', () => 
   context.applyAnonymousExample('short');
   const shortText = field('cycle-result').textContent;
   assert.match(shortText, /試験用の不足予定/);
-  assert.match(shortText, /3つの運用枠を保てなくなるのは2027-04-03/);
+  assert.match(shortText, /夜勤の開始時点で使用可能な予備が無い日は2027-04-03/);
+  assert.match(shortText, /廃却による補充需要は2027-04-03/);
+  assert.match(shortText, /この読込予定の補充需要は廃却した対象ごとです/);
   assert.match(shortText, /anon-online/);
   assert.match(shortText, /条件付きの手配目安/);
   assert.match(shortText, /確定の購入日ではありません/);
@@ -925,4 +927,46 @@ test('anonymous examples show a shortage, a return, and an unknown stop', () => 
   assert.match(unknownText, /最終日はありません/);
   assert.match(unknownText, /仮の13か月は読込予定の未確認は埋めていません|読込予定の未確認は埋めていません/);
   context.document = previousDocument;
+});
+
+test('a producing night with no usable spare is reported and later unknowns keep that date', () => {
+  const resources = [
+    { id: 'anon-online', frame: 'online', caliberId: 'anon-cal-a', runs: 7, diameter: 81 },
+    { id: 'anon-spare', frame: 'installedSpare', caliberId: 'anon-cal-b', runs: 2, diameter: 93 },
+    { id: 'anon-used', frame: 'usedSpare', caliberId: 'anon-cal-c', runs: 0, diameter: 74 }
+  ];
+  const work = { date: '2027-04-02', period: 'day', reservedHours: 5, workType: 'rollChange', requiredHours: 5, people: 1, continuous: 'no', changeover: 'yes', threeSet: 'yes' };
+  const day = (date, amount, hours, shift1, shift3) => ({ date, productionAmount: amount, operatingHours: hours, shift1Team: shift1, shift3Team: shift3 });
+  const producing = context.simulateExchangeCycle({
+    maxRuns: 8, reworkDays: 30, scrapDiameter: 70, adoptedCutMm: 4, leadMonths: 6, leadStatus: 'provisional',
+    workConfirmation: work, resources: resources.map(item => Object.assign({}, item)),
+    days: [day('2027-04-01', 10, 8, 'A', ''), day('2027-04-02', 0, 0, 'A', ''), day('2027-04-03', 10, 8, '', 'B')]
+  });
+  assert.equal(producing.events.some(item => item.date === '2027-04-03' && item.kind === '夜勤予備不足'), true);
+  assert.equal(producing.events.some(item => item.date === '2027-04-03' && item.kind === '操業'), true);
+  const producingText = context.describeSetOutlook(producing, 'この読込予定では');
+  assert.match(producingText, /無い日は2027-04-03/);
+  assert.match(producingText, /操業中はanon-spare/);
+  assert.equal(producingText.includes('足りなくなる日は出ていません'), false);
+  const hidden = context.simulateExchangeCycle({
+    maxRuns: 8, reworkDays: 1, scrapDiameter: 70, adoptedCutMm: 4, leadMonths: 6, leadStatus: 'provisional',
+    workConfirmation: work, resources: resources.map(item => Object.assign({}, item)),
+    days: [day('2027-04-01', 10, 8, 'A', ''), day('2027-04-02', 0, 0, 'A', ''), day('2027-04-03', 0, 0, '', 'B'), day('2027-04-04', 10, 3, 'A', '')]
+  });
+  const hiddenText = context.describeSetOutlook(hidden, 'この読込予定では');
+  assert.match(hiddenText, /無い日は2027-04-03/);
+  assert.match(hiddenText, /いつまで保てるかは未確認です/);
+  assert.match(hiddenText, /それより前に出た不足は残します/);
+  const separate = context.simulateExchangeCycle({
+    maxRuns: 8, reworkDays: 1, scrapDiameter: 77, adoptedCutMm: 4, leadMonths: 6, leadStatus: 'provisional',
+    workConfirmation: work, resources: resources.map(item => Object.assign({}, item)),
+    days: [day('2027-04-01', 10, 8, 'A', ''), day('2027-04-02', 0, 0, 'A', ''), day('2027-04-03', 0, 0, 'A', ''), day('2027-04-05', 10, 8, '', 'B')]
+  });
+  const separateText = context.describeSetOutlook(separate, 'この読込予定では');
+  assert.match(separateText, /補充需要は2027-04-03/);
+  assert.match(separateText, /対象はanon-online/);
+  assert.match(separateText, /無い日は2027-04-05/);
+  assert.match(separateText, /操業中はanon-spare/);
+  assert.match(context.describeReplenishment(separate, 'この読込予定の補充需要'), /対象はanon-online/);
+  assert.match(context.describeReplenishment(separate, 'この読込予定の補充需要'), /トン数やロール替の回数からは出しません/);
 });

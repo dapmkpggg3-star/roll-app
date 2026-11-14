@@ -1068,6 +1068,15 @@ function simulateExchangeCycle(input) {
             markConfirmed(date);
             return;
         }
+        if (row.shift3Team && spareRolls && spareRolls.length === 0) {
+            const reworkIds = state.reworks
+                .filter(item => item.status === 'rework' || item.status === 'awaitingAssembly' || item.status === 'held')
+                .map(item => item.id);
+            const reworkNote = reworkIds.length
+                ? `再生中の${reworkIds.join('、')}は使用可能な予備に数えません。`
+                : '使用可能な予備は0です。';
+            push(date, '夜勤予備不足', `夜勤の開始時点です。操業中は${state.onlineId || '未確認'}です。${reworkNote}`);
+        }
         const hours = row.operatingHours;
         if (typeof hours !== 'number' || !Number.isFinite(hours)) {
             push(date, '保留', '使用時間が未確認です。0直にはしません。');
@@ -1186,28 +1195,40 @@ function forecastLead(standKey) {
 function describeSetOutlook(result, label) {
     const prefix = label || 'この計算では';
     if (!result) return '';
+    const events = result.events || [];
+    const nights = events.filter(item => item.kind === '夜勤予備不足');
+    const scraps = events.filter(item => item.kind === '廃却需要');
+    const lines = [];
+    if (nights.length) {
+        const operating = nights.map(item => item.onlineId || '未確認').join('、');
+        lines.push(`${prefix}、夜勤の開始時点で使用可能な予備が無い日は${nights.map(item => item.date).join('、')}です。操業中は${operating}です。原因は${nights[0].note}必要な対応は、その夜勤の前に昼の組替で使用可能な予備を戻すことです。`);
+    }
+    scraps.forEach(item => {
+        lines.push(`${prefix}、廃却による補充需要は${item.date}です。${item.note}夜勤の予備不足とは別の項目です。`);
+    });
     if (result.stopRecord) {
-        return [
+        lines.push([
             `${prefix}、3つの運用枠をいつまで保てるかは未確認です。`,
             `計算できた最終日は${result.confirmedThrough || 'ありません'}。`,
             `止めた対象は${result.stopRecord.id || '未確認'}です。理由は${result.stopRecord.reason}`,
-            '未知の値は0や試験値で埋めていません。'
-        ].join('');
+            'それより前に出た不足は残します。未知の値は0や試験値で埋めていません。'
+        ].join(''));
     }
-    const events = result.events || [];
-    const night = events.find(item => item.kind === '夜勤予備不足' || item.kind === 'ロール替需要');
-    const scrap = events.find(item => item.kind === '廃却需要');
-    if (!night && !scrap) {
+    if (!lines.length) {
         const returned = events.some(item => item.kind === '使用可能予備');
         return returned
             ? `${prefix}、昼の組替のあと予備へ戻しています。3つの運用枠が足りなくなる日は、この期間には出ていません。不足なしの確定ではありません。`
             : `${prefix}、運用枠が足りなくなる日は出ていません。期間の外は未確認です。不足なしの確定ではありません。`;
     }
-    if (night) {
-        const extra = scrap ? `同じ期間に${scrap.date}の廃却需要もあります。${scrap.note}必要な対応には補充も含みます。` : '必要な対応は、夜勤の前に昼の組替を終えて使用可能な予備を戻すことです。';
-        return `${prefix}、3つの運用枠を保てなくなるのは${night.date}です。対象は${night.onlineId || '未確認'}です。原因は${night.note}${extra}`;
-    }
-    return `${prefix}、3つの運用枠を保てなくなるのは${scrap.date}です。原因は${scrap.note}必要な対応は補充です。日付は条件付きの手配目安で、確定の購入日ではありません。`;
+    return lines.join('');
+}
+
+function describeReplenishment(result, label) {
+    const scraps = ((result && result.events) || []).filter(item => item.kind === '廃却需要');
+    const later = result && result.stopRecord ? '停止日より後の補充需要は未確認です。' : 'この範囲の外は年間計画にしていません。';
+    if (!scraps.length) return `${label}は、計算できた範囲に廃却がありません。0本にはしません。${later}トン数やロール替の回数からは出しません。`;
+    const lines = scraps.map(item => `${item.date} ${item.note}`);
+    return `${label}は廃却した対象ごとです。トン数やロール替の回数からは出しません。\n${lines.join('\n')}\n${later}`;
 }
 
 let exchangeCycleRenderGeneration = 0;
@@ -1279,6 +1300,7 @@ function renderExchangeCycle() {
         scheduleText = [
             `読込予定に基づく結果です。予定「${schedule.sourceName || '名前なし'}」で計算しています。架空の操業日は足していません。`,
             describeSetOutlook(result, 'この読込予定では'),
+            describeReplenishment(result, 'この読込予定の補充需要'),
             result.reason,
             uncovered,
             describeCycleTimeline(result),
@@ -1342,6 +1364,7 @@ function describeAnonymousHorizon(form, online, resources, limit) {
         '仮の13か月シナリオです。読込予定そのものではありません。',
         '匿名の13か月です。読み込んだ予定の日ではありません。読込予定の未確認は埋めていません。',
         describeSetOutlook(result, '仮の13か月では'),
+        describeReplenishment(result, '仮の13か月の補充需要'),
         result.reason,
         describeCycleTimeline(result),
         confirmed ? '' : '作業枠が未確認なので、匿名の13か月でも交換は成立させません。'
@@ -1512,11 +1535,11 @@ function isAnonymousEntryOpen() {
 
 function openAnonymousEntry() {
     anonymousEntryActive = true;
-    const loginScreen = document.getElementById('login-screen');
-    const mainScreen = document.getElementById('main-screen');
-    if (loginScreen) loginScreen.style.display = 'none';
-    if (mainScreen) mainScreen.style.display = 'block';
-    document.body.classList.remove('simple-overview');
+    const dedicated = typeof location !== 'undefined' && /anonymous-check\.html$/.test(String(location.pathname || ''));
+    if (!dedicated && typeof location !== 'undefined' && typeof location.assign === 'function') {
+        location.assign('anonymous-check.html');
+        return;
+    }
     startAnonymousForecastCheck();
 }
 
@@ -1934,15 +1957,17 @@ function suggestKnownWorkEffort() {
 }
 
 function bindMonthlyScheduleFileInput() {
-    const input = document.getElementById('monthly-schedule-file');
-    if (!input || input.dataset.bound === 'true') return;
-    input.dataset.bound = 'true';
-    const anonymousEntry = typeof location !== 'undefined' && /(?:\?|&)anonymous=1(?:&|$)/.test(String(location.search || ''));
-    if (anonymousEntry) openAnonymousEntry();
-    else {
-        syncForecastSettingContext();
-        renderExchangeCycle();
+    const root = document.documentElement || document.body;
+    if (!root) return;
+    if (root.dataset.forecastBound === 'true') return;
+    root.dataset.forecastBound = 'true';
+    const dedicated = typeof location !== 'undefined' && /anonymous-check\.html$/.test(String(location.pathname || ''));
+    const queryEntry = typeof location !== 'undefined' && /(?:\?|&)anonymous=1(?:&|$)/.test(String(location.search || ''));
+    if (queryEntry && !dedicated && typeof location.replace === 'function') {
+        location.replace('anonymous-check.html');
+        return;
     }
+    const input = document.getElementById('monthly-schedule-file');
     const anonymousButton = document.getElementById('start-anonymous-check');
     if (anonymousButton && anonymousButton.dataset.bound !== 'true') {
         anonymousButton.dataset.bound = 'true';
@@ -1962,11 +1987,6 @@ function bindMonthlyScheduleFileInput() {
             button.addEventListener('click', () => applyAnonymousExample(kind));
         }
     });
-    const entryButton = document.getElementById('open-anonymous-entry');
-    if (entryButton && entryButton.dataset.bound !== 'true') {
-        entryButton.dataset.bound = 'true';
-        entryButton.addEventListener('click', openAnonymousEntry);
-    }
     ['forecast-roll', 'forecast-reference', 'caliber-stand', 'caliber-size', 'caliber-current', 'caliber-opening', 'caliber-opening-tons', 'caliber-pass', 'work-date', 'work-period', 'work-reserved-hours', 'work-type', 'work-required-hours', 'work-people', 'work-continuous', 'work-changeover', 'work-three-set', 'assembly-date', 'assembly-period', 'assembly-reserved-hours', 'assembly-required-hours', 'assembly-people', 'assembly-prepared', 'assembly-prepared-target', 'assembly-prepared-on', 'life-diameter', 'life-scrap', 'life-cut', 'life-spare', 'cycle-spare-calibers', 'cycle-rework-days'].forEach(id => {
         const field = document.getElementById(id);
         if (field) field.addEventListener('change', () => {
@@ -1977,6 +1997,16 @@ function bindMonthlyScheduleFileInput() {
             renderExchangeCycle();
         });
     });
+    if (dedicated) {
+        openAnonymousEntry();
+        return;
+    }
+    if (input && input.dataset.bound !== 'true') {
+        input.dataset.bound = 'true';
+        syncForecastSettingContext();
+        renderExchangeCycle();
+    }
+    if (!input) return;
     input.addEventListener('change', async () => {
         if (anonymousForecastCheck) return;
         const generation = beginScheduleRead();

@@ -10,6 +10,9 @@
     <meta name="apple-mobile-web-app-title" content="ロール管理">
     <link rel="manifest" href="manifest.json">
     <link rel="icon" type="image/png" sizes="192x192" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect fill='%23667eea' width='192' height='192'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' font-size='96' fill='white' font-family='Arial'>📋</text></svg>">
+    <script>
+        if (/(?:\?|&)anonymous=1(?:&|$)/.test(location.search || '')) location.replace('anonymous-check.html');
+    </script>
     <title>ロール管理アプリ</title>
     <link rel="stylesheet" href="css/styles.css?v=20261023-simple-auth">
     <link rel="stylesheet" href="css/planning-view.css?v=20260927-sheet-output">
@@ -29,7 +32,7 @@
             <div class="login-form">
                 <button type="button" id="login-btn" onclick="login()">Googleでログイン</button>
                 <p>ログインはこれまでどおりです。下の確認は実台帳も保存も使いません。</p>
-                <button type="button" id="open-anonymous-entry">認証なしで匿名確認を開く</button>
+                <button type="button" id="open-anonymous-entry" onclick="location.href='anonymous-check.html'">認証なしで匿名確認を開く</button>
                 <p id="login-status" role="status" aria-live="polite"></p>
             </div>
         </div>
@@ -601,9 +604,9 @@
     <script src="js/online-safety.js?v=20260805-online-safety"></script>
     <script src="js/sync.js?v=20261023-content-auth"></script>
 <script src="js/offline-recovery.js?v=20261113-offline-recovery"></script>
-<script src="js/operating-plan.js?v=20261114-set-outlook"></script>
+<script src="js/operating-plan.js?v=20261114-night-spare"></script>
 <script src="js/csv.js?v=20260805-online-safety"></script>
-<script src="js/app.js?v=20261114-anon-entry"></script>
+<script src="js/app.js?v=20261114-anon-page"></script>
 
 </body>
 </html>

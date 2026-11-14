@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>匿名の確認</title>
+    <link rel="stylesheet" href="css/styles.css?v=20261114-anon-page">
+</head>
+<body>
+    <main>
+        <h1>匿名の確認</h1>
+        <p>このページは実台帳、遠隔の同期、設備マスタ、通常の保存を使いません。ログインの状態も読みません。値は試験用です。</p>
+        <p>
+            <button type="button" id="anon-example-short">不足する例</button>
+            <button type="button" id="anon-example-ready">間に合う例</button>
+            <button type="button" id="anon-example-unknown">未確認で止まる例</button>
+            <button type="button" id="anon-scene-empty">枠なし</button>
+            <button type="button" id="anon-scene-ready">成立</button>
+            <button type="button" id="anon-scene-clear">解除</button>
+            <button type="button" id="anon-scene-short">短縮</button>
+        </p>
+        <label>スタンド <input id="caliber-stand" value="10"></label>
+        <label>サイズ <input id="caliber-size" value="D10"></label>
+        <label>予測対象 <input id="forecast-roll" value=""></label>
+        <label>基準日 <input id="forecast-reference" type="date" value=""></label>
+        <label>カリバ <input id="caliber-current" value=""></label>
+        <label>開始直数 <input id="caliber-opening" value=""></label>
+        <label>開始トン <input id="caliber-opening-tons" value=""></label>
+        <label>通過 <input id="caliber-pass" value=""></label>
+        <label>作業日 <input id="work-date" type="date" value=""></label>
+        <label>時間帯 <input id="work-period" value=""></label>
+        <label>確保時間 <input id="work-reserved-hours" value=""></label>
+        <label>作業 <input id="work-type" value=""></label>
+        <label>必要時間 <input id="work-required-hours" value=""></label>
+        <label>人数 <input id="work-people" value=""></label>
+        <label>連続 <input id="work-continuous" value=""></label>
+        <label>切替 <input id="work-changeover" value=""></label>
+        <label>3セット <input id="work-three-set" value=""></label>
+        <label>組替日 <input id="assembly-date" type="date" value=""></label>
+        <label>組替時間帯 <input id="assembly-period" value=""></label>
+        <label>組替確保 <input id="assembly-reserved-hours" value=""></label>
+        <label>組替必要 <input id="assembly-required-hours" value=""></label>
+        <label>組替人数 <input id="assembly-people" value=""></label>
+        <label>準備 <input id="assembly-prepared" value=""></label>
+        <label>準備対象 <input id="assembly-prepared-target" value=""></label>
+        <label>準備日 <input id="assembly-prepared-on" type="date" value=""></label>
+        <label>現在径 <input id="life-diameter" value=""></label>
+        <label>廃却径 <input id="life-scrap" value=""></label>
+        <label>切込み <input id="life-cut" value=""></label>
+        <label>予備本数 <input id="life-spare" value=""></label>
+        <label>予備カリバ <input id="cycle-spare-calibers" value=""></label>
+        <label>改削日数 <input id="cycle-rework-days" value=""></label>
+        <label>購入期間の月数 <input id="lead-time-months" value="6"></label>
+        <label>購入期間の区分 <input id="lead-time-status" value="provisional"></label>
+        <p id="work-effort"></p>
+        <pre id="monthly-schedule-summary"></pre>
+        <pre id="cycle-result">匿名の確認を準備しています。</pre>
+        <pre id="consumption-link"></pre>
+    </main>
+    <script src="js/operating-plan.js?v=20261114-night-spare"></script>
+</body>
+</html>

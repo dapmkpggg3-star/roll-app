@@ -582,38 +582,53 @@ async function main() {
     assert.equal(await page.evaluate(() => roles.map(item => item.id).join(',')), beforeIds);
     const entry = await context.newPage();
     await entry.addInitScript(() => {
-      window.__writes = [];
-      window.__fetches = [];
+      window.__pageWrites = [];
+      window.__pageFetches = [];
       const originalSet = Storage.prototype.setItem;
       Storage.prototype.setItem = function (key, value) {
-        window.__writes.push(String(key));
+        window.__pageWrites.push(`${location.pathname} ${key}`);
         return originalSet.call(this, key, value);
       };
       const originalFetch = window.fetch.bind(window);
       window.fetch = (...args) => {
-        window.__fetches.push(String(args[0]));
+        window.__pageFetches.push(`${location.pathname} ${args[0]}`);
         return originalFetch(...args);
       };
     });
-    await entry.goto('http://roll-app.test/index.html?anonymous=1', { waitUntil: 'load' });
-    assert.equal(await entry.locator('#login-screen').isVisible(), false);
-    assert.equal(await entry.locator('#main-screen').isVisible(), true);
+    await entry.goto('http://roll-app.test/index.html', { waitUntil: 'load' });
+    assert.equal(await entry.locator('#login-screen').isVisible(), true);
+    await entry.locator('#open-anonymous-entry').click();
+    await entry.waitForURL('**/anonymous-check.html');
+    assert.equal(await entry.locator('#login-btn').count(), 0);
     await entry.locator('#anon-example-short').click();
     const shortText = await entry.locator('#cycle-result').innerText();
-    assert.match(shortText, /保てなくなるのは2027-04-03/);
+    assert.match(shortText, /無い日は2027-04-03/);
+    assert.match(shortText, /補充需要は2027-04-03/);
     assert.match(shortText, /手配目安/);
-    await entry.locator('#anon-example-ready').click();
-    assert.match(await entry.locator('#cycle-result').innerText(), /昼の組替のあと予備へ戻しています/);
-    await entry.locator('#anon-example-unknown').click();
-    const unknownText = await entry.locator('#cycle-result').innerText();
-    assert.match(unknownText, /4時間未満/);
-    assert.match(unknownText, /最終日はありません/);
-    const writes = await entry.evaluate(() => window.__writes);
-    const fetches = await entry.evaluate(() => window.__fetches);
-    const blocked = writes.filter(key => key === 'roles' || key.includes('caliber_forecast_settings') || key.includes('operating_plan') || key.includes('stand_lead'));
-    assert.deepEqual(blocked, []);
-    const blockedFetch = fetches.filter(url => url.includes('stand-premises') || url.includes('google') || url.includes('script.google'));
-    assert.deepEqual(blockedFetch, []);
+    const direct = await context.newPage();
+    await direct.addInitScript(() => {
+      localStorage.setItem('roles', '["real-ledger"]');
+      window.__remote = 0;
+      window.__pageFetches = [];
+      const originalFetch = window.fetch.bind(window);
+      window.fetch = (...args) => {
+        window.__pageFetches.push(String(args[0]));
+        return originalFetch(...args);
+      };
+    });
+    await direct.goto('http://roll-app.test/anonymous-check.html', { waitUntil: 'load' });
+    await direct.evaluate(() => { window.RollAuth = { currentUser: () => ({ role: 'admin' }) }; });
+    await direct.locator('#anon-example-unknown').click();
+    const directText = await direct.locator('#cycle-result').innerText();
+    assert.match(directText, /4時間未満/);
+    assert.match(directText, /それより前に出た不足は残します|最終日はありません/);
+    assert.equal(await direct.evaluate(() => localStorage.getItem('roles')), '["real-ledger"]');
+    assert.equal(await direct.evaluate(() => typeof loadRemoteRoles), 'undefined');
+    assert.equal(await direct.evaluate(() => window.__remote), 0);
+    const directFetches = await direct.evaluate(() => window.__pageFetches);
+    assert.equal(directFetches.some(url => url.includes('stand-premises') || url.includes('google') || url.includes('script.google')), false);
+    const entryWrites = await entry.evaluate(() => window.__pageWrites.filter(item => item.startsWith('/anonymous-check.html')));
+    assert.equal(entryWrites.some(item => item.includes('roles') || item.includes('caliber_forecast_settings') || item.includes('operating_plan') || item.includes('stand_lead')), false);
     console.log('OPERATING PLAN browser PASS');
   } finally {
     await browser.close();
