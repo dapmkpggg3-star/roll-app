@@ -888,7 +888,17 @@ function simulateExchangeCycle(input) {
         reworks: []
     };
     const events = [];
-    const maxRuns = finiteOrNull(source.maxRuns);
+    let maxRuns = finiteOrNull(source.maxRuns);
+    const initialSize = normalizeForecastSize(source.currentSize) || normalizeForecastSize((days.find(row => row.productionAmount > 0 && row.size) || {}).size);
+    let activeSize = initialSize;
+    let sizeChanged = false;
+    let workConfirmation = source.workConfirmation;
+    let assemblyConfirmation = source.assemblyConfirmation;
+    const sizeUsage = new Map();
+    const reworkedIds = new Set();
+    for (const item of resources || []) {
+        if (initialSize && item.caliberId && typeof item.runs === 'number') sizeUsage.set(item.id + '|' + initialSize, { caliberId: item.caliberId, runs: item.runs });
+    }
     let blocked = false;
     let confirmedThrough = null;
     let stopRecord = null;
@@ -900,6 +910,7 @@ function simulateExchangeCycle(input) {
         diameter: state.diameter,
         installedSpare: spareRolls ? spareRolls.length : null,
         onlineId: state.onlineId,
+        size: activeSize,
         phase: state.phase
     });
     if (state.caliberRuns === null || maxRuns === null || !state.caliberId) {
@@ -924,6 +935,8 @@ function simulateExchangeCycle(input) {
         }
         const nextDiameter = Math.round((targetDiameter - state.cutMm) * 10) / 10;
         if (target) target.diameter = nextDiameter;
+        reworkedIds.add(item.id);
+        for (const key of sizeUsage.keys()) if (key.startsWith(item.id + '|')) sizeUsage.delete(key);
         if (!resources || target && target.frame === 'online') state.diameter = nextDiameter;
         item.status = 'awaitingAssembly';
         push(date, '改削完了', `再生対象は${item.id}です。径は${nextDiameter}です。改削日数の試算であり、搬入と組替の完了ではありません。`);
@@ -940,11 +953,9 @@ function simulateExchangeCycle(input) {
         state.reworks.filter(item => item.status === 'rework' && date >= item.readyOn)
             .forEach(item => finishReworkItem(date, item));
     };
-    const finishAssembly = date => {
+    const finishAssembly = (date, waiting, preparation) => {
         if (!spareRolls) return;
-        const waiting = state.reworks.filter(item => item.status === 'awaitingAssembly');
         if (!waiting.length) return;
-        const preparation = source.assemblyConfirmation || {};
         const preparationLabel = preparation.prepared === 'newSide' ? '新品側の準備' : '改削済ロールの搬入';
         push(date, '組替可能', `${preparation.preparedOn || '日未確認'}に${preparation.preparedTarget || '対象未確認'}の${preparationLabel}を確認しました。これは組替完了そのものではなく、予測であり実ロールの状態は変えていません。`);
         waiting.forEach(item => {
@@ -962,25 +973,105 @@ function simulateExchangeCycle(input) {
     const holdAssembly = (date, row) => {
         const waiting = state.reworks.filter(item => item.status === 'awaitingAssembly');
         if (!waiting.length) return false;
-        const slot = assemblySlotReady(source.assemblyConfirmation, row);
+        const scoped = scopedCycleSlots(source.assemblySlots, {
+            standKey: source.standKey, size: activeSize, referenceAt: source.referenceAt
+        }, date, false);
+        if (scoped.length || sizeChanged) {
+            let completed = false;
+            for (const item of waiting) {
+                const matches = scoped.filter(slot => slot.owner.rollId === item.id);
+                const confirmation = matches.length === 1 ? matches[0] : null;
+                const assessed = assemblySlotReady(confirmation, row);
+                const overlap = events.some(event => event.date === date && ['サイズ替', 'ロール替', 'カリバ替', '組替完了'].includes(event.kind));
+                const futurePreparation = confirmation && confirmation.preparedOn > date;
+                if (confirmation && assessed.ok && row.shift1Team && !overlap && !futurePreparation) {
+                    finishAssembly(date, [item], confirmation);
+                    completed = true;
+                } else {
+                    const reason = overlap ? '同じ日の別作業と重なるため、組替完了にしません。'
+                        : (futurePreparation ? '準備の確認日が組替日より後です。' : (assessed.reason || '対象に一致する昼の組替枠が未確認です。'));
+                    push(date, '組替需要', `${item.id}は組替前です。${reason}`);
+                }
+            }
+            return completed;
+        }
+        const slot = assemblySlotReady(assemblyConfirmation, row);
         if (slot.ok) {
-            finishAssembly(date);
+            finishAssembly(date, waiting, assemblyConfirmation || {});
             return true;
         }
         push(date, '組替需要', `${waiting.map(item => item.id).join('、')}は組替前です。${slot.reason}`);
         return false;
     };
     const nightOnly = row => Boolean(row.shift3Team) && !row.shift1Team;
-    days.forEach(row => {
+    days.forEach((row, index) => {
         if (blocked) return;
         const date = String(row.date).slice(0, 10);
         const amount = row.productionAmount;
-        if (typeof amount !== 'number' || !Number.isFinite(amount)) {
+        if (typeof amount !== 'number' || !Number.isFinite(amount) || amount < 0) {
             push(date, '保留', '生産量が未確認です。0tにはしません。');
             stopAt(date, '生産量が未確認です。0tにはしません。');
             return;
         }
         const stopped = amount === 0;
+        const workScope = () => ({ standKey: source.standKey, rollId: state.onlineId, size: activeSize, referenceAt: source.referenceAt });
+        const workForDay = () => {
+            const matches = scopedCycleSlots(source.workSlots, workScope(), date, true);
+            return matches.length ? (matches.length === 1 ? matches[0] : null) : (sizeChanged ? null : source.workConfirmation);
+        };
+        workConfirmation = workForDay();
+        assemblyConfirmation = sizeChanged ? null : source.assemblyConfirmation;
+        const nextSize = normalizeForecastSize(row.size);
+        if (activeSize && nextSize !== activeSize && (!stopped || /^D\d+$/.test(nextSize))) {
+            const boundary = { date, fromSize: activeSize, toSize: nextSize || '未確認' };
+            const nextOperation = days.slice(index).find(item => item.productionAmount > 0);
+            const operationDate = nextOperation && normalizeForecastSize(nextOperation.size) === nextSize ? nextOperation.date : null;
+            const target = { standKey: source.standKey, rollId: state.onlineId, size: activeSize, referenceAt: source.referenceAt };
+            const matching = (source.sizeChanges || []).filter(item => operationDate && item.operationDate === operationDate
+                && normalizeForecastSize(item.fromSize) === activeSize && normalizeForecastSize(item.toSize) === nextSize
+                && confirmationOwnerMatches(item, target, true));
+            const confirmation = matching.length === 1 ? matching[0] : null;
+            const slotRow = confirmation && days.slice(0, index + 1).filter(item => item.date === confirmation.date);
+            const priorUse = days.slice(0, index).filter(item => item.productionAmount > 0).at(-1);
+            const slotReady = confirmation && nextSize && slotRow.length === 1 && Boolean(slotRow[0].shift1Team)
+                && confirmation.date <= date && confirmation.date < operationDate && (!priorUse || confirmation.date > priorUse.date)
+                && (!source.referenceAt || confirmation.date >= source.referenceAt)
+                && !events.some(item => item.date === confirmation.date && ['ロール替', 'カリバ替', '組替完了'].includes(item.kind))
+                && !(state.pending && confirmation.date === date && exchangeSlotReady(workConfirmation, slotRow[0], state.pending === 'caliber' ? 'caliberChange' : 'rollChange'))
+                && exchangeSlotReady(confirmation, slotRow[0], 'sizeChange');
+            const nextLimit = knownCaliberLimit(source.standKey, nextSize);
+            const cached = sizeUsage.get(state.onlineId + '|' + nextSize);
+            const openings = (source.sizeOpenings || []).filter(item => confirmationOwnerMatches(item, {
+                ...target, size: nextSize
+            }, true));
+            const opening = cached || (!reworkedIds.has(state.onlineId) && openings.length === 1 ? openings[0] : null);
+            const ready = slotReady && nextLimit && nextLimit.kind === '最大' && opening && String(opening.caliberId || '').trim()
+                && typeof opening.runs === 'number' && Number.isInteger(opening.runs) && opening.runs >= 0 && opening.runs < nextLimit.runs;
+            if (!ready) {
+                const reason = `サイズが${activeSize}から${boundary.toSize}へ変わるため、ここから未確認です。次サイズのカリバID・開始量・サイズ替作業枠の接続が未確認です。選択中の1サイズには丸めません。`
+                    + (!slotReady ? ' 対象と切替日に合う昼の停止枠・時間・人数・3セットの確認が必要です。' : '')
+                    + (!opening || !String(opening.caliberId || '').trim() || !Number.isInteger(opening.runs) || opening.runs < 0 ? ' このロールの次サイズの保存開始条件が未記録です。今のカリバは流用しません。' : '')
+                    + (!nextLimit || nextLimit.kind !== '最大' ? ' 次サイズの確定最大は未確認です。' : '')
+                    + (opening && nextLimit && opening.runs >= nextLimit.runs ? ' 次サイズは開始時点で最大に達しています。' : '')
+                    + (reworkedIds.has(state.onlineId) && !cached ? ' 改削前の開始条件は再利用しません。' : '');
+                push(date, '保留', reason);
+                stopAt(date, reason);
+                Object.assign(stopRecord, { kind: 'sizeChange', ...boundary });
+                return;
+            }
+            sizeUsage.set(state.onlineId + '|' + activeSize, { caliberId: state.caliberId, runs: state.caliberRuns });
+            const previousSize = activeSize;
+            activeSize = nextSize;
+            sizeChanged = true;
+            maxRuns = nextLimit.runs;
+            state.caliberId = opening.caliberId;
+            state.caliberRuns = opening.runs;
+            state.pending = null;
+            workConfirmation = null;
+            assemblyConfirmation = null;
+            push(date, 'サイズ替', `${confirmation.date}の確認済み昼枠で${previousSize}から${activeSize}へ替えた予測です。${state.onlineId}自身のカリバと使用直数を使います。径は変えず、実状態も変更しません。`);
+        }
+        workConfirmation = workForDay();
         finishDueReworks(date);
         if (stopped && state.reworks.some(item => item.status === 'awaitingAssembly')) {
             if (nightOnly(row)) {
@@ -993,9 +1084,11 @@ function simulateExchangeCycle(input) {
         }
         if (stopped && state.pending && state.phase === 'operating') {
             const expected = state.pending === 'caliber' ? 'caliberChange' : 'rollChange';
-            if (!exchangeSlotReady(source.workConfirmation, row, expected)) {
+            const overlap = sizeChanged && events.some(event => event.date === date && ['サイズ替', '組替完了', 'ロール替', 'カリバ替'].includes(event.kind));
+            if (!exchangeSlotReady(workConfirmation, row, expected) || sizeChanged && (!row.shift1Team || overlap)) {
                 push(date, '交換需要', '到達しています。0tや夜間、未確認の作業枠だけでは交換しません。');
-                markConfirmed(date);
+                if (sizeChanged) stopAt(date, 'サイズ切替後の対象・サイズ・基準日・作業日に一致する交換枠が未確認です。以後は計算済みにしません。');
+                else markConfirmed(date);
                 return;
             }
             if (state.pending === 'caliber' && spareCalibers && spareCalibers.length) {
@@ -1013,18 +1106,29 @@ function simulateExchangeCycle(input) {
                     push(date, 'ロール替需要', unnamed
                         ? '予備の本数だけでは交換できるロールが分かりません。架空のIDは作りません。'
                         : '予備がないか、改削日数が未確認なので、ロール替は成立させていません。');
-                    markConfirmed(date);
+                    if (sizeChanged) stopAt(date, 'サイズ切替後の交換先の予備または改削日数が未確認です。以後は計算済みにしません。');
+                    else markConfirmed(date);
                     return;
                 }
                 const leavingId = state.onlineId;
                 const unfinished = state.reworks.filter(item => item.status === 'rework' || item.status === 'awaitingAssembly' || item.status === 'held');
                 if (unfinished.length && spareRolls.length <= 1) {
                     push(date, 'ロール替需要', `再生中の${unfinished.map(item => item.id).join('、')}が未完了です。${leavingId}を重ねると夜勤の使用可能な予備がなくなるので、交換は成立させません。`);
-                    markConfirmed(date);
+                    if (sizeChanged) stopAt(date, '未完了の再生と重なる交換では、夜勤の予備を維持できません。以後は計算済みにしません。');
+                    else markConfirmed(date);
                     return;
                 }
                 const enteringId = spareRolls[0];
                 const entering = resources && resources.find(item => item.id === enteringId);
+                if (sizeChanged && entering) {
+                    const recorded = (source.sizeOpenings || []).filter(item => confirmationOwnerMatches(item, {
+                        standKey: source.standKey, rollId: enteringId, size: activeSize, referenceAt: source.referenceAt
+                    }, true));
+                    const opening = sizeUsage.get(enteringId + '|' + activeSize)
+                        || (!reworkedIds.has(enteringId) && recorded.length === 1 ? recorded[0] : null);
+                    entering.caliberId = opening && String(opening.caliberId || '').trim() || null;
+                    entering.runs = opening && Number.isInteger(opening.runs) && opening.runs >= 0 && opening.runs < maxRuns ? opening.runs : null;
+                }
                 if (resources && (!entering || !entering.caliberId)) {
                     push(date, 'ロール替需要', '交換先のカリバが未確認です。前のカリバは使いません。');
                     stopAt(date, '交換先のカリバが未確認です。前のカリバは使いません。');
@@ -1037,6 +1141,7 @@ function simulateExchangeCycle(input) {
                     return;
                 }
                 const currentRework = { id: leavingId, readyOn: addDays(date, reworkDays), status: 'rework' };
+                if (activeSize) sizeUsage.set(leavingId + '|' + activeSize, { caliberId: state.caliberId, runs: state.caliberRuns });
                 state.reworks.push(currentRework);
                 if (resources) {
                     const leaving = resources.find(item => item.id === leavingId);
@@ -1091,7 +1196,8 @@ function simulateExchangeCycle(input) {
         if (state.caliberRuns + 1 > maxRuns) {
             state.pending = spareCalibers && spareCalibers.length ? 'caliber' : 'roll';
             push(date, '交換待ち', '連続操業の途中では交換しません。次の停止枠を待ちます。');
-            markConfirmed(date);
+            if (sizeChanged) stopAt(date, '最大直数を超える操業の前に交換が完了していません。以後は計算済みにしません。');
+            else markConfirmed(date);
             return;
         }
         state.caliberRuns += 1;
@@ -1237,7 +1343,7 @@ function renderExchangeCycle() {
     const generation = ++exchangeCycleRenderGeneration;
     const target = document.getElementById('cycle-result');
     if (!target || typeof simulateExchangeCycle !== 'function' || typeof readCaliberInputs !== 'function') return;
-    const form = readCaliberInputs();
+    const form = resolvedLifePremises(readCaliberInputs());
     const schedule = latestMonthlySummary && latestMonthlySummary.ok !== false ? latestMonthlySummary : null;
     const days = schedule && Array.isArray(schedule.days) ? schedule.days : [];
     const ledgerKeys = pairedStandKeys(form.standKey, form.size);
@@ -1290,6 +1396,13 @@ function renderExchangeCycle() {
         scheduleText = '選んだロールはこのスタンドのオンラインではないので、状態は変えず交換もしません。';
     } else if (countedDays.length) {
         const result = simulateExchangeCycle({
+            currentSize: form.size,
+            standKey: selectedStand,
+            referenceAt,
+            sizeOpenings: forecastSizeOpenings(cycleResources, selectedStand, countedDays, referenceAt),
+            sizeChanges: applicableSizeChanges(schedule),
+            workSlots: applicableCycleSlots(schedule, 'work'),
+            assemblySlots: applicableCycleSlots(schedule, 'assembly'),
             maxRuns: limit && limit.kind === '最大' ? limit.runs : undefined,
             openingRuns,
             currentCaliberId: form.currentCaliber || (online && online.caliberId) || null,
@@ -1323,7 +1436,7 @@ function renderExchangeCycle() {
     const banner = anonymousForecastCheck
         ? '匿名の確認です。値は試験用です。実台帳は読んでいません。端末へは保存しません。実設備の径は読みません。予測は実ロールの状態を変えません。仮の13か月は購入不足の判定ではありません。'
         : '';
-    target.textContent = [banner, referenceLine, skippedLine, describeCheckFocus(cycleResources, scheduleResult), scheduleText, workUse.note, assemblyUse.note, ledgerText, describeAnonymousHorizon(form, online, cycleResources, limit)].filter(Boolean).join('\n');
+    target.textContent = [banner, form.masterSourceNote, referenceLine, skippedLine, describeCheckFocus(cycleResources, scheduleResult), scheduleText, workUse.note, assemblyUse.note, ledgerText, describeAnonymousHorizon(form, online, cycleResources, limit)].filter(Boolean).join('\n');
     loadStandPremisesNote(target, form.standKey, generation);
 }
 
@@ -1385,14 +1498,14 @@ function describeAnonymousHorizon(form, online, resources, limit) {
 }
 
 function describeCycleTimeline(result) {
-    const wanted = ['交換待ち', 'ロール替', 'カリバ替', '改削完了', '組替需要', '組替可能', '搬入', '組替完了', '使用可能予備', '夜勤予備不足', 'ロール替需要', '交換需要', '改削保留', '廃却需要', '保留'];
+    const wanted = ['サイズ替', '交換待ち', 'ロール替', 'カリバ替', '改削完了', '組替需要', '組替可能', '搬入', '組替完了', '使用可能予備', '夜勤予備不足', 'ロール替需要', '交換需要', '改削保留', '廃却需要', '保留'];
     const events = result.events || [];
     const picked = [];
     let showUse = false;
     for (const item of events) {
         if (wanted.includes(item.kind)) {
             picked.push(item);
-            showUse = item.kind === 'ロール替';
+            if (item.kind === 'ロール替') showUse = true;
         } else if (showUse && item.kind === '操業') {
             picked.push(item);
             showUse = false;
@@ -1401,6 +1514,11 @@ function describeCycleTimeline(result) {
     }
     const firstHold = events.find(item => item.kind === '保留');
     if (firstHold && !picked.includes(firstHold)) picked.push(firstHold);
+    const holdIndex = firstHold ? events.indexOf(firstHold) : events.length;
+    const lastUse = events.slice(0, holdIndex).filter(item => item.kind === '操業'
+        && (!result.confirmedThrough || item.date <= result.confirmedThrough)).at(-1);
+    if (lastUse && !picked.includes(lastUse)) picked.push(lastUse);
+    picked.sort((a, b) => events.indexOf(a) - events.indexOf(b));
     const lines = picked.map(item => `${item.date} ${item.kind} ${item.note} カリバ${item.caliberId || '未確認'} 開始${item.caliberRuns === null || item.caliberRuns === undefined ? '未確認' : item.caliberRuns}`);
     const hidden = events.filter(item => !picked.includes(item));
     const countKind = kind => hidden.filter(item => item.kind === kind).length;
@@ -1413,8 +1531,9 @@ function describeCycleTimeline(result) {
     return [
         countLine,
         '暫定6か月を戻した時期は確定の購入日ではありません。',
+        lastUse ? `この予測で最後に計算できた操業は${lastUse.date}、対象${lastUse.onlineId || '未確認'}、カリバ${lastUse.caliberId || '未確認'}、${lastUse.caliberRuns}直です。` : 'この予測で計算できた操業はありません。',
         lines.join('\n') || '日付順の交換はまだ出ていません。',
-        hidden.length ? `表示は先頭${picked.length}件です。全体は${events.length}件。後続の保留${countKind('保留')}件、夜勤予備不足${countKind('夜勤予備不足')}件、ロール替需要${countKind('ロール替需要')}件。` : ''
+        hidden.length ? `表示は抜粋${picked.length}件です。全体は${events.length}件。未表示の保留${countKind('保留')}件、夜勤予備不足${countKind('夜勤予備不足')}件、ロール替需要${countKind('ロール替需要')}件。` : ''
     ].filter(Boolean).join('\n');
 }
 
@@ -1741,6 +1860,10 @@ let scheduleReadGeneration = 0;
 
 function beginScheduleRead() {
     scheduleReadGeneration += 1;
+    sizeChangeConfirmations = [];
+    cycleSlotConfirmations = [];
+    renderSizeChangeRecords();
+    renderCycleSlotRecords();
     return scheduleReadGeneration;
 }
 
@@ -1760,6 +1883,12 @@ function finishScheduleRead(generation, summary) {
 }
 
 function renderMonthlyScheduleSummary(summary) {
+    if (summary !== latestMonthlySummary) {
+        sizeChangeConfirmations = [];
+        cycleSlotConfirmations = [];
+        renderSizeChangeRecords();
+        renderCycleSlotRecords();
+    }
     if (summary && summary.ok !== false && Array.isArray(summary.months)) latestMonthlySummary = summary;
     if (summary && summary.ok === false) latestMonthlySummary = null;
     const target = document.getElementById('monthly-schedule-summary');
@@ -1792,7 +1921,11 @@ function renderMonthlyScheduleSummary(summary) {
 function renderConsumptionLink(summary) {
     const target = document.getElementById('consumption-link');
     if (!target) return;
-    const form = readCaliberInputs();
+    const form = resolvedLifePremises(readCaliberInputs());
+    const reference = activeForecastReference(form, summary);
+    const days = summary && Array.isArray(summary.days) ? summary.days.filter(row => !reference || String(row.date || '') >= reference).slice().sort((a, b) => String(a.date).localeCompare(String(b.date))) : [];
+    const boundary = productionSizeBoundary(days, form.size);
+    const prefixDays = boundary ? days.slice(0, boundary.index) : days;
     const linked = linkProductionToConsumption({ schedule: summary, standKey: form.standKey });
     const caliber = projectCaliberReplacement({
         standKey: form.standKey,
@@ -1807,7 +1940,7 @@ function renderConsumptionLink(summary) {
             size: form.size,
             referenceAt: activeForecastReference(form, summary)
         }, Boolean(form.forecastRoll)).slot,
-        days: summary && summary.days,
+        days: prefixDays,
         referenceDate: activeForecastReference(form) || (summary && summary.referenceDate)
     });
     const life = describeLifeChain({
@@ -1821,7 +1954,7 @@ function renderConsumptionLink(summary) {
         schedule: summary,
         caliber
     });
-    target.textContent = `${linked.reason}\n${caliber.reason}\n${life}`;
+    target.textContent = `${linked.reason}\n${caliber.reason}\n${life}${boundary ? '\nこの欄は最初のサイズまでの消耗です。' + boundary.date + '以後のサイズ切替を含む計算は「交換と再生」と「スタンド別の補充需要」に表示します。' : ''}`;
 }
 
 function readCaliberInputs() {
@@ -1917,7 +2050,67 @@ function knownUseBasisText(standKey) {
     return table[stand] || 'このスタンドの使用基準は既回答の表にありません。0直にはしません。';
 }
 
-function premisesFact(premises, standKey) {
+function loadedForecastMasters(standKey) {
+    if (anonymousForecastCheck) return {};
+    // Only inspect maps already populated by the existing application.
+    // Never initiate authentication, storage reads, or a remote fetch here.
+    return {
+        stand: typeof getStandMaster === 'function' ? getStandMaster(standKey) : null,
+        cutting: typeof getCuttingMaster === 'function' ? getCuttingMaster(standKey) : null
+    };
+}
+
+function resolvedLifePremises(form) {
+    if (anonymousForecastCheck) return form;
+    const fact = premisesFact(standPremisesCache, form.standKey, loadedForecastMasters(form.standKey));
+    return Object.assign({}, form, {
+        scrapDiameter: form.scrapDiameter === undefined ? (fact.scrapDiameter === null ? undefined : fact.scrapDiameter) : form.scrapDiameter,
+        cutMm: form.cutMm === undefined ? (fact.adoptedCutMm === null ? undefined : fact.adoptedCutMm) : form.cutMm,
+        masterSourceNote: `詳細の廃却径は${form.scrapDiameter === undefined ? fact.diameterSource : '画面入力の試算'}、採用改削量は${form.cutMm === undefined ? fact.cutSource : '画面入力の試算'}です。`
+    });
+}
+
+function refreshForecastFromLoadedMasters() {
+    renderStandDemandList();
+    renderExchangeCycle();
+    if (latestMonthlySummary) renderConsumptionLink(latestMonthlySummary);
+}
+
+function forecastMasterNumber(value) {
+    if (value === null || value === undefined || String(value).trim() === '') return null;
+    const number = Number(value);
+    return Number.isFinite(number) && number > 0 ? number : null;
+}
+
+function premisesFact(premises, standKey, masters) {
+    const fallback = localPremisesFact(premises, standKey);
+    const stand = String(standKey || '').replace(/^#/, '');
+    const loaded = masters || {};
+    const sameStand = row => row && standNumberFromName(row.standKey || row.stand) === stand;
+    const result = Object.assign({}, fallback, {
+        diameterSource: fallback.scrapDiameter === null ? '取得待ち' : '端末内の径仕様',
+        cutSource: fallback.adoptedCutMm === null ? '取得待ち' : '端末内の採用改削量'
+    });
+    if (loaded.stand) {
+        result.scrapDiameter = sameStand(loaded.stand) ? forecastMasterNumber(loaded.stand.scrapDiameter) : null;
+        result.diameterSource = '取得済みStandMaster';
+        result.diameterReason = !sameStand(loaded.stand)
+            ? '径マスタのスタンドが一致しないため、この値は使いません。'
+            : (result.scrapDiameter === null ? `${stand}番の廃却径は取得済みマスタで未記録です。` : '');
+    }
+    if (loaded.cutting) {
+        const active = loaded.cutting.active !== false && String(loaded.cutting.active).toLowerCase() !== 'false';
+        result.adoptedCutMm = sameStand(loaded.cutting) && active ? forecastMasterNumber(loaded.cutting.calculationCutMm) : null;
+        result.cutSource = '取得済み改削マスタの計算用改削量';
+        result.cutReason = !sameStand(loaded.cutting)
+            ? '改削マスタのスタンドが一致しないため、この値は使いません。'
+            : (!active ? `${stand}番の改削マスタは無効です。採用改削量は使いません。`
+                : (result.adoptedCutMm === null ? `${stand}番の計算用改削量は取得済みマスタで未記録です。標準値や実績平均では埋めません。` : ''));
+    }
+    return result;
+}
+
+function localPremisesFact(premises, standKey) {
     const stand = String(standKey || '').replace(/^#/, '');
     if (!premises || premises.status !== 'loaded' || !premises.data) {
         return {
@@ -1936,11 +2129,11 @@ function premisesFact(premises, standKey) {
             cutReason: `${stand}番の採用改削量はローカル仕様に記録がありません。未記録です。`
         };
     }
-    const cut = finiteOrNull(row.adoptedCutMm);
+    const cut = forecastMasterNumber(row.adoptedCutMm);
     return {
-        scrapDiameter: finiteOrNull(row.scrapDiameter),
+        scrapDiameter: forecastMasterNumber(row.scrapDiameter),
         adoptedCutMm: cut,
-        diameterReason: row.scrapDiameter === undefined ? `${stand}番の廃却径は未記録です。` : '',
+        diameterReason: forecastMasterNumber(row.scrapDiameter) === null ? `${stand}番の廃却径は未記録です。` : '',
         cutReason: cut === null ? `${stand}番の採用改削量は手元の仕様に無いので取得待ちです。17番の2.5mmは使いません。` : ''
     };
 }
@@ -1955,6 +2148,177 @@ function savedOpening(roll, standKey, size, referenceAt) {
         runs: hasRuns ? saved.openingRuns : roll.openingRuns,
         note: hasCaliber || hasRuns ? `保存した開始条件です。基準日${referenceAt}、サイズ${size}。台帳には書いていません。` : ''
     };
+}
+
+function forecastSizeOpenings(resources, standKey, days, referenceAt) {
+    const sizes = Array.from(new Set((days || []).filter(row => row.productionAmount > 0).map(row => normalizeForecastSize(row.size)).filter(Boolean)));
+    const result = [];
+    for (const item of resources || []) for (const size of sizes) {
+        const owner = { standKey: String(standKey), rollId: item.id, size, referenceAt };
+        const saved = recallForecastSetting(owner).value;
+        if (saved) result.push({ owner, caliberId: saved.caliberId, runs: saved.openingRuns });
+    }
+    return result;
+}
+
+let sizeChangeConfirmations = [];
+let cycleSlotConfirmations = [];
+
+function scopedCycleSlots(slots, target, date, matchRoll) {
+    return (Array.isArray(slots) ? slots : []).filter(slot => slot && slot.date === date
+        && confirmationOwnerMatches(slot, target, matchRoll));
+}
+
+function applicableCycleSlots(schedule, kind) {
+    if (!schedule || schedule.ok === false) return [];
+    return cycleSlotConfirmations.filter(item => item.schedule === schedule && item.kind === kind).map(item => item.value);
+}
+
+function renderCycleSlotRecords() {
+    if (typeof document === 'undefined') return;
+    const list = document.getElementById('cycle-slot-records');
+    if (!list) return;
+    const records = cycleSlotConfirmations.filter(item => item.schedule === latestMonthlySummary);
+    list.textContent = records.length ? records.map(item => {
+        const slot = item.value;
+        return `${item.kind === 'assembly' ? '組替' : '交換'} ${slot.date}: ${slot.owner.standKey}番 ${slot.owner.rollId}、${slot.owner.size}、基準日${slot.owner.referenceAt}、${slot.reservedHours}時間/${slot.people}人`;
+    }).join('\n') : 'この予定の交換・組替枠は未登録です。';
+}
+
+function registerCycleSlot(kind) {
+    const form = readCaliberInputs();
+    const owner = slotOwnerFromContext();
+    const assembly = kind === 'assembly';
+    const confirmation = assembly ? form.assemblyConfirmation : form.workConfirmation;
+    const stampedOwner = assembly ? assemblySlotOwner : workSlotOwner;
+    const slot = usableSlot(confirmation, stampedOwner, owner, true).slot;
+    const schedule = latestMonthlySummary;
+    const message = document.getElementById('cycle-slot-message');
+    if (!schedule || schedule.ok === false || !owner.rollId || !owner.referenceAt || !owner.size || !slot
+        || (!assembly && !['rollChange', 'caliberChange'].includes(slot.workType))) {
+        message.textContent = '対象ロール・サイズ・基準日と、その対象で確認した作業枠を確認してください。サイズ替は専用の登録を使います。';
+        return;
+    }
+    cycleSlotConfirmations = cycleSlotConfirmations.filter(item => !(item.schedule === schedule && item.kind === kind
+        && item.value.date === slot.date && forecastSettingKey(item.value.owner) === forecastSettingKey(owner)));
+    cycleSlotConfirmations.push({ schedule, kind, value: { ...slot, owner: { ...owner } } });
+    message.textContent = 'この予定の予測用に登録しました。不足・未確認なら作業は成立しません。実台帳や通常の保存には書いていません。';
+    renderCycleSlotRecords();
+    renderExchangeCycle();
+    renderStandDemandList();
+}
+
+function applicableSizeChanges(schedule) {
+    if (!schedule || schedule.ok === false) return [];
+    return sizeChangeConfirmations.filter(item => item.schedule === schedule).map(item => item.value);
+}
+
+function renderSizeChangeRecords() {
+    if (typeof document === 'undefined') return;
+    const list = document.getElementById('sizechange-records');
+    if (!list) return;
+    const records = applicableSizeChanges(latestMonthlySummary);
+    list.textContent = records.length ? records.map(item => `${item.owner.standKey}番 ${item.owner.rollId} 基準日${item.owner.referenceAt}: ${item.fromSize}→${item.toSize}、最初の操業${item.operationDate}、作業枠${item.date} ${item.reservedHours}時間/${item.people}人`).join('\n') : 'この予定のサイズ替枠は未登録です。';
+}
+
+function registerSizeChange() {
+    const form = readCaliberInputs();
+    const owner = slotOwnerFromContext();
+    const message = document.getElementById('sizechange-message');
+    const toSize = normalizeForecastSize(document.getElementById('sizechange-to').value);
+    const operationDate = document.getElementById('sizechange-operation').value;
+    const schedule = latestMonthlySummary;
+    const work = usableSlot(form.workConfirmation, workSlotOwner, owner, true).slot;
+    if (!schedule || schedule.ok === false || !owner.rollId || !owner.referenceAt || !owner.size || !toSize || !operationDate
+        || !work || work.workType !== 'sizeChange') {
+        message.textContent = '対象・基準日・予定・次サイズ・最初の操業日と、この対象のサイズ替作業枠を確認してください。別の対象の枠は登録しません。';
+        return;
+    }
+    const value = { ...work, owner: { ...owner }, fromSize: normalizeForecastSize(owner.size), toSize, operationDate };
+    sizeChangeConfirmations = sizeChangeConfirmations.filter(item => !(item.schedule === schedule
+        && forecastSettingKey(item.value.owner) === forecastSettingKey(owner) && item.value.operationDate === operationDate));
+    sizeChangeConfirmations.push({ schedule, value });
+    message.textContent = '予測用の枠を登録しました。時間や開始条件が足りなければ計算は止まります。実状態と端末の保存は変更していません。';
+    renderSizeChangeRecords();
+    renderExchangeCycle();
+    renderStandDemandList();
+}
+
+function openAnonymousSizeExample() {
+    startAnonymousForecastCheck();
+    const referenceAt = '2027-04-01';
+    const owner = { rollId: 'anon-online', standKey: '10', size: 'D10', referenceAt };
+    rememberForecastSetting({ ...owner, caliberId: 'anon-cal-a', openingRuns: 6 });
+    rememberForecastSetting({ ...owner, size: 'D13', caliberId: 'anon-cal-d13', openingRuns: 2 });
+    setAnonymousField('caliber-opening', '6');
+    setAnonymousField('work-type', 'sizeChange');
+    setAnonymousField('work-reserved-hours', '6');
+    setAnonymousField('work-required-hours', '6');
+    setAnonymousField('work-people', '3');
+    setAnonymousField('sizechange-to', 'D13');
+    setAnonymousField('sizechange-operation', '2027-04-03');
+    rememberWorkSlotOwner();
+    const slot = readCaliberInputs().workConfirmation;
+    const day = (date, size, productionAmount) => ({ date, size, productionAmount, operatingHours: productionAmount ? 8 : 0, shift1Team: 'A', shift3Team: '' });
+    const schedule = { ...anonymousCheckSummary(), sourceName: '試験用のD10・D13切替予定', months: [{ month: '2027-04', classification: 'future', productionTons: null, operatingHours: null, sizes: ['D10', 'D13'], shifts: ['A'] }], days: [
+        day('2027-04-01', 'D10', 10), day('2027-04-02', 'D13', 0), day('2027-04-03', 'D13', 10),
+        day('2027-04-04', 'D13', 0), day('2027-04-05', 'D10', 10), day('2027-04-06', 'D10', 0),
+        day('2027-04-07', 'D10', 0), { ...day('2027-04-08', 'D10', 10), shift1Team: '', shift3Team: 'A' }
+    ] };
+    latestMonthlySummary = schedule;
+    sizeChangeConfirmations = [
+        { schedule, value: { ...slot, owner, fromSize: 'D10', toSize: 'D13', operationDate: '2027-04-03' } },
+        { schedule, value: { ...slot, owner: { ...owner, size: 'D13' }, fromSize: 'D13', toSize: 'D10', date: '2027-04-04', operationDate: '2027-04-05' } }
+    ];
+    cycleSlotConfirmations = [
+        { schedule, kind: 'work', value: { ...slot, owner: { ...owner }, date: '2027-04-06', workType: 'rollChange' } },
+        { schedule, kind: 'assembly', value: { owner: { ...owner }, date: '2027-04-07', period: 'day', requiredHours: 6, reservedHours: 6,
+            people: 3, prepared: 'reworkInbound', preparedTarget: 'anon-online', preparedOn: '2027-04-07' } }
+    ];
+    renderMonthlyScheduleSummary(schedule);
+    renderSizeChangeRecords();
+    renderCycleSlotRecords();
+    document.getElementById('sizechange-message').textContent = 'すべて試験値です。D13は2→3直、D10へ戻ると7→8直、6日ロール替、7日昼の組替、8日夜勤へ続きます。サイズ替枠の解除で4月2日の未確認へ戻ります。実台帳・端末の保存・実設備のマスタは使いません。';
+}
+
+function ensureSizeChangeControls() {
+    const target = document.getElementById('cycle-result');
+    if (!target || typeof target.insertAdjacentHTML !== 'function' || document.getElementById('sizechange-to')) return;
+    const type = document.getElementById('work-type');
+    if (type) type.insertAdjacentHTML('beforeend', '<option value="sizeChange">サイズ替</option>');
+    target.insertAdjacentHTML('beforebegin', '<fieldset id="sizechange-panel"><legend>サイズ切替後の予測</legend>'
+        + '<p>次サイズの開始条件は、同じロール・スタンド・基準日で保存した値を使います。上のサイズを切り替えると入力・確認できます。今のカリバは流用しません。</p>'
+        + '<label>次サイズ <input id="sizechange-to" type="text"></label>'
+        + '<label>次サイズの最初の操業日 <input id="sizechange-operation" type="date"></label>'
+        + '<p>上の交換作業枠で「サイズ替」を選び、作業日・昼の時間・人数・連続操業・組替・3セットを確認して登録します。0tだけでは成立しません。</p>'
+        + '<button id="sizechange-register" type="button">サイズ替枠を予測へ登録</button>'
+        + '<button id="sizechange-clear" type="button">サイズ替の登録をすべて解除</button>'
+        + '<button id="sizechange-example" type="button">匿名のサイズ切替例を見る</button>'
+        + '<p>登録済みの枠は下に残ります。同じ対象・最初の操業日で再登録すると更新します。ファイルの差替え・解除・失敗・再読込では消えます。実台帳には保存しません。</p>'
+        + '<pre id="sizechange-records"></pre><p id="sizechange-message" aria-live="polite"></p>'
+        + '<h4>切替後の交換・組替枠</h4><p>交換は外すロール、組替は戻すロールを上で選び、そのサイズ・基準日で確認した枠を登録します。組替の準備を確認した対象とは別です。旧サイズの枠は流用しません。</p>'
+        + '<button id="cycle-work-register" type="button">選択ロールの交換枠を登録</button>'
+        + '<button id="cycle-assembly-register" type="button">選択ロールの組替枠を登録</button>'
+        + '<button id="cycle-slots-clear" type="button">交換・組替の登録をすべて解除</button>'
+        + '<pre id="cycle-slot-records"></pre><p id="cycle-slot-message" aria-live="polite"></p></fieldset>');
+    document.getElementById('sizechange-register').addEventListener('click', registerSizeChange);
+    document.getElementById('sizechange-example').addEventListener('click', openAnonymousSizeExample);
+    document.getElementById('cycle-work-register').addEventListener('click', () => registerCycleSlot('work'));
+    document.getElementById('cycle-assembly-register').addEventListener('click', () => registerCycleSlot('assembly'));
+    document.getElementById('cycle-slots-clear').addEventListener('click', () => {
+        cycleSlotConfirmations = [];
+        renderCycleSlotRecords();
+        renderExchangeCycle();
+        renderStandDemandList();
+    });
+    document.getElementById('sizechange-clear').addEventListener('click', () => {
+        sizeChangeConfirmations = [];
+        renderSizeChangeRecords();
+        renderExchangeCycle();
+        renderStandDemandList();
+    });
+    renderSizeChangeRecords();
+    renderCycleSlotRecords();
 }
 
 let workSlotOwner = null;
@@ -2020,11 +2384,38 @@ function confirmationForStand(confirmation, standKey, standSize, referenceAt, ro
 }
 
 function sizeForStand(standKey, source, planDays) {
+    const sizes = Array.from(new Set((planDays || []).filter(row => row && row.productionAmount !== 0).map(row => row.size).filter(Boolean)));
     const selected = String(source.standKey || '').replace(/^#/, '') === String(standKey);
     if (selected && source.size) return source.size;
-    const sizes = Array.from(new Set((planDays || []).map(row => row && row.size).filter(Boolean)));
-    if (sizes.length === 1) return sizes[0];
+    if (sizes.length) return sizes[0];
     return '';
+}
+
+function hasMixedProductionSizes(days) {
+    return new Set((days || []).filter(row => row && row.productionAmount !== 0).map(row => row.size).filter(Boolean)).size > 1;
+}
+
+function normalizeForecastSize(value) {
+    return String(value || '').normalize('NFKC').toUpperCase().replace(/\s+/g, '');
+}
+
+function productionSizeBoundary(days, currentSize) {
+    const normalize = normalizeForecastSize;
+    let activeSize = normalize(currentSize);
+    for (let index = 0; index < (days || []).length; index += 1) {
+        const row = days[index];
+        if (!row || typeof row.productionAmount !== 'number' || row.productionAmount < 0) continue;
+        const nextSize = normalize(row.size);
+        if (row.productionAmount === 0 && !/^D\d+$/.test(nextSize)) continue;
+        if (!activeSize && nextSize && row.productionAmount > 0) activeSize = nextSize;
+        if (activeSize && (!nextSize || nextSize !== activeSize)) {
+            return {
+                index, date: String(row.date || '').slice(0, 10), fromSize: activeSize, toSize: nextSize || '未確認',
+                reason: `サイズが${activeSize}から${nextSize || '未確認'}へ変わるため、ここから未確認です。次サイズのカリバID・開始量・サイズ替作業枠の接続が未確認です。選択中の1サイズには丸めません。`
+            };
+        }
+    }
+    return null;
 }
 
 function buildStandDemandList(input) {
@@ -2046,6 +2437,7 @@ function buildStandDemandList(input) {
     const countedDays = referenceAt
         ? planDays.filter(row => String(row.date || '').slice(0, 10) >= referenceAt)
         : planDays.slice();
+    countedDays.sort((a, b) => String(a.date).localeCompare(String(b.date)));
     const ignored = days.length - planDays.length;
     const beforeReference = planDays.length - countedDays.length;
     const standKeys = Array.from(new Set([
@@ -2060,8 +2452,8 @@ function buildStandDemandList(input) {
         countedDays.length ? `日付の予定は${countedDays.length}日あります。無い日は作っていません。` : '月別の本数だけなので、操業日は作っていません。'
     ].filter(Boolean);
     const blocks = standKeys.map(standKey => {
-        const fact = premisesFact(premises, standKey);
-        const standSize = sizeForStand(standKey, source, planDays);
+        const fact = premisesFact(premises, standKey, source.mastersByStand && source.mastersByStand[standKey]);
+        const standSize = sizeForStand(standKey, source, countedDays);
         const standRolls = rolls.filter(item => standNumberFromName(item.name || item.id) === standKey).map(item => {
             const saved = savedOpening(item, standKey, standSize, referenceAt);
             return Object.assign({}, item, { currentCaliber: saved.caliber, openingRuns: saved.runs, openingNote: saved.note });
@@ -2104,14 +2496,24 @@ function buildStandDemandList(input) {
             scrap = '足していない日からは、廃却日も手配目安も出していません。';
             order = '足していない日からは、手配目安は出していません。';
         } else if (planDays.length && standRolls.length && standDays.length) {
-            const resources = readLedgerResources(standRolls, { standKey, size: source.size || '' });
+            const resources = readLedgerResources(standRolls, { standKey, size: standSize });
             const online = resources.find(item => item.frame === 'online');
             if (!online || !online.caliberId || online.runs === null) {
                 blocked.push('現在のカリバまたは開始直数が未記録なので、このスタンドの日付計算はしていません。');
+            } else if (!standSize) {
+                period = 'サイズが切り替わる予定は、サイズ別の開始条件と切替工程が未確認のため日付計算を止めています。選択中の1サイズには丸めません。';
+                blocked.push('サイズ別の開始条件と切替工程は未確認です。');
             } else if (!limit || limit.kind !== '最大') {
                 blocked.push('最大直数が記録されていないので、日付の交換計算はしていません。使用基準のトン数からは日を作りません。');
             } else {
                 const result = simulateExchangeCycle({
+                    currentSize: standSize,
+                    standKey,
+                    referenceAt,
+                    sizeOpenings: source.sizeOpenings || forecastSizeOpenings(resources, standKey, standDays, referenceAt),
+                    sizeChanges: source.sizeChanges,
+                    workSlots: source.workSlots,
+                    assemblySlots: source.assemblySlots,
                     maxRuns: limit.runs,
                     scrapDiameter: fact.scrapDiameter,
                     adoptedCutMm: fact.adoptedCutMm,
@@ -2124,6 +2526,7 @@ function buildStandDemandList(input) {
                     days: standDays
                 });
                 period = result.reason;
+                if (result.stopRecord) blocked.push(`${result.stopRecord.date} 対象${result.stopRecord.id}: ${result.stopRecord.reason}`);
                 const scraps = result.events.filter(item => item.kind === '廃却需要');
                 const nights = result.events.filter(item => item.kind === '夜勤予備不足');
                 scrap = scraps.length ? scraps.map(item => `${item.date} ${item.note}`).join(' / ') : '計算できた範囲に廃却はありません。0本にはしません。';
@@ -2134,6 +2537,7 @@ function buildStandDemandList(input) {
         return [
             `#${standKey} ${knownUseBasisText(standKey)}`,
             rollLines.join('\n'),
+            `計算の参照元: 廃却径は${fact.diameterSource}（${fact.scrapDiameter === null ? '未確認' : fact.scrapDiameter + 'mm'}）、採用改削量は${fact.cutSource}（${fact.adoptedCutMm === null ? '未確認' : fact.adoptedCutMm + 'mm'}）です。新品時の径は現在径に使いません。`,
             `計算できた期間: ${period}`,
             `廃却と補充: ${scrap}`,
             `夜勤の予備不足: ${night}`,
@@ -2153,11 +2557,14 @@ function renderStandDemandList() {
     const schedule = latestMonthlySummary && latestMonthlySummary.ok !== false ? latestMonthlySummary : null;
     const form = typeof readCaliberInputs === 'function' ? readCaliberInputs() : {};
     const ledger = anonymousForecastCheck ? anonymousCheckLedger() : (typeof roles === 'undefined' ? [] : roles);
+    const masterKeys = Array.from(new Set(ledger.map(item => standNumberFromName(item.name || item.id)).filter(Boolean)));
+    const mastersByStand = anonymousForecastCheck ? {} : Object.fromEntries(masterKeys.map(key => [key, loadedForecastMasters(key)]));
     target.textContent = buildStandDemandList({
         plan,
         rolls: ledger,
         days: schedule && Array.isArray(schedule.days) ? schedule.days : [],
         premises: anonymousForecastCheck ? { status: 'waiting' } : standPremisesCache,
+        mastersByStand,
         scheduleName: schedule && schedule.sourceName || '',
         referenceAt: activeForecastReference(form, schedule),
         scheduleReference: schedule && schedule.referenceDate || '',
@@ -2166,6 +2573,9 @@ function renderStandDemandList() {
         reworkDays: form.reworkDays,
         workConfirmation: Object.assign({}, form.workConfirmation || {}, { owner: workSlotOwner }),
         assemblyConfirmation: Object.assign({}, form.assemblyConfirmation || {}, { owner: assemblySlotOwner }),
+        sizeChanges: applicableSizeChanges(schedule),
+        workSlots: applicableCycleSlots(schedule, 'work'),
+        assemblySlots: applicableCycleSlots(schedule, 'assembly'),
         leadTimes: anonymousForecastCheck ? {} : readStandLeadTimes()
     });
     if (!anonymousForecastCheck && standPremisesCache.status === 'waiting' && typeof fetch === 'function') {
@@ -2280,6 +2690,7 @@ function bindMonthlyScheduleFileInput() {
     if (!root) return;
     if (root.dataset.forecastBound === 'true') return;
     root.dataset.forecastBound = 'true';
+    ensureSizeChangeControls();
     const dedicated = typeof location !== 'undefined' && /anonymous-check\.html$/.test(String(location.pathname || ''));
     const queryEntry = typeof location !== 'undefined' && /(?:\?|&)anonymous=1(?:&|$)/.test(String(location.search || ''));
     if (queryEntry && !dedicated && typeof location.replace === 'function') {
@@ -2366,3 +2777,4 @@ if (typeof document !== 'undefined') {
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bindMonthlyScheduleFileInput);
     else bindMonthlyScheduleFileInput();
 }
+

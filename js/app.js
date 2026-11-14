@@ -178,7 +178,10 @@ function checkLoginStatus() {
         renderRoles();
         if (isRemoteConfigured()) {
             loadRemoteRoles();
-            Promise.all([loadStandMaster(), loadCuttingMaster()]).then(() => renderRoles());
+            Promise.all([loadStandMaster(), loadCuttingMaster()]).then(() => {
+                renderRoles();
+                if (typeof refreshForecastFromLoadedMasters === 'function') refreshForecastFromLoadedMasters();
+            });
         }
     } else {
         loginScreen.style.display = 'flex';
