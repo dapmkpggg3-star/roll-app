@@ -1243,7 +1243,7 @@ function renderExchangeCycle() {
         ].filter(Boolean).join('\n');
     }
     const banner = anonymousForecastCheck
-        ? '匿名の確認です。実台帳は読んでいません。保存もしません。予測は実ロールの状態を変えません。仮の13か月は購入不足の判定ではありません。'
+        ? '匿名の確認です。値は試験用です。実台帳は読んでいません。端末へは保存しません。実設備の径は読みません。予測は実ロールの状態を変えません。仮の13か月は購入不足の判定ではありません。'
         : '';
     target.textContent = [banner, describeCheckFocus(cycleResources, scheduleResult), scheduleText, ledgerText, describeAnonymousHorizon(form, online, cycleResources, limit)].filter(Boolean).join('\n');
     loadStandPremisesNote(target, form.standKey, generation);
@@ -1337,6 +1337,7 @@ function describeCycleTimeline(result) {
 }
 
 async function loadStandPremisesNote(target, standKey, generation) {
+    if (anonymousForecastCheck) return;
     if (typeof fetch !== 'function') return;
     const selectedStand = String(standKey || '').replace(/^#/, '').trim();
     const isCurrent = () => generation === exchangeCycleRenderGeneration
@@ -1409,33 +1410,91 @@ function forecastSettingKey(input) {
 }
 
 let anonymousForecastCheck = false;
-
-function forecastSettingsStorageKey() {
-    return anonymousForecastCheck ? 'caliber_forecast_settings_anon_v1' : 'caliber_forecast_settings_v1';
-}
+let anonymousForecastMemory = {};
 
 function anonymousCheckLedger() {
     return [
-        { id: 'anon-online', name: '#10-A', status: 'オンライン', currentDiameter: 81 },
-        { id: 'anon-spare', name: '#10-B', status: '新品予備（組込完了）', currentDiameter: 93 },
-        { id: 'anon-used', name: '#10-C', status: '中古予備（バラシ前）', currentDiameter: 74 }
+        { id: 'anon-online', name: '#10-A', status: 'オンライン', currentDiameter: 81, currentCaliber: 'anon-cal-a', openingRuns: 7 },
+        { id: 'anon-spare', name: '#10-B', status: '新品予備（組込完了）', currentDiameter: 93, currentCaliber: 'anon-cal-b', openingRuns: 2 },
+        { id: 'anon-used', name: '#10-C', status: '中古予備（バラシ前）', currentDiameter: 74, currentCaliber: 'anon-cal-c', openingRuns: 0 }
     ];
 }
 
-function startAnonymousForecastCheck() {
-    anonymousForecastCheck = true;
-    const stand = document.getElementById('caliber-stand');
-    const size = document.getElementById('caliber-size');
-    if (stand) stand.value = '10';
-    if (size) size.value = 'D10';
-    const forecast = document.getElementById('forecast-roll');
-    if (forecast) forecast.value = '';
+function anonymousCheckSummary() {
+    const day = (date, amount, hours, shift1, shift3) => ({
+        date, productionAmount: amount, operatingHours: hours, shift1Team: shift1, shift3Team: shift3, size: 'D10'
+    });
+    return {
+        ok: true,
+        sourceName: '試験用の匿名予定',
+        referenceDate: '2027-04-01',
+        days: [
+            day('2027-04-01', 10, 8, 'A', ''),
+            day('2027-04-02', 0, 0, 'A', ''),
+            day('2027-04-03', 0, 0, '', 'B'),
+            day('2027-04-04', 0, 0, 'A', '')
+        ],
+        months: [{ month: '2027-04', classification: 'future', productionTons: null, operatingHours: null, sizes: ['D10'], shifts: ['A'] }],
+        reason: '試験用の匿名予定です。読込済みの予定ファイルではありません。'
+    };
+}
+
+function setAnonymousField(id, value) {
+    const element = document.getElementById(id);
+    if (element) element.value = value;
+}
+
+function applyAnonymousScene(scene) {
+    if (!anonymousForecastCheck) return;
+    applyingForecastSetting = true;
+    setAnonymousField('assembly-period', scene === 'empty' ? '' : 'day');
+    setAnonymousField('assembly-required-hours', scene === 'empty' ? '' : '5');
+    setAnonymousField('assembly-reserved-hours', scene === 'short' ? '1' : (scene === 'empty' ? '' : '5'));
+    setAnonymousField('assembly-people', scene === 'empty' ? '' : '1');
+    setAnonymousField('assembly-prepared', scene === 'empty' ? '' : 'reworkInbound');
+    setAnonymousField('assembly-prepared-target', scene === 'empty' ? '' : 'anon-online');
+    setAnonymousField('assembly-prepared-on', scene === 'empty' ? '' : '2027-04-01');
+    setAnonymousField('assembly-date', scene === 'ready' || scene === 'short' ? '2027-04-04' : '');
+    applyingForecastSetting = false;
     renderExchangeCycle();
 }
 
+function startAnonymousForecastCheck() {
+    applyingForecastSetting = true;
+    anonymousForecastCheck = true;
+    anonymousForecastMemory = {};
+    activeForecastContext = null;
+    latestMonthlySummary = anonymousCheckSummary();
+    setAnonymousField('caliber-stand', '10');
+    setAnonymousField('caliber-size', 'D10');
+    setAnonymousField('forecast-roll', '');
+    setAnonymousField('forecast-reference', '2027-04-01');
+    setAnonymousField('caliber-current', 'anon-cal-a');
+    setAnonymousField('caliber-opening', '7');
+    setAnonymousField('caliber-opening-tons', '');
+    setAnonymousField('work-date', '2027-04-02');
+    setAnonymousField('work-period', 'day');
+    setAnonymousField('work-reserved-hours', '5');
+    setAnonymousField('work-type', 'rollChange');
+    setAnonymousField('work-required-hours', '5');
+    setAnonymousField('work-people', '1');
+    setAnonymousField('work-continuous', 'no');
+    setAnonymousField('work-changeover', 'yes');
+    setAnonymousField('work-three-set', 'yes');
+    setAnonymousField('cycle-rework-days', '1');
+    setAnonymousField('life-diameter', '81');
+    setAnonymousField('life-scrap', '70');
+    setAnonymousField('life-cut', '4');
+    ['assembly-date', 'assembly-period', 'assembly-reserved-hours', 'assembly-required-hours', 'assembly-people', 'assembly-prepared', 'assembly-prepared-target', 'assembly-prepared-on'].forEach(id => setAnonymousField(id, ''));
+    applyingForecastSetting = false;
+    renderMonthlyScheduleSummary(latestMonthlySummary);
+    syncForecastSettingContext();
+}
+
 function readForecastSettings() {
+    if (anonymousForecastCheck) return anonymousForecastMemory;
     try {
-        const parsed = JSON.parse(localStorage.getItem(forecastSettingsStorageKey()) || '{}');
+        const parsed = JSON.parse(localStorage.getItem('caliber_forecast_settings_v1') || '{}');
         return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
     } catch (error) {
         return {};
@@ -1457,7 +1516,8 @@ function rememberForecastSetting(input) {
         openingRuns: blankForecastAmount(source.openingRuns),
         openingTons: blankForecastAmount(source.openingTons)
     };
-    localStorage.setItem(forecastSettingsStorageKey(), JSON.stringify(stored));
+    if (anonymousForecastCheck) return { key, value: stored[key] };
+    localStorage.setItem('caliber_forecast_settings_v1', JSON.stringify(stored));
     return { key, value: stored[key] };
 }
 
@@ -1696,6 +1756,7 @@ function renderOperatingPlanPanel() {
 }
 
 function saveOperatingPlanFromForm() {
+    if (anonymousForecastCheck) return;
     const created = createOperatingPlanRevision({
         id: document.getElementById('operating-plan-id').value,
         label: document.getElementById('operating-plan-label').value,
@@ -1720,6 +1781,7 @@ function saveOperatingPlanFromForm() {
 }
 
 function saveStandLeadTimeFromForm() {
+    if (anonymousForecastCheck) return;
     const normalized = normalizeStandLeadTime({
         standKey: document.getElementById('lead-time-stand').value,
         months: document.getElementById('lead-time-months').value,
@@ -1741,6 +1803,11 @@ function saveStandLeadTimeFromForm() {
 
 function suggestKnownWorkEffort() {
     if (typeof document === 'undefined') return;
+    if (anonymousForecastCheck) {
+        const note = document.getElementById('work-effort');
+        if (note) note.textContent = '匿名の確認です。既回答の人数は入れません。';
+        return;
+    }
     const stand = document.getElementById('caliber-stand');
     const type = document.getElementById('work-type');
     const known = knownWorkEffort(stand && stand.value, type && type.value);
@@ -1764,6 +1831,13 @@ function bindMonthlyScheduleFileInput() {
         anonymousButton.dataset.bound = 'true';
         anonymousButton.addEventListener('click', startAnonymousForecastCheck);
     }
+    [['anon-scene-empty', 'empty'], ['anon-scene-ready', 'ready'], ['anon-scene-clear', 'clear'], ['anon-scene-short', 'short']].forEach(([id, scene]) => {
+        const button = document.getElementById(id);
+        if (button && button.dataset.bound !== 'true') {
+            button.dataset.bound = 'true';
+            button.addEventListener('click', () => applyAnonymousScene(scene));
+        }
+    });
     ['forecast-roll', 'forecast-reference', 'caliber-stand', 'caliber-size', 'caliber-current', 'caliber-opening', 'caliber-opening-tons', 'caliber-pass', 'work-date', 'work-period', 'work-reserved-hours', 'work-type', 'work-required-hours', 'work-people', 'work-continuous', 'work-changeover', 'work-three-set', 'assembly-date', 'assembly-period', 'assembly-reserved-hours', 'assembly-required-hours', 'assembly-people', 'assembly-prepared', 'assembly-prepared-target', 'assembly-prepared-on', 'life-diameter', 'life-scrap', 'life-cut', 'life-spare', 'cycle-spare-calibers', 'cycle-rework-days'].forEach(id => {
         const field = document.getElementById(id);
         if (field) field.addEventListener('change', () => {
@@ -1775,6 +1849,7 @@ function bindMonthlyScheduleFileInput() {
         });
     });
     input.addEventListener('change', async () => {
+        if (anonymousForecastCheck) return;
         const generation = beginScheduleRead();
         const file = input.files && input.files[0];
         const message = document.getElementById('operating-plan-message');

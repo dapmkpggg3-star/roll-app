@@ -281,6 +281,11 @@
                     <h3>交換と再生の1周</h3>
                     <p>見る順は4つです。交換前のオンラインと予備、交換後は相手自身のカリバと開始直数、昼の組替が成立したあとだけ予備、未確認と不足の対象と理由。組替は、まず枠を空のまま、次に昼の枠と準備を入れ、最後に日付を消すか時間を短くします。仮の13か月は読込予定ではなく、購入不足の判定ではありません。</p>
                     <button type="button" id="start-anonymous-check">匿名の台帳で確認する</button>
+                    <p>開始すると試験用の対象・予定・交換枠が入ります。組替はボタンで切り替えます。この確認は端末へ保存しません。</p>
+                    <button type="button" id="anon-scene-empty">枠なし</button>
+                    <button type="button" id="anon-scene-ready">成立</button>
+                    <button type="button" id="anon-scene-clear">解除</button>
+                    <button type="button" id="anon-scene-short">短縮</button>
                     <p>生産予定を読み込んだときだけ、その予定で計算します。予定が無い日を作りません。選んだロールと基準日の開始条件で、日付順に交換・再生・組替・未確認の停止を出します。読込予定の結果と、仮の13か月は分けて出します。対象期間、確定して計算できた最終日、止めた対象と理由を分けます。未確認のあとを計算済みにはしません。ロール替の回数は再利用で、新規購入の本数ではありません。本数だけでは架空のロールIDを作りません。</p>
                     <label>予測対象ロール <input id="forecast-roll" type="text" value=""></label>
                     <label>基準日 <input id="forecast-reference" type="date" value=""></label>
@@ -590,7 +595,7 @@
     <script src="js/online-safety.js?v=20260805-online-safety"></script>
     <script src="js/sync.js?v=20261023-content-auth"></script>
 <script src="js/offline-recovery.js?v=20261113-offline-recovery"></script>
-<script src="js/operating-plan.js?v=20261114-anon-check"></script>
+<script src="js/operating-plan.js?v=20261114-anon-memory"></script>
 <script src="js/csv.js?v=20260805-online-safety"></script>
 <script src="js/app.js?v=20261023-simple-auth"></script>
 

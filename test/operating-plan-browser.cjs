@@ -554,12 +554,31 @@ async function main() {
     assert.match(await page.locator('#operating-plan-panel').innerText(), /見る順は4つです/);
     await page.evaluate(() => localStorage.setItem('roles', '["real-ledger"]'));
     const beforeIds = await page.evaluate(() => roles.map(item => item.id).join(','));
+    const beforeSettings = await page.evaluate(() => localStorage.getItem('caliber_forecast_settings_v1'));
+    await page.evaluate(() => {
+      window.__writes = [];
+      window.__fetches = [];
+      const originalSet = localStorage.setItem.bind(localStorage);
+      localStorage.setItem = (key, value) => { window.__writes.push(key); return originalSet(key, value); };
+      const originalFetch = window.fetch.bind(window);
+      window.fetch = (...args) => { window.__fetches.push(String(args[0])); return originalFetch(...args); };
+    });
     await page.locator('#start-anonymous-check').click();
+    await page.locator('#anon-scene-ready').click();
+    await page.locator('#anon-scene-clear').click();
+    await page.locator('#anon-scene-short').click();
     const anonText = await page.locator('#cycle-result').innerText();
     assert.match(anonText, /実台帳は読んでいません/);
+    assert.match(anonText, /試験用の匿名予定/);
     assert.match(anonText, /anon-online/);
+    assert.match(anonText, /確保時間が足りません/);
     assert.equal(anonText.includes('roll-online'), false);
+    assert.equal(anonText.includes('既回答の径はローカル仕様から読みました'), false);
+    assert.deepEqual(await page.evaluate(() => window.__writes), []);
+    assert.deepEqual(await page.evaluate(() => window.__fetches), []);
     assert.equal(await page.evaluate(() => localStorage.getItem('roles')), '["real-ledger"]');
+    assert.equal(await page.evaluate(() => localStorage.getItem('caliber_forecast_settings_v1')), beforeSettings);
+    assert.equal(await page.evaluate(() => localStorage.getItem('caliber_forecast_settings_anon_v1')), null);
     assert.equal(await page.evaluate(() => roles.map(item => item.id).join(',')), beforeIds);
     console.log('OPERATING PLAN browser PASS');
   } finally {
