@@ -1027,7 +1027,7 @@ test('saved openings stay on their own stand and a replaced schedule drops the o
   ];
   const listed = context.buildStandDemandList({
     scheduleName: 'schedule-a', referenceAt: '2027-04-01', standKey: '10', size: 'D10', reworkDays: 1,
-    workConfirmation: { standKey: '10', date: '2027-04-02', period: 'day', reservedHours: 5, workType: 'rollChange', requiredHours: 5, people: 1, continuous: 'no', changeover: 'yes', threeSet: 'yes' },
+    workConfirmation: { date: '2027-04-02', period: 'day', reservedHours: 5, workType: 'rollChange', requiredHours: 5, people: 1, continuous: 'no', changeover: 'yes', threeSet: 'yes', owner: { standKey: '10', rollId: 'roll-10', size: 'D10', referenceAt: '2027-04-01' } },
     rolls, days, premises
   });
   assert.match(listed, /読込予定はschedule-a/);
@@ -1050,4 +1050,107 @@ test('saved openings stay on their own stand and a replaced schedule drops the o
   assert.match(replaced, /読込予定はschedule-b/);
   assert.equal(replaced.includes('schedule-a'), false);
   assert.equal(replaced.includes('廃却需要'), false);
+  const otherRoll = context.buildStandDemandList({
+    scheduleName: 'schedule-a', referenceAt: '2027-04-01', scheduleReference: '2027-04-01', standKey: '10', size: 'D10', reworkDays: 1,
+    workConfirmation: { date: '2027-04-02', period: 'day', reservedHours: 5, workType: 'rollChange', requiredHours: 5, people: 1, continuous: 'no', changeover: 'yes', threeSet: 'yes', owner: { standKey: '10', rollId: 'roll-10b', size: 'D10', referenceAt: '2027-04-01' } },
+    rolls, days, premises
+  });
+  const stand10 = otherRoll.slice(otherRoll.indexOf('#10'), otherRoll.indexOf('#17'));
+  assert.match(stand10, /ロールroll-10b/);
+  assert.match(stand10, /付け直していません/);
+  assert.equal(stand10.includes('廃却需要'), false);
+});
+
+test('screen reference and slot owner follow the input events', () => {
+  context.setAnonymousForecastCheck(false);
+  const fields = {};
+  const field = id => {
+    if (!fields[id]) {
+      fields[id] = {
+        value: '',
+        textContent: '',
+        dataset: {},
+        listeners: [],
+        addEventListener(type, fn) { if (type === 'change') this.listeners.push(fn); },
+        dispatchEvent() { this.listeners.forEach(fn => fn()); }
+      };
+    }
+    return fields[id];
+  };
+  const fire = (id, value) => {
+    field(id).value = value;
+    field(id).dispatchEvent();
+  };
+  context.document = {
+    documentElement: { dataset: {} },
+    body: { dataset: {} },
+    readyState: 'complete',
+    getElementById: field,
+    addEventListener() {}
+  };
+  context.roles = [
+    { id: 'roll-10', name: '#10-A', status: 'オンライン', currentDiameter: 81 },
+    { id: 'roll-10b', name: '#10-B', status: '新品予備（組込完了）', currentDiameter: 90 },
+    { id: 'roll-17', name: '#17-A', status: 'オンライン', currentCaliber: 'cal-17', openingRuns: 5, currentDiameter: 81 },
+    { id: 'roll-17b', name: '#17-B', status: '新品予備（組込完了）', currentCaliber: 'cal-17b', openingRuns: 0, currentDiameter: 90 }
+  ];
+  context.bindMonthlyScheduleFileInput();
+  context.rememberForecastSetting({ rollId: 'roll-10', standKey: '10', size: 'D10', referenceAt: '2027-04-01', caliberId: 'cal-A10', openingRuns: 7 });
+  context.rememberForecastSetting({ rollId: 'roll-10', standKey: '10', size: 'D10', referenceAt: '2027-04-03', caliberId: 'cal-A10', openingRuns: 1 });
+  context.rememberForecastSetting({ rollId: 'roll-10', standKey: '10', size: 'D13', referenceAt: '2027-04-01', caliberId: 'cal-D13', openingRuns: 0 });
+  field('caliber-stand').value = '10';
+  field('caliber-size').value = 'D10';
+  field('forecast-roll').value = 'roll-10';
+  field('forecast-reference').value = '2027-04-01';
+  field('caliber-current').value = 'cal-A10';
+  field('caliber-opening').value = '7';
+  ['work-period', 'work-reserved-hours', 'work-type', 'work-required-hours', 'work-people', 'work-continuous', 'work-changeover', 'work-three-set'].forEach((id, index) => {
+    field(id).value = ['day', '5', 'rollChange', '5', '1', 'no', 'yes', 'yes'][index];
+  });
+  fire('work-date', '2027-04-03');
+  const day = (date, amount, hours) => ({ date, productionAmount: amount, operatingHours: hours, shift1Team: 'A', shift3Team: '', size: 'D10' });
+  context.renderMonthlyScheduleSummary({
+    ok: true, sourceName: 'schedule-file', referenceDate: '2027-04-01',
+    months: [{ month: '2027-04', classification: 'future', productionTons: null, operatingHours: null, sizes: ['D10'], shifts: ['A'] }],
+    days: [day('2027-04-01', 10, 8), day('2027-04-02', 10, 8), day('2027-04-03', 0, 0)],
+    reason: '試験用です。'
+  });
+  fire('forecast-reference', '2027-04-03');
+  const later = field('stand-demand-list').textContent;
+  const laterCycle = field('cycle-result').textContent;
+  assert.match(later, /予測の基準日は2027-04-03/);
+  assert.match(later, /予定資料の基準日は2027-04-01/);
+  assert.match(later, /基準日より前の操業2日は開始量へ足していません/);
+  assert.match(later, /付け直していません/);
+  assert.equal(laterCycle.includes('2027-04-01 操業'), false);
+  fire('forecast-reference', '2027-04-01');
+  const back = `${field('stand-demand-list').textContent}\n${field('cycle-result').textContent}`;
+  assert.match(back, /予測の基準日は2027-04-01/);
+  assert.match(back, /2027-04-01 操業/);
+  fire('forecast-roll', 'roll-10b');
+  fire('work-date', '2027-04-03');
+  fire('forecast-roll', 'roll-10');
+  const switchedRoll = field('stand-demand-list').textContent;
+  const stand10 = switchedRoll.slice(switchedRoll.indexOf('#10'), switchedRoll.indexOf('#17'));
+  assert.match(stand10, /ロールroll-10b/);
+  assert.equal(stand10.includes('廃却需要'), false);
+  fire('forecast-roll', 'roll-10');
+  fire('work-date', '2027-04-03');
+  fire('caliber-stand', '17');
+  const otherStand = field('stand-demand-list').textContent;
+  const stand17 = otherStand.slice(otherStand.indexOf('#17'));
+  assert.match(stand17, /作業枠はこのスタンドに確認されていません/);
+  assert.match(stand17, /10番/);
+  assert.equal(stand17.includes('廃却需要'), false);
+  fire('caliber-stand', '10');
+  fire('caliber-size', 'D13');
+  const otherSize = field('stand-demand-list').textContent;
+  assert.match(otherSize, /付け直していません/);
+  assert.match(otherSize, /サイズD13/);
+  assert.equal(otherSize.includes('cal-A10'), false);
+  fire('work-date', '');
+  fire('forecast-reference', '');
+  fire('forecast-roll', '');
+  fire('caliber-size', 'D10');
+  fire('caliber-stand', '10');
 });

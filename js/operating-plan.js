@@ -1244,7 +1244,8 @@ function renderExchangeCycle() {
     const ledgerSource = anonymousForecastCheck ? anonymousCheckLedger() : (typeof roles === 'undefined' ? [] : roles);
     const ledger = readLedgerResources(ledgerSource, { standKey: form.standKey, size: form.size });
     const selectedStand = String(form.standKey || '').replace(/^#/, '').trim();
-    const referenceAt = form.forecastReference || (schedule && schedule.referenceDate) || '';
+    const referenceAt = activeForecastReference(form, schedule);
+    const fileReference = schedule ? String(schedule.referenceDate || '').slice(0, 10) : '';
     const cycleResources = withSavedOpenings(
         ledger.filter(item => item.standKey === selectedStand && item.frame !== 'other'),
         form.standKey,
@@ -1275,9 +1276,19 @@ function renderExchangeCycle() {
     const line = item => `${item.date} ${item.kind} ${item.note}`;
     let scheduleText = '生産予定が無いので、架空の操業では予測しません。';
     let scheduleResult = null;
+    const countedDays = days.filter(row => !referenceAt || String(row.date || '').slice(0, 10) >= referenceAt);
+    const skippedBefore = days.length - countedDays.length;
+    const referenceLine = `予測の基準日は${referenceAt || '未設定'}です。予定資料の基準日は${fileReference || '未設定'}です。画面で選んだ予測の基準日を、予定ファイルの日付では上書きしません。`;
+    const skippedLine = skippedBefore ? `基準日より前の操業${skippedBefore}日は開始量へ足していません。` : '';
+    const workUse = usableSlot(form.workConfirmation, workSlotOwner, {
+        standKey: selectedStand, rollId: online ? online.id : form.forecastRoll, size: form.size, referenceAt
+    }, true);
+    const assemblyUse = usableSlot(form.assemblyConfirmation, assemblySlotOwner, {
+        standKey: selectedStand, size: form.size, referenceAt
+    }, false);
     if (form.forecastRoll && !online) {
         scheduleText = '選んだロールはこのスタンドのオンラインではないので、状態は変えず交換もしません。';
-    } else if (days.length) {
+    } else if (countedDays.length) {
         const result = simulateExchangeCycle({
             maxRuns: limit && limit.kind === '最大' ? limit.runs : undefined,
             openingRuns,
@@ -1288,10 +1299,10 @@ function renderExchangeCycle() {
             reworkDays: form.reworkDays,
             leadMonths: forecastLead(form.standKey).months,
             leadStatus: forecastLead(form.standKey).status,
-            workConfirmation: form.workConfirmation,
-            assemblyConfirmation: form.assemblyConfirmation,
+            workConfirmation: workUse.slot,
+            assemblyConfirmation: assemblyUse.slot,
             resources: cycleResources,
-            days
+            days: countedDays
         });
         scheduleResult = result;
         const uncovered = result.reason.includes('13か月全体の不足なしは判定できません')
@@ -1306,11 +1317,13 @@ function renderExchangeCycle() {
             describeCycleTimeline(result),
             result.events.map(line).join('\n')
         ].filter(Boolean).join('\n');
+    } else if (days.length) {
+        scheduleText = '基準日以降の予定が無いので、開始量へは足していません。';
     }
     const banner = anonymousForecastCheck
         ? '匿名の確認です。値は試験用です。実台帳は読んでいません。端末へは保存しません。実設備の径は読みません。予測は実ロールの状態を変えません。仮の13か月は購入不足の判定ではありません。'
         : '';
-    target.textContent = [banner, describeCheckFocus(cycleResources, scheduleResult), scheduleText, ledgerText, describeAnonymousHorizon(form, online, cycleResources, limit)].filter(Boolean).join('\n');
+    target.textContent = [banner, referenceLine, skippedLine, describeCheckFocus(cycleResources, scheduleResult), scheduleText, workUse.note, assemblyUse.note, ledgerText, describeAnonymousHorizon(form, online, cycleResources, limit)].filter(Boolean).join('\n');
     loadStandPremisesNote(target, form.standKey, generation);
 }
 
@@ -1479,6 +1492,10 @@ function forecastSettingKey(input) {
 }
 
 let anonymousForecastCheck = false;
+
+function setAnonymousForecastCheck(value) {
+    anonymousForecastCheck = Boolean(value);
+}
 let anonymousEntryActive = false;
 let anonymousForecastMemory = {};
 
@@ -1526,6 +1543,7 @@ function applyAnonymousScene(scene) {
     setAnonymousField('assembly-prepared-on', scene === 'empty' ? '' : '2027-04-01');
     setAnonymousField('assembly-date', scene === 'ready' || scene === 'short' ? '2027-04-04' : '');
     applyingForecastSetting = false;
+    rememberAssemblySlotOwner();
     renderExchangeCycle();
 }
 
@@ -1589,6 +1607,8 @@ function applyAnonymousExample(kind) {
     setAnonymousField('assembly-prepared-on', assembly ? '2027-04-01' : '');
     setAnonymousField('assembly-date', assembly ? '2027-04-03' : '');
     applyingForecastSetting = false;
+    rememberWorkSlotOwner();
+    rememberAssemblySlotOwner();
     latestMonthlySummary = anonymousExampleSummary(kind);
     renderMonthlyScheduleSummary(latestMonthlySummary);
 }
@@ -1622,6 +1642,8 @@ function startAnonymousForecastCheck() {
     setAnonymousField('life-cut', '4');
     ['assembly-date', 'assembly-period', 'assembly-reserved-hours', 'assembly-required-hours', 'assembly-people', 'assembly-prepared', 'assembly-prepared-target', 'assembly-prepared-on'].forEach(id => setAnonymousField(id, ''));
     applyingForecastSetting = false;
+    rememberWorkSlotOwner();
+    rememberAssemblySlotOwner();
     renderMonthlyScheduleSummary(latestMonthlySummary);
     syncForecastSettingContext();
 }
@@ -1669,9 +1691,7 @@ function currentForecastContext() {
     const online = ledger.find(item => item.standKey === selected && item.frame === 'online');
     const chosen = typeof document !== 'undefined' && document.getElementById('forecast-roll');
     const referenceField = typeof document !== 'undefined' && document.getElementById('forecast-reference');
-    const reference = referenceField && referenceField.value
-        ? referenceField.value
-        : (latestMonthlySummary && latestMonthlySummary.ok !== false ? latestMonthlySummary.referenceDate : '');
+    const reference = referenceField && referenceField.value ? referenceField.value : '';
     return {
         rollId: chosen && chosen.value.trim() ? chosen.value.trim() : (online ? online.id : ''),
         standKey: selected,
@@ -1781,9 +1801,14 @@ function renderConsumptionLink(summary) {
         openingUsedRuns: form.openingUsedRuns,
         openingUsedTons: form.openingUsedTons,
         standPass: form.standPass,
-        workConfirmation: form.workConfirmation,
+        workConfirmation: usableSlot(form.workConfirmation, workSlotOwner, {
+            standKey: form.standKey,
+            rollId: form.forecastRoll,
+            size: form.size,
+            referenceAt: activeForecastReference(form, summary)
+        }, Boolean(form.forecastRoll)).slot,
         days: summary && summary.days,
-        referenceDate: summary && summary.referenceDate
+        referenceDate: activeForecastReference(form) || (summary && summary.referenceDate)
     });
     const life = describeLifeChain({
         standKey: form.standKey,
@@ -1932,17 +1957,73 @@ function savedOpening(roll, standKey, size, referenceAt) {
     };
 }
 
-function confirmationForStand(confirmation, standKey) {
-    if (!confirmation) return null;
-    const owner = String(confirmation.standKey || '').replace(/^#/, '');
-    if (!owner || owner !== String(standKey)) return null;
-    return confirmation;
+let workSlotOwner = null;
+let assemblySlotOwner = null;
+
+function activeForecastReference(form) {
+    return String(form && form.forecastReference || '').slice(0, 10);
+}
+
+function slotOwnerFromContext() {
+    const context = currentForecastContext();
+    return {
+        standKey: String(context.standKey || '').replace(/^#/, ''),
+        rollId: context.rollId || '',
+        size: context.size || '',
+        referenceAt: String(context.referenceAt || '').slice(0, 10)
+    };
+}
+
+function rememberWorkSlotOwner() {
+    const work = readCaliberInputs().workConfirmation || {};
+    workSlotOwner = work.date ? slotOwnerFromContext() : null;
+}
+
+function rememberAssemblySlotOwner() {
+    const assembly = readCaliberInputs().assemblyConfirmation || {};
+    assemblySlotOwner = assembly.date ? slotOwnerFromContext() : null;
+}
+
+function slotKeptNote(label, confirmation) {
+    const owner = confirmation && confirmation.owner;
+    if (!owner || !owner.standKey) return `${label}は確認時の対象が無いので、今の選択には付けていません。`;
+    const roll = owner.rollId ? `、ロール${owner.rollId}` : '、ロール未確認';
+    return `${label}は確認時の${owner.standKey}番${roll}、${owner.size || 'サイズ未確認'}、基準日${owner.referenceAt || '未設定'}のままです。選択を変えても付け直していません。予定の差替えでも付け直していません。`;
+}
+
+function confirmationOwnerMatches(confirmation, target, matchRoll) {
+    const owner = confirmation && confirmation.owner;
+    if (!confirmation || !owner) return false;
+    const stand = String(target.standKey || '').replace(/^#/, '');
+    const ownerStand = String(owner.standKey || '').replace(/^#/, '');
+    if (!ownerStand || ownerStand !== stand) return false;
+    if (!owner.size || !target.size || owner.size !== target.size) return false;
+    const reference = String(target.referenceAt || '').slice(0, 10);
+    const ownerReference = String(owner.referenceAt || '').slice(0, 10);
+    if (reference !== ownerReference) return false;
+    if (matchRoll && (!owner.rollId || !target.rollId || owner.rollId !== target.rollId)) return false;
+    return true;
+}
+
+function usableSlot(confirmation, owner, target, matchRoll) {
+    if (!confirmation || !confirmation.date) return { slot: null, note: '' };
+    const stamped = Object.assign({}, confirmation, { owner: owner || confirmation.owner || null });
+    if (confirmationOwnerMatches(stamped, target, matchRoll)) return { slot: stamped, note: '' };
+    return { slot: null, note: slotKeptNote(matchRoll ? '作業枠' : '組替枠', stamped) };
+}
+
+function confirmationForStand(confirmation, standKey, standSize, referenceAt, rollId) {
+    const result = usableSlot(confirmation, confirmation && confirmation.owner, {
+        standKey, size: standSize, referenceAt, rollId
+    }, true);
+    return result.slot;
 }
 
 function sizeForStand(standKey, source, planDays) {
+    const selected = String(source.standKey || '').replace(/^#/, '') === String(standKey);
+    if (selected && source.size) return source.size;
     const sizes = Array.from(new Set((planDays || []).map(row => row && row.size).filter(Boolean)));
     if (sizes.length === 1) return sizes[0];
-    if (String(source.standKey || '').replace(/^#/, '') === String(standKey) && source.size) return source.size;
     return '';
 }
 
@@ -1953,6 +2034,7 @@ function buildStandDemandList(input) {
     const days = Array.isArray(source.days) ? source.days : [];
     const premises = source.premises || { status: 'waiting' };
     const referenceAt = String(source.referenceAt || '').slice(0, 10);
+    const scheduleReference = String(source.scheduleReference || '').slice(0, 10);
     if (!plan && !days.length) {
         return '日付の予定も、月別の本数の版もありません。操業日は作っていません。';
     }
@@ -1961,16 +2043,21 @@ function buildStandDemandList(input) {
         ? scheduleMonths
         : (plan && Array.isArray(plan.targetMonths) && plan.targetMonths.length ? plan.targetMonths : scheduleMonths);
     const planDays = days.filter(row => row && months.includes(String(row.date || '').slice(0, 7)));
+    const countedDays = referenceAt
+        ? planDays.filter(row => String(row.date || '').slice(0, 10) >= referenceAt)
+        : planDays.slice();
     const ignored = days.length - planDays.length;
+    const beforeReference = planDays.length - countedDays.length;
     const standKeys = Array.from(new Set([
         ...((plan && plan.rows) || []).map(row => String(row.standKey)),
         ...rolls.map(item => standNumberFromName(item.name || item.id)).filter(Boolean)
     ])).sort((a, b) => Number(a) - Number(b));
     const header = [
-        source.scheduleName ? `読込予定は${source.scheduleName}、基準日は${referenceAt || '未設定'}です。手入力の本数は需要にしていません。` : '読込予定はありません。',
+        source.scheduleName ? `読込予定は${source.scheduleName}です。予定資料の基準日は${scheduleReference || '未設定'}です。予測の基準日は${referenceAt || '未設定'}です。手入力の本数は需要にしていません。` : '読込予定はありません。',
+        beforeReference ? `基準日より前の操業${beforeReference}日は開始量へ足していません。` : '',
         plan ? `本数の版は${plan.id}、更新${plan.updatedAt}、本数の対象月は${(plan.targetMonths || []).join('、')}です。本数は需要にしていません。` : '手入力の本数版は使っていません。',
         ignored > 0 ? `対象月の外の日付${ignored}件は、この一覧に使っていません。` : '',
-        planDays.length ? `日付の予定は${planDays.length}日あります。無い日は作っていません。` : '月別の本数だけなので、操業日は作っていません。'
+        countedDays.length ? `日付の予定は${countedDays.length}日あります。無い日は作っていません。` : '月別の本数だけなので、操業日は作っていません。'
     ].filter(Boolean);
     const blocks = standKeys.map(standKey => {
         const fact = premisesFact(premises, standKey);
@@ -1996,11 +2083,27 @@ function buildStandDemandList(input) {
         let night = '日付の予定が無いので、夜勤の予備不足は出していません。';
         let order = `廃却日が無いので、手配目安は出していません。${leadText}`;
         const blocked = [fact.diameterReason, fact.cutReason].filter(Boolean);
-        const work = confirmationForStand(source.workConfirmation, standKey);
-        const assembly = confirmationForStand(source.assemblyConfirmation, standKey);
+        const standDays = countedDays;
+        const onlinePreview = standRolls.find(item => item.status === 'オンライン');
+        const work = confirmationForStand(source.workConfirmation, standKey, standSize, referenceAt, onlinePreview && onlinePreview.id);
+        const assembly = usableSlot(source.assemblyConfirmation, source.assemblyConfirmation && source.assemblyConfirmation.owner, {
+            standKey, size: standSize, referenceAt
+        }, false).slot;
         if (!standSize) blocked.push('サイズはこのスタンドの予定に無いので、選択中のサイズは使いません。');
-        if (!work || !work.date) blocked.push('作業枠はこのスタンドに確認されていません。他スタンドの枠は使いません。');
-        if (planDays.length && standRolls.length) {
+        if (!work || !work.date) {
+            const ownerStand = source.workConfirmation && source.workConfirmation.owner
+                ? String(source.workConfirmation.owner.standKey || '').replace(/^#/, '')
+                : '';
+            if (!source.workConfirmation || !source.workConfirmation.date || (ownerStand && ownerStand !== String(standKey))) {
+                blocked.push('作業枠はこのスタンドに確認されていません。他スタンドの枠は使いません。');
+            }
+            if (source.workConfirmation && source.workConfirmation.date) blocked.push(slotKeptNote('作業枠', source.workConfirmation));
+        }
+        if (planDays.length && !standDays.length) {
+            period = '基準日以降の予定が無いので、開始量へは足していません。';
+            scrap = '足していない日からは、廃却日も手配目安も出していません。';
+            order = '足していない日からは、手配目安は出していません。';
+        } else if (planDays.length && standRolls.length && standDays.length) {
             const resources = readLedgerResources(standRolls, { standKey, size: source.size || '' });
             const online = resources.find(item => item.frame === 'online');
             if (!online || !online.caliberId || online.runs === null) {
@@ -2018,7 +2121,7 @@ function buildStandDemandList(input) {
                     workConfirmation: work,
                     assemblyConfirmation: assembly,
                     resources,
-                    days: planDays
+                    days: standDays
                 });
                 period = result.reason;
                 const scraps = result.events.filter(item => item.kind === '廃却需要');
@@ -2056,12 +2159,13 @@ function renderStandDemandList() {
         days: schedule && Array.isArray(schedule.days) ? schedule.days : [],
         premises: anonymousForecastCheck ? { status: 'waiting' } : standPremisesCache,
         scheduleName: schedule && schedule.sourceName || '',
-        referenceAt: (schedule && schedule.referenceDate) || form.forecastReference || '',
+        referenceAt: activeForecastReference(form, schedule),
+        scheduleReference: schedule && schedule.referenceDate || '',
         standKey: form.standKey,
         size: form.size,
         reworkDays: form.reworkDays,
-        workConfirmation: Object.assign({}, form.workConfirmation || {}, { standKey: form.standKey, size: form.size }),
-        assemblyConfirmation: Object.assign({}, form.assemblyConfirmation || {}, { standKey: form.standKey }),
+        workConfirmation: Object.assign({}, form.workConfirmation || {}, { owner: workSlotOwner }),
+        assemblyConfirmation: Object.assign({}, form.assemblyConfirmation || {}, { owner: assemblySlotOwner }),
         leadTimes: anonymousForecastCheck ? {} : readStandLeadTimes()
     });
     if (!anonymousForecastCheck && standPremisesCache.status === 'waiting' && typeof fetch === 'function') {
@@ -2202,10 +2306,14 @@ function bindMonthlyScheduleFileInput() {
             button.addEventListener('click', () => applyAnonymousExample(kind));
         }
     });
-    ['forecast-roll', 'forecast-reference', 'caliber-stand', 'caliber-size', 'caliber-current', 'caliber-opening', 'caliber-opening-tons', 'caliber-pass', 'work-date', 'work-period', 'work-reserved-hours', 'work-type', 'work-required-hours', 'work-people', 'work-continuous', 'work-changeover', 'work-three-set', 'assembly-date', 'assembly-period', 'assembly-reserved-hours', 'assembly-required-hours', 'assembly-people', 'assembly-prepared', 'assembly-prepared-target', 'assembly-prepared-on', 'life-diameter', 'life-scrap', 'life-cut', 'life-spare', 'cycle-spare-calibers', 'cycle-rework-days'].forEach(id => {
+    const workFields = ['work-date', 'work-period', 'work-reserved-hours', 'work-type', 'work-required-hours', 'work-people', 'work-continuous', 'work-changeover', 'work-three-set'];
+    const assemblyFields = ['assembly-date', 'assembly-period', 'assembly-reserved-hours', 'assembly-required-hours', 'assembly-people', 'assembly-prepared', 'assembly-prepared-target', 'assembly-prepared-on'];
+    ['forecast-roll', 'forecast-reference', 'caliber-stand', 'caliber-size', 'caliber-current', 'caliber-opening', 'caliber-opening-tons', 'caliber-pass'].concat(workFields, assemblyFields, ['life-diameter', 'life-scrap', 'life-cut', 'life-spare', 'cycle-spare-calibers', 'cycle-rework-days']).forEach(id => {
         const field = document.getElementById(id);
         if (field) field.addEventListener('change', () => {
             if (applyingForecastSetting) return;
+            if (workFields.includes(id)) rememberWorkSlotOwner();
+            if (assemblyFields.includes(id)) rememberAssemblySlotOwner();
             syncForecastSettingContext();
             suggestKnownWorkEffort();
             renderMonthlyScheduleSummary(latestMonthlySummary);

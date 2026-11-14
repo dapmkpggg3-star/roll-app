@@ -189,6 +189,11 @@ async function main() {
     assert.equal(demand.includes('plan-anon /'), false);
     const sequence = await page.evaluate(() => {
       const previous = roles.slice();
+      const fire = (id, value) => {
+        const field = document.getElementById(id);
+        field.value = value;
+        field.dispatchEvent(new Event('change', { bubbles: true }));
+      };
       roles = [
         { id: 'roll-10', name: '#10-A', status: 'オンライン', currentDiameter: 81, memo: '', updatedAt: '2026-11-13T00:00:00.000Z', history: [] },
         { id: 'roll-10b', name: '#10-B', status: '新品予備（組込完了）', currentDiameter: 90, memo: '', updatedAt: '2026-11-13T00:00:00.000Z', history: [] },
@@ -196,11 +201,14 @@ async function main() {
         { id: 'roll-17b', name: '#17-B', status: '新品予備（組込完了）', currentCaliber: 'cal-17b', openingRuns: 0, currentDiameter: 90, memo: '', updatedAt: '2026-11-13T00:00:00.000Z', history: [] }
       ];
       rememberForecastSetting({ rollId: 'roll-10', standKey: '10', size: 'D10', referenceAt: '2027-04-01', caliberId: 'cal-A10', openingRuns: 7 });
-      rememberForecastSetting({ rollId: 'roll-10b', standKey: '10', size: 'D10', referenceAt: '2027-04-01', caliberId: 'cal-B10', openingRuns: 2 });
+      rememberForecastSetting({ rollId: 'roll-10', standKey: '10', size: 'D10', referenceAt: '2027-04-03', caliberId: 'cal-A10', openingRuns: 1 });
+      rememberForecastSetting({ rollId: 'roll-10', standKey: '10', size: 'D13', referenceAt: '2027-04-01', caliberId: 'cal-D13', openingRuns: 0 });
       document.getElementById('caliber-stand').value = '10';
       document.getElementById('caliber-size').value = 'D10';
+      document.getElementById('forecast-roll').value = 'roll-10';
       document.getElementById('forecast-reference').value = '2027-04-01';
-      document.getElementById('work-date').value = '2027-04-02';
+      document.getElementById('caliber-current').value = 'cal-A10';
+      document.getElementById('caliber-opening').value = '7';
       document.getElementById('work-period').value = 'day';
       document.getElementById('work-reserved-hours').value = '5';
       document.getElementById('work-type').value = 'rollChange';
@@ -210,39 +218,63 @@ async function main() {
       document.getElementById('work-changeover').value = 'yes';
       document.getElementById('work-three-set').value = 'yes';
       document.getElementById('cycle-rework-days').value = '1';
+      fire('work-date', '2027-04-03');
       const day = (date, amount, hours, shift1, shift3) => ({ date, productionAmount: amount, operatingHours: hours, shift1Team: shift1, shift3Team: shift3, size: 'D10' });
       renderMonthlyScheduleSummary({
         ok: true, sourceName: 'schedule-a', referenceDate: '2027-04-01',
         months: [{ month: '2027-04', classification: 'future', productionTons: null, operatingHours: null, sizes: ['D10'], shifts: ['A'] }],
-        days: [day('2027-04-01', 10, 8, 'A', ''), day('2027-04-02', 0, 0, 'A', '')],
+        days: [day('2027-04-01', 10, 8, 'A', ''), day('2027-04-02', 10, 8, 'A', ''), day('2027-04-03', 0, 0, 'A', '')],
         reason: '試験用の予定Aです。'
       });
-      const saved = document.getElementById('stand-demand-list').textContent;
+      const saved = `${document.getElementById('stand-demand-list').textContent}\n${document.getElementById('cycle-result').textContent}`;
+      fire('forecast-reference', '2027-04-03');
+      const later = `${document.getElementById('stand-demand-list').textContent}\n${document.getElementById('cycle-result').textContent}`;
+      fire('forecast-reference', '2027-04-01');
+      const back = `${document.getElementById('stand-demand-list').textContent}\n${document.getElementById('cycle-result').textContent}`;
+      fire('forecast-roll', 'roll-10b');
+      fire('work-date', '2027-04-03');
+      fire('forecast-roll', 'roll-10');
+      const otherRoll = document.getElementById('stand-demand-list').textContent;
+      fire('work-date', '2027-04-03');
+      fire('caliber-stand', '17');
+      const otherStand = document.getElementById('stand-demand-list').textContent;
+      fire('caliber-stand', '10');
+      const returnedStand = document.getElementById('stand-demand-list').textContent;
+      fire('caliber-size', 'D13');
+      const otherSize = document.getElementById('stand-demand-list').textContent;
+      fire('caliber-size', 'D10');
       renderMonthlyScheduleSummary({ ok: false, reason: '生産予定を外したので、循環の予測を無効にしました。' });
       const cleared = document.getElementById('stand-demand-list').textContent;
-      renderMonthlyScheduleSummary({
-        ok: true, sourceName: 'schedule-b', referenceDate: '2027-04-01',
-        months: [{ month: '2027-04', classification: 'future', productionTons: null, operatingHours: null, sizes: ['D10'], shifts: ['A'] }],
-        days: [day('2027-04-01', 10, 3, 'A', '')],
-        reason: '試験用の予定Bです。'
-      });
-      const replaced = document.getElementById('stand-demand-list').textContent;
       roles = previous;
-      ['work-date', 'work-period', 'work-reserved-hours', 'work-type', 'work-required-hours', 'work-people', 'work-continuous', 'work-changeover', 'work-three-set', 'cycle-rework-days', 'forecast-reference'].forEach(id => {
-        const field = document.getElementById(id);
-        if (field) field.value = '';
-      });
+      ['work-date', 'work-period', 'work-reserved-hours', 'work-type', 'work-required-hours', 'work-people', 'work-continuous', 'work-changeover', 'work-three-set', 'cycle-rework-days', 'forecast-reference', 'forecast-roll'].forEach(id => fire(id, ''));
+      fire('caliber-size', 'D1');
+      fire('caliber-stand', '10');
       renderMonthlyScheduleSummary({ ok: false, reason: '生産予定を外したので、循環の予測を無効にしました。' });
-      return { saved, cleared, replaced };
+      return { saved, later, back, otherRoll, otherStand, returnedStand, otherSize, cleared };
     });
     assert.match(sequence.saved, /読込予定はschedule-a/);
+    assert.match(sequence.saved, /予測の基準日は2027-04-01/);
     assert.match(sequence.saved, /保存した開始条件です/);
-    assert.match(sequence.saved.slice(sequence.saved.indexOf('#17')), /作業枠はこのスタンドに確認されていません/);
-    assert.equal(sequence.saved.slice(sequence.saved.indexOf('#17')).includes('廃却需要'), false);
+    assert.match(sequence.later, /予測の基準日は2027-04-03/);
+    assert.match(sequence.later, /予定資料の基準日は2027-04-01/);
+    assert.match(sequence.later, /基準日より前の操業2日は開始量へ足していません/);
+    assert.match(sequence.later, /付け直していません/);
+    assert.equal(sequence.later.includes('2027-04-01 操業'), false);
+    assert.match(sequence.back, /予測の基準日は2027-04-01/);
+    assert.match(sequence.back, /2027-04-01 操業/);
+    const otherRollStand = sequence.otherRoll.slice(sequence.otherRoll.indexOf('#10'), sequence.otherRoll.indexOf('#17'));
+    assert.match(otherRollStand, /ロールroll-10b/);
+    assert.equal(otherRollStand.includes('廃却需要'), false);
+    const stand17 = sequence.otherStand.slice(sequence.otherStand.indexOf('#17'));
+    assert.match(stand17, /作業枠はこのスタンドに確認されていません/);
+    assert.match(stand17, /10番/);
+    assert.equal(stand17.includes('廃却需要'), false);
+    assert.match(sequence.returnedStand, /予測の基準日は2027-04-01/);
+    assert.match(sequence.otherSize, /付け直していません/);
+    assert.match(sequence.otherSize, /サイズD13/);
+    assert.equal(sequence.otherSize.includes('cal-A10'), false);
     assert.equal(sequence.cleared.includes('schedule-a'), false);
-    assert.equal(sequence.cleared.includes('2027-04-02'), false);
-    assert.match(sequence.replaced, /読込予定はschedule-b/);
-    assert.equal(sequence.replaced.includes('schedule-a'), false);
+    assert.equal(sequence.cleared.includes('2027-04-03'), false);
     assert.equal(await page.evaluate(() => roles[0].status), 'オンライン');
     const forecast = await page.evaluate(() => forecastThreeSetFromPlan({
       standKey: '10', revision: null, remainingCutCount: 2, activeThreeSetCount: 3, leadTime: defaultStandLeadTime('10')
@@ -490,8 +522,9 @@ async function main() {
         sourceName: referenceDate,
         reason: '匿名の基準日です。'
       };
-      syncForecastSettingContext();
-      renderExchangeCycle();
+      const field = document.getElementById('forecast-reference');
+      field.value = referenceDate;
+      field.dispatchEvent(new Event('change', { bubbles: true }));
     }, date);
     await useReference('2026-11-01');
     await page.locator('#caliber-current').fill('anon-A');
