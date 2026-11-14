@@ -1984,7 +1984,7 @@ function localPremisesFact(premises, standKey) {
     return {
         scrapDiameter: forecastMasterNumber(row.scrapDiameter),
         adoptedCutMm: cut,
-        diameterReason: row.scrapDiameter === undefined ? `${stand}番の廃却径は未記録です。` : '',
+        diameterReason: forecastMasterNumber(row.scrapDiameter) === null ? `${stand}番の廃却径は未記録です。` : '',
         cutReason: cut === null ? `${stand}番の採用改削量は手元の仕様に無いので取得待ちです。17番の2.5mmは使いません。` : ''
     };
 }

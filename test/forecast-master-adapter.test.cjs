@@ -49,6 +49,9 @@ test('blank, invalid or inactive calculation cuts never fall back to an average 
   const fact = c.premisesFact(local, '10', { ...loaded, cutting: { ...loaded.cutting, active: false } });
   assert.equal(fact.adoptedCutMm, null);
   assert.match(fact.cutReason, /無効/);
+  const emptyLocal = c.premisesFact({ status: 'loaded', data: { diametersMm: { '10': { scrapDiameter: ' ', adoptedCutMm: 4 } } } }, '10');
+  assert.equal(emptyLocal.scrapDiameter, null);
+  assert.match(emptyLocal.diameterReason, /未記録/);
 });
 
 test('other stands and new diameters do not fill this roll current measurement', () => {
