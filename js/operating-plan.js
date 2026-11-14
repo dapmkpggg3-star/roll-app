@@ -809,7 +809,7 @@ function anonymousOperatingDays(start, dayCount) {
             date: addDays(start, index),
             productionAmount: stopped ? 0 : 10,
             operatingHours: stopped ? 0 : 8,
-            shift1Team: stopped ? '' : 'A',
+            shift1Team: 'A',
             shift3Team: ''
         });
     }
@@ -833,6 +833,26 @@ function exchangeSlotReady(confirmation, row, expectedType) {
     if (!(typeof reserved === 'number' && Number.isFinite(reserved) && reserved >= required)) return false;
     if (!(typeof people === 'number' && Number.isInteger(people) && people > 0)) return false;
     return source.continuous === 'no' && source.changeover === 'yes' && source.threeSet === 'yes';
+}
+
+function assemblySlotReady(confirmation, row) {
+    const source = confirmation || {};
+    const date = String(row && row.date || '').slice(0, 10);
+    const repeat = source.repeatOnStops === true;
+    if (!repeat && !source.date) return { ok: false, reason: '組替作業枠が未確認です。0tだけでは完了にしません。' };
+    if (!repeat && String(source.date).slice(0, 10) !== date) return { ok: false, reason: 'この日の組替作業枠がありません。0tだけでは完了にしません。' };
+    if (source.period !== 'day') return { ok: false, reason: '昼の組替枠が未確認です。夜だけでは完了にしません。' };
+    if (Number(row.productionAmount) !== 0) return { ok: false, reason: '操業中は組替を完了にしません。' };
+    if (row.shift3Team && !row.shift1Team) return { ok: false, reason: '夜勤だけでは組替を完了にしません。' };
+    if (!row.shift1Team) return { ok: false, reason: '勤務が未確認です。0tだけでは組替を完了にしません。' };
+    const required = source.requiredHours;
+    const reserved = source.reservedHours;
+    const people = source.people;
+    if (!(typeof required === 'number' && Number.isFinite(required) && required > 0)) return { ok: false, reason: '組替の必要時間が未確認です。' };
+    if (!(typeof reserved === 'number' && Number.isFinite(reserved) && reserved >= required)) return { ok: false, reason: '組替の確保時間が足りません。短い枠では完了にしません。' };
+    if (!(typeof people === 'number' && Number.isInteger(people) && people > 0)) return { ok: false, reason: '組替の人数が未確認です。' };
+    if (source.prepared !== 'yes') return { ok: false, reason: '中古予備をばらす前の、改削済ロールの搬入または新品側の準備が未確認です。' };
+    return { ok: true, reason: '' };
 }
 
 function simulateExchangeCycle(input) {
@@ -902,7 +922,7 @@ function simulateExchangeCycle(input) {
         if (target) target.diameter = nextDiameter;
         if (!resources || target && target.frame === 'online') state.diameter = nextDiameter;
         item.status = 'awaitingAssembly';
-        push(date, '改削完了', `再生対象は${item.id}です。径は${nextDiameter}です。組替前なので予備にはしません。`);
+        push(date, '改削完了', `再生対象は${item.id}です。径は${nextDiameter}です。改削日数の試算であり、搬入と組替の完了ではありません。`);
         if (state.scrapDiameter !== null && nextDiameter <= state.scrapDiameter) {
             item.status = 'scrap';
             const conditional = addMonths(date, -PROVISIONAL_LEAD_TIME_MONTHS);
@@ -915,15 +935,31 @@ function simulateExchangeCycle(input) {
     };
     const finishAssembly = date => {
         if (!spareRolls) return;
-        state.reworks.filter(item => item.status === 'awaitingAssembly').forEach(item => {
+        const waiting = state.reworks.filter(item => item.status === 'awaitingAssembly');
+        if (!waiting.length) return;
+        push(date, '組替可能', '昼間の組替枠と、改削済の搬入または新品側の準備を確認しました。');
+        waiting.forEach(item => {
+            push(date, '搬入', `改削済の${item.id}を組替場所へ入れました。まだ使用可能な予備ではありません。`);
             if (resources) {
                 const returning = resources.find(entry => entry.id === item.id);
                 if (returning) returning.frame = 'installedSpare';
             }
             spareRolls.push(item.id);
             item.status = 'done';
-            push(date, '昼間組替', `再生を終えた${item.id}だけを予備へ戻しました。本数は増やしていません。`);
+            push(date, '組替完了', `昼間の組替枠で${item.id}の組替を終えました。`);
+            push(date, '使用可能予備', `${item.id}は夜勤開始までに使用可能な予備です。本数は増やしていません。`);
         });
+    };
+    const holdAssembly = (date, row) => {
+        const waiting = state.reworks.filter(item => item.status === 'awaitingAssembly');
+        if (!waiting.length) return false;
+        const slot = assemblySlotReady(source.assemblyConfirmation, row);
+        if (slot.ok) {
+            finishAssembly(date);
+            return true;
+        }
+        push(date, '組替需要', `${waiting.map(item => item.id).join('、')}は組替前です。${slot.reason}`);
+        return false;
     };
     const nightOnly = row => Boolean(row.shift3Team) && !row.shift1Team;
     days.forEach(row => {
@@ -939,11 +975,12 @@ function simulateExchangeCycle(input) {
         finishDueReworks(date);
         if (stopped && state.reworks.some(item => item.status === 'awaitingAssembly')) {
             if (nightOnly(row)) {
-                push(date, '夜勤予備不足', '昼間の組替が終わる前です。夜勤に使用可能な予備はありません。');
+                const ids = state.reworks.filter(item => item.status === 'awaitingAssembly').map(item => item.id).join('、');
+                push(date, '夜勤予備不足', `${ids}の組替が夜勤までに終わっていません。使用可能な予備にはしません。`);
                 markConfirmed(date);
                 return;
             }
-            finishAssembly(date);
+            holdAssembly(date, row);
         }
         if (stopped && state.pending && state.phase === 'operating') {
             const expected = state.pending === 'caliber' ? 'caliberChange' : 'rollChange';
@@ -1006,7 +1043,9 @@ function simulateExchangeCycle(input) {
                 state.pending = null;
                 push(date, 'ロール替', '組込済みの予備をオンラインへ移し、外した対象を再生へ入れました。この時点では径を変えません。');
                 if (date >= currentRework.readyOn) finishReworkItem(date, currentRework);
-                if (currentRework.status === 'awaitingAssembly' && !nightOnly(row)) finishAssembly(date);
+                if (currentRework.status === 'awaitingAssembly' && nightOnly(row)) {
+                    push(date, '夜勤予備不足', `${currentRework.id}の組替が夜勤までに終わっていません。使用可能な予備にはしません。`);
+                } else if (currentRework.status === 'awaitingAssembly') holdAssembly(date, row);
                 markConfirmed(date);
                 return;
             }
@@ -1179,6 +1218,7 @@ function renderExchangeCycle() {
             adoptedCutMm: form.cutMm,
             reworkDays: form.reworkDays,
             workConfirmation: form.workConfirmation,
+            assemblyConfirmation: form.assemblyConfirmation,
             resources: cycleResources,
             days
         });
@@ -1202,6 +1242,11 @@ function describeAnonymousHorizon(form, online, resources, limit) {
         return '予測対象ロールまたは基準日が未選択なので、匿名の13か月は出しません。';
     }
     const work = form.workConfirmation || {};
+    const assembly = form.assemblyConfirmation || {};
+    const assemblyReady = Boolean(assembly.date) && assembly.period === 'day' && assembly.prepared === 'yes'
+        && typeof assembly.requiredHours === 'number' && assembly.requiredHours > 0
+        && typeof assembly.reservedHours === 'number' && assembly.reservedHours >= assembly.requiredHours
+        && Number.isInteger(assembly.people) && assembly.people > 0;
     const confirmed = work.period === 'day'
         && typeof work.requiredHours === 'number' && work.requiredHours > 0
         && typeof work.reservedHours === 'number' && work.reservedHours >= work.requiredHours
@@ -1217,6 +1262,7 @@ function describeAnonymousHorizon(form, online, resources, limit) {
         reworkDays: form.reworkDays,
         workConfirmation: confirmed ? Object.assign({}, work, { repeatOnStops: true, workTypes: ['caliberChange', 'rollChange'] }) : work,
         resources,
+        assemblyConfirmation: assemblyReady ? Object.assign({}, form.assemblyConfirmation, { repeatOnStops: true }) : form.assemblyConfirmation,
         days: anonymousOperatingDays(form.forecastReference, 400)
     });
     return [
@@ -1229,7 +1275,7 @@ function describeAnonymousHorizon(form, online, resources, limit) {
 }
 
 function describeCycleTimeline(result) {
-    const wanted = ['交換待ち', 'ロール替', 'カリバ替', '改削完了', '昼間組替', '夜勤予備不足', 'ロール替需要', '交換需要', '改削保留', '廃却需要', '保留'];
+    const wanted = ['交換待ち', 'ロール替', 'カリバ替', '改削完了', '組替需要', '組替可能', '搬入', '組替完了', '使用可能予備', '夜勤予備不足', 'ロール替需要', '交換需要', '改削保留', '廃却需要', '保留'];
     const events = result.events || [];
     const picked = [];
     let showUse = false;
@@ -1522,7 +1568,8 @@ function readCaliberInputs() {
         spareCount: numberOrBlank('life-spare'),
         spareCaliberCount: numberOrBlank('cycle-spare-calibers'),
         reworkDays: numberOrBlank('cycle-rework-days'),
-        workConfirmation: readWorkConfirmation(value)
+        workConfirmation: readWorkConfirmation(value),
+        assemblyConfirmation: readAssemblyConfirmation(value)
     };
     function numberOrBlank(id) {
         const raw = value(id).trim();
@@ -1543,6 +1590,19 @@ function readWorkConfirmation(value) {
         continuous: value('work-continuous'),
         changeover: value('work-changeover'),
         threeSet: value('work-three-set')
+    };
+}
+
+function readAssemblyConfirmation(value) {
+    const reserved = value('assembly-reserved-hours').trim();
+    const required = value('assembly-required-hours').trim();
+    return {
+        date: value('assembly-date').trim(),
+        period: value('assembly-period'),
+        reservedHours: reserved === '' ? undefined : Number(reserved),
+        requiredHours: required === '' ? undefined : Number(required),
+        people: value('assembly-people').trim() === '' ? undefined : Number(value('assembly-people').trim()),
+        prepared: value('assembly-prepared')
     };
 }
 
@@ -1644,7 +1704,7 @@ function bindMonthlyScheduleFileInput() {
     input.dataset.bound = 'true';
     syncForecastSettingContext();
     renderExchangeCycle();
-    ['forecast-roll', 'forecast-reference', 'caliber-stand', 'caliber-size', 'caliber-current', 'caliber-opening', 'caliber-opening-tons', 'caliber-pass', 'work-date', 'work-period', 'work-reserved-hours', 'work-type', 'work-required-hours', 'work-people', 'work-continuous', 'work-changeover', 'work-three-set', 'life-diameter', 'life-scrap', 'life-cut', 'life-spare', 'cycle-spare-calibers', 'cycle-rework-days'].forEach(id => {
+    ['forecast-roll', 'forecast-reference', 'caliber-stand', 'caliber-size', 'caliber-current', 'caliber-opening', 'caliber-opening-tons', 'caliber-pass', 'work-date', 'work-period', 'work-reserved-hours', 'work-type', 'work-required-hours', 'work-people', 'work-continuous', 'work-changeover', 'work-three-set', 'assembly-date', 'assembly-period', 'assembly-reserved-hours', 'assembly-required-hours', 'assembly-people', 'assembly-prepared', 'life-diameter', 'life-scrap', 'life-cut', 'life-spare', 'cycle-spare-calibers', 'cycle-rework-days'].forEach(id => {
         const field = document.getElementById(id);
         if (field) field.addEventListener('change', () => {
             if (applyingForecastSetting) return;

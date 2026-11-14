@@ -250,6 +250,26 @@
                             <option value="no">3セットを保てない</option>
                         </select>
                     </label>
+                    <h3>組替作業枠</h3>
+                    <p>交換の作業枠とは別です。0t、勤務なし、夜、短い枠、準備未確認では、使用可能な予備へ戻しません。改削日数が過ぎただけでは搬入も組替も完了にしません。</p>
+                    <label>組替日 <input id="assembly-date" type="date" value=""></label>
+                    <label>組替の時間帯
+                        <select id="assembly-period">
+                            <option value="" selected>未確認</option>
+                            <option value="day">昼</option>
+                            <option value="night">夜</option>
+                        </select>
+                    </label>
+                    <label>組替の確保時間 <input id="assembly-reserved-hours" type="number" min="0" step="0.5" value=""></label>
+                    <label>組替の必要時間 <input id="assembly-required-hours" type="number" min="0" step="0.5" value=""></label>
+                    <label>組替の人数 <input id="assembly-people" type="number" min="1" step="1" value=""></label>
+                    <label>ばらす前の準備
+                        <select id="assembly-prepared">
+                            <option value="" selected>未確認</option>
+                            <option value="yes">改削済の搬入または新品側の準備ができている</option>
+                            <option value="no">準備できていない</option>
+                        </select>
+                    </label>
                     <h3>残寿命</h3>
                     <p>空欄は未確認です。0回や不足なしにはしません。3セットはロール3本のことではありません。年間の必要本数は、確認できた使用回数から計算し、別の表は要りません。</p>
                     <label>現在径 <input id="life-diameter" type="number" min="0" step="0.1" value=""></label>
@@ -566,7 +586,7 @@
     <script src="js/online-safety.js?v=20260805-online-safety"></script>
     <script src="js/sync.js?v=20261023-content-auth"></script>
 <script src="js/offline-recovery.js?v=20261113-offline-recovery"></script>
-<script src="js/operating-plan.js?v=20261114-rework-track"></script>
+<script src="js/operating-plan.js?v=20261114-assembly-slot"></script>
 <script src="js/csv.js?v=20260805-online-safety"></script>
 <script src="js/app.js?v=20261023-simple-auth"></script>
 
