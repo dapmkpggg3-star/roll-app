@@ -50,14 +50,18 @@ async function main() {
     assert.equal((await page.locator('#cycle-result').innerText()).includes('2027-04-02 廃却需要'), false);
     await page.evaluate(() => {
       setCuttingMasterRows([{ stand: '10', calculationCutMm: 12, active: true }]);
-      renderMonthlyScheduleSummary({ ...window.masterFixture, sourceName: 'mixed-fixture.xlsx', days: window.masterFixture.days.concat({ date: '2027-04-03', productionAmount: 10, operatingHours: 8, shift1Team: 'A', size: 'D13' }) });
+      renderMonthlyScheduleSummary({ ...window.masterFixture, sourceName: 'mixed-fixture.xlsx', days: window.masterFixture.days.concat(
+        { date: '2027-04-03', productionAmount: 10, operatingHours: 8, shift1Team: '', shift3Team: 'A', size: 'D10' },
+        { date: '2027-04-04', productionAmount: 10, operatingHours: 8, shift1Team: 'A', size: 'D13' }
+      ) });
     });
     text = await page.locator('#stand-demand-list').innerText();
     assert.match(text, /選択中の1サイズには丸めません/);
     assert.match(text, /2027-04-02 対象はAです。廃却径以下/);
-    assert.match(text, /2027-04-03にBを止めました/);
+    assert.match(text, /2027-04-04にBを止めました/);
     assert.match(await page.locator('#cycle-result').innerText(), /選択中の1サイズには丸めません/);
-    assert.match(text, /それより前に出た不足は残します/);
+    assert.match(text, /夜勤の予備不足: 2027-04-03 操業中B/);
+    assert.match(await page.locator('#cycle-result').innerText(), /2027-04-03 夜勤予備不足/);
     fs.mkdirSync(path.join(root, 'artifacts/roll001-dom'), { recursive: true });
     await page.screenshot({ path: path.join(root, 'artifacts/roll001-dom/forecast-master.png'), fullPage: true });
     const anonymous = await context.newPage();
