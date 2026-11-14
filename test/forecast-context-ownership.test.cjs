@@ -46,6 +46,10 @@ test('real change handlers use the selected reference and never replay earlier d
   change('forecast-reference', '2027-04-01');
   assert.equal(field('caliber-opening').value, '7');
   assert.equal(context.recallForecastSetting({ rollId: 'A', standKey: '10', size: 'D10', referenceAt: '2027-04-02' }).value.openingRuns, 1);
+  field('cycle-result');
+  change('forecast-reference', '2027-04-03');
+  assert.match(field('cycle-result').textContent, /same.xlsx/);
+  assert.match(field('cycle-result').textContent, /基準日以後の操業日はありません/);
 });
 
 test('work drafts follow the roll, stand, size and reference that were edited', () => {

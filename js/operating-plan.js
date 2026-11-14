@@ -1275,7 +1275,9 @@ function renderExchangeCycle() {
     ].join('\n');
     const limit = knownCaliberLimit(form.standKey, form.size);
     const line = item => `${item.date} ${item.kind} ${item.note}`;
-    let scheduleText = '生産予定が無いので、架空の操業では予測しません。';
+    let scheduleText = schedule
+        ? `予定「${schedule.sourceName || '名前なし'}」を読み込んでいますが、基準日以後の操業日はありません。過去の予定から日付を予測しません。`
+        : '生産予定が無いので、架空の操業では予測しません。';
     let scheduleResult = null;
     if (form.forecastRoll && !online) {
         scheduleText = '選んだロールはこのスタンドのオンラインではないので、状態は変えず交換もしません。';
