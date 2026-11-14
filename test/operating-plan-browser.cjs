@@ -580,6 +580,40 @@ async function main() {
     assert.equal(await page.evaluate(() => localStorage.getItem('caliber_forecast_settings_v1')), beforeSettings);
     assert.equal(await page.evaluate(() => localStorage.getItem('caliber_forecast_settings_anon_v1')), null);
     assert.equal(await page.evaluate(() => roles.map(item => item.id).join(',')), beforeIds);
+    const entry = await context.newPage();
+    await entry.addInitScript(() => {
+      window.__writes = [];
+      window.__fetches = [];
+      const originalSet = Storage.prototype.setItem;
+      Storage.prototype.setItem = function (key, value) {
+        window.__writes.push(String(key));
+        return originalSet.call(this, key, value);
+      };
+      const originalFetch = window.fetch.bind(window);
+      window.fetch = (...args) => {
+        window.__fetches.push(String(args[0]));
+        return originalFetch(...args);
+      };
+    });
+    await entry.goto('http://roll-app.test/index.html?anonymous=1', { waitUntil: 'load' });
+    assert.equal(await entry.locator('#login-screen').isVisible(), false);
+    assert.equal(await entry.locator('#main-screen').isVisible(), true);
+    await entry.locator('#anon-example-short').click();
+    const shortText = await entry.locator('#cycle-result').innerText();
+    assert.match(shortText, /保てなくなるのは2027-04-03/);
+    assert.match(shortText, /手配目安/);
+    await entry.locator('#anon-example-ready').click();
+    assert.match(await entry.locator('#cycle-result').innerText(), /昼の組替のあと予備へ戻しています/);
+    await entry.locator('#anon-example-unknown').click();
+    const unknownText = await entry.locator('#cycle-result').innerText();
+    assert.match(unknownText, /4時間未満/);
+    assert.match(unknownText, /最終日はありません/);
+    const writes = await entry.evaluate(() => window.__writes);
+    const fetches = await entry.evaluate(() => window.__fetches);
+    const blocked = writes.filter(key => key === 'roles' || key.includes('caliber_forecast_settings') || key.includes('operating_plan') || key.includes('stand_lead'));
+    assert.deepEqual(blocked, []);
+    const blockedFetch = fetches.filter(url => url.includes('stand-premises') || url.includes('google') || url.includes('script.google'));
+    assert.deepEqual(blockedFetch, []);
     console.log('OPERATING PLAN browser PASS');
   } finally {
     await browser.close();

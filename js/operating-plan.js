@@ -929,8 +929,11 @@ function simulateExchangeCycle(input) {
         push(date, '改削完了', `再生対象は${item.id}です。径は${nextDiameter}です。改削日数の試算であり、搬入と組替の完了ではありません。`);
         if (state.scrapDiameter !== null && nextDiameter <= state.scrapDiameter) {
             item.status = 'scrap';
-            const conditional = addMonths(date, -PROVISIONAL_LEAD_TIME_MONTHS);
-            push(date, '廃却需要', `廃却径以下です。暫定6か月を戻した条件付きの時期は${conditional}です。確定の購入日ではありません。`);
+            const leadMonths = finiteOrNull(source.leadMonths);
+            const leadStatus = source.leadStatus === 'confirmed' ? '確認済み' : '暫定';
+            const conditional = leadMonths === null ? '' : `${leadStatus}${leadMonths}か月を戻した条件付きの手配目安は${addMonths(date, -leadMonths)}です。`;
+            const missingLead = leadMonths === null ? '購入期間が未確認なので、手配目安は出しません。0か月にはしません。' : conditional;
+            push(date, '廃却需要', `対象は${item.id}です。廃却径以下です。${missingLead}確定の購入日ではありません。`);
         }
     };
     const finishDueReworks = date => {
@@ -1170,6 +1173,43 @@ function readLedgerResources(list, selection) {
     });
 }
 
+function forecastLead(standKey) {
+    if (anonymousForecastCheck) {
+        const field = typeof document !== 'undefined' ? document.getElementById('lead-time-months') : null;
+        const months = field && String(field.value).trim() !== '' ? Number(field.value) : PROVISIONAL_LEAD_TIME_MONTHS;
+        if (!Number.isFinite(months) || months <= 0) return { months: null, status: 'unknown' };
+        return { months, status: 'provisional' };
+    }
+    return readStandLeadTime(standKey) || defaultStandLeadTime(standKey);
+}
+
+function describeSetOutlook(result, label) {
+    const prefix = label || 'この計算では';
+    if (!result) return '';
+    if (result.stopRecord) {
+        return [
+            `${prefix}、3つの運用枠をいつまで保てるかは未確認です。`,
+            `計算できた最終日は${result.confirmedThrough || 'ありません'}。`,
+            `止めた対象は${result.stopRecord.id || '未確認'}です。理由は${result.stopRecord.reason}`,
+            '未知の値は0や試験値で埋めていません。'
+        ].join('');
+    }
+    const events = result.events || [];
+    const night = events.find(item => item.kind === '夜勤予備不足' || item.kind === 'ロール替需要');
+    const scrap = events.find(item => item.kind === '廃却需要');
+    if (!night && !scrap) {
+        const returned = events.some(item => item.kind === '使用可能予備');
+        return returned
+            ? `${prefix}、昼の組替のあと予備へ戻しています。3つの運用枠が足りなくなる日は、この期間には出ていません。不足なしの確定ではありません。`
+            : `${prefix}、運用枠が足りなくなる日は出ていません。期間の外は未確認です。不足なしの確定ではありません。`;
+    }
+    if (night) {
+        const extra = scrap ? `同じ期間に${scrap.date}の廃却需要もあります。${scrap.note}必要な対応には補充も含みます。` : '必要な対応は、夜勤の前に昼の組替を終えて使用可能な予備を戻すことです。';
+        return `${prefix}、3つの運用枠を保てなくなるのは${night.date}です。対象は${night.onlineId || '未確認'}です。原因は${night.note}${extra}`;
+    }
+    return `${prefix}、3つの運用枠を保てなくなるのは${scrap.date}です。原因は${scrap.note}必要な対応は補充です。日付は条件付きの手配目安で、確定の購入日ではありません。`;
+}
+
 let exchangeCycleRenderGeneration = 0;
 
 function renderExchangeCycle() {
@@ -1225,6 +1265,8 @@ function renderExchangeCycle() {
             scrapDiameter: form.scrapDiameter,
             adoptedCutMm: form.cutMm,
             reworkDays: form.reworkDays,
+            leadMonths: forecastLead(form.standKey).months,
+            leadStatus: forecastLead(form.standKey).status,
             workConfirmation: form.workConfirmation,
             assemblyConfirmation: form.assemblyConfirmation,
             resources: cycleResources,
@@ -1236,6 +1278,7 @@ function renderExchangeCycle() {
             : '';
         scheduleText = [
             `読込予定に基づく結果です。予定「${schedule.sourceName || '名前なし'}」で計算しています。架空の操業日は足していません。`,
+            describeSetOutlook(result, 'この読込予定では'),
             result.reason,
             uncovered,
             describeCycleTimeline(result),
@@ -1288,6 +1331,8 @@ function describeAnonymousHorizon(form, online, resources, limit) {
         scrapDiameter: form.scrapDiameter,
         adoptedCutMm: form.cutMm,
         reworkDays: form.reworkDays,
+        leadMonths: forecastLead(form.standKey).months,
+        leadStatus: forecastLead(form.standKey).status,
         workConfirmation: confirmed ? Object.assign({}, work, { repeatOnStops: true, workTypes: ['caliberChange', 'rollChange'] }) : work,
         resources,
         assemblyConfirmation: assemblyReady ? Object.assign({}, form.assemblyConfirmation, { repeatOnStops: true }) : form.assemblyConfirmation,
@@ -1295,7 +1340,8 @@ function describeAnonymousHorizon(form, online, resources, limit) {
     });
     return [
         '仮の13か月シナリオです。読込予定そのものではありません。',
-        '匿名の13か月です。読み込んだ予定の日ではありません。',
+        '匿名の13か月です。読み込んだ予定の日ではありません。読込予定の未確認は埋めていません。',
+        describeSetOutlook(result, '仮の13か月では'),
         result.reason,
         describeCycleTimeline(result),
         confirmed ? '' : '作業枠が未確認なので、匿名の13か月でも交換は成立させません。'
@@ -1410,6 +1456,7 @@ function forecastSettingKey(input) {
 }
 
 let anonymousForecastCheck = false;
+let anonymousEntryActive = false;
 let anonymousForecastMemory = {};
 
 function anonymousCheckLedger() {
@@ -1459,9 +1506,74 @@ function applyAnonymousScene(scene) {
     renderExchangeCycle();
 }
 
-function startAnonymousForecastCheck() {
+function isAnonymousEntryOpen() {
+    return anonymousEntryActive;
+}
+
+function openAnonymousEntry() {
+    anonymousEntryActive = true;
+    const loginScreen = document.getElementById('login-screen');
+    const mainScreen = document.getElementById('main-screen');
+    if (loginScreen) loginScreen.style.display = 'none';
+    if (mainScreen) mainScreen.style.display = 'block';
+    document.body.classList.remove('simple-overview');
+    startAnonymousForecastCheck();
+}
+
+function anonymousExampleSummary(kind) {
+    const day = (date, amount, hours, shift1, shift3) => ({
+        date, productionAmount: amount, operatingHours: hours, shift1Team: shift1, shift3Team: shift3, size: 'D10'
+    });
+    const base = { ok: true, referenceDate: '2027-04-01', months: [{ month: '2027-04', classification: 'future', productionTons: null, operatingHours: null, sizes: ['D10'], shifts: ['A'] }] };
+    if (kind === 'unknown') {
+        return Object.assign({}, base, {
+            sourceName: '試験用の未確認予定',
+            days: [day('2027-04-01', 10, 3, 'A', '')],
+            reason: '試験用です。4時間未満を0直や1直にはしていません。'
+        });
+    }
+    if (kind === 'ready') {
+        return Object.assign({}, base, {
+            sourceName: '試験用の間に合う予定',
+            days: [day('2027-04-01', 10, 8, 'A', ''), day('2027-04-02', 0, 0, 'A', ''), day('2027-04-03', 0, 0, 'A', '')],
+            reason: '試験用です。読込予定そのものではありません。'
+        });
+    }
+    return Object.assign({}, base, {
+        sourceName: '試験用の不足予定',
+        days: [day('2027-04-01', 10, 8, 'A', ''), day('2027-04-02', 0, 0, 'A', ''), day('2027-04-03', 0, 0, '', 'B')],
+        reason: '試験用です。夜勤の前に予備が戻らない例です。'
+    });
+}
+
+function applyAnonymousExample(kind) {
+    if (!anonymousForecastCheck) return;
     applyingForecastSetting = true;
+    setAnonymousField('forecast-roll', 'anon-online');
+    setAnonymousField('life-scrap', kind === 'short' ? '77' : '70');
+    setAnonymousField('life-cut', '4');
+    setAnonymousField('life-diameter', '81');
+    setAnonymousField('cycle-rework-days', '1');
+    setAnonymousField('lead-time-months', '6');
+    setAnonymousField('lead-time-status', 'provisional');
+    const assembly = kind === 'ready';
+    setAnonymousField('assembly-period', assembly ? 'day' : '');
+    setAnonymousField('assembly-required-hours', assembly ? '5' : '');
+    setAnonymousField('assembly-reserved-hours', assembly ? '5' : '');
+    setAnonymousField('assembly-people', assembly ? '1' : '');
+    setAnonymousField('assembly-prepared', assembly ? 'reworkInbound' : '');
+    setAnonymousField('assembly-prepared-target', assembly ? 'anon-online' : '');
+    setAnonymousField('assembly-prepared-on', assembly ? '2027-04-01' : '');
+    setAnonymousField('assembly-date', assembly ? '2027-04-03' : '');
+    applyingForecastSetting = false;
+    latestMonthlySummary = anonymousExampleSummary(kind);
+    renderMonthlyScheduleSummary(latestMonthlySummary);
+}
+
+function startAnonymousForecastCheck() {
     anonymousForecastCheck = true;
+    beginScheduleRead();
+    applyingForecastSetting = true;
     anonymousForecastMemory = {};
     activeForecastContext = null;
     latestMonthlySummary = anonymousCheckSummary();
@@ -1594,6 +1706,7 @@ function currentMonthlySummary() {
 }
 
 function finishScheduleRead(generation, summary) {
+    if (anonymousForecastCheck) return false;
     if (generation !== scheduleReadGeneration) return false;
     if (summary && summary.ok !== false && Array.isArray(summary.months)) {
         latestMonthlySummary = summary;
@@ -1824,8 +1937,12 @@ function bindMonthlyScheduleFileInput() {
     const input = document.getElementById('monthly-schedule-file');
     if (!input || input.dataset.bound === 'true') return;
     input.dataset.bound = 'true';
-    syncForecastSettingContext();
-    renderExchangeCycle();
+    const anonymousEntry = typeof location !== 'undefined' && /(?:\?|&)anonymous=1(?:&|$)/.test(String(location.search || ''));
+    if (anonymousEntry) openAnonymousEntry();
+    else {
+        syncForecastSettingContext();
+        renderExchangeCycle();
+    }
     const anonymousButton = document.getElementById('start-anonymous-check');
     if (anonymousButton && anonymousButton.dataset.bound !== 'true') {
         anonymousButton.dataset.bound = 'true';
@@ -1838,6 +1955,18 @@ function bindMonthlyScheduleFileInput() {
             button.addEventListener('click', () => applyAnonymousScene(scene));
         }
     });
+    [['anon-example-short', 'short'], ['anon-example-ready', 'ready'], ['anon-example-unknown', 'unknown']].forEach(([id, kind]) => {
+        const button = document.getElementById(id);
+        if (button && button.dataset.bound !== 'true') {
+            button.dataset.bound = 'true';
+            button.addEventListener('click', () => applyAnonymousExample(kind));
+        }
+    });
+    const entryButton = document.getElementById('open-anonymous-entry');
+    if (entryButton && entryButton.dataset.bound !== 'true') {
+        entryButton.dataset.bound = 'true';
+        entryButton.addEventListener('click', openAnonymousEntry);
+    }
     ['forecast-roll', 'forecast-reference', 'caliber-stand', 'caliber-size', 'caliber-current', 'caliber-opening', 'caliber-opening-tons', 'caliber-pass', 'work-date', 'work-period', 'work-reserved-hours', 'work-type', 'work-required-hours', 'work-people', 'work-continuous', 'work-changeover', 'work-three-set', 'assembly-date', 'assembly-period', 'assembly-reserved-hours', 'assembly-required-hours', 'assembly-people', 'assembly-prepared', 'assembly-prepared-target', 'assembly-prepared-on', 'life-diameter', 'life-scrap', 'life-cut', 'life-spare', 'cycle-spare-calibers', 'cycle-rework-days'].forEach(id => {
         const field = document.getElementById(id);
         if (field) field.addEventListener('change', () => {

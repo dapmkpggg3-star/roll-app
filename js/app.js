@@ -167,6 +167,9 @@ function checkLoginStatus() {
             loadRemoteRoles();
             Promise.all([loadStandMaster(), loadCuttingMaster()]).then(() => renderRoles());
         }
+    } else if (typeof isAnonymousEntryOpen === 'function' && isAnonymousEntryOpen()) {
+        loginScreen.style.display = 'none';
+        mainScreen.style.display = 'block';
     } else {
         loginScreen.style.display = 'flex';
         mainScreen.style.display = 'none';
@@ -2936,7 +2939,9 @@ function autoMoveUsedStandbyToReworkReadyForNewInstalled(sourceRole, changedAt =
     return changedRoles;
 }
 
-loadLocalRoles();
+if (!(typeof location !== 'undefined' && /(?:\?|&)anonymous=1(?:&|$)/.test(String(location.search || '')))) {
+    loadLocalRoles();
+}
 
 function changeSort(event) {
     sortOption = event.target.value;

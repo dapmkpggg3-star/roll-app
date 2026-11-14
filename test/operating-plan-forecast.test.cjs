@@ -883,3 +883,46 @@ test('anonymous check keeps normal inputs out of memory, storage, and equipment 
   context.anonymousForecastCheck = false;
   context.fetch = undefined;
 });
+
+test('a schedule read that finishes after anonymous start does not replace the anonymous result', () => {
+  const inflight = context.beginScheduleRead();
+  context.latestMonthlySummary = null;
+  context.startAnonymousForecastCheck();
+  assert.equal(context.finishScheduleRead(inflight, { ok: true, sourceName: 'late-real.xlsx', months: [{ month: '2027-04' }], days: [{ date: '2027-04-01', productionAmount: 10 }] }), false);
+  assert.equal(context.finishScheduleRead(inflight, null), false);
+  assert.equal(context.currentMonthlySummary().sourceName, '試験用の匿名予定');
+  assert.equal(JSON.stringify(context.currentMonthlySummary()).includes('late-real'), false);
+});
+
+test('anonymous examples show a shortage, a return, and an unknown stop', () => {
+  const fields = {};
+  const field = id => {
+    if (!fields[id]) fields[id] = { value: '', textContent: '', dataset: {} };
+    return fields[id];
+  };
+  const previousDocument = context.document;
+  context.document = { readyState: 'complete', getElementById: field, addEventListener() {} };
+  context.startAnonymousForecastCheck();
+  context.applyAnonymousExample('short');
+  const shortText = field('cycle-result').textContent;
+  assert.match(shortText, /試験用の不足予定/);
+  assert.match(shortText, /3つの運用枠を保てなくなるのは2027-04-03/);
+  assert.match(shortText, /anon-online/);
+  assert.match(shortText, /条件付きの手配目安/);
+  assert.match(shortText, /確定の購入日ではありません/);
+  assert.match(shortText, /仮の13か月シナリオです/);
+  context.applyAnonymousExample('ready');
+  const readyText = field('cycle-result').textContent;
+  assert.match(readyText, /試験用の間に合う予定/);
+  assert.match(readyText, /この読込予定では、昼の組替のあと予備へ戻しています/);
+  assert.match(readyText, /使用可能予備/);
+  assert.match(readyText, /不足なしの確定ではありません/);
+  context.applyAnonymousExample('unknown');
+  const unknownText = field('cycle-result').textContent;
+  assert.match(unknownText, /試験用の未確認予定/);
+  assert.match(unknownText, /この読込予定では、3つの運用枠をいつまで保てるかは未確認です/);
+  assert.match(unknownText, /4時間未満/);
+  assert.match(unknownText, /最終日はありません/);
+  assert.match(unknownText, /仮の13か月は読込予定の未確認は埋めていません|読込予定の未確認は埋めていません/);
+  context.document = previousDocument;
+});

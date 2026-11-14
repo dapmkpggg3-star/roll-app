@@ -28,6 +28,8 @@
             </div>
             <div class="login-form">
                 <button type="button" id="login-btn" onclick="login()">Googleでログイン</button>
+                <p>ログインはこれまでどおりです。下の確認は実台帳も保存も使いません。</p>
+                <button type="button" id="open-anonymous-entry">認証なしで匿名確認を開く</button>
                 <p id="login-status" role="status" aria-live="polite"></p>
             </div>
         </div>
@@ -286,6 +288,10 @@
                     <button type="button" id="anon-scene-ready">成立</button>
                     <button type="button" id="anon-scene-clear">解除</button>
                     <button type="button" id="anon-scene-short">短縮</button>
+                    <p>次の3つは試験用です。不足、間に合う準備、未確認で止まる例を切り替えます。トン数から本数は出しません。</p>
+                    <button type="button" id="anon-example-short">不足する例</button>
+                    <button type="button" id="anon-example-ready">間に合う例</button>
+                    <button type="button" id="anon-example-unknown">未確認で止まる例</button>
                     <p>生産予定を読み込んだときだけ、その予定で計算します。予定が無い日を作りません。選んだロールと基準日の開始条件で、日付順に交換・再生・組替・未確認の停止を出します。読込予定の結果と、仮の13か月は分けて出します。対象期間、確定して計算できた最終日、止めた対象と理由を分けます。未確認のあとを計算済みにはしません。ロール替の回数は再利用で、新規購入の本数ではありません。本数だけでは架空のロールIDを作りません。</p>
                     <label>予測対象ロール <input id="forecast-roll" type="text" value=""></label>
                     <label>基準日 <input id="forecast-reference" type="date" value=""></label>
@@ -595,9 +601,9 @@
     <script src="js/online-safety.js?v=20260805-online-safety"></script>
     <script src="js/sync.js?v=20261023-content-auth"></script>
 <script src="js/offline-recovery.js?v=20261113-offline-recovery"></script>
-<script src="js/operating-plan.js?v=20261114-anon-memory"></script>
+<script src="js/operating-plan.js?v=20261114-set-outlook"></script>
 <script src="js/csv.js?v=20260805-online-safety"></script>
-<script src="js/app.js?v=20261023-simple-auth"></script>
+<script src="js/app.js?v=20261114-anon-entry"></script>
 
 </body>
 </html>
