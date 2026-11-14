@@ -726,6 +726,34 @@ test('a spare roll continues from its own saved opening', () => {
   assert.match(haltedText, /保留/);
   assert.match(haltedText, /このあとは未確認です/);
   assert.match(haltedText, /期間全体の回数にはしません/);
+  const both = context.simulateExchangeCycle({
+    maxRuns: 1, openingRuns: 1, currentCaliberId: 'cal-a', reworkDays: 9, adoptedCutMm: 4, scrapDiameter: 70,
+    workConfirmation: Object.assign({ repeatOnStops: true, workTypes: ['rollChange'] }, slot),
+    resources: [
+      { id: 'roll-a', frame: 'online', diameter: 80, caliberId: 'cal-a', runs: 1 },
+      { id: 'roll-b', frame: 'installedSpare', diameter: 90, caliberId: 'cal-b', runs: 0 },
+      { id: 'roll-c', frame: 'installedSpare', diameter: 88, caliberId: 'cal-c', runs: 0 },
+      { id: 'roll-d', frame: 'installedSpare', diameter: 86, caliberId: 'cal-d', runs: 0 }
+    ],
+    days: Array.from({ length: 11 }, (_, index) => {
+      const day = index + 1;
+      const stop = day === 2 || day === 4 || day === 11;
+      return {
+        date: `2027-04-${String(day).padStart(2, '0')}`,
+        productionAmount: stop ? 0 : 10,
+        operatingHours: stop ? 0 : 8,
+        shift1Team: 'A',
+        shift3Team: ''
+      };
+    })
+  });
+  assert.equal(both.events.filter(item => item.kind === 'ロール替' && item.date <= '2027-04-04').length, 2);
+  assert.equal(both.events.some(item => item.date === '2027-04-04' && item.kind === 'ロール替需要'), false);
+  assert.equal(both.events.find(item => item.kind === '改削完了' && item.note.includes('roll-a')).date, '2027-04-11');
+  assert.equal(both.events.some(item => item.kind === '改削完了' && item.note.includes('roll-b')), false);
+  assert.equal(both.resources.find(item => item.id === 'roll-a').diameter, 76);
+  assert.equal(both.resources.find(item => item.id === 'roll-b').diameter, 90);
+  assert.equal(both.resources.find(item => item.id === 'roll-b').frame, 'rework');
 });
 
 test('lead time defaults to provisional six months and confirmed is explicit', () => {
