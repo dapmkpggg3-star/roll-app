@@ -1917,7 +1917,51 @@ function knownUseBasisText(standKey) {
     return table[stand] || 'このスタンドの使用基準は既回答の表にありません。0直にはしません。';
 }
 
-function premisesFact(premises, standKey) {
+function loadedForecastMasters(standKey) {
+    if (anonymousForecastCheck) return {};
+    // Only inspect maps already populated by the existing application.
+    // Never initiate authentication, storage reads, or a remote fetch here.
+    return {
+        stand: typeof getStandMaster === 'function' ? getStandMaster(standKey) : null,
+        cutting: typeof getCuttingMaster === 'function' ? getCuttingMaster(standKey) : null
+    };
+}
+
+function forecastMasterNumber(value) {
+    if (value === null || value === undefined || String(value).trim() === '') return null;
+    const number = Number(value);
+    return Number.isFinite(number) && number > 0 ? number : null;
+}
+
+function premisesFact(premises, standKey, masters) {
+    const fallback = localPremisesFact(premises, standKey);
+    const stand = String(standKey || '').replace(/^#/, '');
+    const loaded = masters || {};
+    const sameStand = row => row && standNumberFromName(row.standKey || row.stand) === stand;
+    const result = Object.assign({}, fallback, {
+        diameterSource: fallback.scrapDiameter === null ? '取得待ち' : '端末内の径仕様',
+        cutSource: fallback.adoptedCutMm === null ? '取得待ち' : '端末内の採用改削量'
+    });
+    if (loaded.stand) {
+        result.scrapDiameter = sameStand(loaded.stand) ? forecastMasterNumber(loaded.stand.scrapDiameter) : null;
+        result.diameterSource = '取得済みStandMaster';
+        result.diameterReason = !sameStand(loaded.stand)
+            ? '径マスタのスタンドが一致しないため、この値は使いません。'
+            : (result.scrapDiameter === null ? `${stand}番の廃却径は取得済みマスタで未記録です。` : '');
+    }
+    if (loaded.cutting) {
+        const active = loaded.cutting.active !== false && String(loaded.cutting.active).toLowerCase() !== 'false';
+        result.adoptedCutMm = sameStand(loaded.cutting) && active ? forecastMasterNumber(loaded.cutting.calculationCutMm) : null;
+        result.cutSource = '取得済み改削マスタの計算用改削量';
+        result.cutReason = !sameStand(loaded.cutting)
+            ? '改削マスタのスタンドが一致しないため、この値は使いません。'
+            : (!active ? `${stand}番の改削マスタは無効です。採用改削量は使いません。`
+                : (result.adoptedCutMm === null ? `${stand}番の計算用改削量は取得済みマスタで未記録です。標準値や実績平均では埋めません。` : ''));
+    }
+    return result;
+}
+
+function localPremisesFact(premises, standKey) {
     const stand = String(standKey || '').replace(/^#/, '');
     if (!premises || premises.status !== 'loaded' || !premises.data) {
         return {
@@ -1936,9 +1980,9 @@ function premisesFact(premises, standKey) {
             cutReason: `${stand}番の採用改削量はローカル仕様に記録がありません。未記録です。`
         };
     }
-    const cut = finiteOrNull(row.adoptedCutMm);
+    const cut = forecastMasterNumber(row.adoptedCutMm);
     return {
-        scrapDiameter: finiteOrNull(row.scrapDiameter),
+        scrapDiameter: forecastMasterNumber(row.scrapDiameter),
         adoptedCutMm: cut,
         diameterReason: row.scrapDiameter === undefined ? `${stand}番の廃却径は未記録です。` : '',
         cutReason: cut === null ? `${stand}番の採用改削量は手元の仕様に無いので取得待ちです。17番の2.5mmは使いません。` : ''
@@ -2020,9 +2064,10 @@ function confirmationForStand(confirmation, standKey, standSize, referenceAt, ro
 }
 
 function sizeForStand(standKey, source, planDays) {
+    const sizes = Array.from(new Set((planDays || []).filter(row => row && row.productionAmount !== 0).map(row => row.size).filter(Boolean)));
+    if (sizes.length > 1) return '';
     const selected = String(source.standKey || '').replace(/^#/, '') === String(standKey);
     if (selected && source.size) return source.size;
-    const sizes = Array.from(new Set((planDays || []).map(row => row && row.size).filter(Boolean)));
     if (sizes.length === 1) return sizes[0];
     return '';
 }
@@ -2060,8 +2105,8 @@ function buildStandDemandList(input) {
         countedDays.length ? `日付の予定は${countedDays.length}日あります。無い日は作っていません。` : '月別の本数だけなので、操業日は作っていません。'
     ].filter(Boolean);
     const blocks = standKeys.map(standKey => {
-        const fact = premisesFact(premises, standKey);
-        const standSize = sizeForStand(standKey, source, planDays);
+        const fact = premisesFact(premises, standKey, source.mastersByStand && source.mastersByStand[standKey]);
+        const standSize = sizeForStand(standKey, source, countedDays);
         const standRolls = rolls.filter(item => standNumberFromName(item.name || item.id) === standKey).map(item => {
             const saved = savedOpening(item, standKey, standSize, referenceAt);
             return Object.assign({}, item, { currentCaliber: saved.caliber, openingRuns: saved.runs, openingNote: saved.note });
@@ -2104,10 +2149,13 @@ function buildStandDemandList(input) {
             scrap = '足していない日からは、廃却日も手配目安も出していません。';
             order = '足していない日からは、手配目安は出していません。';
         } else if (planDays.length && standRolls.length && standDays.length) {
-            const resources = readLedgerResources(standRolls, { standKey, size: source.size || '' });
+            const resources = readLedgerResources(standRolls, { standKey, size: standSize });
             const online = resources.find(item => item.frame === 'online');
             if (!online || !online.caliberId || online.runs === null) {
                 blocked.push('現在のカリバまたは開始直数が未記録なので、このスタンドの日付計算はしていません。');
+            } else if (!standSize) {
+                period = 'サイズが切り替わる予定は、サイズ別の開始条件と切替工程が未確認のため日付計算を止めています。選択中の1サイズには丸めません。';
+                blocked.push('サイズ別の開始条件と切替工程は未確認です。');
             } else if (!limit || limit.kind !== '最大') {
                 blocked.push('最大直数が記録されていないので、日付の交換計算はしていません。使用基準のトン数からは日を作りません。');
             } else {
@@ -2134,6 +2182,7 @@ function buildStandDemandList(input) {
         return [
             `#${standKey} ${knownUseBasisText(standKey)}`,
             rollLines.join('\n'),
+            `計算の参照元: 廃却径は${fact.diameterSource}（${fact.scrapDiameter === null ? '未確認' : fact.scrapDiameter + 'mm'}）、採用改削量は${fact.cutSource}（${fact.adoptedCutMm === null ? '未確認' : fact.adoptedCutMm + 'mm'}）です。新品時の径は現在径に使いません。`,
             `計算できた期間: ${period}`,
             `廃却と補充: ${scrap}`,
             `夜勤の予備不足: ${night}`,
@@ -2153,11 +2202,14 @@ function renderStandDemandList() {
     const schedule = latestMonthlySummary && latestMonthlySummary.ok !== false ? latestMonthlySummary : null;
     const form = typeof readCaliberInputs === 'function' ? readCaliberInputs() : {};
     const ledger = anonymousForecastCheck ? anonymousCheckLedger() : (typeof roles === 'undefined' ? [] : roles);
+    const masterKeys = Array.from(new Set(ledger.map(item => standNumberFromName(item.name || item.id)).filter(Boolean)));
+    const mastersByStand = anonymousForecastCheck ? {} : Object.fromEntries(masterKeys.map(key => [key, loadedForecastMasters(key)]));
     target.textContent = buildStandDemandList({
         plan,
         rolls: ledger,
         days: schedule && Array.isArray(schedule.days) ? schedule.days : [],
         premises: anonymousForecastCheck ? { status: 'waiting' } : standPremisesCache,
+        mastersByStand,
         scheduleName: schedule && schedule.sourceName || '',
         referenceAt: activeForecastReference(form, schedule),
         scheduleReference: schedule && schedule.referenceDate || '',
@@ -2366,3 +2418,4 @@ if (typeof document !== 'undefined') {
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bindMonthlyScheduleFileInput);
     else bindMonthlyScheduleFileInput();
 }
+
