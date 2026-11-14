@@ -2154,6 +2154,36 @@ function registerSizeChange() {
     renderStandDemandList();
 }
 
+function openAnonymousSizeExample() {
+    startAnonymousForecastCheck();
+    const referenceAt = '2027-04-01';
+    const owner = { rollId: 'anon-online', standKey: '10', size: 'D10', referenceAt };
+    rememberForecastSetting({ ...owner, caliberId: 'anon-cal-a', openingRuns: 6 });
+    rememberForecastSetting({ ...owner, size: 'D13', caliberId: 'anon-cal-d13', openingRuns: 2 });
+    setAnonymousField('caliber-opening', '6');
+    setAnonymousField('work-type', 'sizeChange');
+    setAnonymousField('work-reserved-hours', '6');
+    setAnonymousField('work-required-hours', '6');
+    setAnonymousField('work-people', '3');
+    setAnonymousField('sizechange-to', 'D13');
+    setAnonymousField('sizechange-operation', '2027-04-03');
+    rememberWorkSlotOwner();
+    const slot = readCaliberInputs().workConfirmation;
+    const day = (date, size, productionAmount) => ({ date, size, productionAmount, operatingHours: productionAmount ? 8 : 0, shift1Team: 'A', shift3Team: '' });
+    const schedule = { ...anonymousCheckSummary(), sourceName: '試験用のD10・D13切替予定', months: [{ month: '2027-04', classification: 'future', productionTons: null, operatingHours: null, sizes: ['D10', 'D13'], shifts: ['A'] }], days: [
+        day('2027-04-01', 'D10', 10), day('2027-04-02', 'D13', 0), day('2027-04-03', 'D13', 10),
+        day('2027-04-04', 'D13', 0), day('2027-04-05', 'D10', 10)
+    ] };
+    latestMonthlySummary = schedule;
+    sizeChangeConfirmations = [
+        { schedule, value: { ...slot, owner, fromSize: 'D10', toSize: 'D13', operationDate: '2027-04-03' } },
+        { schedule, value: { ...slot, owner: { ...owner, size: 'D13' }, fromSize: 'D13', toSize: 'D10', date: '2027-04-04', operationDate: '2027-04-05' } }
+    ];
+    renderMonthlyScheduleSummary(schedule);
+    renderSizeChangeRecords();
+    document.getElementById('sizechange-message').textContent = 'すべて試験値です。D13は2→3直、D10へ戻ると7→8直です。「登録をすべて解除」で4月2日の未確認へ戻ります。実台帳・端末の保存・実設備のマスタは使いません。';
+}
+
 function ensureSizeChangeControls() {
     const target = document.getElementById('cycle-result');
     if (!target || typeof target.insertAdjacentHTML !== 'function' || document.getElementById('sizechange-to')) return;
@@ -2166,9 +2196,11 @@ function ensureSizeChangeControls() {
         + '<p>上の交換作業枠で「サイズ替」を選び、作業日・昼の時間・人数・連続操業・組替・3セットを確認して登録します。0tだけでは成立しません。</p>'
         + '<button id="sizechange-register" type="button">サイズ替枠を予測へ登録</button>'
         + '<button id="sizechange-clear" type="button">この予定の登録をすべて解除</button>'
+        + '<button id="sizechange-example" type="button">匿名のサイズ切替例を見る</button>'
         + '<p>登録済みの枠は下に残ります。同じ対象・最初の操業日で再登録すると更新します。ファイルの差替え・解除・失敗・再読込では消えます。実台帳には保存しません。</p>'
         + '<pre id="sizechange-records"></pre><p id="sizechange-message" aria-live="polite"></p></fieldset>');
     document.getElementById('sizechange-register').addEventListener('click', registerSizeChange);
+    document.getElementById('sizechange-example').addEventListener('click', openAnonymousSizeExample);
     document.getElementById('sizechange-clear').addEventListener('click', () => {
         sizeChangeConfirmations = [];
         renderSizeChangeRecords();

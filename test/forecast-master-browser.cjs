@@ -140,6 +140,13 @@ async function main() {
     await anonymous.evaluate(() => { window.getStandMaster = () => { throw Error('real master accessed'); }; window.getCuttingMaster = window.getStandMaster; });
     await anonymous.locator('#anon-example-ready').click();
     assert.equal(await anonymous.evaluate(() => Object.keys(loadedForecastMasters('10')).length), 0);
+    const storageBefore = await anonymous.evaluate(() => JSON.stringify({ ...localStorage }));
+    await anonymous.locator('#sizechange-example').click();
+    assert.match(await anonymous.locator('#cycle-result').innerText(), /2027-04-03 操業 anon-cal-d13の使用は3直/);
+    assert.match(await anonymous.locator('#cycle-result').innerText(), /2027-04-05 操業 anon-cal-aの使用は8直/);
+    await anonymous.locator('#sizechange-clear').click();
+    assert.match(await anonymous.locator('#cycle-result').innerText(), /2027-04-02にanon-onlineを止めました/);
+    assert.equal(await anonymous.evaluate(() => JSON.stringify({ ...localStorage })), storageBefore);
     console.log('FORECAST MASTER browser PASS');
   } finally { await browser.close(); }
 }
