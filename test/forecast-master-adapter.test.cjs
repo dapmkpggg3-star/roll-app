@@ -283,3 +283,108 @@ test('a usual guide for the next size never substitutes for its unconfirmed maxi
   assert.equal(result.stopRecord.date, '2027-04-03');
   assert.match(result.stopRecord.reason, /次サイズの確定最大は未確認/);
 });
+
+function laterCycle(c) {
+  const input = sizeCycle(c);
+  const owner = { rollId: 'A', standKey: '10', size: 'D13', referenceAt: input.referenceAt };
+  input.sizeOpenings[0].runs = 7;
+  input.sizeOpenings.push({ owner: { ...owner, rollId: 'B' }, caliberId: 'b13', runs: 2 });
+  input.sizeChanges = input.sizeChanges.slice(0, 1);
+  input.days = input.days.slice(0, 4).concat([
+    { date: '2027-04-05', size: 'D13', productionAmount: 0, operatingHours: 0, shift1Team: 'A' },
+    { date: '2027-04-06', size: 'D13', productionAmount: 10, operatingHours: 8, shift3Team: 'A' }
+  ]);
+  input.workSlots = [{ ...input.workConfirmation, owner: { ...owner }, date: '2027-04-04' }];
+  input.assemblySlots = [{ owner: { ...owner }, date: '2027-04-05', period: 'day', reservedHours: 6, requiredHours: 6,
+    people: 3, prepared: 'reworkInbound', preparedTarget: 'A', preparedOn: '2027-04-05' }];
+  return { ...input, reworkDays: 1, adoptedCutMm: 4, scrapDiameter: 70 };
+}
+
+test('later scoped exchange and assembly frames complete the post-size cycle before the night', () => {
+  const c = api();
+  const input = laterCycle(c);
+  const original = JSON.stringify(input);
+  const result = c.simulateExchangeCycle(input);
+  assert.equal(result.stopRecord, null);
+  assert.equal(result.confirmedThrough, '2027-04-06');
+  const swap = result.events.find(e => e.kind === 'ロール替');
+  assert.equal(swap.date, '2027-04-04');
+  assert.equal(swap.onlineId, 'B');
+  assert.equal(swap.caliberId, 'b13');
+  assert.equal(swap.caliberRuns, 2);
+  assert.equal(result.resources.find(r => r.id === 'A').diameter, 77);
+  assert.equal(result.resources.find(r => r.id === 'A').frame, 'installedSpare');
+  assert.equal(result.resources.find(r => r.id === 'B').diameter, 93);
+  assert.equal(result.events.filter(e => e.kind === '使用可能予備').length, 1);
+  assert.equal(result.events.some(e => e.kind === '夜勤予備不足'), false);
+  assert.equal(result.events.find(e => e.date === '2027-04-06' && e.kind === '操業').caliberRuns, 3);
+  assert.equal(JSON.stringify(input), original);
+});
+
+test('later exchange frames cannot borrow another owner, size, reference, day or short frame', () => {
+  const c = api();
+  for (const patch of [{ rollId: 'B' }, { standKey: '17' }, { size: 'D10' }, { referenceAt: '2027-04-02' }]) {
+    const input = laterCycle(c);
+    Object.assign(input.workSlots[0].owner, patch);
+    const result = c.simulateExchangeCycle(input);
+    assert.equal(result.stopRecord.date, '2027-04-04');
+    assert.equal(result.stopRecord.id, 'A');
+    assert.equal(result.events.some(e => e.date > '2027-04-04'), false);
+  }
+  for (const patch of [{ date: '2027-04-03' }, { reservedHours: 1 }, { people: 0 }, { threeSet: '' }, { workType: 'caliberChange' }, { period: 'night' }]) {
+    const input = laterCycle(c);
+    Object.assign(input.workSlots[0], patch);
+    assert.equal(c.simulateExchangeCycle(input).stopRecord.date, '2027-04-04');
+  }
+  const input = laterCycle(c);
+  input.workSlots = [];
+  assert.equal(c.simulateExchangeCycle(input).stopRecord.date, '2027-04-04');
+  const noShift = laterCycle(c);
+  noShift.days[3].shift1Team = '';
+  assert.equal(c.simulateExchangeCycle(noShift).stopRecord.date, '2027-04-04');
+});
+
+test('later assembly returns only its own waiting roll and unconfirmed frames keep night shortage', () => {
+  const c = api();
+  for (const patch of [{ rollId: 'B' }, { standKey: '17' }, { size: 'D10' }, { referenceAt: '2027-04-02' }]) {
+    const input = laterCycle(c);
+    Object.assign(input.assemblySlots[0].owner, patch);
+    const result = c.simulateExchangeCycle(input);
+    assert.equal(result.events.some(e => e.kind === '使用可能予備'), false);
+    assert.equal(result.events.find(e => e.kind === '夜勤予備不足').date, '2027-04-06');
+    assert.equal(result.resources.find(r => r.id === 'A').frame, 'rework');
+  }
+  for (const patch of [{ period: 'night' }, { reservedHours: 1 }, { people: undefined }, { prepared: '' }, { preparedOn: '2027-04-07' }]) {
+    const input = laterCycle(c);
+    Object.assign(input.assemblySlots[0], patch);
+    const result = c.simulateExchangeCycle(input);
+    assert.equal(result.events.some(e => e.kind === '使用可能予備'), false);
+    assert.equal(result.events.find(e => e.kind === '夜勤予備不足').date, '2027-04-06');
+  }
+  const input = laterCycle(c);
+  input.assemblySlots = [];
+  const result = c.simulateExchangeCycle(input);
+  assert.equal(result.events.some(e => e.kind === '使用可能予備'), false);
+  assert.equal(result.events.find(e => e.kind === '夜勤予備不足').onlineId, 'B');
+  const duplicated = laterCycle(c);
+  duplicated.assemblySlots.push(structuredClone(duplicated.assemblySlots[0]));
+  assert.equal(c.simulateExchangeCycle(duplicated).events.some(e => e.kind === '使用可能予備'), false);
+});
+
+test('an invalid opening for the entering size does not become extra lifetime', () => {
+  const c = api();
+  for (const runs of [-1, 0.5, null, 8]) {
+    const input = laterCycle(c);
+    input.sizeOpenings[1].runs = runs;
+    const result = c.simulateExchangeCycle(input);
+    assert.equal(result.stopRecord.date, '2027-04-04');
+    assert.equal(result.stopRecord.id, 'A');
+    assert.equal(result.events.some(e => e.kind === 'ロール替'), false);
+  }
+  const input = laterCycle(c);
+  input.days[0].productionAmount = -1;
+  const result = c.simulateExchangeCycle(input);
+  assert.equal(result.stopRecord.date, '2027-04-01');
+  assert.equal(result.confirmedThrough, null);
+  assert.equal(result.events.some(e => e.kind === '操業'), false);
+});

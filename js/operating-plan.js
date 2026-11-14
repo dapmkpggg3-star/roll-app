@@ -953,11 +953,9 @@ function simulateExchangeCycle(input) {
         state.reworks.filter(item => item.status === 'rework' && date >= item.readyOn)
             .forEach(item => finishReworkItem(date, item));
     };
-    const finishAssembly = date => {
+    const finishAssembly = (date, waiting, preparation) => {
         if (!spareRolls) return;
-        const waiting = state.reworks.filter(item => item.status === 'awaitingAssembly');
         if (!waiting.length) return;
-        const preparation = assemblyConfirmation || {};
         const preparationLabel = preparation.prepared === 'newSide' ? '新品側の準備' : '改削済ロールの搬入';
         push(date, '組替可能', `${preparation.preparedOn || '日未確認'}に${preparation.preparedTarget || '対象未確認'}の${preparationLabel}を確認しました。これは組替完了そのものではなく、予測であり実ロールの状態は変えていません。`);
         waiting.forEach(item => {
@@ -975,9 +973,31 @@ function simulateExchangeCycle(input) {
     const holdAssembly = (date, row) => {
         const waiting = state.reworks.filter(item => item.status === 'awaitingAssembly');
         if (!waiting.length) return false;
+        const scoped = scopedCycleSlots(source.assemblySlots, {
+            standKey: source.standKey, size: activeSize, referenceAt: source.referenceAt
+        }, date, false);
+        if (scoped.length || sizeChanged) {
+            let completed = false;
+            for (const item of waiting) {
+                const matches = scoped.filter(slot => slot.owner.rollId === item.id);
+                const confirmation = matches.length === 1 ? matches[0] : null;
+                const assessed = assemblySlotReady(confirmation, row);
+                const overlap = events.some(event => event.date === date && ['サイズ替', 'ロール替', 'カリバ替', '組替完了'].includes(event.kind));
+                const futurePreparation = confirmation && confirmation.preparedOn > date;
+                if (confirmation && assessed.ok && row.shift1Team && !overlap && !futurePreparation) {
+                    finishAssembly(date, [item], confirmation);
+                    completed = true;
+                } else {
+                    const reason = overlap ? '同じ日の別作業と重なるため、組替完了にしません。'
+                        : (futurePreparation ? '準備の確認日が組替日より後です。' : (assessed.reason || '対象に一致する昼の組替枠が未確認です。'));
+                    push(date, '組替需要', `${item.id}は組替前です。${reason}`);
+                }
+            }
+            return completed;
+        }
         const slot = assemblySlotReady(assemblyConfirmation, row);
         if (slot.ok) {
-            finishAssembly(date);
+            finishAssembly(date, waiting, assemblyConfirmation || {});
             return true;
         }
         push(date, '組替需要', `${waiting.map(item => item.id).join('、')}は組替前です。${slot.reason}`);
@@ -988,12 +1008,19 @@ function simulateExchangeCycle(input) {
         if (blocked) return;
         const date = String(row.date).slice(0, 10);
         const amount = row.productionAmount;
-        if (typeof amount !== 'number' || !Number.isFinite(amount)) {
+        if (typeof amount !== 'number' || !Number.isFinite(amount) || amount < 0) {
             push(date, '保留', '生産量が未確認です。0tにはしません。');
             stopAt(date, '生産量が未確認です。0tにはしません。');
             return;
         }
         const stopped = amount === 0;
+        const workScope = () => ({ standKey: source.standKey, rollId: state.onlineId, size: activeSize, referenceAt: source.referenceAt });
+        const workForDay = () => {
+            const matches = scopedCycleSlots(source.workSlots, workScope(), date, true);
+            return matches.length ? (matches.length === 1 ? matches[0] : null) : (sizeChanged ? null : source.workConfirmation);
+        };
+        workConfirmation = workForDay();
+        assemblyConfirmation = sizeChanged ? null : source.assemblyConfirmation;
         const nextSize = normalizeForecastSize(row.size);
         if (activeSize && nextSize !== activeSize && (!stopped || /^D\d+$/.test(nextSize))) {
             const boundary = { date, fromSize: activeSize, toSize: nextSize || '未確認' };
@@ -1044,6 +1071,7 @@ function simulateExchangeCycle(input) {
             assemblyConfirmation = null;
             push(date, 'サイズ替', `${confirmation.date}の確認済み昼枠で${previousSize}から${activeSize}へ替えた予測です。${state.onlineId}自身のカリバと使用直数を使います。径は変えず、実状態も変更しません。`);
         }
+        workConfirmation = workForDay();
         finishDueReworks(date);
         if (stopped && state.reworks.some(item => item.status === 'awaitingAssembly')) {
             if (nightOnly(row)) {
@@ -1056,9 +1084,11 @@ function simulateExchangeCycle(input) {
         }
         if (stopped && state.pending && state.phase === 'operating') {
             const expected = state.pending === 'caliber' ? 'caliberChange' : 'rollChange';
-            if (!exchangeSlotReady(workConfirmation, row, expected)) {
+            const overlap = sizeChanged && events.some(event => event.date === date && ['サイズ替', '組替完了', 'ロール替', 'カリバ替'].includes(event.kind));
+            if (!exchangeSlotReady(workConfirmation, row, expected) || sizeChanged && (!row.shift1Team || overlap)) {
                 push(date, '交換需要', '到達しています。0tや夜間、未確認の作業枠だけでは交換しません。');
-                markConfirmed(date);
+                if (sizeChanged) stopAt(date, 'サイズ切替後の対象・サイズ・基準日・作業日に一致する交換枠が未確認です。以後は計算済みにしません。');
+                else markConfirmed(date);
                 return;
             }
             if (state.pending === 'caliber' && spareCalibers && spareCalibers.length) {
@@ -1076,14 +1106,16 @@ function simulateExchangeCycle(input) {
                     push(date, 'ロール替需要', unnamed
                         ? '予備の本数だけでは交換できるロールが分かりません。架空のIDは作りません。'
                         : '予備がないか、改削日数が未確認なので、ロール替は成立させていません。');
-                    markConfirmed(date);
+                    if (sizeChanged) stopAt(date, 'サイズ切替後の交換先の予備または改削日数が未確認です。以後は計算済みにしません。');
+                    else markConfirmed(date);
                     return;
                 }
                 const leavingId = state.onlineId;
                 const unfinished = state.reworks.filter(item => item.status === 'rework' || item.status === 'awaitingAssembly' || item.status === 'held');
                 if (unfinished.length && spareRolls.length <= 1) {
                     push(date, 'ロール替需要', `再生中の${unfinished.map(item => item.id).join('、')}が未完了です。${leavingId}を重ねると夜勤の使用可能な予備がなくなるので、交換は成立させません。`);
-                    markConfirmed(date);
+                    if (sizeChanged) stopAt(date, '未完了の再生と重なる交換では、夜勤の予備を維持できません。以後は計算済みにしません。');
+                    else markConfirmed(date);
                     return;
                 }
                 const enteringId = spareRolls[0];
@@ -1094,8 +1126,8 @@ function simulateExchangeCycle(input) {
                     }, true));
                     const opening = sizeUsage.get(enteringId + '|' + activeSize)
                         || (!reworkedIds.has(enteringId) && recorded.length === 1 ? recorded[0] : null);
-                    entering.caliberId = opening ? opening.caliberId : null;
-                    entering.runs = opening ? opening.runs : null;
+                    entering.caliberId = opening && String(opening.caliberId || '').trim() || null;
+                    entering.runs = opening && Number.isInteger(opening.runs) && opening.runs >= 0 && opening.runs < maxRuns ? opening.runs : null;
                 }
                 if (resources && (!entering || !entering.caliberId)) {
                     push(date, 'ロール替需要', '交換先のカリバが未確認です。前のカリバは使いません。');
@@ -1164,7 +1196,8 @@ function simulateExchangeCycle(input) {
         if (state.caliberRuns + 1 > maxRuns) {
             state.pending = spareCalibers && spareCalibers.length ? 'caliber' : 'roll';
             push(date, '交換待ち', '連続操業の途中では交換しません。次の停止枠を待ちます。');
-            markConfirmed(date);
+            if (sizeChanged) stopAt(date, '最大直数を超える操業の前に交換が完了していません。以後は計算済みにしません。');
+            else markConfirmed(date);
             return;
         }
         state.caliberRuns += 1;
@@ -1368,6 +1401,8 @@ function renderExchangeCycle() {
             referenceAt,
             sizeOpenings: forecastSizeOpenings(cycleResources, selectedStand, countedDays, referenceAt),
             sizeChanges: applicableSizeChanges(schedule),
+            workSlots: applicableCycleSlots(schedule, 'work'),
+            assemblySlots: applicableCycleSlots(schedule, 'assembly'),
             maxRuns: limit && limit.kind === '最大' ? limit.runs : undefined,
             openingRuns,
             currentCaliberId: form.currentCaliber || (online && online.caliberId) || null,
@@ -1820,7 +1855,9 @@ let scheduleReadGeneration = 0;
 function beginScheduleRead() {
     scheduleReadGeneration += 1;
     sizeChangeConfirmations = [];
+    cycleSlotConfirmations = [];
     renderSizeChangeRecords();
+    renderCycleSlotRecords();
     return scheduleReadGeneration;
 }
 
@@ -1842,7 +1879,9 @@ function finishScheduleRead(generation, summary) {
 function renderMonthlyScheduleSummary(summary) {
     if (summary !== latestMonthlySummary) {
         sizeChangeConfirmations = [];
+        cycleSlotConfirmations = [];
         renderSizeChangeRecords();
+        renderCycleSlotRecords();
     }
     if (summary && summary.ok !== false && Array.isArray(summary.months)) latestMonthlySummary = summary;
     if (summary && summary.ok === false) latestMonthlySummary = null;
@@ -2117,6 +2156,51 @@ function forecastSizeOpenings(resources, standKey, days, referenceAt) {
 }
 
 let sizeChangeConfirmations = [];
+let cycleSlotConfirmations = [];
+
+function scopedCycleSlots(slots, target, date, matchRoll) {
+    return (Array.isArray(slots) ? slots : []).filter(slot => slot && slot.date === date
+        && confirmationOwnerMatches(slot, target, matchRoll));
+}
+
+function applicableCycleSlots(schedule, kind) {
+    if (!schedule || schedule.ok === false) return [];
+    return cycleSlotConfirmations.filter(item => item.schedule === schedule && item.kind === kind).map(item => item.value);
+}
+
+function renderCycleSlotRecords() {
+    if (typeof document === 'undefined') return;
+    const list = document.getElementById('cycle-slot-records');
+    if (!list) return;
+    const records = cycleSlotConfirmations.filter(item => item.schedule === latestMonthlySummary);
+    list.textContent = records.length ? records.map(item => {
+        const slot = item.value;
+        return `${item.kind === 'assembly' ? '組替' : '交換'} ${slot.date}: ${slot.owner.standKey}番 ${slot.owner.rollId}、${slot.owner.size}、基準日${slot.owner.referenceAt}、${slot.reservedHours}時間/${slot.people}人`;
+    }).join('\n') : 'この予定の交換・組替枠は未登録です。';
+}
+
+function registerCycleSlot(kind) {
+    const form = readCaliberInputs();
+    const owner = slotOwnerFromContext();
+    const assembly = kind === 'assembly';
+    const confirmation = assembly ? form.assemblyConfirmation : form.workConfirmation;
+    const stampedOwner = assembly ? assemblySlotOwner : workSlotOwner;
+    const slot = usableSlot(confirmation, stampedOwner, owner, true).slot;
+    const schedule = latestMonthlySummary;
+    const message = document.getElementById('cycle-slot-message');
+    if (!schedule || schedule.ok === false || !owner.rollId || !owner.referenceAt || !owner.size || !slot
+        || (!assembly && !['rollChange', 'caliberChange'].includes(slot.workType))) {
+        message.textContent = '対象ロール・サイズ・基準日と、その対象で確認した作業枠を確認してください。サイズ替は専用の登録を使います。';
+        return;
+    }
+    cycleSlotConfirmations = cycleSlotConfirmations.filter(item => !(item.schedule === schedule && item.kind === kind
+        && item.value.date === slot.date && forecastSettingKey(item.value.owner) === forecastSettingKey(owner)));
+    cycleSlotConfirmations.push({ schedule, kind, value: { ...slot, owner: { ...owner } } });
+    message.textContent = 'この予定の予測用に登録しました。不足・未確認なら作業は成立しません。実台帳や通常の保存には書いていません。';
+    renderCycleSlotRecords();
+    renderExchangeCycle();
+    renderStandDemandList();
+}
 
 function applicableSizeChanges(schedule) {
     if (!schedule || schedule.ok === false) return [];
@@ -2172,16 +2256,23 @@ function openAnonymousSizeExample() {
     const day = (date, size, productionAmount) => ({ date, size, productionAmount, operatingHours: productionAmount ? 8 : 0, shift1Team: 'A', shift3Team: '' });
     const schedule = { ...anonymousCheckSummary(), sourceName: '試験用のD10・D13切替予定', months: [{ month: '2027-04', classification: 'future', productionTons: null, operatingHours: null, sizes: ['D10', 'D13'], shifts: ['A'] }], days: [
         day('2027-04-01', 'D10', 10), day('2027-04-02', 'D13', 0), day('2027-04-03', 'D13', 10),
-        day('2027-04-04', 'D13', 0), day('2027-04-05', 'D10', 10)
+        day('2027-04-04', 'D13', 0), day('2027-04-05', 'D10', 10), day('2027-04-06', 'D10', 0),
+        day('2027-04-07', 'D10', 0), { ...day('2027-04-08', 'D10', 10), shift1Team: '', shift3Team: 'A' }
     ] };
     latestMonthlySummary = schedule;
     sizeChangeConfirmations = [
         { schedule, value: { ...slot, owner, fromSize: 'D10', toSize: 'D13', operationDate: '2027-04-03' } },
         { schedule, value: { ...slot, owner: { ...owner, size: 'D13' }, fromSize: 'D13', toSize: 'D10', date: '2027-04-04', operationDate: '2027-04-05' } }
     ];
+    cycleSlotConfirmations = [
+        { schedule, kind: 'work', value: { ...slot, owner: { ...owner }, date: '2027-04-06', workType: 'rollChange' } },
+        { schedule, kind: 'assembly', value: { owner: { ...owner }, date: '2027-04-07', period: 'day', requiredHours: 6, reservedHours: 6,
+            people: 3, prepared: 'reworkInbound', preparedTarget: 'anon-online', preparedOn: '2027-04-07' } }
+    ];
     renderMonthlyScheduleSummary(schedule);
     renderSizeChangeRecords();
-    document.getElementById('sizechange-message').textContent = 'すべて試験値です。D13は2→3直、D10へ戻ると7→8直です。「登録をすべて解除」で4月2日の未確認へ戻ります。実台帳・端末の保存・実設備のマスタは使いません。';
+    renderCycleSlotRecords();
+    document.getElementById('sizechange-message').textContent = 'すべて試験値です。D13は2→3直、D10へ戻ると7→8直、6日ロール替、7日昼の組替、8日夜勤へ続きます。サイズ替枠の解除で4月2日の未確認へ戻ります。実台帳・端末の保存・実設備のマスタは使いません。';
 }
 
 function ensureSizeChangeControls() {
@@ -2195,12 +2286,25 @@ function ensureSizeChangeControls() {
         + '<label>次サイズの最初の操業日 <input id="sizechange-operation" type="date"></label>'
         + '<p>上の交換作業枠で「サイズ替」を選び、作業日・昼の時間・人数・連続操業・組替・3セットを確認して登録します。0tだけでは成立しません。</p>'
         + '<button id="sizechange-register" type="button">サイズ替枠を予測へ登録</button>'
-        + '<button id="sizechange-clear" type="button">この予定の登録をすべて解除</button>'
+        + '<button id="sizechange-clear" type="button">サイズ替の登録をすべて解除</button>'
         + '<button id="sizechange-example" type="button">匿名のサイズ切替例を見る</button>'
         + '<p>登録済みの枠は下に残ります。同じ対象・最初の操業日で再登録すると更新します。ファイルの差替え・解除・失敗・再読込では消えます。実台帳には保存しません。</p>'
-        + '<pre id="sizechange-records"></pre><p id="sizechange-message" aria-live="polite"></p></fieldset>');
+        + '<pre id="sizechange-records"></pre><p id="sizechange-message" aria-live="polite"></p>'
+        + '<h4>切替後の交換・組替枠</h4><p>交換は外すロール、組替は戻すロールを上で選び、そのサイズ・基準日で確認した枠を登録します。組替の準備を確認した対象とは別です。旧サイズの枠は流用しません。</p>'
+        + '<button id="cycle-work-register" type="button">選択ロールの交換枠を登録</button>'
+        + '<button id="cycle-assembly-register" type="button">選択ロールの組替枠を登録</button>'
+        + '<button id="cycle-slots-clear" type="button">交換・組替の登録をすべて解除</button>'
+        + '<pre id="cycle-slot-records"></pre><p id="cycle-slot-message" aria-live="polite"></p></fieldset>');
     document.getElementById('sizechange-register').addEventListener('click', registerSizeChange);
     document.getElementById('sizechange-example').addEventListener('click', openAnonymousSizeExample);
+    document.getElementById('cycle-work-register').addEventListener('click', () => registerCycleSlot('work'));
+    document.getElementById('cycle-assembly-register').addEventListener('click', () => registerCycleSlot('assembly'));
+    document.getElementById('cycle-slots-clear').addEventListener('click', () => {
+        cycleSlotConfirmations = [];
+        renderCycleSlotRecords();
+        renderExchangeCycle();
+        renderStandDemandList();
+    });
     document.getElementById('sizechange-clear').addEventListener('click', () => {
         sizeChangeConfirmations = [];
         renderSizeChangeRecords();
@@ -2208,6 +2312,7 @@ function ensureSizeChangeControls() {
         renderStandDemandList();
     });
     renderSizeChangeRecords();
+    renderCycleSlotRecords();
 }
 
 let workSlotOwner = null;
@@ -2401,6 +2506,8 @@ function buildStandDemandList(input) {
                     referenceAt,
                     sizeOpenings: source.sizeOpenings || forecastSizeOpenings(resources, standKey, standDays, referenceAt),
                     sizeChanges: source.sizeChanges,
+                    workSlots: source.workSlots,
+                    assemblySlots: source.assemblySlots,
                     maxRuns: limit.runs,
                     scrapDiameter: fact.scrapDiameter,
                     adoptedCutMm: fact.adoptedCutMm,
@@ -2461,6 +2568,8 @@ function renderStandDemandList() {
         workConfirmation: Object.assign({}, form.workConfirmation || {}, { owner: workSlotOwner }),
         assemblyConfirmation: Object.assign({}, form.assemblyConfirmation || {}, { owner: assemblySlotOwner }),
         sizeChanges: applicableSizeChanges(schedule),
+        workSlots: applicableCycleSlots(schedule, 'work'),
+        assemblySlots: applicableCycleSlots(schedule, 'assembly'),
         leadTimes: anonymousForecastCheck ? {} : readStandLeadTimes()
     });
     if (!anonymousForecastCheck && standPremisesCache.status === 'waiting' && typeof fetch === 'function') {
