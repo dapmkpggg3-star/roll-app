@@ -257,7 +257,7 @@
                     <label>切込み <input id="life-cut" type="number" min="0" step="0.1" value=""></label>
                     <label>使用できる予備 <input id="life-spare" type="number" min="0" step="1" value=""></label>
                     <h3>交換と再生の1周</h3>
-                    <p>生産予定を読み込んだときだけ、その予定で計算します。予定が無い日を作りません。選んだロールと基準日の開始条件で、日付順に交換・再生・組替・未確認の停止を出します。匿名の13か月は予定ファイルと分けて表示します。ロール替の回数は再利用で、新規購入の本数ではありません。本数だけでは架空のロールIDを作りません。</p>
+                    <p>生産予定を読み込んだときだけ、その予定で計算します。予定が無い日を作りません。選んだロールと基準日の開始条件で、日付順に交換・再生・組替・未確認の停止を出します。読込予定の結果と、仮の13か月は分けて出します。対象期間、確定して計算できた最終日、止めた対象と理由を分けます。未確認のあとを計算済みにはしません。ロール替の回数は再利用で、新規購入の本数ではありません。本数だけでは架空のロールIDを作りません。</p>
                     <label>予測対象ロール <input id="forecast-roll" type="text" value=""></label>
                     <label>基準日 <input id="forecast-reference" type="date" value=""></label>
                     <label>予備カリバの数 <input id="cycle-spare-calibers" type="number" min="0" step="1" value=""></label>
@@ -566,7 +566,7 @@
     <script src="js/online-safety.js?v=20260805-online-safety"></script>
     <script src="js/sync.js?v=20261023-content-auth"></script>
 <script src="js/offline-recovery.js?v=20261113-offline-recovery"></script>
-<script src="js/operating-plan.js?v=20261114-timeline"></script>
+<script src="js/operating-plan.js?v=20261114-rework-track"></script>
 <script src="js/csv.js?v=20260805-online-safety"></script>
 <script src="js/app.js?v=20261023-simple-auth"></script>
 

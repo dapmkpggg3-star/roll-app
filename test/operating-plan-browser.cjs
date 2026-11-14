@@ -495,7 +495,10 @@ async function main() {
     await page.locator('#cycle-spare-calibers').fill('3');
     await page.locator('#cycle-rework-days').dispatchEvent('change');
     const horizon = await page.locator('#cycle-result').innerText();
+    assert.match(horizon, /仮の13か月シナリオです/);
     assert.match(horizon, /匿名の13か月です/);
+    assert.match(horizon, /対象期間は/);
+    assert.match(horizon, /確定して計算できた最終日は/);
     assert.match(horizon, /13か月の範囲まで/);
     assert.match(horizon, /不足なしとは判定しません/);
     assert.match(horizon, /カリバcal-b/);
@@ -511,6 +514,7 @@ async function main() {
     await page.locator('#monthly-schedule-file').dispatchEvent('change');
     await page.waitForFunction(() => document.getElementById('cycle-result').textContent.includes('roll-anon-day.xlsx'));
     const timeline = await page.locator('#cycle-result').innerText();
+    assert.match(timeline, /読込予定に基づく結果です/);
     assert.match(timeline, /架空の操業日は足していません/);
     assert.match(timeline, /ロール替/);
     assert.match(timeline, /カリバcal-b/);

@@ -675,7 +675,57 @@ test('a spare roll continues from its own saved opening', () => {
   });
   assert.match(horizon.reason, /13か月の範囲まで/);
   assert.match(horizon.reason, /不足なしとは判定しません/);
+  assert.match(horizon.reason, /対象期間は/);
+  assert.match(horizon.reason, /確定して計算できた最終日は/);
   assert.equal(horizon.events.find(item => item.kind === 'ロール替').caliberId, 'cal-b');
+  const overlapped = context.simulateExchangeCycle({
+    maxRuns: 1, openingRuns: 1, currentCaliberId: 'cal-a', reworkDays: 9, adoptedCutMm: 4, scrapDiameter: 70,
+    workConfirmation: Object.assign({ repeatOnStops: true, workTypes: ['rollChange'] }, slot),
+    resources: [
+      { id: 'roll-a', frame: 'online', diameter: 80, caliberId: 'cal-a', runs: 1 },
+      { id: 'roll-b', frame: 'installedSpare', diameter: 90, caliberId: 'cal-b', runs: 0 },
+      { id: 'roll-c', frame: 'installedSpare', diameter: 88, caliberId: 'cal-c', runs: 0 }
+    ],
+    days: Array.from({ length: 13 }, (_, index) => {
+      const day = index + 1;
+      const stop = day === 2 || day === 4 || day === 11 || day === 13;
+      return {
+        date: `2027-04-${String(day).padStart(2, '0')}`,
+        productionAmount: stop ? 0 : 10,
+        operatingHours: stop ? 0 : 8,
+        shift1Team: 'A',
+        shift3Team: ''
+      };
+    })
+  });
+  assert.equal(overlapped.events.some(item => item.date === '2027-04-04' && item.kind === 'ロール替'), false);
+  assert.match(overlapped.events.find(item => item.date === '2027-04-04').note, /roll-a/);
+  assert.match(overlapped.events.find(item => item.date === '2027-04-04').note, /成立させません/);
+  const finishedA = overlapped.events.find(item => item.kind === '改削完了' && item.note.includes('roll-a'));
+  assert.equal(finishedA.date, '2027-04-11');
+  assert.equal(overlapped.resources.find(item => item.id === 'roll-a').diameter, 76);
+  assert.notEqual(overlapped.resources.find(item => item.id === 'roll-a').frame, 'rework');
+  const earlyStop = context.anonymousOperatingDays('2027-04-01', 400);
+  earlyStop[0].operatingHours = 3;
+  const halted = context.simulateExchangeCycle({
+    maxRuns: 8, openingRuns: 0, currentCaliberId: 'cal-a', reworkDays: 0,
+    resources: [
+      { id: 'roll-a', frame: 'online', diameter: 81, caliberId: 'cal-a', runs: 0 },
+      { id: 'roll-b', frame: 'installedSpare', diameter: 93, caliberId: 'cal-b', runs: 2 }
+    ],
+    days: earlyStop
+  });
+  assert.equal(halted.events[0].kind, '保留');
+  assert.equal(halted.events.some(item => item.date !== '2027-04-01'), false);
+  assert.doesNotMatch(halted.reason, /13か月の範囲まで同じ計算を繰り返しました/);
+  assert.match(halted.reason, /対象期間は2027-04-01から/);
+  assert.match(halted.reason, /確定して計算できた最終日はありません/);
+  assert.match(halted.reason, /2027-04-01にroll-aを止めました/);
+  assert.match(halted.reason, /4時間未満/);
+  const haltedText = context.describeCycleTimeline(halted);
+  assert.match(haltedText, /保留/);
+  assert.match(haltedText, /このあとは未確認です/);
+  assert.match(haltedText, /期間全体の回数にはしません/);
 });
 
 test('lead time defaults to provisional six months and confirmed is explicit', () => {

@@ -861,11 +861,13 @@ function simulateExchangeCycle(input) {
         cutMm: finiteOrNull(source.adoptedCutMm),
         phase: 'operating',
         pending: null,
-        rework: null
+        reworks: []
     };
     const events = [];
     const maxRuns = finiteOrNull(source.maxRuns);
     let blocked = false;
+    let confirmedThrough = null;
+    let stopRecord = null;
     const push = (date, kind, note) => events.push({
         date, kind, note,
         caliberId: state.caliberId,
@@ -882,35 +884,46 @@ function simulateExchangeCycle(input) {
             reason: '開始直数、最大直数、カリバのどれかが未確認です。0直にはしません。'
         };
     }
-    const finishRework = date => {
-        if (!state.rework || state.rework.status === 'held') return;
-        const target = resources && resources.find(item => item.id === state.rework.id);
-        const targetDiameter = target ? finiteOrNull(target.diameter) : state.diameter;
+    const markConfirmed = date => { confirmedThrough = date; };
+    const stopAt = (date, reason) => {
+        stopRecord = { date, id: state.onlineId, reason };
+        blocked = true;
+    };
+    const finishReworkItem = (date, item) => {
+        if (!item || item.status !== 'rework') return;
+        const target = resources && resources.find(entry => entry.id === item.id);
+        const targetDiameter = target ? finiteOrNull(target.diameter) : (!resources ? state.diameter : null);
         if (state.cutMm === null || targetDiameter === null) {
-            state.rework.status = 'held';
-            push(date, '改削保留', '採用改削量が未確認なので、径は変えず、予備へも戻しません。');
+            item.status = 'held';
+            push(date, '改削保留', `再生対象は${item.id}です。採用改削量が未確認なので、径は変えず、予備へも戻しません。`);
             return;
         }
         const nextDiameter = Math.round((targetDiameter - state.cutMm) * 10) / 10;
         if (target) target.diameter = nextDiameter;
         if (!resources || target && target.frame === 'online') state.diameter = nextDiameter;
-        state.rework.status = 'awaitingAssembly';
-        push(date, '改削完了', `再生対象は${state.rework.id}です。径は${nextDiameter}です。組替前なので予備にはしません。`);
+        item.status = 'awaitingAssembly';
+        push(date, '改削完了', `再生対象は${item.id}です。径は${nextDiameter}です。組替前なので予備にはしません。`);
         if (state.scrapDiameter !== null && nextDiameter <= state.scrapDiameter) {
-            state.rework.status = 'scrap';
+            item.status = 'scrap';
             const conditional = addMonths(date, -PROVISIONAL_LEAD_TIME_MONTHS);
             push(date, '廃却需要', `廃却径以下です。暫定6か月を戻した条件付きの時期は${conditional}です。確定の購入日ではありません。`);
         }
     };
+    const finishDueReworks = date => {
+        state.reworks.filter(item => item.status === 'rework' && date >= item.readyOn)
+            .forEach(item => finishReworkItem(date, item));
+    };
     const finishAssembly = date => {
-        if (!state.rework || state.rework.status !== 'awaitingAssembly' || !spareRolls) return;
-        if (resources) {
-            const returning = resources.find(item => item.id === state.rework.id);
-            if (returning) returning.frame = 'installedSpare';
-        }
-        spareRolls.push(state.rework.id);
-        state.rework = null;
-        push(date, '昼間組替', '再生を終えた対象だけを予備へ戻しました。本数は増やしていません。');
+        if (!spareRolls) return;
+        state.reworks.filter(item => item.status === 'awaitingAssembly').forEach(item => {
+            if (resources) {
+                const returning = resources.find(entry => entry.id === item.id);
+                if (returning) returning.frame = 'installedSpare';
+            }
+            spareRolls.push(item.id);
+            item.status = 'done';
+            push(date, '昼間組替', `再生を終えた${item.id}だけを予備へ戻しました。本数は増やしていません。`);
+        });
     };
     const nightOnly = row => Boolean(row.shift3Team) && !row.shift1Team;
     days.forEach(row => {
@@ -919,14 +932,15 @@ function simulateExchangeCycle(input) {
         const amount = row.productionAmount;
         if (typeof amount !== 'number' || !Number.isFinite(amount)) {
             push(date, '保留', '生産量が未確認です。0tにはしません。');
-            blocked = true;
+            stopAt(date, '生産量が未確認です。0tにはしません。');
             return;
         }
         const stopped = amount === 0;
-        if (state.rework && state.rework.status === 'rework' && date >= state.rework.readyOn) finishRework(date);
-        if (stopped && state.rework && state.rework.status === 'awaitingAssembly') {
+        finishDueReworks(date);
+        if (stopped && state.reworks.some(item => item.status === 'awaitingAssembly')) {
             if (nightOnly(row)) {
                 push(date, '夜勤予備不足', '昼間の組替が終わる前です。夜勤に使用可能な予備はありません。');
+                markConfirmed(date);
                 return;
             }
             finishAssembly(date);
@@ -935,6 +949,7 @@ function simulateExchangeCycle(input) {
             const expected = state.pending === 'caliber' ? 'caliberChange' : 'rollChange';
             if (!exchangeSlotReady(source.workConfirmation, row, expected)) {
                 push(date, '交換需要', '到達しています。0tや夜間、未確認の作業枠だけでは交換しません。');
+                markConfirmed(date);
                 return;
             }
             if (state.pending === 'caliber' && spareCalibers && spareCalibers.length) {
@@ -942,6 +957,7 @@ function simulateExchangeCycle(input) {
                 state.caliberRuns = 0;
                 state.pending = null;
                 push(date, 'カリバ替', '確認できた昼の作業枠でカリバを替えました。径と改削回数は変えていません。');
+                markConfirmed(date);
                 return;
             }
             if (state.pending === 'roll') {
@@ -951,23 +967,31 @@ function simulateExchangeCycle(input) {
                     push(date, 'ロール替需要', unnamed
                         ? '予備の本数だけでは交換できるロールが分かりません。架空のIDは作りません。'
                         : '予備がないか、改削日数が未確認なので、ロール替は成立させていません。');
+                    markConfirmed(date);
                     return;
                 }
                 const leavingId = state.onlineId;
+                const unfinished = state.reworks.filter(item => item.status === 'rework' || item.status === 'awaitingAssembly' || item.status === 'held');
+                if (unfinished.length && spareRolls.length <= 1) {
+                    push(date, 'ロール替需要', `再生中の${unfinished.map(item => item.id).join('、')}が未完了です。${leavingId}を重ねると夜勤の使用可能な予備がなくなるので、交換は成立させません。`);
+                    markConfirmed(date);
+                    return;
+                }
                 const enteringId = spareRolls[0];
                 const entering = resources && resources.find(item => item.id === enteringId);
                 if (resources && (!entering || !entering.caliberId)) {
                     push(date, 'ロール替需要', '交換先のカリバが未確認です。前のカリバは使いません。');
-                    blocked = true;
+                    stopAt(date, '交換先のカリバが未確認です。前のカリバは使いません。');
                     return;
                 }
                 const enteringRuns = entering ? finiteOrNull(entering.runs) : null;
                 if (resources && enteringRuns === null) {
                     push(date, 'ロール替需要', '交換先の開始直数が未確認です。0直にはしません。');
-                    blocked = true;
+                    stopAt(date, '交換先の開始直数が未確認です。0直にはしません。');
                     return;
                 }
-                state.rework = { id: leavingId, readyOn: addDays(date, reworkDays), status: 'rework' };
+                const currentRework = { id: leavingId, readyOn: addDays(date, reworkDays), status: 'rework' };
+                state.reworks.push(currentRework);
                 if (resources) {
                     const leaving = resources.find(item => item.id === leavingId);
                     if (leaving) leaving.frame = 'rework';
@@ -981,44 +1005,58 @@ function simulateExchangeCycle(input) {
                 state.onlineId = spareRolls.shift();
                 state.pending = null;
                 push(date, 'ロール替', '組込済みの予備をオンラインへ移し、外した対象を再生へ入れました。この時点では径を変えません。');
-                if (date >= state.rework.readyOn) finishRework(date);
-                if (state.rework && state.rework.status === 'awaitingAssembly' && !nightOnly(row)) finishAssembly(date);
+                if (date >= currentRework.readyOn) finishReworkItem(date, currentRework);
+                if (currentRework.status === 'awaitingAssembly' && !nightOnly(row)) finishAssembly(date);
+                markConfirmed(date);
                 return;
             }
         }
         if (stopped && nightOnly(row) && spareRolls && spareRolls.length === 0) {
             push(date, '夜勤予備不足', '昼間の組替が終わる前です。夜勤に使用可能な予備はありません。');
+            markConfirmed(date);
             return;
         }
-        if (stopped) return;
+        if (stopped) {
+            markConfirmed(date);
+            return;
+        }
         const hours = row.operatingHours;
         if (typeof hours !== 'number' || !Number.isFinite(hours)) {
             push(date, '保留', '使用時間が未確認です。0直にはしません。');
-            blocked = true;
+            stopAt(date, '使用時間が未確認です。0直にはしません。');
             return;
         }
         if (hours < 4) {
             push(date, '保留', '4時間未満は1直にしません。未確認の短時間のあと、後続の直数は確定しません。');
-            blocked = true;
+            stopAt(date, '4時間未満は1直にしません。未確認の短時間のあと、後続の直数は確定しません。');
             return;
         }
         if (state.caliberRuns + 1 > maxRuns) {
             state.pending = spareCalibers && spareCalibers.length ? 'caliber' : 'roll';
             push(date, '交換待ち', '連続操業の途中では交換しません。次の停止枠を待ちます。');
+            markConfirmed(date);
             return;
         }
         state.caliberRuns += 1;
         push(date, '操業', `${state.caliberId}の使用は${state.caliberRuns}直です。`);
         if (state.caliberRuns >= maxRuns) state.pending = spareCalibers && spareCalibers.length ? 'caliber' : 'roll';
+        markConfirmed(date);
     });
     const rollChangeCount = events.filter(item => item.kind === 'ロール替').length;
     const scrapCount = events.filter(item => item.kind === '廃却需要').length;
     const first = days[0] && String(days[0].date).slice(0, 10);
     const last = days.length ? String(days[days.length - 1].date).slice(0, 10) : '';
-    const longEnough = first && last && last >= addMonths(first, 13);
-    const horizon = longEnough
-        ? '13か月の範囲まで同じ計算を繰り返しました。不足なしとは判定しません。'
-        : '確認できた期間の交換は上に出します。13か月全体の不足なしは判定できません。';
+    const longEnough = !stopRecord && first && last && confirmedThrough && confirmedThrough >= addMonths(first, 13);
+    const coverage = [
+        first ? `対象期間は${first}から${last}です。` : '対象期間は未確認です。',
+        confirmedThrough ? `確定して計算できた最終日は${confirmedThrough}です。` : '確定して計算できた最終日はありません。',
+        stopRecord ? `${stopRecord.date}に${stopRecord.id || '対象未確認'}を止めました。理由は${stopRecord.reason}` : '',
+        stopRecord
+            ? '最初の保留より後は計算済みにしません。13か月の範囲まで計算したことにはしません。不足なしとは判定しません。'
+            : (longEnough
+                ? '13か月の範囲まで同じ計算を繰り返しました。不足なしとは判定しません。'
+                : '確認できた期間の交換は上に出します。13か月全体の不足なしは判定できません。')
+    ].filter(Boolean).join('');
     return {
         events,
         rollChangeCount,
@@ -1026,7 +1064,9 @@ function simulateExchangeCycle(input) {
         annualRollCount: rollChangeCount,
         resources,
         statusChanged: false,
-        reason: `${horizon}ロール替の回数は再利用の交換です。新規購入の本数にはしません。生産トン数からも数えません。`
+        confirmedThrough,
+        stopRecord,
+        reason: `${coverage}ロール替の回数は再利用の交換です。新規購入の本数にはしません。生産トン数からも数えません。`
     };
 }
 
@@ -1146,7 +1186,7 @@ function renderExchangeCycle() {
             ? '読み込んだ予定が13か月に満たない範囲は、不足なしにしません。'
             : '';
         scheduleText = [
-            `予定「${schedule.sourceName || '名前なし'}」で計算しています。架空の操業日は足していません。`,
+            `読込予定に基づく結果です。予定「${schedule.sourceName || '名前なし'}」で計算しています。架空の操業日は足していません。`,
             result.reason,
             uncovered,
             describeCycleTimeline(result),
@@ -1180,6 +1220,7 @@ function describeAnonymousHorizon(form, online, resources, limit) {
         days: anonymousOperatingDays(form.forecastReference, 400)
     });
     return [
+        '仮の13か月シナリオです。読込予定そのものではありません。',
         '匿名の13か月です。読み込んだ予定の日ではありません。',
         result.reason,
         describeCycleTimeline(result),
@@ -1188,10 +1229,11 @@ function describeAnonymousHorizon(form, online, resources, limit) {
 }
 
 function describeCycleTimeline(result) {
-    const wanted = ['交換待ち', 'ロール替', 'カリバ替', '改削完了', '昼間組替', '夜勤予備不足', 'ロール替需要', '交換需要', '改削保留', '廃却需要'];
+    const wanted = ['交換待ち', 'ロール替', 'カリバ替', '改削完了', '昼間組替', '夜勤予備不足', 'ロール替需要', '交換需要', '改削保留', '廃却需要', '保留'];
+    const events = result.events || [];
     const picked = [];
     let showUse = false;
-    for (const item of result.events || []) {
+    for (const item of events) {
         if (wanted.includes(item.kind)) {
             picked.push(item);
             showUse = item.kind === 'ロール替';
@@ -1201,13 +1243,23 @@ function describeCycleTimeline(result) {
         }
         if (picked.length >= 12) break;
     }
+    const firstHold = events.find(item => item.kind === '保留');
+    if (firstHold && !picked.includes(firstHold)) picked.push(firstHold);
     const lines = picked.map(item => `${item.date} ${item.kind} ${item.note} カリバ${item.caliberId || '未確認'} 開始${item.caliberRuns === null || item.caliberRuns === undefined ? '未確認' : item.caliberRuns}`);
+    const hidden = events.filter(item => !picked.includes(item));
+    const countKind = kind => hidden.filter(item => item.kind === kind).length;
     const changes = result && result.rollChangeCount;
+    const countLine = changes === null
+        ? 'ロール替の回数は未確認です。0回にはしません。'
+        : (result.stopRecord
+            ? `ロール替${changes}回は、確定できた期間の再利用です。このあとは未確認です。期間全体の回数にはしません。`
+            : `ロール替${changes}回は再利用です。新規購入の本数ではありません。`);
     return [
-        changes === null ? 'ロール替の回数は未確認です。0回にはしません。' : `ロール替${changes}回は再利用です。新規購入の本数ではありません。`,
+        countLine,
         '暫定6か月を戻した時期は確定の購入日ではありません。',
-        lines.join('\n') || '日付順の交換はまだ出ていません。'
-    ].join('\n');
+        lines.join('\n') || '日付順の交換はまだ出ていません。',
+        hidden.length ? `表示は先頭${picked.length}件です。全体は${events.length}件。後続の保留${countKind('保留')}件、夜勤予備不足${countKind('夜勤予備不足')}件、ロール替需要${countKind('ロール替需要')}件。` : ''
+    ].filter(Boolean).join('\n');
 }
 
 async function loadStandPremisesNote(target, standKey, generation) {
