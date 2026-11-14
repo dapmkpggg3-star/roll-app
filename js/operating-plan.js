@@ -1746,10 +1746,13 @@ function renderMonthlyScheduleSummary(summary) {
     if (!target) return;
     if (!summary || summary.ok === false) {
         target.textContent = summary && summary.reason ? summary.reason : '月別の生産予定はまだ読んでいません。';
+        renderExchangeCycle();
+        renderStandDemandList();
         return;
     }
     if (!summary.months.length) {
         target.textContent = '月別の生産予定を確認できません。不足なしとは判定しません。';
+        renderStandDemandList();
         return;
     }
     const lines = summary.months.map(item => {
@@ -1917,31 +1920,66 @@ function premisesFact(premises, standKey) {
     };
 }
 
+function savedOpening(roll, standKey, size, referenceAt) {
+    if (!roll || !size || !referenceAt) return { caliber: roll && roll.currentCaliber || '', runs: roll ? roll.openingRuns : undefined, note: '' };
+    const saved = recallForecastSetting({ rollId: roll.id, standKey, size, referenceAt }).value;
+    const hasCaliber = Boolean(saved && saved.caliberId);
+    const hasRuns = Boolean(saved && saved.openingRuns !== null && saved.openingRuns !== undefined);
+    return {
+        caliber: hasCaliber ? saved.caliberId : (roll.currentCaliber || ''),
+        runs: hasRuns ? saved.openingRuns : roll.openingRuns,
+        note: hasCaliber || hasRuns ? `保存した開始条件です。基準日${referenceAt}、サイズ${size}。台帳には書いていません。` : ''
+    };
+}
+
+function confirmationForStand(confirmation, standKey) {
+    if (!confirmation) return null;
+    const owner = String(confirmation.standKey || '').replace(/^#/, '');
+    if (!owner || owner !== String(standKey)) return null;
+    return confirmation;
+}
+
+function sizeForStand(standKey, source, planDays) {
+    const sizes = Array.from(new Set((planDays || []).map(row => row && row.size).filter(Boolean)));
+    if (sizes.length === 1) return sizes[0];
+    if (String(source.standKey || '').replace(/^#/, '') === String(standKey) && source.size) return source.size;
+    return '';
+}
+
 function buildStandDemandList(input) {
     const source = input || {};
     const plan = source.plan || null;
     const rolls = Array.isArray(source.rolls) ? source.rolls : [];
     const days = Array.isArray(source.days) ? source.days : [];
     const premises = source.premises || { status: 'waiting' };
-    if (!plan) {
-        return '計画の版がありません。月別の集計から操業日は作っていません。';
+    const referenceAt = String(source.referenceAt || '').slice(0, 10);
+    if (!plan && !days.length) {
+        return '日付の予定も、月別の本数の版もありません。操業日は作っていません。';
     }
-    const months = plan.targetMonths || [];
+    const scheduleMonths = Array.from(new Set(days.map(row => String(row && row.date || '').slice(0, 7)).filter(Boolean)));
+    const months = source.scheduleName
+        ? scheduleMonths
+        : (plan && Array.isArray(plan.targetMonths) && plan.targetMonths.length ? plan.targetMonths : scheduleMonths);
     const planDays = days.filter(row => row && months.includes(String(row.date || '').slice(0, 7)));
     const ignored = days.length - planDays.length;
     const standKeys = Array.from(new Set([
-        ...(plan.rows || []).map(row => String(row.standKey)),
+        ...((plan && plan.rows) || []).map(row => String(row.standKey)),
         ...rolls.map(item => standNumberFromName(item.name || item.id)).filter(Boolean)
     ])).sort((a, b) => Number(a) - Number(b));
     const header = [
-        `表示中の版は${plan.id}、更新${plan.updatedAt}、対象月は${months.join('、')}です。`,
-        ignored > 0 ? `対象月の外の日付${ignored}件は、この版の一覧に使っていません。` : '',
+        source.scheduleName ? `読込予定は${source.scheduleName}、基準日は${referenceAt || '未設定'}です。手入力の本数は需要にしていません。` : '読込予定はありません。',
+        plan ? `本数の版は${plan.id}、更新${plan.updatedAt}、本数の対象月は${(plan.targetMonths || []).join('、')}です。本数は需要にしていません。` : '手入力の本数版は使っていません。',
+        ignored > 0 ? `対象月の外の日付${ignored}件は、この一覧に使っていません。` : '',
         planDays.length ? `日付の予定は${planDays.length}日あります。無い日は作っていません。` : '月別の本数だけなので、操業日は作っていません。'
     ].filter(Boolean);
     const blocks = standKeys.map(standKey => {
         const fact = premisesFact(premises, standKey);
-        const standRolls = rolls.filter(item => standNumberFromName(item.name || item.id) === standKey);
-        const limit = knownCaliberLimit(standKey, source.size || '');
+        const standSize = sizeForStand(standKey, source, planDays);
+        const standRolls = rolls.filter(item => standNumberFromName(item.name || item.id) === standKey).map(item => {
+            const saved = savedOpening(item, standKey, standSize, referenceAt);
+            return Object.assign({}, item, { currentCaliber: saved.caliber, openingRuns: saved.runs, openingNote: saved.note });
+        });
+        const limit = knownCaliberLimit(standKey, standSize);
         const lead = source.leadTimes && source.leadTimes[standKey] ? source.leadTimes[standKey] : { months: PROVISIONAL_LEAD_TIME_MONTHS, status: 'provisional' };
         const leadText = lead.status === 'confirmed'
             ? `購入期間は確認済み${lead.months}か月です。期間だけでは不足なしにしません。`
@@ -1951,13 +1989,17 @@ function buildStandDemandList(input) {
             if (!item.currentCaliber) missing.push('現在のカリバは未記録です');
             if (item.openingRuns === undefined || item.openingRuns === null || item.openingRuns === '') missing.push('開始直数は未記録です。0直にはしません');
             if (item.currentDiameter === undefined || item.currentDiameter === null || item.currentDiameter === '') missing.push('現在径は未記録です。新品時の径では埋めません');
-            return `${item.id}: ${missing.length ? missing.join('。') : 'カリバと開始直数は記録にあります'}。`;
+            return `${item.id}: ${item.openingNote || ''}${missing.length ? missing.join('。') : 'カリバと開始直数は記録にあります'}。`;
         }) : ['ロールIDは未記録です。架空のIDは作りません。'];
         let period = '月別の本数だけなので、計算できた操業期間はありません。';
         let scrap = '日付の予定が無いので、廃却と補充の日は出していません。';
         let night = '日付の予定が無いので、夜勤の予備不足は出していません。';
         let order = `廃却日が無いので、手配目安は出していません。${leadText}`;
         const blocked = [fact.diameterReason, fact.cutReason].filter(Boolean);
+        const work = confirmationForStand(source.workConfirmation, standKey);
+        const assembly = confirmationForStand(source.assemblyConfirmation, standKey);
+        if (!standSize) blocked.push('サイズはこのスタンドの予定に無いので、選択中のサイズは使いません。');
+        if (!work || !work.date) blocked.push('作業枠はこのスタンドに確認されていません。他スタンドの枠は使いません。');
         if (planDays.length && standRolls.length) {
             const resources = readLedgerResources(standRolls, { standKey, size: source.size || '' });
             const online = resources.find(item => item.frame === 'online');
@@ -1970,11 +2012,11 @@ function buildStandDemandList(input) {
                     maxRuns: limit.runs,
                     scrapDiameter: fact.scrapDiameter,
                     adoptedCutMm: fact.adoptedCutMm,
-                    reworkDays: source.reworkDays,
+                    reworkDays: String(source.standKey || '').replace(/^#/, '') === String(standKey) ? source.reworkDays : null,
                     leadMonths: lead.months,
                     leadStatus: lead.status,
-                    workConfirmation: source.workConfirmation,
-                    assemblyConfirmation: source.assemblyConfirmation,
+                    workConfirmation: work,
+                    assemblyConfirmation: assembly,
                     resources,
                     days: planDays
                 });
@@ -2013,10 +2055,13 @@ function renderStandDemandList() {
         rolls: ledger,
         days: schedule && Array.isArray(schedule.days) ? schedule.days : [],
         premises: anonymousForecastCheck ? { status: 'waiting' } : standPremisesCache,
+        scheduleName: schedule && schedule.sourceName || '',
+        referenceAt: (schedule && schedule.referenceDate) || form.forecastReference || '',
+        standKey: form.standKey,
         size: form.size,
         reworkDays: form.reworkDays,
-        workConfirmation: form.workConfirmation,
-        assemblyConfirmation: form.assemblyConfirmation,
+        workConfirmation: Object.assign({}, form.workConfirmation || {}, { standKey: form.standKey, size: form.size }),
+        assemblyConfirmation: Object.assign({}, form.assemblyConfirmation || {}, { standKey: form.standKey }),
         leadTimes: anonymousForecastCheck ? {} : readStandLeadTimes()
     });
     if (!anonymousForecastCheck && standPremisesCache.status === 'waiting' && typeof fetch === 'function') {

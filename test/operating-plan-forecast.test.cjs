@@ -979,7 +979,7 @@ test('the latest plan lists each stand without inventing days or copying another
   ];
   const first = { id: 'plan-a', updatedAt: '2026-11-01T00:00:00.000Z', targetMonths: ['2027-04'], rows: [{ standKey: '10', month: '2027-04', plannedUseCount: 1, actualUseCount: null }] };
   const monthly = context.buildStandDemandList({ plan: first, rolls, premises });
-  assert.match(monthly, /表示中の版はplan-a/);
+  assert.match(monthly, /本数の版はplan-a/);
   assert.match(monthly, /操業日は作っていません/);
   assert.match(monthly, /roll-10: 現在のカリバは未記録です/);
   assert.match(monthly, /開始直数は未記録です/);
@@ -987,7 +987,7 @@ test('the latest plan lists each stand without inventing days or copying another
   assert.equal(monthly.includes('2027-04-01'), false);
   const second = { id: 'plan-b', updatedAt: '2026-12-01T00:00:00.000Z', targetMonths: ['2027-05'], rows: [{ standKey: '17', month: '2027-05', plannedUseCount: 1, actualUseCount: null }] };
   const replaced = context.buildStandDemandList({ plan: second, rolls, premises, days: [{ date: '2027-04-02', productionAmount: 10, operatingHours: 8, shift1Team: 'A', shift3Team: '' }] });
-  assert.match(replaced, /表示中の版はplan-b/);
+  assert.match(replaced, /本数の版はplan-b/);
   assert.equal(replaced.includes('plan-a'), false);
   assert.match(replaced, /対象月の外の日付1件/);
   assert.match(replaced, /操業日は作っていません/);
@@ -999,8 +999,8 @@ test('the latest plan lists each stand without inventing days or copying another
     reworkDays: 1,
     workConfirmation: { date: '2027-04-02', period: 'day', reservedHours: 5, workType: 'rollChange', requiredHours: 5, people: 1, continuous: 'no', changeover: 'yes', threeSet: 'yes' },
     days: [
-      { date: '2027-04-01', productionAmount: 10, operatingHours: 8, shift1Team: 'A', shift3Team: '' },
-      { date: '2027-04-02', productionAmount: 0, operatingHours: 0, shift1Team: 'A', shift3Team: '' }
+      { date: '2027-04-01', productionAmount: 10, operatingHours: 8, shift1Team: 'A', shift3Team: '', size: 'D10' },
+      { date: '2027-04-02', productionAmount: 0, operatingHours: 0, shift1Team: 'A', shift3Team: '', size: 'D10' }
     ]
   });
   assert.match(daily, /日付の予定は2日あります/);
@@ -1009,4 +1009,45 @@ test('the latest plan lists each stand without inventing days or copying another
   assert.match(daily, /対象期間は2027-04-01から2027-04-02です/);
   assert.match(daily, /#10[\s\S]*17番の2\.5mmは使いません/);
   assert.match(daily, /計算できた範囲に廃却はありません/);
+});
+
+test('saved openings stay on their own stand and a replaced schedule drops the old dates', () => {
+  context.rememberForecastSetting({ rollId: 'roll-10', standKey: '10', size: 'D10', referenceAt: '2027-04-01', caliberId: 'cal-A10', openingRuns: 7 });
+  context.rememberForecastSetting({ rollId: 'roll-10b', standKey: '10', size: 'D10', referenceAt: '2027-04-01', caliberId: 'cal-B10', openingRuns: 2 });
+  const rolls = [
+    { id: 'roll-10', name: '#10-A', status: 'オンライン', currentDiameter: 81 },
+    { id: 'roll-10b', name: '#10-B', status: '新品予備（組込完了）', currentDiameter: 90 },
+    { id: 'roll-17', name: '#17-A', status: 'オンライン', currentCaliber: 'cal-17', openingRuns: 5, currentDiameter: 81 },
+    { id: 'roll-17b', name: '#17-B', status: '新品予備（組込完了）', currentCaliber: 'cal-17b', openingRuns: 0, currentDiameter: 90 }
+  ];
+  const premises = { status: 'loaded', data: { diametersMm: { '10': { scrapDiameter: 77, adoptedCutMm: 4 }, '17': { scrapDiameter: 77, adoptedCutMm: 4 } } } };
+  const days = [
+    { date: '2027-04-01', productionAmount: 10, operatingHours: 8, shift1Team: 'A', shift3Team: '', size: 'D10' },
+    { date: '2027-04-02', productionAmount: 0, operatingHours: 0, shift1Team: 'A', shift3Team: '', size: 'D10' }
+  ];
+  const listed = context.buildStandDemandList({
+    scheduleName: 'schedule-a', referenceAt: '2027-04-01', standKey: '10', size: 'D10', reworkDays: 1,
+    workConfirmation: { standKey: '10', date: '2027-04-02', period: 'day', reservedHours: 5, workType: 'rollChange', requiredHours: 5, people: 1, continuous: 'no', changeover: 'yes', threeSet: 'yes' },
+    rolls, days, premises
+  });
+  assert.match(listed, /読込予定はschedule-a/);
+  assert.match(listed, /roll-10: 保存した開始条件です。基準日2027-04-01、サイズD10。台帳には書いていません。/);
+  const stand17 = listed.slice(listed.indexOf('#17'));
+  assert.equal(stand17.includes('廃却需要'), false);
+  assert.match(stand17, /作業枠はこのスタンドに確認されていません/);
+  const otherReference = context.buildStandDemandList({
+    scheduleName: 'schedule-may', referenceAt: '2027-05-01', standKey: '10', size: 'D10', rolls: [rolls[0]], days, premises
+  });
+  assert.match(otherReference, /現在のカリバは未記録です/);
+  assert.equal(otherReference.includes('cal-A10'), false);
+  const cleared = context.buildStandDemandList({ rolls, days: [], premises });
+  assert.equal(cleared.includes('schedule-a'), false);
+  assert.equal(cleared.includes('2027-04-02'), false);
+  const replaced = context.buildStandDemandList({
+    scheduleName: 'schedule-b', referenceAt: '2027-04-01', standKey: '10', size: 'D10', rolls, premises,
+    days: [{ date: '2027-04-01', productionAmount: 10, operatingHours: 3, shift1Team: 'A', shift3Team: '', size: 'D10' }]
+  });
+  assert.match(replaced, /読込予定はschedule-b/);
+  assert.equal(replaced.includes('schedule-a'), false);
+  assert.equal(replaced.includes('廃却需要'), false);
 });

@@ -182,11 +182,67 @@ async function main() {
     await page.locator('#save-operating-plan').click();
     assert.match(await page.locator('#operating-plan-diff').innerText(), /変更2/);
     const demand = await page.locator('#stand-demand-list').innerText();
-    assert.match(demand, /表示中の版はplan-anon-2/);
+    assert.match(demand, /本数の版はplan-anon-2/);
     assert.match(demand, /操業日は作っていません/);
     assert.match(demand, /未記録/);
     assert.equal(demand.includes('2026-04-01'), false);
     assert.equal(demand.includes('plan-anon /'), false);
+    const sequence = await page.evaluate(() => {
+      const previous = roles.slice();
+      roles = [
+        { id: 'roll-10', name: '#10-A', status: 'オンライン', currentDiameter: 81, memo: '', updatedAt: '2026-11-13T00:00:00.000Z', history: [] },
+        { id: 'roll-10b', name: '#10-B', status: '新品予備（組込完了）', currentDiameter: 90, memo: '', updatedAt: '2026-11-13T00:00:00.000Z', history: [] },
+        { id: 'roll-17', name: '#17-A', status: 'オンライン', currentCaliber: 'cal-17', openingRuns: 5, currentDiameter: 81, memo: '', updatedAt: '2026-11-13T00:00:00.000Z', history: [] },
+        { id: 'roll-17b', name: '#17-B', status: '新品予備（組込完了）', currentCaliber: 'cal-17b', openingRuns: 0, currentDiameter: 90, memo: '', updatedAt: '2026-11-13T00:00:00.000Z', history: [] }
+      ];
+      rememberForecastSetting({ rollId: 'roll-10', standKey: '10', size: 'D10', referenceAt: '2027-04-01', caliberId: 'cal-A10', openingRuns: 7 });
+      rememberForecastSetting({ rollId: 'roll-10b', standKey: '10', size: 'D10', referenceAt: '2027-04-01', caliberId: 'cal-B10', openingRuns: 2 });
+      document.getElementById('caliber-stand').value = '10';
+      document.getElementById('caliber-size').value = 'D10';
+      document.getElementById('forecast-reference').value = '2027-04-01';
+      document.getElementById('work-date').value = '2027-04-02';
+      document.getElementById('work-period').value = 'day';
+      document.getElementById('work-reserved-hours').value = '5';
+      document.getElementById('work-type').value = 'rollChange';
+      document.getElementById('work-required-hours').value = '5';
+      document.getElementById('work-people').value = '1';
+      document.getElementById('work-continuous').value = 'no';
+      document.getElementById('work-changeover').value = 'yes';
+      document.getElementById('work-three-set').value = 'yes';
+      document.getElementById('cycle-rework-days').value = '1';
+      const day = (date, amount, hours, shift1, shift3) => ({ date, productionAmount: amount, operatingHours: hours, shift1Team: shift1, shift3Team: shift3, size: 'D10' });
+      renderMonthlyScheduleSummary({
+        ok: true, sourceName: 'schedule-a', referenceDate: '2027-04-01',
+        months: [{ month: '2027-04', classification: 'future', productionTons: null, operatingHours: null, sizes: ['D10'], shifts: ['A'] }],
+        days: [day('2027-04-01', 10, 8, 'A', ''), day('2027-04-02', 0, 0, 'A', '')],
+        reason: '試験用の予定Aです。'
+      });
+      const saved = document.getElementById('stand-demand-list').textContent;
+      renderMonthlyScheduleSummary({ ok: false, reason: '生産予定を外したので、循環の予測を無効にしました。' });
+      const cleared = document.getElementById('stand-demand-list').textContent;
+      renderMonthlyScheduleSummary({
+        ok: true, sourceName: 'schedule-b', referenceDate: '2027-04-01',
+        months: [{ month: '2027-04', classification: 'future', productionTons: null, operatingHours: null, sizes: ['D10'], shifts: ['A'] }],
+        days: [day('2027-04-01', 10, 3, 'A', '')],
+        reason: '試験用の予定Bです。'
+      });
+      const replaced = document.getElementById('stand-demand-list').textContent;
+      roles = previous;
+      ['work-date', 'work-period', 'work-reserved-hours', 'work-type', 'work-required-hours', 'work-people', 'work-continuous', 'work-changeover', 'work-three-set', 'cycle-rework-days', 'forecast-reference'].forEach(id => {
+        const field = document.getElementById(id);
+        if (field) field.value = '';
+      });
+      renderMonthlyScheduleSummary({ ok: false, reason: '生産予定を外したので、循環の予測を無効にしました。' });
+      return { saved, cleared, replaced };
+    });
+    assert.match(sequence.saved, /読込予定はschedule-a/);
+    assert.match(sequence.saved, /保存した開始条件です/);
+    assert.match(sequence.saved.slice(sequence.saved.indexOf('#17')), /作業枠はこのスタンドに確認されていません/);
+    assert.equal(sequence.saved.slice(sequence.saved.indexOf('#17')).includes('廃却需要'), false);
+    assert.equal(sequence.cleared.includes('schedule-a'), false);
+    assert.equal(sequence.cleared.includes('2027-04-02'), false);
+    assert.match(sequence.replaced, /読込予定はschedule-b/);
+    assert.equal(sequence.replaced.includes('schedule-a'), false);
     assert.equal(await page.evaluate(() => roles[0].status), 'オンライン');
     const forecast = await page.evaluate(() => forecastThreeSetFromPlan({
       standKey: '10', revision: null, remainingCutCount: 2, activeThreeSetCount: 3, leadTime: defaultStandLeadTime('10')
