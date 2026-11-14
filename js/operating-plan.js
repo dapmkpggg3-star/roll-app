@@ -1239,12 +1239,14 @@ function renderExchangeCycle() {
     if (!target || typeof simulateExchangeCycle !== 'function' || typeof readCaliberInputs !== 'function') return;
     const form = readCaliberInputs();
     const schedule = latestMonthlySummary && latestMonthlySummary.ok !== false ? latestMonthlySummary : null;
-    const days = schedule && Array.isArray(schedule.days) ? schedule.days : [];
     const ledgerKeys = pairedStandKeys(form.standKey, form.size);
     const ledgerSource = anonymousForecastCheck ? anonymousCheckLedger() : (typeof roles === 'undefined' ? [] : roles);
     const ledger = readLedgerResources(ledgerSource, { standKey: form.standKey, size: form.size });
     const selectedStand = String(form.standKey || '').replace(/^#/, '').trim();
     const referenceAt = form.forecastReference || (schedule && schedule.referenceDate) || '';
+    const days = schedule && Array.isArray(schedule.days)
+        ? schedule.days.filter(row => row && (!referenceAt || String(row.date || '').slice(0, 10) >= referenceAt))
+        : [];
     const cycleResources = withSavedOpenings(
         ledger.filter(item => item.standKey === selectedStand && item.frame !== 'other'),
         form.standKey,
@@ -1663,17 +1665,16 @@ function recallForecastSetting(input) {
 }
 
 function currentForecastContext() {
-    const form = readCaliberInputs();
+    return forecastContextFromForm(readCaliberInputs());
+}
+
+function forecastContextFromForm(form) {
     const selected = String(form.standKey || '').replace(/^#/, '').trim();
     const ledger = readLedgerResources(anonymousForecastCheck ? anonymousCheckLedger() : (typeof roles === 'undefined' ? [] : roles), { standKey: form.standKey, size: form.size });
     const online = ledger.find(item => item.standKey === selected && item.frame === 'online');
-    const chosen = typeof document !== 'undefined' && document.getElementById('forecast-roll');
-    const referenceField = typeof document !== 'undefined' && document.getElementById('forecast-reference');
-    const reference = referenceField && referenceField.value
-        ? referenceField.value
-        : (latestMonthlySummary && latestMonthlySummary.ok !== false ? latestMonthlySummary.referenceDate : '');
+    const reference = form.forecastReference || (latestMonthlySummary && latestMonthlySummary.ok !== false ? latestMonthlySummary.referenceDate : '');
     return {
-        rollId: chosen && chosen.value.trim() ? chosen.value.trim() : (online ? online.id : ''),
+        rollId: form.forecastRoll || (online ? online.id : ''),
         standKey: selected,
         size: form.size,
         referenceAt: reference || ''
@@ -1721,6 +1722,7 @@ let scheduleReadGeneration = 0;
 
 function beginScheduleRead() {
     scheduleReadGeneration += 1;
+    resetConfirmationContext(true);
     return scheduleReadGeneration;
 }
 
@@ -1783,7 +1785,7 @@ function renderConsumptionLink(summary) {
         standPass: form.standPass,
         workConfirmation: form.workConfirmation,
         days: summary && summary.days,
-        referenceDate: summary && summary.referenceDate
+        referenceDate: form.forecastReference || (summary && summary.referenceDate)
     });
     const life = describeLifeChain({
         standKey: form.standKey,
@@ -1806,7 +1808,7 @@ function readCaliberInputs() {
     };
     const opening = value('caliber-opening').trim();
     const openingTons = value('caliber-opening-tons').trim();
-    return {
+    const form = {
         standKey: value('caliber-stand').trim(),
         size: value('caliber-size').trim(),
         forecastRoll: value('forecast-roll').trim(),
@@ -1824,10 +1826,67 @@ function readCaliberInputs() {
         workConfirmation: readWorkConfirmation(value),
         assemblyConfirmation: readAssemblyConfirmation(value)
     };
+    form.workConfirmation = ownedFormConfirmation('work', form.workConfirmation, form);
+    form.assemblyConfirmation = ownedFormConfirmation('assembly', form.assemblyConfirmation, form);
+    return form;
     function numberOrBlank(id) {
         const raw = value(id).trim();
         return raw === '' ? undefined : Number(raw);
     }
+}
+
+// Work drafts are local to this page and to the forecast context that was
+// confirmed. Changing a selection must never relabel an old draft as approval
+// for a different roll, size, reference date, or loaded schedule.
+const confirmationFieldIds = {
+    work: ['work-date', 'work-period', 'work-reserved-hours', 'work-type', 'work-required-hours', 'work-people', 'work-continuous', 'work-changeover', 'work-three-set'],
+    assembly: ['assembly-date', 'assembly-period', 'assembly-reserved-hours', 'assembly-required-hours', 'assembly-people', 'assembly-prepared', 'assembly-prepared-target', 'assembly-prepared-on']
+};
+let confirmationDraftOwner = null;
+let confirmationDrafts = new Map();
+
+function confirmationContextKey(context) {
+    return `${forecastSettingKey(context)}|schedule:${scheduleReadGeneration}`;
+}
+
+function ownedFormConfirmation(kind, confirmation, form) {
+    const context = forecastContextFromForm(form);
+    const key = confirmationContextKey(context);
+    if (!confirmationDraftOwner) confirmationDraftOwner = { key, context };
+    if (confirmationDraftOwner.key !== key) return null;
+    return Object.assign({}, confirmation, context, { scheduleGeneration: scheduleReadGeneration });
+}
+
+function switchConfirmationContext() {
+    if (typeof document === 'undefined') return;
+    const form = readCaliberInputs();
+    const context = forecastContextFromForm(form);
+    const key = confirmationContextKey(context);
+    if (confirmationDraftOwner && confirmationDraftOwner.key === key) return;
+    if (confirmationDraftOwner) {
+        const saved = {};
+        Object.values(confirmationFieldIds).flat().forEach(id => {
+            const field = document.getElementById(id);
+            if (field) saved[id] = field.value;
+        });
+        confirmationDrafts.set(confirmationDraftOwner.key, saved);
+    }
+    const saved = confirmationDrafts.get(key) || {};
+    Object.values(confirmationFieldIds).flat().forEach(id => {
+        const field = document.getElementById(id);
+        if (field) field.value = saved[id] || '';
+    });
+    confirmationDraftOwner = { key, context };
+}
+
+function resetConfirmationContext(clearFields) {
+    confirmationDraftOwner = null;
+    confirmationDrafts.clear();
+    if (!clearFields || typeof document === 'undefined') return;
+    Object.values(confirmationFieldIds).flat().forEach(id => {
+        const field = document.getElementById(id);
+        if (field) field.value = '';
+    });
 }
 
 function readWorkConfirmation(value) {
@@ -1932,10 +1991,14 @@ function savedOpening(roll, standKey, size, referenceAt) {
     };
 }
 
-function confirmationForStand(confirmation, standKey) {
+function confirmationForStand(confirmation, standKey, context) {
     if (!confirmation) return null;
     const owner = String(confirmation.standKey || '').replace(/^#/, '');
     if (!owner || owner !== String(standKey)) return null;
+    if (context && (!context.rollId || !context.size || !context.referenceAt ||
+        String(confirmation.rollId || '') !== String(context.rollId) ||
+        String(confirmation.size || '') !== String(context.size) ||
+        String(confirmation.referenceAt || '').slice(0, 10) !== String(context.referenceAt).slice(0, 10))) return null;
     return confirmation;
 }
 
@@ -1960,7 +2023,7 @@ function buildStandDemandList(input) {
     const months = source.scheduleName
         ? scheduleMonths
         : (plan && Array.isArray(plan.targetMonths) && plan.targetMonths.length ? plan.targetMonths : scheduleMonths);
-    const planDays = days.filter(row => row && months.includes(String(row.date || '').slice(0, 7)));
+    const planDays = days.filter(row => row && months.includes(String(row.date || '').slice(0, 7)) && (!referenceAt || String(row.date || '').slice(0, 10) >= referenceAt));
     const ignored = days.length - planDays.length;
     const standKeys = Array.from(new Set([
         ...((plan && plan.rows) || []).map(row => String(row.standKey)),
@@ -1969,7 +2032,7 @@ function buildStandDemandList(input) {
     const header = [
         source.scheduleName ? `読込予定は${source.scheduleName}、基準日は${referenceAt || '未設定'}です。手入力の本数は需要にしていません。` : '読込予定はありません。',
         plan ? `本数の版は${plan.id}、更新${plan.updatedAt}、本数の対象月は${(plan.targetMonths || []).join('、')}です。本数は需要にしていません。` : '手入力の本数版は使っていません。',
-        ignored > 0 ? `対象月の外の日付${ignored}件は、この一覧に使っていません。` : '',
+        ignored > 0 ? `対象月または基準日より前の日付${ignored}件は、この一覧に使っていません。` : '',
         planDays.length ? `日付の予定は${planDays.length}日あります。無い日は作っていません。` : '月別の本数だけなので、操業日は作っていません。'
     ].filter(Boolean);
     const blocks = standKeys.map(standKey => {
@@ -1996,13 +2059,14 @@ function buildStandDemandList(input) {
         let night = '日付の予定が無いので、夜勤の予備不足は出していません。';
         let order = `廃却日が無いので、手配目安は出していません。${leadText}`;
         const blocked = [fact.diameterReason, fact.cutReason].filter(Boolean);
-        const work = confirmationForStand(source.workConfirmation, standKey);
-        const assembly = confirmationForStand(source.assemblyConfirmation, standKey);
+        const resources = readLedgerResources(standRolls, { standKey, size: standSize });
+        const online = resources.find(item => item.frame === 'online');
+        const context = { rollId: online && online.id, size: standSize, referenceAt };
+        const work = confirmationForStand(source.workConfirmation, standKey, context);
+        const assembly = confirmationForStand(source.assemblyConfirmation, standKey, context);
         if (!standSize) blocked.push('サイズはこのスタンドの予定に無いので、選択中のサイズは使いません。');
         if (!work || !work.date) blocked.push('作業枠はこのスタンドに確認されていません。他スタンドの枠は使いません。');
         if (planDays.length && standRolls.length) {
-            const resources = readLedgerResources(standRolls, { standKey, size: source.size || '' });
-            const online = resources.find(item => item.frame === 'online');
             if (!online || !online.caliberId || online.runs === null) {
                 blocked.push('現在のカリバまたは開始直数が未記録なので、このスタンドの日付計算はしていません。');
             } else if (!limit || limit.kind !== '最大') {
@@ -2056,12 +2120,12 @@ function renderStandDemandList() {
         days: schedule && Array.isArray(schedule.days) ? schedule.days : [],
         premises: anonymousForecastCheck ? { status: 'waiting' } : standPremisesCache,
         scheduleName: schedule && schedule.sourceName || '',
-        referenceAt: (schedule && schedule.referenceDate) || form.forecastReference || '',
+        referenceAt: form.forecastReference || (schedule && schedule.referenceDate) || '',
         standKey: form.standKey,
         size: form.size,
         reworkDays: form.reworkDays,
-        workConfirmation: Object.assign({}, form.workConfirmation || {}, { standKey: form.standKey, size: form.size }),
-        assemblyConfirmation: Object.assign({}, form.assemblyConfirmation || {}, { standKey: form.standKey }),
+        workConfirmation: form.workConfirmation,
+        assemblyConfirmation: form.assemblyConfirmation,
         leadTimes: anonymousForecastCheck ? {} : readStandLeadTimes()
     });
     if (!anonymousForecastCheck && standPremisesCache.status === 'waiting' && typeof fetch === 'function') {
@@ -2206,6 +2270,7 @@ function bindMonthlyScheduleFileInput() {
         const field = document.getElementById(id);
         if (field) field.addEventListener('change', () => {
             if (applyingForecastSetting) return;
+            if (['forecast-roll', 'forecast-reference', 'caliber-stand', 'caliber-size'].includes(id)) switchConfirmationContext();
             syncForecastSettingContext();
             suggestKnownWorkEffort();
             renderMonthlyScheduleSummary(latestMonthlySummary);
@@ -2258,3 +2323,4 @@ if (typeof document !== 'undefined') {
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bindMonthlyScheduleFileInput);
     else bindMonthlyScheduleFileInput();
 }
+

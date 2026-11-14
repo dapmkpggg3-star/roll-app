@@ -989,7 +989,7 @@ test('the latest plan lists each stand without inventing days or copying another
   const replaced = context.buildStandDemandList({ plan: second, rolls, premises, days: [{ date: '2027-04-02', productionAmount: 10, operatingHours: 8, shift1Team: 'A', shift3Team: '' }] });
   assert.match(replaced, /本数の版はplan-b/);
   assert.equal(replaced.includes('plan-a'), false);
-  assert.match(replaced, /対象月の外の日付1件/);
+  assert.match(replaced, /対象月または基準日より前の日付1件/);
   assert.match(replaced, /操業日は作っていません/);
   const daily = context.buildStandDemandList({
     plan: { id: 'plan-days', updatedAt: '2027-04-01T00:00:00.000Z', targetMonths: ['2027-04'], rows: [{ standKey: '17', month: '2027-04', plannedUseCount: 1, actualUseCount: null }] },
@@ -1051,3 +1051,4 @@ test('saved openings stay on their own stand and a replaced schedule drops the o
   assert.equal(replaced.includes('schedule-a'), false);
   assert.equal(replaced.includes('廃却需要'), false);
 });
+
