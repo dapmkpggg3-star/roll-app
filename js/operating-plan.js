@@ -1505,7 +1505,7 @@ function describeCycleTimeline(result) {
     for (const item of events) {
         if (wanted.includes(item.kind)) {
             picked.push(item);
-            showUse = item.kind === 'ロール替';
+            if (item.kind === 'ロール替') showUse = true;
         } else if (showUse && item.kind === '操業') {
             picked.push(item);
             showUse = false;
@@ -1514,6 +1514,11 @@ function describeCycleTimeline(result) {
     }
     const firstHold = events.find(item => item.kind === '保留');
     if (firstHold && !picked.includes(firstHold)) picked.push(firstHold);
+    const holdIndex = firstHold ? events.indexOf(firstHold) : events.length;
+    const lastUse = events.slice(0, holdIndex).filter(item => item.kind === '操業'
+        && (!result.confirmedThrough || item.date <= result.confirmedThrough)).at(-1);
+    if (lastUse && !picked.includes(lastUse)) picked.push(lastUse);
+    picked.sort((a, b) => events.indexOf(a) - events.indexOf(b));
     const lines = picked.map(item => `${item.date} ${item.kind} ${item.note} カリバ${item.caliberId || '未確認'} 開始${item.caliberRuns === null || item.caliberRuns === undefined ? '未確認' : item.caliberRuns}`);
     const hidden = events.filter(item => !picked.includes(item));
     const countKind = kind => hidden.filter(item => item.kind === kind).length;
@@ -1526,8 +1531,9 @@ function describeCycleTimeline(result) {
     return [
         countLine,
         '暫定6か月を戻した時期は確定の購入日ではありません。',
+        lastUse ? `この予測で最後に計算できた操業は${lastUse.date}、対象${lastUse.onlineId || '未確認'}、カリバ${lastUse.caliberId || '未確認'}、${lastUse.caliberRuns}直です。` : 'この予測で計算できた操業はありません。',
         lines.join('\n') || '日付順の交換はまだ出ていません。',
-        hidden.length ? `表示は先頭${picked.length}件です。全体は${events.length}件。後続の保留${countKind('保留')}件、夜勤予備不足${countKind('夜勤予備不足')}件、ロール替需要${countKind('ロール替需要')}件。` : ''
+        hidden.length ? `表示は抜粋${picked.length}件です。全体は${events.length}件。未表示の保留${countKind('保留')}件、夜勤予備不足${countKind('夜勤予備不足')}件、ロール替需要${countKind('ロール替需要')}件。` : ''
     ].filter(Boolean).join('\n');
 }
 

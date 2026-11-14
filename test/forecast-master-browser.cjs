@@ -210,6 +210,7 @@ async function main() {
     assert.match(await anonymous.locator('#cycle-result').innerText(), /2027-04-06 ロール替/);
     assert.match(await anonymous.locator('#cycle-result').innerText(), /2027-04-07 組替完了/);
     assert.match(await anonymous.locator('#cycle-result').innerText(), /2027-04-08 操業 anon-cal-bの使用は3直/);
+    assert.match(await anonymous.locator('#cycle-result').innerText(), /最後に計算できた操業は2027-04-08、対象anon-spare、カリバanon-cal-b、3直/);
     await anonymous.locator('#sizechange-clear').click();
     assert.match(await anonymous.locator('#cycle-result').innerText(), /2027-04-02にanon-onlineを止めました/);
     assert.equal(await anonymous.evaluate(() => JSON.stringify({ ...localStorage })), storageBefore);

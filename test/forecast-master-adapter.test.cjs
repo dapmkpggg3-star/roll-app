@@ -388,3 +388,27 @@ test('an invalid opening for the entering size does not become extra lifetime', 
   assert.equal(result.confirmedThrough, null);
   assert.equal(result.events.some(e => e.kind === '操業'), false);
 });
+
+test('the timeline excerpt keeps the final operation after intervening assembly events', () => {
+  const c = api();
+  const result = c.simulateExchangeCycle(laterCycle(c));
+  const original = JSON.stringify(result);
+  const text = c.describeCycleTimeline(result);
+  assert.match(text, /2027-04-05 組替完了/);
+  assert.match(text, /2027-04-06 操業 b13の使用は3直/);
+  assert.match(text, /最後に計算できた操業は2027-04-06、対象B、カリバb13、3直/);
+  assert.equal(JSON.stringify(result), original);
+});
+
+test('the final confirmed operation and first hold survive a long bounded excerpt', () => {
+  const c = api();
+  const events = Array.from({ length: 20 }, (_, i) => ({ date: `2027-04-${String(i + 1).padStart(2, '0')}`, kind: '組替需要', note: '未確認', onlineId: 'A' }));
+  events.push({ date: '2027-04-21', kind: '操業', note: 'later-calの使用は3直です。', onlineId: 'B', caliberId: 'later-cal', caliberRuns: 3 });
+  events.push({ date: '2027-04-22', kind: '保留', note: '以後未確認', onlineId: 'B' });
+  const text = c.describeCycleTimeline({ events, confirmedThrough: '2027-04-21', rollChangeCount: 1 });
+  assert.match(text, /2027-04-21 操業/);
+  assert.match(text, /2027-04-22 保留/);
+  assert.match(text, /表示は抜粋14件/);
+  assert.equal(text.indexOf('2027-04-21 操業') < text.indexOf('2027-04-22 保留'), true);
+  assert.match(c.describeCycleTimeline({ events: [events.at(-1)], rollChangeCount: 0 }), /計算できた操業はありません/);
+});
