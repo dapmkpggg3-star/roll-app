@@ -42,16 +42,19 @@ async function main() {
     assert.match(text, /廃却径は取得済みStandMaster（70mm）/);
     assert.match(text, /計算用改削量（12mm）/);
     assert.match(text, /2027-04-02 対象はAです。廃却径以下/);
-    await page.evaluate(() => { setCuttingMasterRows([{ stand: '10', calculationCutMm: '', standardCutMm: 12, actualAverageCutMm: 12, active: true }]); renderStandDemandList(); });
+    assert.match(await page.locator('#cycle-result').innerText(), /2027-04-02 廃却需要/);
+    await page.evaluate(() => { setCuttingMasterRows([{ stand: '10', calculationCutMm: '', standardCutMm: 12, actualAverageCutMm: 12, active: true }]); refreshForecastFromLoadedMasters(); });
     text = await page.locator('#stand-demand-list').innerText();
     assert.match(text, /標準値や実績平均では埋めません/);
     assert.equal(text.includes('対象はAです。廃却径以下'), false);
+    assert.equal((await page.locator('#cycle-result').innerText()).includes('2027-04-02 廃却需要'), false);
     await page.evaluate(() => {
       setCuttingMasterRows([{ stand: '10', calculationCutMm: 12, active: true }]);
       renderMonthlyScheduleSummary({ ...window.masterFixture, sourceName: 'mixed-fixture.xlsx', days: window.masterFixture.days.concat({ date: '2027-04-03', productionAmount: 10, operatingHours: 8, shift1Team: 'A', size: 'D13' }) });
     });
     text = await page.locator('#stand-demand-list').innerText();
     assert.match(text, /選択中の1サイズには丸めません/);
+    assert.match(await page.locator('#cycle-result').innerText(), /選択中の1サイズには丸めません/);
     assert.equal(text.includes('対象はAです。廃却径以下'), false);
     fs.mkdirSync(path.join(root, 'artifacts/roll001-dom'), { recursive: true });
     await page.screenshot({ path: path.join(root, 'artifacts/roll001-dom/forecast-master.png'), fullPage: true });

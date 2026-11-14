@@ -85,3 +85,14 @@ test('a mixed-size horizon does not become a single selected-size depletion fore
   assert.match(result, /選択中の1サイズには丸めません/);
   assert.equal(result.includes('対象はAです。廃却径以下'), false);
 });
+
+test('detail and list resolve the same loaded master while explicit trial inputs stay labelled', () => {
+  const c = api({ getStandMaster: () => loaded.stand, getCuttingMaster: () => loaded.cutting });
+  const resolved = c.resolvedLifePremises({ standKey: '10' });
+  assert.equal(resolved.scrapDiameter, 70);
+  assert.equal(resolved.cutMm, 12);
+  const trial = c.resolvedLifePremises({ standKey: '10', scrapDiameter: 60, cutMm: 3 });
+  assert.equal(trial.scrapDiameter, 60);
+  assert.equal(trial.cutMm, 3);
+  assert.match(trial.masterSourceNote, /画面入力の試算/);
+});

@@ -180,7 +180,7 @@ function checkLoginStatus() {
             loadRemoteRoles();
             Promise.all([loadStandMaster(), loadCuttingMaster()]).then(() => {
                 renderRoles();
-                if (typeof renderStandDemandList === 'function') renderStandDemandList();
+                if (typeof refreshForecastFromLoadedMasters === 'function') refreshForecastFromLoadedMasters();
             });
         }
     } else {

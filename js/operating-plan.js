@@ -1237,7 +1237,7 @@ function renderExchangeCycle() {
     const generation = ++exchangeCycleRenderGeneration;
     const target = document.getElementById('cycle-result');
     if (!target || typeof simulateExchangeCycle !== 'function' || typeof readCaliberInputs !== 'function') return;
-    const form = readCaliberInputs();
+    const form = resolvedLifePremises(readCaliberInputs());
     const schedule = latestMonthlySummary && latestMonthlySummary.ok !== false ? latestMonthlySummary : null;
     const days = schedule && Array.isArray(schedule.days) ? schedule.days : [];
     const ledgerKeys = pairedStandKeys(form.standKey, form.size);
@@ -1288,6 +1288,8 @@ function renderExchangeCycle() {
     }, false);
     if (form.forecastRoll && !online) {
         scheduleText = '選んだロールはこのスタンドのオンラインではないので、状態は変えず交換もしません。';
+    } else if (hasMixedProductionSizes(countedDays)) {
+        scheduleText = `予定「${schedule.sourceName || '名前なし'}」はサイズが切り替わります。サイズ別の開始条件と切替工程が未確認のため日付計算を止めています。選択中の1サイズには丸めません。`;
     } else if (countedDays.length) {
         const result = simulateExchangeCycle({
             maxRuns: limit && limit.kind === '最大' ? limit.runs : undefined,
@@ -1323,7 +1325,7 @@ function renderExchangeCycle() {
     const banner = anonymousForecastCheck
         ? '匿名の確認です。値は試験用です。実台帳は読んでいません。端末へは保存しません。実設備の径は読みません。予測は実ロールの状態を変えません。仮の13か月は購入不足の判定ではありません。'
         : '';
-    target.textContent = [banner, referenceLine, skippedLine, describeCheckFocus(cycleResources, scheduleResult), scheduleText, workUse.note, assemblyUse.note, ledgerText, describeAnonymousHorizon(form, online, cycleResources, limit)].filter(Boolean).join('\n');
+    target.textContent = [banner, form.masterSourceNote, referenceLine, skippedLine, describeCheckFocus(cycleResources, scheduleResult), scheduleText, workUse.note, assemblyUse.note, ledgerText, describeAnonymousHorizon(form, online, cycleResources, limit)].filter(Boolean).join('\n');
     loadStandPremisesNote(target, form.standKey, generation);
 }
 
@@ -1792,7 +1794,13 @@ function renderMonthlyScheduleSummary(summary) {
 function renderConsumptionLink(summary) {
     const target = document.getElementById('consumption-link');
     if (!target) return;
-    const form = readCaliberInputs();
+    const form = resolvedLifePremises(readCaliberInputs());
+    const reference = activeForecastReference(form, summary);
+    const days = summary && Array.isArray(summary.days) ? summary.days.filter(row => !reference || String(row.date || '') >= reference) : [];
+    if (hasMixedProductionSizes(days)) {
+        target.textContent = 'サイズ別の開始条件と切替工程が未確認です。複数サイズの予定を1サイズへ丸めて消耗日や交換日を出しません。';
+        return;
+    }
     const linked = linkProductionToConsumption({ schedule: summary, standKey: form.standKey });
     const caliber = projectCaliberReplacement({
         standKey: form.standKey,
@@ -1925,6 +1933,22 @@ function loadedForecastMasters(standKey) {
         stand: typeof getStandMaster === 'function' ? getStandMaster(standKey) : null,
         cutting: typeof getCuttingMaster === 'function' ? getCuttingMaster(standKey) : null
     };
+}
+
+function resolvedLifePremises(form) {
+    if (anonymousForecastCheck) return form;
+    const fact = premisesFact(standPremisesCache, form.standKey, loadedForecastMasters(form.standKey));
+    return Object.assign({}, form, {
+        scrapDiameter: form.scrapDiameter === undefined ? (fact.scrapDiameter === null ? undefined : fact.scrapDiameter) : form.scrapDiameter,
+        cutMm: form.cutMm === undefined ? (fact.adoptedCutMm === null ? undefined : fact.adoptedCutMm) : form.cutMm,
+        masterSourceNote: `詳細の廃却径は${form.scrapDiameter === undefined ? fact.diameterSource : '画面入力の試算'}、採用改削量は${form.cutMm === undefined ? fact.cutSource : '画面入力の試算'}です。`
+    });
+}
+
+function refreshForecastFromLoadedMasters() {
+    renderStandDemandList();
+    renderExchangeCycle();
+    if (latestMonthlySummary) renderConsumptionLink(latestMonthlySummary);
 }
 
 function forecastMasterNumber(value) {
@@ -2065,11 +2089,15 @@ function confirmationForStand(confirmation, standKey, standSize, referenceAt, ro
 
 function sizeForStand(standKey, source, planDays) {
     const sizes = Array.from(new Set((planDays || []).filter(row => row && row.productionAmount !== 0).map(row => row.size).filter(Boolean)));
-    if (sizes.length > 1) return '';
+    if (hasMixedProductionSizes(planDays)) return '';
     const selected = String(source.standKey || '').replace(/^#/, '') === String(standKey);
     if (selected && source.size) return source.size;
     if (sizes.length === 1) return sizes[0];
     return '';
+}
+
+function hasMixedProductionSizes(days) {
+    return new Set((days || []).filter(row => row && row.productionAmount !== 0).map(row => row.size).filter(Boolean)).size > 1;
 }
 
 function buildStandDemandList(input) {
