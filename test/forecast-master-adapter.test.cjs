@@ -126,3 +126,113 @@ test('detail and list resolve the same loaded master while explicit trial inputs
   assert.equal(trial.cutMm, 3);
   assert.match(trial.masterSourceNote, /画面入力の試算/);
 });
+
+function sizeCycle(c) {
+  const input = scenario();
+  input.rolls[0].openingRuns = 6;
+  const owner = { rollId: 'A', standKey: '10', size: 'D10', referenceAt: input.referenceAt };
+  const change = (fromSize, toSize, date, operationDate) => ({ ...input.workConfirmation, workType: 'sizeChange', fromSize, toSize, date, operationDate, owner: { ...owner, size: fromSize } });
+  input.days.push({ date: '2027-04-03', size: 'D13', productionAmount: 10, operatingHours: 8, shift1Team: 'A' });
+  input.days.push({ date: '2027-04-04', size: 'D13', productionAmount: 0, operatingHours: 0, shift1Team: 'A' });
+  input.days.push({ date: '2027-04-05', size: 'D10', productionAmount: 10, operatingHours: 8, shift1Team: 'A' });
+  return { ...input, currentSize: 'D10', maxRuns: 8, resources: c.readLedgerResources(input.rolls),
+    sizeOpenings: [{ owner: { ...owner, size: 'D13' }, caliberId: 'a13', runs: 2 }],
+    sizeChanges: [change('D10', 'D13', '2027-04-02', '2027-04-03'), change('D13', 'D10', '2027-04-04', '2027-04-05')] };
+}
+
+test('verified size changes use their own openings and keep consumed runs when the size returns', () => {
+  const c = api();
+  const input = sizeCycle(c);
+  const original = JSON.stringify(input);
+  const result = c.simulateExchangeCycle(input);
+  assert.equal(result.stopRecord, null);
+  assert.equal(result.confirmedThrough, '2027-04-05');
+  assert.deepEqual(Array.from(result.events.filter(e => e.kind === '操業'), e => [e.date, e.caliberId, e.caliberRuns]), [
+    ['2027-04-01', 'ca', 7], ['2027-04-03', 'a13', 3], ['2027-04-05', 'ca', 8]
+  ]);
+  assert.equal(result.events.filter(e => e.kind === 'サイズ替').length, 2);
+  assert.equal(result.resources.find(r => r.id === 'A').diameter, 81);
+  assert.equal(JSON.stringify(input), original);
+});
+
+test('a next-size opening must belong to the exact roll, stand, size and reference', () => {
+  const c = api();
+  for (const patch of [{ rollId: 'B' }, { standKey: '17' }, { size: 'D10' }, { referenceAt: '2027-04-02' }]) {
+    const input = sizeCycle(c);
+    Object.assign(input.sizeOpenings[0].owner, patch);
+    const result = c.simulateExchangeCycle(input);
+    assert.equal(result.stopRecord.date, '2027-04-03');
+    assert.equal(result.stopRecord.id, 'A');
+    assert.equal(result.events.some(e => e.caliberId === 'a13'), false);
+  }
+  for (const runs of [undefined, null, '', -1, NaN, 0.5, 8]) {
+    const input = sizeCycle(c);
+    input.sizeOpenings[0].runs = runs;
+    assert.equal(c.simulateExchangeCycle(input).stopRecord.date, '2027-04-03');
+  }
+});
+
+test('a size-change slot needs a preceding daytime stop and its own confirmed scope', () => {
+  const c = api();
+  const changes = [
+    slot => { slot.period = 'night'; }, slot => { slot.reservedHours = 1; }, slot => { slot.people = undefined; },
+    slot => { slot.continuous = 'yes'; }, slot => { slot.threeSet = ''; }, slot => { slot.changeover = 'no'; },
+    slot => { slot.workType = 'rollChange'; }, slot => { slot.date = '2027-04-03'; },
+    slot => { slot.owner.rollId = 'B'; }, slot => { slot.owner.referenceAt = '2027-04-02'; }
+  ];
+  for (const change of changes) {
+    const input = sizeCycle(c);
+    change(input.sizeChanges[0]);
+    assert.equal(c.simulateExchangeCycle(input).stopRecord.date, '2027-04-03');
+  }
+  for (const patch of [{ shift1Team: '', shift3Team: 'A' }, { shift1Team: '', shift3Team: '' }, { productionAmount: 10, operatingHours: 8 }]) {
+    const input = sizeCycle(c);
+    Object.assign(input.days[1], patch);
+    assert.equal(c.simulateExchangeCycle(input).stopRecord.date, '2027-04-03');
+  }
+  const duplicated = sizeCycle(c);
+  duplicated.sizeChanges.push(structuredClone(duplicated.sizeChanges[0]));
+  assert.equal(c.simulateExchangeCycle(duplicated).stopRecord.date, '2027-04-03');
+});
+
+test('zero is a valid next-size opening but an unconfirmed short operation still stops the suffix', () => {
+  const c = api();
+  const input = sizeCycle(c);
+  input.sizeOpenings[0].runs = 0;
+  input.days[2].operatingHours = 3;
+  const result = c.simulateExchangeCycle(input);
+  assert.equal(result.stopRecord.date, '2027-04-03');
+  assert.match(result.stopRecord.reason, /4時間未満/);
+  assert.equal(result.events.some(e => e.date === '2027-04-05'), false);
+  assert.equal(result.events.find(e => e.kind === 'サイズ替').caliberRuns, 0);
+});
+
+test('a slot already used for a roll change cannot also certify a size change', () => {
+  const c = api();
+  const input = sizeCycle(c);
+  input.resources[0].runs = 7;
+  input.adoptedCutMm = 12;
+  input.scrapDiameter = 70;
+  input.sizeChanges[0].owner.rollId = 'B';
+  input.sizeOpenings[0].owner.rollId = 'B';
+  const result = c.simulateExchangeCycle(input);
+  assert.equal(result.stopRecord.date, '2027-04-03');
+  assert.equal(result.stopRecord.id, 'B');
+  assert.equal(result.events.filter(e => e.kind === 'ロール替').length, 1);
+  assert.equal(result.events.filter(e => e.kind === 'サイズ替').length, 0);
+  assert.equal(result.scrapCount, 1);
+});
+
+test('the opening adapter only reads explicit saved size conditions and never borrows the ledger caliber', () => {
+  const memory = {};
+  const c = api({ localStorage: { getItem: key => memory[key] || null, setItem: (key, value) => { memory[key] = value; } } });
+  const input = sizeCycle(c);
+  c.rememberForecastSetting({ rollId: 'A', standKey: '10', size: 'D13', referenceAt: input.referenceAt, caliberId: 'saved13', openingRuns: 0 });
+  const openings = c.forecastSizeOpenings(input.resources, '10', input.days, input.referenceAt);
+  assert.equal(openings.length, 1);
+  assert.equal(openings[0].caliberId, 'saved13');
+  assert.equal(openings[0].runs, 0);
+  assert.equal(c.forecastSizeOpenings(input.resources, '10', input.days, '2027-04-02').length, 0);
+  const result = c.buildStandDemandList({ ...input, sizeOpenings: openings });
+  assert.match(result, /確定して計算できた最終日は2027-04-05/);
+});

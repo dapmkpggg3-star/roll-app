@@ -62,6 +62,68 @@ async function main() {
     assert.match(await page.locator('#cycle-result').innerText(), /選択中の1サイズには丸めません/);
     assert.match(text, /夜勤の予備不足: 2027-04-03 操業中B/);
     assert.match(await page.locator('#cycle-result').innerText(), /2027-04-03 夜勤予備不足/);
+    await page.evaluate(() => {
+      roles = roles.map(item => item.id === 'A' ? { ...item, openingRuns: 6 } : item);
+      localStorage.removeItem('caliber_forecast_settings_v1');
+      activeForecastContext = null;
+      document.getElementById('caliber-current').value = 'ca';
+      document.getElementById('caliber-opening').value = '6';
+      const day = (date, amount, size) => ({ date, productionAmount: amount, operatingHours: amount ? 8 : 0, shift1Team: 'A', shift3Team: '', size });
+      window.sizeFixture = { ...window.masterFixture, sourceName: 'size-change-fixture.xlsx', days: [
+        day('2027-04-01', 10, 'D10'), day('2027-04-02', 0, 'D10'), day('2027-04-03', 10, 'D13'),
+        day('2027-04-04', 0, 'D13'), day('2027-04-05', 10, 'D10')
+      ] };
+      window.sizeLedgerBefore = JSON.stringify(roles);
+      syncForecastSettingContext();
+      renderMonthlyScheduleSummary(window.sizeFixture);
+    });
+    const field = async (id, value) => {
+      await page.locator('#' + id).fill(value);
+      await page.locator('#' + id).dispatchEvent('change');
+    };
+    await page.locator('#work-type').selectOption('sizeChange');
+    await field('sizechange-to', 'D13');
+    await field('sizechange-operation', '2027-04-03');
+    await page.locator('#sizechange-register').click();
+    assert.match(await page.locator('#cycle-result').innerText(), /次サイズの保存開始条件が未記録/);
+    // Use the normal size inputs to save D13, then return to the original D10 opening.
+    await field('caliber-size', 'D13');
+    await field('caliber-current', 'a13');
+    await field('caliber-opening', '2');
+    await field('caliber-size', 'D10');
+    assert.equal(await page.locator('#caliber-opening').inputValue(), '6');
+    assert.match(await page.locator('#cycle-result').innerText(), /2027-04-03 操業 a13の使用は3直/);
+    assert.match(await page.locator('#stand-demand-list').innerText(), /確定して計算できた最終日は2027-04-04/);
+    // Register the return slot on its own size, without relabelling the first slot.
+    await field('caliber-size', 'D13');
+    await field('work-date', '2027-04-04');
+    await field('sizechange-to', 'D10');
+    await field('sizechange-operation', '2027-04-05');
+    await page.locator('#sizechange-register').click();
+    await field('caliber-size', 'D10');
+    text = await page.locator('#cycle-result').innerText();
+    assert.match(text, /2027-04-05 操業 caの使用は8直/);
+    assert.match(await page.locator('#stand-demand-list').innerText(), /確定して計算できた最終日は2027-04-05/);
+    await field('forecast-reference', '2027-04-02');
+    assert.equal((await page.locator('#cycle-result').innerText()).includes('2027-04-03 操業 a13'), false);
+    await field('forecast-reference', '2027-04-01');
+    assert.match(await page.locator('#cycle-result').innerText(), /2027-04-05 操業 caの使用は8直/);
+    await field('work-date', '2027-04-02');
+    await field('sizechange-to', 'D13');
+    await field('sizechange-operation', '2027-04-03');
+    await field('work-reserved-hours', '1');
+    await page.locator('#sizechange-register').click();
+    assert.match(await page.locator('#cycle-result').innerText(), /2027-04-03にAを止めました/);
+    await field('work-reserved-hours', '6');
+    await page.locator('#sizechange-register').click();
+    assert.match(await page.locator('#cycle-result').innerText(), /2027-04-05 操業 caの使用は8直/);
+    await page.locator('#sizechange-clear').click();
+    assert.match(await page.locator('#cycle-result').innerText(), /2027-04-03にAを止めました/);
+    await page.locator('#sizechange-register').click();
+    await page.evaluate(() => renderMonthlyScheduleSummary({ ...window.sizeFixture, sourceName: 'replacement.xlsx' }));
+    assert.match(await page.locator('#sizechange-records').innerText(), /未登録/);
+    assert.match(await page.locator('#cycle-result').innerText(), /2027-04-03にAを止めました/);
+    assert.equal(await page.evaluate(() => JSON.stringify(roles) === window.sizeLedgerBefore), true);
     fs.mkdirSync(path.join(root, 'artifacts/roll001-dom'), { recursive: true });
     await page.screenshot({ path: path.join(root, 'artifacts/roll001-dom/forecast-master.png'), fullPage: true });
     const anonymous = await context.newPage();
