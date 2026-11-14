@@ -575,6 +575,18 @@ async function main() {
     await page.locator('#monthly-schedule-file').setInputFiles(daytimeExchangeFile());
     await page.locator('#monthly-schedule-file').dispatchEvent('change');
     await page.waitForFunction(() => document.getElementById('cycle-result').textContent.includes('roll-anon-day.xlsx'));
+    // A new workbook invalidates the previous workbook's work approval.
+    assert.equal(await page.locator('#work-date').inputValue(), '');
+    await page.locator('#work-date').fill('2027-04-02');
+    await page.locator('#work-period').selectOption('day');
+    await page.locator('#work-reserved-hours').fill('5');
+    await page.locator('#work-type').selectOption('rollChange');
+    await page.locator('#work-required-hours').fill('5');
+    await page.locator('#work-people').fill('1');
+    await page.locator('#work-continuous').selectOption('no');
+    await page.locator('#work-changeover').selectOption('yes');
+    await page.locator('#work-three-set').selectOption('yes');
+    await page.locator('#work-date').dispatchEvent('change');
     const timeline = await page.locator('#cycle-result').innerText();
     assert.match(timeline, /読込予定に基づく結果です/);
     assert.match(timeline, /架空の操業日は足していません/);
@@ -697,3 +709,4 @@ async function main() {
   }
 }
 main().catch(error => { console.error(error); process.exit(1); });
+
