@@ -135,7 +135,8 @@ test('past production tons do not become a future rework or purchase date', () =
   assert.equal(missing.gaps.includes('スタンドごとの使用トン数'), true);
   assert.equal(missing.gaps.includes('10番と11番の8直までの上限'), false);
   assert.equal(missing.gaps.includes('サイズごとの専用カリバ'), true);
-  assert.equal(source.includes('405'), false);
+  const linker = source.slice(source.indexOf('function linkProductionToConsumption'), source.indexOf('function projectCaliberReplacement'));
+  assert.equal(linker.includes('405'), false);
   const estimated = context.linkProductionToConsumption({
     schedule: context.summarizeMonthlyProductionSchedule([
       { date: '2027-04-01', size: 'D1', productionAmount: 100, shift1Team: 'A', shift3Team: 'B', operatingHours: 8 }

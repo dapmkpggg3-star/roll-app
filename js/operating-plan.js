@@ -2,6 +2,78 @@
 // contact Sheets, or change a physical roll's status.
 const OPERATING_PLAN_MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
 const PROVISIONAL_LEAD_TIME_MONTHS = 6;
+const SHIFT_TONS_BASIS = 405;
+const PROVISIONAL_MONTH_TONS = 10000;
+
+function provisionalReworkCalendarDays(standKey) {
+    const stand = Number(String(standKey || '').replace(/^#/, ''));
+    if (stand >= 2 && stand <= 9) return 20;
+    if (stand >= 10 && stand <= 15) return 30;
+    if (stand >= 16 && stand <= 17) return 60;
+    return null;
+}
+
+function resolvedReworkDays(standKey, explicit) {
+    const given = finiteOrNull(explicit);
+    if (given !== null) return given;
+    const stand = String(standKey || '').replace(/^#/, '');
+    const override = reworkLeadOverrides.get(stand);
+    if (override && Number.isInteger(override.days) && override.days >= 0) return override.days;
+    return provisionalReworkCalendarDays(stand);
+}
+
+function fiscalYearMonths(referenceAt) {
+    const text = String(referenceAt || '').slice(0, 10);
+    const year = Number(text.slice(0, 4));
+    const month = Number(text.slice(5, 7));
+    if (!year || month < 1 || month > 12) return [];
+    const startYear = month >= 4 ? year : year - 1;
+    return Array.from({ length: 12 }, (_, index) => {
+        const cursor = startYear * 12 + 3 + index;
+        return `${Math.floor(cursor / 12)}-${String((cursor % 12) + 1).padStart(2, '0')}`;
+    });
+}
+
+function buildFiscalOutlook(input) {
+    const source = input || {};
+    const months = fiscalYearMonths(source.referenceAt);
+    if (!months.length) return '基準日が無いので、年度4月〜翌3月の改削・購入計画は出しません。';
+    const recordedMonths = new Map((source.months || []).filter(item => item && item.month).map(item => [item.month, item]));
+    const monthLines = months.map(month => {
+        const recorded = recordedMonths.get(month);
+        const confirmed = recorded && typeof recorded.productionTons === 'number' && recorded.productionTons >= 0;
+        const tons = confirmed ? recorded.productionTons : PROVISIONAL_MONTH_TONS;
+        const shifts = Math.floor(tons / SHIFT_TONS_BASIS);
+        const remainder = tons % SHIFT_TONS_BASIS;
+        const singleSize = recorded && Array.isArray(recorded.sizes) && recorded.sizes.length === 1 ? recorded.sizes[0] : '';
+        const split = singleSize
+            ? `${singleSize} ${tons}t（この月の予定サイズ）`
+            : `D10 ${Math.round(tons * 0.35)}t / D13 ${Math.round(tons * 0.65)}t（既定35:65。確定比率ではありません）`;
+        return `${month} ${confirmed ? '確定月' : '暫定'} ${tons}t。${split}。直数の計算根拠は1直${SHIFT_TONS_BASIS}tで${shifts}直、余り${remainder}t。操業日には換算しません。パスラインは未確認です。`;
+    });
+    const standLines = [];
+    for (let stand = 2; stand <= 17; stand += 1) {
+        const key = String(stand);
+        const override = source.reworkLeadDays && Number.isInteger(source.reworkLeadDays[key]) ? source.reworkLeadDays[key] : null;
+        const days = override === null ? provisionalReworkCalendarDays(key) : override;
+        standLines.push(`#${key} 改削LT ${days}暦日（${override === null ? '初期の暫定値' : '個別の暫定値'}、変更可、土日祝を含む）。搬出日が無いので搬入日は作りません。`);
+    }
+    const spare = source.installedSpareCount;
+    const warning = spare === 0
+        ? '3セット運用枠の早期警告: 組込済み予備がありません。改削のあいだ枠を維持できるかは未確認です。不足の確定日ではありません。3セットはロール3本のことではありません。'
+        : '3セット運用枠の早期警告は未確認です。日別の使用可能予備が無い月を不足なしにはしません。3セットはロール3本のことではありません。';
+    return [
+        `年度は${months[0]}から${months[months.length - 1]}です。年間改削計画と年間ロール購入計画は月単位の見通しです。`,
+        '日別のロール・カリバ替日は、確定した月の生産予定があるときだけ別計算です。月間トン数からは作りません。',
+        `計算根拠: 直数は1直${SHIFT_TONS_BASIS}t。パスラインの確認が必要な値は未確認です。月${PROVISIONAL_MONTH_TONS}t・年120000t、D10 35%・D13 65%は本人指定の暫定です。`,
+        monthLines.join('\n'),
+        '年間改削計画',
+        standLines.join('\n'),
+        '年間ロール購入計画',
+        '購買データは未照合です。購入LTは暫定6か月で、確定の購入日ではありません。不足なしとは判定しません。発注済みの1本で他の不足を消しません。',
+        warning
+    ].join('\n');
+}
 
 function planMonthKey(standKey, month) {
     return `${String(standKey)}|${String(month)}`;
@@ -1140,20 +1212,44 @@ function simulateExchangeCycle(input) {
                 let forcedCaliber = null;
                 let forcedRuns = null;
                 if (generation > 0) {
-                    const opening = generationOpening(enteringId, activeSize, generation);
-                    if (!openingReady(opening, maxRuns)) {
-                        push(date, 'ロール替需要', `${enteringId}の改削後${generation}世代のカリバID・開始量が未記録です。改削前の値は使わず、0直にもしません。`);
-                        stopAt(date, `${enteringId}の改削後${generation}世代のカリバID・開始量が未記録です。以後は計算済みにしません。`);
+                    const completed = state.reworks.filter(item => item.id === enteringId && Array.isArray(item.definedCalibers) && item.status === 'done');
+                    const basis = completed[completed.length - 1];
+                    const defined = basis ? basis.definedCalibers : [];
+                    const marksFor = generationNumber => (source.unusableCalibers || []).filter(item => item
+                        && item.generation === generationNumber
+                        && confirmationOwnerMatches(item, {
+                            standKey: source.standKey, rollId: enteringId, size: activeSize, referenceAt: source.referenceAt
+                        }, true));
+                    const usable = [];
+                    const blocked = [];
+                    const pending = [];
+                    let conflict = false;
+                    defined.forEach(caliberId => {
+                        const current = marksFor(generation).filter(item => item.caliberId === caliberId);
+                        if (current.length > 1) conflict = true;
+                        else if (current.length === 1 && current[0].usable === false) blocked.push(caliberId);
+                        else if (current.length === 1 && current[0].usable === true) usable.push(caliberId);
+                        else if (generation > 1 && marksFor(generation - 1).some(item => item.caliberId === caliberId && item.usable === false)) pending.push(caliberId);
+                        else usable.push(caliberId);
+                    });
+                    if (!defined.length || conflict || !usable.length) {
+                        const reason = !defined.length
+                            ? `${enteringId}の改削後${generation}世代に定義済みのカリバIDがありません。番号は作らず、改削前の直数も引き継ぎません。`
+                            : (conflict
+                                ? `${enteringId}の改削後${generation}世代で同じカリバの使用可否が複数あります。`
+                                : `${enteringId}の改削後${generation}世代で使えるカリバがありません。使用不可${blocked.join('、') || 'なし'}。未確認${pending.join('、') || 'なし'}。使用不可を0直の新品にはせず、前世代の欠損は新世代の安全確定にしません。`);
+                        push(date, 'ロール替需要', reason);
+                        stopAt(date, `${reason}以後は計算済みにしません。`);
                         stopRecord.id = enteringId;
                         return;
                     }
-                    forcedCaliber = String(opening.caliberId).trim();
-                    forcedRuns = opening.runs;
+                    forcedCaliber = usable[0];
+                    forcedRuns = 0;
                     if (entering) {
                         entering.caliberId = forcedCaliber;
-                        entering.runs = forcedRuns;
+                        entering.runs = 0;
                     }
-                    spareCalibers = Array.isArray(opening.spareCaliberIds) ? opening.spareCaliberIds.slice() : [];
+                    spareCalibers = usable.slice(1);
                 } else if (sizeChanged && entering) {
                     const recorded = (source.sizeOpenings || []).filter(item => confirmationOwnerMatches(item, {
                         standKey: source.standKey, rollId: enteringId, size: activeSize, referenceAt: source.referenceAt
@@ -1174,7 +1270,15 @@ function simulateExchangeCycle(input) {
                     stopAt(date, '交換先の開始直数が未確認です。0直にはしません。');
                     return;
                 }
-                const currentRework = { id: leavingId, readyOn: addDays(date, reworkDays), status: 'rework' };
+                const definedCalibers = [];
+                const rememberCaliber = caliberId => {
+                    const name = String(caliberId || '').trim();
+                    if (name && !definedCalibers.includes(name)) definedCalibers.push(name);
+                };
+                rememberCaliber(state.caliberId);
+                const leavingResource = resources && resources.find(item => item.id === leavingId);
+                if (leavingResource && Array.isArray(leavingResource.spareCaliberIds)) leavingResource.spareCaliberIds.forEach(rememberCaliber);
+                const currentRework = { id: leavingId, readyOn: addDays(date, reworkDays), status: 'rework', definedCalibers };
                 if (activeSize) sizeUsage.set(leavingId + '|' + activeSize, { caliberId: state.caliberId, runs: state.caliberRuns });
                 state.reworks.push(currentRework);
                 if (resources) {
@@ -1447,7 +1551,8 @@ function renderExchangeCycle() {
             spareCaliberIds: null,
             scrapDiameter: form.scrapDiameter,
             adoptedCutMm: form.cutMm,
-            reworkDays: form.reworkDays,
+            reworkDays: resolvedReworkDays(selectedStand, form.reworkDays),
+            unusableCalibers: applicableUnusableCalibers(schedule),
             leadMonths: forecastLead(form.standKey).months,
             leadStatus: forecastLead(form.standKey).status,
             workConfirmation: workUse.slot,
@@ -1516,7 +1621,7 @@ function describeAnonymousHorizon(form, online, resources, limit) {
         spareCaliberIds: null,
         scrapDiameter: form.scrapDiameter,
         adoptedCutMm: form.cutMm,
-        reworkDays: form.reworkDays,
+        reworkDays: resolvedReworkDays(form.standKey, form.reworkDays),
         leadMonths: forecastLead(form.standKey).months,
         leadStatus: forecastLead(form.standKey).status,
         workConfirmation: confirmed ? Object.assign({}, work, { repeatOnStops: true, workTypes: ['caliberChange', 'rollChange'] }) : work,
@@ -1901,9 +2006,11 @@ function beginScheduleRead() {
     sizeChangeConfirmations = [];
     cycleSlotConfirmations = [];
     reworkOpeningConfirmations = [];
+    unusableCaliberConfirmations = [];
     renderSizeChangeRecords();
     renderCycleSlotRecords();
     renderReworkOpeningRecords();
+    renderUnusableCaliberRecords();
     return scheduleReadGeneration;
 }
 
@@ -1927,9 +2034,11 @@ function renderMonthlyScheduleSummary(summary) {
         sizeChangeConfirmations = [];
         cycleSlotConfirmations = [];
         reworkOpeningConfirmations = [];
+        unusableCaliberConfirmations = [];
         renderSizeChangeRecords();
         renderCycleSlotRecords();
         renderReworkOpeningRecords();
+        renderUnusableCaliberRecords();
     }
     if (summary && summary.ok !== false && Array.isArray(summary.months)) latestMonthlySummary = summary;
     if (summary && summary.ok === false) latestMonthlySummary = null;
@@ -2206,6 +2315,8 @@ function forecastSizeOpenings(resources, standKey, days, referenceAt) {
 let sizeChangeConfirmations = [];
 let cycleSlotConfirmations = [];
 let reworkOpeningConfirmations = [];
+let unusableCaliberConfirmations = [];
+const reworkLeadOverrides = new Map();
 
 function scopedCycleSlots(slots, target, date, matchRoll) {
     return (Array.isArray(slots) ? slots : []).filter(slot => slot && slot.date === date
@@ -2220,6 +2331,51 @@ function applicableCycleSlots(schedule, kind) {
 function applicableReworkOpenings(schedule) {
     if (!schedule || schedule.ok === false) return [];
     return reworkOpeningConfirmations.filter(item => item.schedule === schedule).map(item => item.value);
+}
+
+function applicableUnusableCalibers(schedule) {
+    if (!schedule || schedule.ok === false) return [];
+    return unusableCaliberConfirmations.filter(item => item.schedule === schedule).map(item => item.value);
+}
+
+function renderUnusableCaliberRecords() {
+    if (typeof document === 'undefined') return;
+    const list = document.getElementById('unusable-caliber-records');
+    if (!list) return;
+    const records = unusableCaliberConfirmations.filter(item => item.schedule === latestMonthlySummary);
+    list.textContent = records.length ? records.map(item => {
+        const slot = item.value;
+        return `改削後${slot.generation}世代 ${slot.owner.standKey}番 ${slot.owner.rollId}、${slot.owner.size}、基準日${slot.owner.referenceAt}、カリバ${slot.caliberId}、${slot.usable ? '使用可' : '使用不可'}`;
+    }).join('\n') : 'この予定の改削後カリバ使用可否は未登録です。未登録の定義済みカリバは0直から始めます。';
+}
+
+function registerUnusableCaliber() {
+    const owner = slotOwnerFromContext();
+    const schedule = latestMonthlySummary;
+    const message = document.getElementById('unusable-caliber-message');
+    const generation = Number(document.getElementById('unusable-generation').value);
+    const caliberId = String(document.getElementById('unusable-caliber').value || '').trim();
+    const usable = document.getElementById('unusable-choice').value === 'usable';
+    if (!schedule || schedule.ok === false || !owner.rollId || !owner.referenceAt || !owner.size
+        || !Number.isInteger(generation) || generation < 1 || !caliberId) {
+        message.textContent = '対象ロール・サイズ・基準日と、改削後の世代・既存カリバID・使用可否を確認してください。新しいカリバ番号は作りません。';
+        return;
+    }
+    const value = { owner: { ...owner }, generation, caliberId, usable };
+    unusableCaliberConfirmations = unusableCaliberConfirmations.filter(item => !(item.schedule === schedule
+        && item.value.generation === generation && item.value.caliberId === caliberId
+        && forecastSettingKey(item.value.owner) === forecastSettingKey(owner)));
+    unusableCaliberConfirmations.push({ schedule, value });
+    message.textContent = 'この予定の予測用に登録しました。使用不可は0直の新品にしません。実台帳や通常の保存には書いていません。';
+    renderUnusableCaliberRecords();
+    renderExchangeCycle();
+    renderStandDemandList();
+}
+
+function ensureFiscalPlanTarget() {
+    const list = document.getElementById('stand-demand-list');
+    if (!list || document.getElementById('fiscal-plan')) return;
+    list.insertAdjacentHTML('beforebegin', '<h3>年度の改削・購入見通し</h3><pre id="fiscal-plan"></pre>');
 }
 
 function renderReworkOpeningRecords() {
@@ -2390,7 +2546,14 @@ function ensureSizeChangeControls() {
         + '<label>開始直数 <input id="rework-runs" type="number" min="0" step="1"></label>'
         + '<button id="rework-opening-register" type="button">選択ロールの改削後開始を登録</button>'
         + '<button id="rework-opening-clear" type="button">改削後開始の登録をすべて解除</button>'
-        + '<pre id="rework-opening-records"></pre><p id="rework-opening-message" aria-live="polite"></p></fieldset>');
+        + '<pre id="rework-opening-records"></pre><p id="rework-opening-message" aria-live="polite"></p>'
+        + '<h4>改削後カリバの使用可否</h4><p>定義済みのカリバは改削後0直から始めます。欠けたカリバだけを使用不可にします。新しい番号は作りません。前の世代の使用不可は、新しい世代で確認するまで安全確定にしません。</p>'
+        + '<label>世代 <input id="unusable-generation" type="number" min="1" step="1"></label>'
+        + '<label>既存カリバ <input id="unusable-caliber" type="text"></label>'
+        + '<label>使用可否 <select id="unusable-choice"><option value="unusable">使用不可</option><option value="usable">使用可</option></select></label>'
+        + '<button id="unusable-register" type="button">選択カリバの使用可否を登録</button>'
+        + '<button id="unusable-clear" type="button">使用可否の登録をすべて解除</button>'
+        + '<pre id="unusable-caliber-records"></pre><p id="unusable-caliber-message" aria-live="polite"></p></fieldset>');
     document.getElementById('sizechange-register').addEventListener('click', registerSizeChange);
     document.getElementById('sizechange-example').addEventListener('click', openAnonymousSizeExample);
     document.getElementById('cycle-work-register').addEventListener('click', () => registerCycleSlot('work'));
@@ -2408,6 +2571,13 @@ function ensureSizeChangeControls() {
         renderExchangeCycle();
         renderStandDemandList();
     });
+    document.getElementById('unusable-register').addEventListener('click', registerUnusableCaliber);
+    document.getElementById('unusable-clear').addEventListener('click', () => {
+        unusableCaliberConfirmations = [];
+        renderUnusableCaliberRecords();
+        renderExchangeCycle();
+        renderStandDemandList();
+    });
     document.getElementById('sizechange-clear').addEventListener('click', () => {
         sizeChangeConfirmations = [];
         renderSizeChangeRecords();
@@ -2417,6 +2587,7 @@ function ensureSizeChangeControls() {
     renderSizeChangeRecords();
     renderCycleSlotRecords();
     renderReworkOpeningRecords();
+    renderUnusableCaliberRecords();
 }
 
 let workSlotOwner = null;
@@ -2617,7 +2788,8 @@ function buildStandDemandList(input) {
                     maxRuns: limit.runs,
                     scrapDiameter: fact.scrapDiameter,
                     adoptedCutMm: fact.adoptedCutMm,
-                    reworkDays: String(source.standKey || '').replace(/^#/, '') === String(standKey) ? source.reworkDays : null,
+                    reworkDays: resolvedReworkDays(standKey, String(source.standKey || '').replace(/^#/, '') === String(standKey) ? source.reworkDays : null),
+                    unusableCalibers: source.unusableCalibers,
                     leadMonths: lead.months,
                     leadStatus: lead.status,
                     workConfirmation: work,
@@ -2653,6 +2825,7 @@ function buildStandDemandList(input) {
 let standPremisesCache = { status: 'waiting' };
 
 function renderStandDemandList() {
+    if (typeof document !== 'undefined') ensureFiscalPlanTarget();
     const target = typeof document !== 'undefined' ? document.getElementById('stand-demand-list') : null;
     if (!target) return;
     const plan = anonymousForecastCheck ? null : (readOperatingPlanState().slice(-1)[0] || null);
@@ -2679,8 +2852,21 @@ function renderStandDemandList() {
         workSlots: applicableCycleSlots(schedule, 'work'),
         assemblySlots: applicableCycleSlots(schedule, 'assembly'),
         reworkOpenings: applicableReworkOpenings(schedule),
+        unusableCalibers: applicableUnusableCalibers(schedule),
         leadTimes: anonymousForecastCheck ? {} : readStandLeadTimes()
     });
+    const fiscal = document.getElementById('fiscal-plan');
+    if (fiscal) {
+        const spareCount = ledger.filter(item => standNumberFromName(item.name || item.id) === String(form.standKey || '').replace(/^#/, '') && /組込完了|installedSpare/.test(String(item.status || item.frame || ''))).length;
+        const leadDays = {};
+        reworkLeadOverrides.forEach((value, stand) => { leadDays[stand] = value.days; });
+        fiscal.textContent = buildFiscalOutlook({
+            referenceAt: activeForecastReference(form, schedule),
+            months: schedule && schedule.months,
+            reworkLeadDays: leadDays,
+            installedSpareCount: ledger.length ? spareCount : null
+        });
+    }
     if (!anonymousForecastCheck && standPremisesCache.status === 'waiting' && typeof fetch === 'function') {
         standPremisesCache = { status: 'reading' };
         fetch('local/stand-premises.json').then(response => {

@@ -436,47 +436,77 @@ function twoCycle(c, openings) {
   };
 }
 
-test('a reworked roll continues only with its own later generation and keeps two repair cycles', () => {
+test('a reworked roll restarts every defined caliber at zero and keeps two repair cycles', () => {
   const c = api();
-  const opening = { owner: { rollId: 'A', standKey: '10', size: 'D10', referenceAt: '2027-04-01' }, generation: 1, caliberId: 'ca2', runs: 1 };
-  const result = c.simulateExchangeCycle(twoCycle(c, [opening]));
+  const result = c.simulateExchangeCycle(twoCycle(c, []));
   assert.equal(result.stopRecord, null);
   assert.equal(result.events.filter(e => e.kind === 'ロール替').length, 2);
   assert.equal(result.events.filter(e => e.kind === '組替完了').length, 2);
   const returned = result.events.filter(e => e.kind === 'ロール替')[1];
   assert.equal(returned.date, '2027-04-10');
   assert.equal(returned.onlineId, 'A');
-  assert.equal(returned.caliberId, 'ca2');
-  assert.equal(returned.caliberRuns, 1);
+  assert.equal(returned.caliberId, 'ca');
+  assert.equal(returned.caliberRuns, 0);
   assert.equal(result.resources.find(r => r.id === 'A').diameter, 77);
-  assert.equal(result.resources.find(r => r.id === 'A').caliberId, 'ca2');
-  const zero = twoCycle(c, [{ ...opening, runs: 0 }]);
-  assert.equal(c.simulateExchangeCycle(zero).events.filter(e => e.kind === 'ロール替')[1].caliberRuns, 0);
+  assert.equal(result.resources.find(r => r.id === 'A').caliberId, 'ca');
+  assert.equal(result.resources.find(r => r.id === 'A').runs, 0);
 });
 
-test('a missing or foreign post-rework opening does not copy the old caliber or become zero', () => {
+test('an undefined or unusable post-rework caliber does not copy the old runs or invent an id', () => {
   const c = api();
   const owner = { rollId: 'A', standKey: '10', size: 'D10', referenceAt: '2027-04-01' };
-  const base = twoCycle(c, []);
-  const stopped = c.simulateExchangeCycle(base);
+  const restarted = c.simulateExchangeCycle(twoCycle(c, [{ owner, generation: 1, caliberId: 'ca2', runs: 7 }]));
+  assert.equal(restarted.stopRecord, null);
+  assert.equal(restarted.events.filter(e => e.kind === 'ロール替')[1].caliberId, 'ca');
+  assert.equal(restarted.events.filter(e => e.kind === 'ロール替')[1].caliberRuns, 0);
+  const blocked = twoCycle(c, []);
+  blocked.unusableCalibers = [{ owner, generation: 1, caliberId: 'ca', usable: false }];
+  const stopped = c.simulateExchangeCycle(blocked);
   assert.equal(stopped.stopRecord.date, '2027-04-10');
   assert.equal(stopped.stopRecord.id, 'A');
+  assert.match(stopped.reason, /使用不可/);
   assert.match(stopped.reason, /不足なしとは判定しません/);
   assert.equal(stopped.events.filter(e => e.kind === 'ロール替').length, 1);
   assert.equal(stopped.resources.find(r => r.id === 'A').caliberId, 'ca');
+  assert.equal(stopped.resources.find(r => r.id === 'A').runs, 7);
   assert.equal(stopped.resources.find(r => r.id === 'A').frame, 'installedSpare');
-  assert.equal(stopped.events.some(e => e.date > '2027-04-10'), false);
-  for (const patch of [{ runs: -1 }, { runs: 0.5 }, { runs: 8 }, { caliberId: '' }, { generation: 2 }, { owner: { ...owner, standKey: '17' } }, { owner: { ...owner, size: 'D13' } }, { owner: { ...owner, referenceAt: '2027-05-01' } }, { owner: { ...owner, rollId: 'B' } }]) {
-    const input = twoCycle(c, [{ owner, generation: 1, caliberId: 'ca2', runs: 1, ...patch }]);
-    const result = c.simulateExchangeCycle(input);
-    assert.equal(result.stopRecord.date, '2027-04-10');
-    assert.equal(result.resources.find(r => r.id === 'A').caliberId, 'ca');
-  }
-  const duplicated = twoCycle(c, [
-    { owner, generation: 1, caliberId: 'ca2', runs: 1 },
-    { owner: { ...owner }, generation: 1, caliberId: 'other', runs: 1 }
-  ]);
-  assert.equal(c.simulateExchangeCycle(duplicated).stopRecord.date, '2027-04-10');
+  const foreign = twoCycle(c, []);
+  foreign.unusableCalibers = [{ owner: { ...owner, standKey: '17' }, generation: 1, caliberId: 'ca', usable: false }];
+  const ignored = c.simulateExchangeCycle(foreign);
+  assert.equal(ignored.stopRecord, null);
+  assert.equal(ignored.events.filter(e => e.kind === 'ロール替')[1].caliberRuns, 0);
+});
+
+test('a fiscal year outlook keeps the 405 ton basis and does not invent dates', () => {
+  const c = api();
+  assert.equal(c.provisionalReworkCalendarDays('2'), 20);
+  assert.equal(c.provisionalReworkCalendarDays('9'), 20);
+  assert.equal(c.provisionalReworkCalendarDays('10'), 30);
+  assert.equal(c.provisionalReworkCalendarDays('15'), 30);
+  assert.equal(c.provisionalReworkCalendarDays('16'), 60);
+  assert.equal(c.provisionalReworkCalendarDays('17'), 60);
+  assert.equal(c.provisionalReworkCalendarDays('1'), null);
+  assert.equal(c.addDays('2027-04-02', 20), '2027-04-22');
+  const text = c.buildFiscalOutlook({
+    referenceAt: '2027-01-15',
+    months: [{ month: '2026-05', productionTons: 810, sizes: ['D10'] }],
+    reworkLeadDays: { '14': 21 },
+    installedSpareCount: 0
+  });
+  assert.match(text, /年度は2026-04から2027-03/);
+  assert.match(text, /2026-04 暫定 10000t/);
+  assert.match(text, /2026-05 確定月 810t。D10 810t/);
+  assert.match(text, /1直405tで2直/);
+  assert.match(text, /パスラインは未確認/);
+  assert.match(text, /#14 改削LT 21暦日（個別の暫定値/);
+  assert.match(text, /#10 改削LT 30暦日（初期の暫定値/);
+  assert.match(text, /搬入日は作りません/);
+  assert.match(text, /購買データは未照合/);
+  assert.match(text, /暫定6か月/);
+  assert.match(text, /不足なしとは判定しません/);
+  assert.match(text, /3セット運用枠の早期警告/);
+  assert.equal(text.includes('2026-05-01'), false);
+  assert.equal(c.buildFiscalOutlook({}).includes('基準日が無い'), true);
 });
 
 test('used spare calibers are not restarted from the first one', () => {
@@ -508,7 +538,9 @@ test('a supplied anonymous horizon can pass thirteen months and a stopped return
   });
   assert.match(full.reason, /13か月の範囲まで同じ計算を繰り返しました/);
   assert.match(full.reason, /不足なしとは判定しません/);
-  const stopped = c.simulateExchangeCycle(twoCycle(c, []));
+  const blocked = twoCycle(c, []);
+  blocked.unusableCalibers = [{ owner: { rollId: 'A', standKey: '10', size: 'D10', referenceAt: '2027-04-01' }, generation: 1, caliberId: 'ca', usable: false }];
+  const stopped = c.simulateExchangeCycle(blocked);
   assert.equal(stopped.confirmedThrough < '2027-04-11', true);
   assert.match(stopped.reason, /対象期間は2027-04-01から2027-04-11です/);
   assert.match(stopped.reason, /確定して計算できた最終日は2027-04-09です/);
