@@ -10,6 +10,7 @@ async function main() {
     const context = await browser.newContext({ serviceWorkers: 'block', viewport: { width: 1280, height: 900 } });
     await context.route('**/*', route => {
       const url = new URL(route.request().url());
+      if (url.protocol === 'blob:' || url.protocol === 'data:') return route.continue();
       if (url.origin !== 'http://roll-app.test') return route.abort();
       const file = path.resolve(root, '.' + url.pathname);
       if (!file.startsWith(root + path.sep) || !fs.existsSync(file)) return route.abort();
@@ -340,15 +341,14 @@ async function main() {
       return buildMonthlyProductionExport([sealed.plan], null, '2026-04-30T00:00:00.000Z').file;
     });
     await page.locator('#prod-import-file').setInputFiles({ name: 'monthly-production-plan-history.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(yearFile)) });
-    await page.locator('#prod-import-preview').waitFor({ state: 'attached' });
-    assert.match(await page.locator('#prod-import-preview').textContent(), /まだ反映していません/);
+    await page.waitForFunction(() => (document.getElementById('prod-import-preview').textContent || '').includes('まだ反映していません'));
     assert.match(await page.locator('#prod-import-preview').textContent(), /2026-04/);
     await page.locator('#prod-import-apply').click();
     assert.match(await page.locator('#prod-plan-message').textContent(), /確定版を1件追加しました/);
     assert.match(await page.locator('#prod-plan-history').textContent(), /2026-05 確定 405t/);
     assert.match(await page.locator('#prod-plan-history').textContent(), /2027-05 確定 810t/);
     await page.locator('#prod-import-file').setInputFiles({ name: 'bad.json', mimeType: 'application/json', buffer: Buffer.from('{') });
-    assert.match(await page.locator('#prod-plan-message').textContent(), /壊れているので、反映していません/);
+    await page.waitForFunction(() => (document.getElementById('prod-plan-message').textContent || '').includes('壊れているので、反映していません'));
     assert.match(await page.locator('#prod-plan-history').textContent(), /2027-05 確定 810t/);
     await page.locator('#prod-import-undo').click();
     assert.match(await page.locator('#prod-plan-message').textContent(), /取り込み前の履歴へ戻しました/);

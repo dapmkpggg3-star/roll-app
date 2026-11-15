@@ -2934,8 +2934,10 @@ function downloadMonthlyProductionHistory() {
     link.download = 'monthly-production-plan-history.json';
     document.body.appendChild(link);
     link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    setTimeout(() => {
+        link.remove();
+        URL.revokeObjectURL(url);
+    }, 1500);
     message.textContent = `月次生産計画の確定履歴だけをファイルへ書き出しました。保存先はブラウザのダウンロードで、ファイル名は monthly-production-plan-history.json です。対象は ${MONTHLY_PRODUCTION_HISTORY_KEY} だけで、ロール台帳や通常の保存は含めていません。`;
 }
 
