@@ -258,6 +258,72 @@ function describeOutputFormSurvey() {
     ].join('\n');
 }
 
+const MONTHLY_PRODUCTION_HISTORY_KEY = 'monthly_production_plan_history_v1';
+
+function describeMonthlyProductionStore() {
+    return `保存先はこのブラウザの ${MONTHLY_PRODUCTION_HISTORY_KEY} だけです。別の端末や別のブラウザとは共有しません。実台帳、GAS、Sheets、通常の保存は変更していません。`;
+}
+
+function productionPlanRecordOk(plan, sealed) {
+    if (!plan || typeof plan.id !== 'string' || !plan.id || plan.sealed !== sealed) return false;
+    if (!Number.isInteger(plan.revision) || plan.revision < 0) return false;
+    if (typeof plan.parentId !== 'string') return false;
+    const expected = fiscalYearMonths(`${plan.fiscalStart}-01`);
+    if (expected.length !== 12 || plan.fiscalStart !== expected[0] || plan.fiscalEnd !== expected[11]) return false;
+    if (!Array.isArray(plan.months) || plan.months.length !== 12) return false;
+    const monthsOk = plan.months.every((item, index) => item && item.month === expected[index]
+        && ((item.classification === 'provisional' && item.productionTons === null)
+            || (item.classification === 'confirmed' && typeof item.productionTons === 'number' && Number.isFinite(item.productionTons) && item.productionTons >= 0))
+        && typeof item.size === 'string');
+    if (!monthsOk || !Array.isArray(plan.shiftRows)) return false;
+    if (sealed && (!plan.sealedAt || Number.isNaN(Date.parse(plan.sealedAt)))) return false;
+    return plan.shiftRows.every(row => row && typeof row.standKey === 'string' && typeof row.size === 'string'
+        && typeof row.caliberId === 'string' && typeof row.from === 'string' && typeof row.to === 'string'
+        && typeof row.tons === 'number' && Number.isFinite(row.tons) && row.tons >= 0
+        && row.shifts === Math.floor(row.tons / SHIFT_TONS_BASIS)
+        && row.passLine === '未確認' && typeof row.cumulativeShifts === 'number');
+}
+
+function readMonthlyProductionHistory(storage) {
+    let raw = null;
+    try {
+        raw = storage.getItem(MONTHLY_PRODUCTION_HISTORY_KEY);
+    } catch (error) {
+        return { ok: false, reason: '月次生産計画の保存データを読めません。読み込みません。' };
+    }
+    if (!raw) return { ok: true, empty: true, sealed: [], draft: null };
+    let parsed = null;
+    try {
+        parsed = JSON.parse(raw);
+    } catch (error) {
+        return { ok: false, reason: '月次生産計画の保存データが壊れています。読み込みません。' };
+    }
+    const broken = { ok: false, reason: '月次生産計画の保存データが壊れています。読み込みません。' };
+    if (!parsed || parsed.version !== 1 || parsed.scope !== 'browser-local' || !Array.isArray(parsed.sealed)) return broken;
+    if (!parsed.sealed.every(plan => productionPlanRecordOk(plan, true))) return broken;
+    if (parsed.draft != null && !productionPlanRecordOk(parsed.draft, false)) return broken;
+    const ids = parsed.sealed.map(plan => plan.id);
+    if (parsed.draft) ids.push(parsed.draft.id);
+    if (new Set(ids).size !== ids.length) return broken;
+    return { ok: true, empty: false, sealed: parsed.sealed, draft: parsed.draft || null };
+}
+
+function writeMonthlyProductionHistory(storage, sealed, draft) {
+    const payload = JSON.stringify({
+        version: 1,
+        scope: 'browser-local',
+        sealed: sealed || [],
+        draft: draft || null
+    });
+    try {
+        storage.setItem(MONTHLY_PRODUCTION_HISTORY_KEY, payload);
+    } catch (error) {
+        const quota = error && (error.name === 'QuotaExceededError' || error.code === 22);
+        return { ok: false, reason: quota ? 'このブラウザの保存容量が足りません。画面の記憶は残しますが、終了後の復元はできません。' : '月次生産計画の履歴を保存できません。画面の記憶は残します。' };
+    }
+    return { ok: true };
+}
+
 function planMonthKey(standKey, month) {
     return `${String(standKey)}|${String(month)}`;
 }
@@ -2506,6 +2572,7 @@ let unusableCaliberConfirmations = [];
 const reworkLeadOverrides = new Map();
 let monthlyProductionDraft = null;
 let monthlyProductionSealed = [];
+let monthlyProductionRestored = false;
 
 function scopedCycleSlots(slots, target, date, matchRoll) {
     return (Array.isArray(slots) ? slots : []).filter(slot => slot && slot.date === date
@@ -2591,6 +2658,29 @@ function registerReworkLead() {
     renderStandDemandList();
 }
 
+function persistMonthlyProductionHistory() {
+    if (typeof localStorage === 'undefined') return { ok: false, reason: 'このブラウザには保存先がありません。' };
+    return writeMonthlyProductionHistory(localStorage, monthlyProductionSealed, monthlyProductionDraft);
+}
+
+function monthlyProductionStatus(base) {
+    const saved = persistMonthlyProductionHistory();
+    return `${base}${saved.ok ? '' : saved.reason}${describeMonthlyProductionStore()}`;
+}
+
+function restoreMonthlyProductionHistory() {
+    if (monthlyProductionRestored || typeof localStorage === 'undefined') return;
+    monthlyProductionRestored = true;
+    const loaded = readMonthlyProductionHistory(localStorage);
+    const message = typeof document !== 'undefined' ? document.getElementById('prod-plan-message') : null;
+    if (!loaded.ok) {
+        if (message) message.textContent = `${loaded.reason}${describeMonthlyProductionStore()}`;
+        return;
+    }
+    monthlyProductionSealed = loaded.sealed;
+    monthlyProductionDraft = loaded.draft;
+}
+
 function renderMonthlyProductionPlan() {
     if (typeof document === 'undefined') return;
     const history = document.getElementById('prod-plan-history');
@@ -2609,7 +2699,7 @@ function createProductionDraftFromForm() {
         return;
     }
     monthlyProductionDraft = created.draft;
-    message.textContent = '作業中の年度版を作りました。確定版ではなく、実台帳や通常の保存には書いていません。';
+    message.textContent = monthlyProductionStatus('作業中の年度版を作りました。確定版ではなく、実台帳や通常の保存には書いていません。');
     renderMonthlyProductionPlan();
     renderStandDemandList();
 }
@@ -2626,7 +2716,7 @@ function saveProductionMonthFromForm() {
         return;
     }
     monthlyProductionDraft = updated.draft;
-    message.textContent = '作業中の版の対象月だけを更新しました。他の月と確定済みの履歴は変えていません。';
+    message.textContent = monthlyProductionStatus('作業中の版の対象月だけを更新しました。他の月と確定済みの履歴は変えていません。');
     renderMonthlyProductionPlan();
     renderStandDemandList();
 }
@@ -2640,7 +2730,7 @@ function sealProductionDraftFromForm() {
     }
     monthlyProductionSealed = monthlyProductionSealed.concat(sealed.plan);
     monthlyProductionDraft = null;
-    message.textContent = '確定版を履歴へ固定しました。この版は変更できません。実台帳や通常の保存には書いていません。';
+    message.textContent = monthlyProductionStatus('確定版を履歴へ固定しました。この版は変更できません。実台帳や通常の保存には書いていません。');
     renderMonthlyProductionPlan();
     renderStandDemandList();
 }
@@ -2653,7 +2743,7 @@ function reviseProductionPlanFromForm() {
         return;
     }
     monthlyProductionDraft = revised.draft;
-    message.textContent = '最新の確定版をコピーして作業中の改訂版を作りました。元の確定版は変更していません。';
+    message.textContent = monthlyProductionStatus('最新の確定版をコピーして作業中の改訂版を作りました。元の確定版は変更していません。');
     renderMonthlyProductionPlan();
     renderStandDemandList();
 }
@@ -2675,7 +2765,7 @@ function addShiftBasisFromForm() {
         return;
     }
     monthlyProductionDraft = added.draft;
-    message.textContent = '直数の計算根拠を作業中の版へ追加しました。パスラインは未確認のままです。実台帳や通常の保存には書いていません。';
+    message.textContent = monthlyProductionStatus('直数の計算根拠を作業中の版へ追加しました。パスラインは未確認のままです。実台帳や通常の保存には書いていません。');
     renderMonthlyProductionPlan();
 }
 
@@ -2683,7 +2773,7 @@ function ensureFiscalPlanTarget() {
     const list = document.getElementById('stand-demand-list');
     if (!list || document.getElementById('fiscal-plan')) return;
     list.insertAdjacentHTML('beforebegin', '<h3>年度の改削・購入見通し</h3><pre id="fiscal-plan"></pre>'
-        + '<h3>月次生産計画の版</h3><p>年度は4月〜翌3月です。未確定月は暫定10000tで、確定月とは分けます。確定版は変更せず、改訂はコピーから作ります。実台帳や通常の保存には書きません。</p>'
+        + '<h3>月次生産計画の版</h3><p id="prod-store-scope">年度は4月〜翌3月です。未確定月は暫定10000tで、確定月とは分けます。確定版は変更せず、改訂はコピーから新しい版IDを付けます。保存先はこのブラウザの monthly_production_plan_history_v1 だけです。別の端末や別のブラウザとは共有しません。実台帳、GAS、Sheets、通常の保存は変更しません。</p>'
         + '<label>年度の4月がある年 <input id="prod-fiscal-year" type="number" step="1"></label>'
         + '<button id="prod-create" type="button">作業中の年度版を作る</button>'
         + '<label>対象月 <input id="prod-month" type="month"></label>'
@@ -2711,6 +2801,7 @@ function ensureFiscalPlanTarget() {
     document.getElementById('prod-seal').addEventListener('click', sealProductionDraftFromForm);
     document.getElementById('prod-revise').addEventListener('click', reviseProductionPlanFromForm);
     document.getElementById('shift-add').addEventListener('click', addShiftBasisFromForm);
+    restoreMonthlyProductionHistory();
     renderMonthlyProductionPlan();
 }
 
@@ -3415,7 +3506,17 @@ function bindMonthlyScheduleFileInput() {
 }
 
 if (typeof document !== 'undefined') {
-    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bindMonthlyScheduleFileInput);
-    else bindMonthlyScheduleFileInput();
+    const bindIsolatedProductionHistory = () => {
+        if (!document.getElementById('stand-demand-list')) return;
+        ensureFiscalPlanTarget();
+        renderStandDemandList();
+    };
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', bindMonthlyScheduleFileInput);
+        document.addEventListener('DOMContentLoaded', bindIsolatedProductionHistory);
+    } else {
+        bindMonthlyScheduleFileInput();
+        bindIsolatedProductionHistory();
+    }
 }
 

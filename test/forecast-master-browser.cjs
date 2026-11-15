@@ -318,8 +318,32 @@ async function main() {
     assert.match(basis, /810t ÷ 1直405t = 2直/);
     assert.match(basis, /パスラインは記入がありますが根拠資料が無いので未確認/);
     assert.match(await page.locator('#output-form-gaps').innerText(), /原本のセル配置は確定していません/);
-    assert.equal(await page.evaluate(() => JSON.stringify({ ...localStorage })), storageBeforePlan);
-    assert.equal(await page.evaluate(() => JSON.stringify(roles)), reworkLedger);
+    assert.match(await page.locator('#prod-store-scope').innerText(), /別の端末や別のブラウザとは共有しません/);
+    const afterPlan = await page.evaluate(() => ({ ...localStorage }));
+    const beforePlan = JSON.parse(storageBeforePlan);
+    for (const key of new Set([...Object.keys(beforePlan), ...Object.keys(afterPlan)])) {
+      if (key === 'monthly_production_plan_history_v1') continue;
+      assert.equal(afterPlan[key], beforePlan[key]);
+    }
+    assert.match(afterPlan.monthly_production_plan_history_v1, /prod-2027-04-v0/);
+    assert.match(afterPlan.monthly_production_plan_history_v1, /prod-2027-04-v1/);
+    await page.reload();
+    await page.locator('#prod-plan-history').waitFor({ state: 'attached' });
+    assert.match(await page.locator('#prod-plan-history').textContent(), /確定版 prod-2027-04-v0/);
+    assert.match(await page.locator('#prod-plan-history').textContent(), /2027-05 確定 810t/);
+    await page.evaluate(() => { document.getElementById('forecast-reference').value = '2027-04-01'; renderStandDemandList(); });
+    assert.match(await page.locator('#fiscal-plan').textContent(), /確定1215t、1直405tで3直/);
+    const quota = await page.evaluate(() => writeMonthlyProductionHistory({
+      getItem() { return null; },
+      setItem() { const error = new Error('full'); error.name = 'QuotaExceededError'; throw error; }
+    }, [], null));
+    assert.match(quota.reason, /容量/);
+    await page.evaluate(() => localStorage.setItem('monthly_production_plan_history_v1', '{'));
+    await page.reload();
+    await page.locator('#prod-plan-message').waitFor({ state: 'attached' });
+    assert.match(await page.locator('#prod-plan-message').textContent(), /壊れています/);
+    assert.match(await page.locator('#prod-plan-history').textContent(), /版はまだありません/);
+    assert.equal(await page.evaluate(() => localStorage.getItem('roles')), beforePlan.roles ?? null);
     fs.mkdirSync(path.join(root, 'artifacts/roll001-dom'), { recursive: true });
     await page.screenshot({ path: path.join(root, 'artifacts/roll001-dom/forecast-master.png'), fullPage: true });
     const anonymous = await context.newPage();

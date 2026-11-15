@@ -558,6 +558,33 @@ test('a fiscal year outlook keeps the 405 ton basis and does not invent dates', 
   assert.equal(c.addShiftBasisRow(next.draft, { standKey: '10', size: 'D10', caliberId: 'ca', from: '2027-05-04', to: '2027-05-04' }).ok, false);
   assert.match(c.describeOutputFormSurvey(), /原本のセル配置は確定していません/);
   assert.match(c.describeOutputFormSurvey(), /位置指示書という原本は見つかっていません/);
+  const memory = { roles: '[]', operating_plan_revisions_v1: '[]' };
+  const store = {
+    getItem(key) { return Object.prototype.hasOwnProperty.call(memory, key) ? memory[key] : null; },
+    setItem(key, value) {
+      if (store.quota) { const error = new Error('full'); error.name = 'QuotaExceededError'; throw error; }
+      memory[key] = String(value);
+    }
+  };
+  const other = { getItem() { return null; }, setItem() { throw new Error('other device'); } };
+  assert.equal(c.writeMonthlyProductionHistory(store, [sealed.plan], june.draft).ok, true);
+  assert.equal(memory.roles, '[]');
+  assert.equal(memory.operating_plan_revisions_v1, '[]');
+  const restored = c.readMonthlyProductionHistory(store);
+  assert.equal(restored.sealed[0].months.find(item => item.month === '2027-05').productionTons, 810);
+  restored.sealed[0].months.find(item => item.month === '2027-05').productionTons = 1;
+  const reread = c.readMonthlyProductionHistory(store);
+  assert.equal(reread.sealed[0].months.find(item => item.month === '2027-05').productionTons, 810);
+  assert.equal(reread.draft.id, 'prod-2027-04-v1');
+  assert.match(c.buildFiscalOutlook({ referenceAt: '2027-05-01', months: c.outlookMonthsFromPlan(reread.draft, []), standKey: '10' }), /2027-06 確定月 405t/);
+  assert.equal(c.readMonthlyProductionHistory(other).empty, true);
+  store.setItem('monthly_production_plan_history_v1', '{');
+  assert.match(c.readMonthlyProductionHistory(store).reason, /壊れています/);
+  store.quota = true;
+  const failed = c.writeMonthlyProductionHistory(store, [sealed.plan], null);
+  assert.match(failed.reason, /容量/);
+  assert.equal(store.getItem('monthly_production_plan_history_v1'), '{');
+  assert.match(c.describeMonthlyProductionStore(), /別の端末や別のブラウザとは共有しません/);
 });
 
 test('used spare calibers are not restarted from the first one', () => {
