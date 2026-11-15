@@ -132,6 +132,132 @@ function threeSetForecast(source) {
     return lines.join('');
 }
 
+function copyProductionPlan(plan) {
+    return JSON.parse(JSON.stringify(plan));
+}
+
+function createMonthlyProductionDraft(fiscalYear, parent) {
+    const year = Number(fiscalYear);
+    const months = fiscalYearMonths(`${year}-04-01`);
+    if (!Number.isInteger(year) || months.length !== 12 || !months[0].endsWith('-04') || !months[11].endsWith('-03')) {
+        return { ok: false, reason: '年度は4月〜翌3月です。' };
+    }
+    const source = parent && parent.sealed ? copyProductionPlan(parent) : null;
+    const revision = source ? source.revision + 1 : 0;
+    return {
+        ok: true,
+        draft: {
+            id: `prod-${months[0]}-v${revision}`,
+            fiscalStart: months[0],
+            fiscalEnd: months[11],
+            parentId: source ? source.id : '',
+            revision,
+            sealed: false,
+            months: source ? source.months : months.map(month => ({ month, classification: 'provisional', productionTons: null, size: '' })),
+            shiftRows: source ? source.shiftRows : []
+        }
+    };
+}
+
+function updateMonthlyProductionMonth(draft, month, patch) {
+    if (!draft) return { ok: false, reason: '作業中の版がありません。' };
+    if (draft.sealed) return { ok: false, reason: '確定版は変更できません。改訂はコピーから作ってください。' };
+    const source = patch || {};
+    const classification = source.classification === 'confirmed' ? 'confirmed' : 'provisional';
+    if (!draft.months.some(item => item.month === month)) return { ok: false, reason: '対象月が年度4月〜翌3月の外です。' };
+    if (classification === 'confirmed' && (typeof source.productionTons !== 'number' || !Number.isFinite(source.productionTons) || source.productionTons < 0)) {
+        return { ok: false, reason: '確定月には0以上のトン数が必要です。空欄は確定値にしません。' };
+    }
+    const next = copyProductionPlan(draft);
+    next.months = next.months.map(item => item.month === month ? {
+        month,
+        classification,
+        productionTons: classification === 'confirmed' ? source.productionTons : null,
+        size: classification === 'confirmed' ? String(source.size || '').trim() : ''
+    } : item);
+    return { ok: true, draft: next };
+}
+
+function sealMonthlyProductionPlan(draft, sealedAt) {
+    if (!draft || draft.sealed) return { ok: false, reason: '確定済みの版は再度確定できません。' };
+    if (!sealedAt || Number.isNaN(Date.parse(sealedAt))) return { ok: false, reason: '確定日が不正です。' };
+    const plan = copyProductionPlan(draft);
+    plan.sealed = true;
+    plan.sealedAt = new Date(sealedAt).toISOString();
+    return { ok: true, plan };
+}
+
+function reviseMonthlyProductionPlan(plan) {
+    if (!plan || !plan.sealed) return { ok: false, reason: '改訂は確定版のコピーから作ります。' };
+    return createMonthlyProductionDraft(Number(plan.fiscalStart.slice(0, 4)), plan);
+}
+
+function addShiftBasisRow(draft, row) {
+    if (!draft) return { ok: false, reason: '作業中の版がありません。' };
+    if (draft.sealed) return { ok: false, reason: '確定版は変更できません。改訂はコピーから作ってください。' };
+    const source = row || {};
+    const standKey = String(source.standKey || '').replace(/^#/, '').trim();
+    const size = String(source.size || '').trim();
+    const caliberId = String(source.caliberId || '').trim();
+    const from = String(source.from || '').slice(0, 10);
+    const to = String(source.to || '').slice(0, 10);
+    const dated = value => /^\d{4}-\d{2}-\d{2}$/.test(value);
+    if (!standKey || !size || !caliberId || !dated(from) || !dated(to) || from > to) {
+        return { ok: false, reason: 'スタンド、サイズ、カリバ、使用期間を確認してください。' };
+    }
+    if (typeof source.tons !== 'number' || !Number.isFinite(source.tons) || source.tons < 0) {
+        return { ok: false, reason: '使用トン数が無いので直数は未確認です。推測で確定しません。' };
+    }
+    const shifts = Math.floor(source.tons / SHIFT_TONS_BASIS);
+    const remainder = source.tons % SHIFT_TONS_BASIS;
+    const prior = (draft.shiftRows || []).filter(item => item.standKey === standKey && item.size === size && item.caliberId === caliberId)
+        .reduce((sum, item) => sum + item.shifts, 0);
+    const passLine = String(source.passLine || '').trim();
+    const record = {
+        standKey, size, caliberId, from, to, tons: source.tons, shifts, remainder,
+        cumulativeShifts: prior + shifts,
+        passLine: '未確認',
+        process: `使用期間${from}から${to}。${source.tons}t ÷ 1直${SHIFT_TONS_BASIS}t = ${shifts}直、余り${remainder}t。同じスタンド・サイズ・カリバの累計は${prior}直にこの${shifts}直を足して${prior + shifts}直。パスラインは${passLine ? '記入がありますが根拠資料が無いので未確認' : '根拠が無いので未確認'}です。`
+    };
+    const next = copyProductionPlan(draft);
+    next.shiftRows = (next.shiftRows || []).concat(record);
+    return { ok: true, draft: next, row: record };
+}
+
+function outlookMonthsFromPlan(draft, scheduleMonths) {
+    const map = new Map();
+    (scheduleMonths || []).filter(recordedMonthConfirmed).forEach(item => map.set(item.month, item));
+    if (draft) draft.months.filter(item => item.classification === 'confirmed').forEach(item => {
+        map.set(item.month, { month: item.month, productionTons: item.productionTons, sizes: item.size ? [item.size] : [] });
+    });
+    return [...map.values()];
+}
+
+function describeMonthlyProductionPlans(sealed, draft) {
+    const lines = (sealed || []).map(plan => {
+        const months = plan.months.map(item => item.classification === 'confirmed' ? `${item.month} 確定 ${item.productionTons}t` : `${item.month} 暫定`).join('、');
+        return `確定版 ${plan.id} 元版${plan.parentId || 'なし'} 年度${plan.fiscalStart}から${plan.fiscalEnd}。変更できません。${months}`;
+    });
+    if (draft) lines.push(`作業中 ${draft.id} 元版${draft.parentId || 'なし'}。これは確定版ではありません。`);
+    return lines.length ? lines.join('\n') : '月次生産計画の版はまだありません。未確定月は暫定10000tのままです。';
+}
+
+function describeShiftBasis(plan) {
+    const rows = plan && plan.shiftRows || [];
+    if (!rows.length) return 'カリバ使用直数の確認表はまだありません。トン数の根拠が無い直数は未確認のままです。パスラインは推測で確定しません。';
+    return rows.map(row => `#${row.standKey} ${row.size} カリバ${row.caliberId} 使用期間${row.from}から${row.to} 累計${row.cumulativeShifts}直。${row.process}`).join('\n');
+}
+
+function describeOutputFormSurvey() {
+    return [
+        '出力仕様案です。原本のセル配置は確定していません。',
+        '年間改削・購入計画: 同じExcelのA3一枚にまとめる、という本人確定はあります。縦横とセル配置の原本は見つかっていません。数値の差し替え先は未確定です。',
+        '月間ロール・カリバ替予定: ローカルの生産予定ファイルに「ロール・カリバ替予定2026.10」という過去月のシートがあり、見えた見出しは日付、曜日、サイズ、操業、常昼、ロール替とカリバ替の記入です。過去月の値は現在の計画にせず、この並びも出力様式としては確定しません。',
+        '#12〜#17の位置指示書: 位置指示書という原本は見つかっていません。ロール管理表にスタンド対のシートはありますが、位置指示書と同一とは扱いません。位置は推測で確定しません。',
+        '不足資料: 年間計画のA3原本、月間予定表の現行原本、#12〜#17位置指示書の原本。'
+    ].join('\n');
+}
+
 function planMonthKey(standKey, month) {
     return `${String(standKey)}|${String(month)}`;
 }
@@ -2378,6 +2504,8 @@ let cycleSlotConfirmations = [];
 let reworkOpeningConfirmations = [];
 let unusableCaliberConfirmations = [];
 const reworkLeadOverrides = new Map();
+let monthlyProductionDraft = null;
+let monthlyProductionSealed = [];
 
 function scopedCycleSlots(slots, target, date, matchRoll) {
     return (Array.isArray(slots) ? slots : []).filter(slot => slot && slot.date === date
@@ -2463,10 +2591,127 @@ function registerReworkLead() {
     renderStandDemandList();
 }
 
+function renderMonthlyProductionPlan() {
+    if (typeof document === 'undefined') return;
+    const history = document.getElementById('prod-plan-history');
+    const shifts = document.getElementById('shift-basis-table');
+    const forms = document.getElementById('output-form-gaps');
+    if (history) history.textContent = describeMonthlyProductionPlans(monthlyProductionSealed, monthlyProductionDraft);
+    if (shifts) shifts.textContent = describeShiftBasis(monthlyProductionDraft || monthlyProductionSealed[monthlyProductionSealed.length - 1]);
+    if (forms) forms.textContent = describeOutputFormSurvey();
+}
+
+function createProductionDraftFromForm() {
+    const message = document.getElementById('prod-plan-message');
+    const created = createMonthlyProductionDraft(document.getElementById('prod-fiscal-year').value);
+    if (!created.ok) {
+        message.textContent = created.reason;
+        return;
+    }
+    monthlyProductionDraft = created.draft;
+    message.textContent = '作業中の年度版を作りました。確定版ではなく、実台帳や通常の保存には書いていません。';
+    renderMonthlyProductionPlan();
+    renderStandDemandList();
+}
+
+function saveProductionMonthFromForm() {
+    const message = document.getElementById('prod-plan-message');
+    const updated = updateMonthlyProductionMonth(monthlyProductionDraft, document.getElementById('prod-month').value, {
+        classification: document.getElementById('prod-class').value,
+        productionTons: document.getElementById('prod-tons').value.trim() === '' ? null : Number(document.getElementById('prod-tons').value),
+        size: document.getElementById('prod-size').value
+    });
+    if (!updated.ok) {
+        message.textContent = updated.reason;
+        return;
+    }
+    monthlyProductionDraft = updated.draft;
+    message.textContent = '作業中の版の対象月だけを更新しました。他の月と確定済みの履歴は変えていません。';
+    renderMonthlyProductionPlan();
+    renderStandDemandList();
+}
+
+function sealProductionDraftFromForm() {
+    const message = document.getElementById('prod-plan-message');
+    const sealed = sealMonthlyProductionPlan(monthlyProductionDraft, document.getElementById('prod-sealed-on').value);
+    if (!sealed.ok) {
+        message.textContent = sealed.reason;
+        return;
+    }
+    monthlyProductionSealed = monthlyProductionSealed.concat(sealed.plan);
+    monthlyProductionDraft = null;
+    message.textContent = '確定版を履歴へ固定しました。この版は変更できません。実台帳や通常の保存には書いていません。';
+    renderMonthlyProductionPlan();
+    renderStandDemandList();
+}
+
+function reviseProductionPlanFromForm() {
+    const message = document.getElementById('prod-plan-message');
+    const revised = reviseMonthlyProductionPlan(monthlyProductionSealed[monthlyProductionSealed.length - 1]);
+    if (!revised.ok) {
+        message.textContent = revised.reason;
+        return;
+    }
+    monthlyProductionDraft = revised.draft;
+    message.textContent = '最新の確定版をコピーして作業中の改訂版を作りました。元の確定版は変更していません。';
+    renderMonthlyProductionPlan();
+    renderStandDemandList();
+}
+
+function addShiftBasisFromForm() {
+    const message = document.getElementById('prod-plan-message');
+    const tonsText = document.getElementById('shift-tons').value.trim();
+    const added = addShiftBasisRow(monthlyProductionDraft, {
+        standKey: document.getElementById('shift-stand').value,
+        size: document.getElementById('shift-size').value,
+        caliberId: document.getElementById('shift-caliber').value,
+        from: document.getElementById('shift-from').value,
+        to: document.getElementById('shift-to').value,
+        tons: tonsText === '' ? null : Number(tonsText),
+        passLine: document.getElementById('shift-pass').value
+    });
+    if (!added.ok) {
+        message.textContent = added.reason;
+        return;
+    }
+    monthlyProductionDraft = added.draft;
+    message.textContent = '直数の計算根拠を作業中の版へ追加しました。パスラインは未確認のままです。実台帳や通常の保存には書いていません。';
+    renderMonthlyProductionPlan();
+}
+
 function ensureFiscalPlanTarget() {
     const list = document.getElementById('stand-demand-list');
     if (!list || document.getElementById('fiscal-plan')) return;
-    list.insertAdjacentHTML('beforebegin', '<h3>年度の改削・購入見通し</h3><pre id="fiscal-plan"></pre>');
+    list.insertAdjacentHTML('beforebegin', '<h3>年度の改削・購入見通し</h3><pre id="fiscal-plan"></pre>'
+        + '<h3>月次生産計画の版</h3><p>年度は4月〜翌3月です。未確定月は暫定10000tで、確定月とは分けます。確定版は変更せず、改訂はコピーから作ります。実台帳や通常の保存には書きません。</p>'
+        + '<label>年度の4月がある年 <input id="prod-fiscal-year" type="number" step="1"></label>'
+        + '<button id="prod-create" type="button">作業中の年度版を作る</button>'
+        + '<label>対象月 <input id="prod-month" type="month"></label>'
+        + '<label>トン数 <input id="prod-tons" type="number" min="0" step="1"></label>'
+        + '<label>区分 <select id="prod-class"><option value="provisional">暫定</option><option value="confirmed">確定</option></select></label>'
+        + '<label>サイズ <input id="prod-size" type="text"></label>'
+        + '<button id="prod-month-save" type="button">この月を作業中の版へ入れる</button>'
+        + '<label>確定日 <input id="prod-sealed-on" type="date"></label>'
+        + '<button id="prod-seal" type="button">作業中の版を確定して履歴へ固定</button>'
+        + '<button id="prod-revise" type="button">最新の確定版をコピーして改訂</button>'
+        + '<pre id="prod-plan-history"></pre>'
+        + '<h3>カリバ使用直数の確認表</h3><p>計算根拠は1直405tです。対象スタンド、サイズ、カリバ、使用期間、累計直数、計算過程を残します。パスラインは根拠が無いとき未確認です。</p>'
+        + '<label>スタンド <input id="shift-stand" type="text"></label>'
+        + '<label>サイズ <input id="shift-size" type="text"></label>'
+        + '<label>カリバ <input id="shift-caliber" type="text"></label>'
+        + '<label>使用開始 <input id="shift-from" type="date"></label>'
+        + '<label>使用終了 <input id="shift-to" type="date"></label>'
+        + '<label>使用トン数 <input id="shift-tons" type="number" min="0" step="1"></label>'
+        + '<label>パスライン <input id="shift-pass" type="text"></label>'
+        + '<button id="shift-add" type="button">直数の計算根拠を作業中の版へ追加</button>'
+        + '<pre id="shift-basis-table"></pre><p id="prod-plan-message" aria-live="polite"></p>'
+        + '<h3>帳票の出力仕様案</h3><pre id="output-form-gaps"></pre>');
+    document.getElementById('prod-create').addEventListener('click', createProductionDraftFromForm);
+    document.getElementById('prod-month-save').addEventListener('click', saveProductionMonthFromForm);
+    document.getElementById('prod-seal').addEventListener('click', sealProductionDraftFromForm);
+    document.getElementById('prod-revise').addEventListener('click', reviseProductionPlanFromForm);
+    document.getElementById('shift-add').addEventListener('click', addShiftBasisFromForm);
+    renderMonthlyProductionPlan();
 }
 
 function renderReworkOpeningRecords() {
@@ -2968,7 +3213,7 @@ function renderStandDemandList() {
         reworkLeadOverrides.forEach((value, stand) => { leadDays[stand] = value.days; });
         fiscal.textContent = buildFiscalOutlook({
             referenceAt: activeForecastReference(form, schedule),
-            months: schedule && schedule.months,
+            months: outlookMonthsFromPlan(monthlyProductionDraft, schedule && schedule.months),
             reworkLeadDays: leadDays,
             standKey: form.standKey,
             installedSpareCount: ledger.length ? spareCount : null

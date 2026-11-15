@@ -534,6 +534,30 @@ test('a fiscal year outlook keeps the 405 ton basis and does not invent dates', 
   assert.match(unknown, /安全確定しません/);
   assert.equal(unknown.includes('早期警告'), false);
   assert.equal(c.buildFiscalOutlook({}).includes('基準日が無い'), true);
+  const created = c.createMonthlyProductionDraft(2027);
+  assert.equal(created.ok, true);
+  assert.equal(created.draft.months[0].month, '2027-04');
+  assert.equal(created.draft.months[11].month, '2028-03');
+  assert.equal(created.draft.months.every(item => item.classification === 'provisional'), true);
+  const may = c.updateMonthlyProductionMonth(created.draft, '2027-05', { classification: 'confirmed', productionTons: 810, size: 'D10' });
+  const sealed = c.sealMonthlyProductionPlan(may.draft, '2027-04-30');
+  may.draft.months[1].productionTons = 1;
+  assert.equal(sealed.plan.months.find(item => item.month === '2027-05').productionTons, 810);
+  assert.equal(c.updateMonthlyProductionMonth(sealed.plan, '2027-05', { classification: 'confirmed', productionTons: 1 }).ok, false);
+  const revised = c.reviseMonthlyProductionPlan(sealed.plan);
+  const june = c.updateMonthlyProductionMonth(revised.draft, '2027-06', { classification: 'confirmed', productionTons: 405 });
+  assert.equal(sealed.plan.months.find(item => item.month === '2027-06').classification, 'provisional');
+  assert.equal(c.updateMonthlyProductionMonth(june.draft, '2027-03', { classification: 'confirmed', productionTons: 1 }).ok, false);
+  const row = c.addShiftBasisRow(june.draft, { standKey: '#10', size: 'D10', caliberId: 'ca', from: '2027-05-01', to: '2027-05-02', tons: 810, passLine: '仮' });
+  assert.equal(row.row.shifts, 2);
+  assert.equal(row.row.cumulativeShifts, 2);
+  assert.equal(row.row.passLine, '未確認');
+  assert.match(row.row.process, /810t ÷ 1直405t = 2直/);
+  const next = c.addShiftBasisRow(row.draft, { standKey: '10', size: 'D10', caliberId: 'ca', from: '2027-05-03', to: '2027-05-03', tons: 405 });
+  assert.equal(next.row.cumulativeShifts, 3);
+  assert.equal(c.addShiftBasisRow(next.draft, { standKey: '10', size: 'D10', caliberId: 'ca', from: '2027-05-04', to: '2027-05-04' }).ok, false);
+  assert.match(c.describeOutputFormSurvey(), /原本のセル配置は確定していません/);
+  assert.match(c.describeOutputFormSurvey(), /位置指示書という原本は見つかっていません/);
 });
 
 test('used spare calibers are not restarted from the first one', () => {
