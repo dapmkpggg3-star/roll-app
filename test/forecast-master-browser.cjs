@@ -250,6 +250,16 @@ async function main() {
     assert.match(fiscal, /パスラインは未確認/);
     assert.match(fiscal, /購買データは未照合/);
     assert.match(fiscal, /#10 改削LT 30暦日/);
+    const storageBeforeLead = await page.evaluate(() => JSON.stringify({ ...localStorage }));
+    await field('rework-lead-days', '21');
+    await page.locator('#rework-lead-register').click();
+    assert.match(await page.locator('#rework-lead-message').innerText(), /実台帳や通常の保存には書いていません/);
+    assert.match(await page.locator('#fiscal-plan').innerText(), /#10 改削LT 21暦日（個別/);
+    assert.match(await page.locator('#rework-lead-records').innerText(), /#2 20暦日（初期の暫定値）/);
+    assert.match(await page.locator('#rework-lead-records').innerText(), /#16 60暦日（初期の暫定値）/);
+    assert.equal(await page.evaluate(() => JSON.stringify({ ...localStorage })), storageBeforeLead);
+    await page.locator('#rework-lead-clear').click();
+    assert.match(await page.locator('#fiscal-plan').innerText(), /#10 改削LT 30暦日（初期の暫定値/);
     const storageBeforeRework = await page.evaluate(() => JSON.stringify({ ...localStorage }));
     await field('unusable-generation', '1');
     await field('unusable-caliber', 'ca');
@@ -264,6 +274,7 @@ async function main() {
     assert.match(await page.locator('#stand-demand-list').innerText(), /2027-04-10 ロール替[\s\S]*カリバca 開始0/);
     await page.evaluate(() => renderMonthlyScheduleSummary({ ...window.reworkFixture, sourceName: 'rework-replacement.xlsx' }));
     assert.match(await page.locator('#unusable-caliber-records').innerText(), /未登録/);
+    assert.match(await page.locator('#rework-lead-records').innerText(), /#10 30暦日（初期の暫定値）/);
     text = await page.locator('#cycle-result').innerText();
     assert.match(text, /予定「rework-replacement.xlsx」/);
     assert.equal(text.includes('カリバca2'), false);

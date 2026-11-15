@@ -2007,10 +2007,12 @@ function beginScheduleRead() {
     cycleSlotConfirmations = [];
     reworkOpeningConfirmations = [];
     unusableCaliberConfirmations = [];
+    reworkLeadOverrides.clear();
     renderSizeChangeRecords();
     renderCycleSlotRecords();
     renderReworkOpeningRecords();
     renderUnusableCaliberRecords();
+    renderReworkLeadRecords();
     return scheduleReadGeneration;
 }
 
@@ -2035,10 +2037,12 @@ function renderMonthlyScheduleSummary(summary) {
         cycleSlotConfirmations = [];
         reworkOpeningConfirmations = [];
         unusableCaliberConfirmations = [];
+        reworkLeadOverrides.clear();
         renderSizeChangeRecords();
         renderCycleSlotRecords();
         renderReworkOpeningRecords();
         renderUnusableCaliberRecords();
+        renderReworkLeadRecords();
     }
     if (summary && summary.ok !== false && Array.isArray(summary.months)) latestMonthlySummary = summary;
     if (summary && summary.ok === false) latestMonthlySummary = null;
@@ -2372,6 +2376,36 @@ function registerUnusableCaliber() {
     renderStandDemandList();
 }
 
+function renderReworkLeadRecords() {
+    if (typeof document === 'undefined') return;
+    const list = document.getElementById('rework-lead-records');
+    if (!list) return;
+    const lines = [];
+    for (let stand = 2; stand <= 17; stand += 1) {
+        const key = String(stand);
+        const override = reworkLeadOverrides.get(key);
+        const days = override ? override.days : provisionalReworkCalendarDays(key);
+        lines.push(`#${key} ${days}暦日（${override ? '個別の暫定値' : '初期の暫定値'}）`);
+    }
+    list.textContent = lines.join('\n');
+}
+
+function registerReworkLead() {
+    const message = document.getElementById('rework-lead-message');
+    const stand = String(document.getElementById('caliber-stand').value || '').replace(/^#/, '').trim();
+    const days = Number(document.getElementById('rework-lead-days').value);
+    const initial = provisionalReworkCalendarDays(stand);
+    if (initial === null || !Number.isInteger(days) || days < 0) {
+        message.textContent = 'スタンド#2〜#17と、0以上の暦日を確認してください。購入LTの暫定6か月とは別です。';
+        return;
+    }
+    reworkLeadOverrides.set(stand, { days });
+    message.textContent = `#${stand}の暫定改削LTを${days}暦日にしました。初期値は${initial}暦日です。実台帳や通常の保存には書いていません。`;
+    renderReworkLeadRecords();
+    renderExchangeCycle();
+    renderStandDemandList();
+}
+
 function ensureFiscalPlanTarget() {
     const list = document.getElementById('stand-demand-list');
     if (!list || document.getElementById('fiscal-plan')) return;
@@ -2540,7 +2574,7 @@ function ensureSizeChangeControls() {
         + '<button id="cycle-assembly-register" type="button">選択ロールの組替枠を登録</button>'
         + '<button id="cycle-slots-clear" type="button">交換・組替の登録をすべて解除</button>'
         + '<pre id="cycle-slot-records"></pre><p id="cycle-slot-message" aria-live="polite"></p>'
-        + '<h4>改削後の開始</h4><p>改削が終わった世代ごとに、そのロール・サイズ・基準日のカリバIDと開始直数を登録します。改削前の値はコピーしません。空欄は0直にしません。実台帳には保存しません。</p>'
+        + '<h4>改削後の開始</h4><p>定義済みのカリバは改削後0直から始めます。改削前の直数はコピーしません。未定義のカリバ番号と直数は作りません。実台帳には保存しません。</p>'
         + '<label>世代 <input id="rework-generation" type="number" min="1" step="1"></label>'
         + '<label>改削後カリバ <input id="rework-caliber" type="text"></label>'
         + '<label>開始直数 <input id="rework-runs" type="number" min="0" step="1"></label>'
@@ -2553,7 +2587,12 @@ function ensureSizeChangeControls() {
         + '<label>使用可否 <select id="unusable-choice"><option value="unusable">使用不可</option><option value="usable">使用可</option></select></label>'
         + '<button id="unusable-register" type="button">選択カリバの使用可否を登録</button>'
         + '<button id="unusable-clear" type="button">使用可否の登録をすべて解除</button>'
-        + '<pre id="unusable-caliber-records"></pre><p id="unusable-caliber-message" aria-live="polite"></p></fieldset>');
+        + '<pre id="unusable-caliber-records"></pre><p id="unusable-caliber-message" aria-live="polite"></p>'
+        + '<h4>スタンド別の暫定改削LT</h4><p>初期値は#2〜#9が20暦日、#10〜#15が30暦日、#16〜#17が60暦日です。土日祝を含み、購入LTの暫定6か月とは別です。変更はこの予測の記憶だけで、実台帳や通常の保存には書きません。</p>'
+        + '<label>暦日 <input id="rework-lead-days" type="number" min="0" step="1"></label>'
+        + '<button id="rework-lead-register" type="button">選択スタンドの暫定改削LTを登録</button>'
+        + '<button id="rework-lead-clear" type="button">暫定改削LTの変更をすべて解除</button>'
+        + '<pre id="rework-lead-records"></pre><p id="rework-lead-message" aria-live="polite"></p></fieldset>');
     document.getElementById('sizechange-register').addEventListener('click', registerSizeChange);
     document.getElementById('sizechange-example').addEventListener('click', openAnonymousSizeExample);
     document.getElementById('cycle-work-register').addEventListener('click', () => registerCycleSlot('work'));
@@ -2578,6 +2617,15 @@ function ensureSizeChangeControls() {
         renderExchangeCycle();
         renderStandDemandList();
     });
+    document.getElementById('rework-lead-register').addEventListener('click', registerReworkLead);
+    document.getElementById('rework-lead-clear').addEventListener('click', () => {
+        reworkLeadOverrides.clear();
+        const message = document.getElementById('rework-lead-message');
+        if (message) message.textContent = '暫定改削LTを初期値へ戻しました。実台帳や通常の保存は変更していません。';
+        renderReworkLeadRecords();
+        renderExchangeCycle();
+        renderStandDemandList();
+    });
     document.getElementById('sizechange-clear').addEventListener('click', () => {
         sizeChangeConfirmations = [];
         renderSizeChangeRecords();
@@ -2588,6 +2636,7 @@ function ensureSizeChangeControls() {
     renderCycleSlotRecords();
     renderReworkOpeningRecords();
     renderUnusableCaliberRecords();
+    renderReworkLeadRecords();
 }
 
 let workSlotOwner = null;
