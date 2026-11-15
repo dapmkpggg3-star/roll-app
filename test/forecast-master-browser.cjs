@@ -246,6 +246,8 @@ async function main() {
     assert.match(await page.locator('#stand-demand-list').innerText(), /2027-04-10 ロール替[\s\S]*カリバca 開始0/);
     const fiscal = await page.locator('#fiscal-plan').innerText();
     assert.match(fiscal, /年度は2027-04から2028-03/);
+    assert.match(fiscal, /未確定月の暫定値です。10000tも35:65も確定データではありません/);
+    assert.match(fiscal, /確定月が無いので、全月の直数は暫定10000tのまま/);
     assert.match(fiscal, /1直405t/);
     assert.match(fiscal, /パスラインは未確認/);
     assert.match(fiscal, /購買データは未照合/);

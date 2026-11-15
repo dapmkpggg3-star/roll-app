@@ -34,23 +34,50 @@ function fiscalYearMonths(referenceAt) {
     });
 }
 
+function shiftBasis(tons) {
+    return {
+        shifts: Math.floor(tons / SHIFT_TONS_BASIS),
+        remainder: tons % SHIFT_TONS_BASIS
+    };
+}
+
+function recordedMonthConfirmed(recorded) {
+    return !!(recorded && typeof recorded.productionTons === 'number' && recorded.productionTons >= 0);
+}
+
 function buildFiscalOutlook(input) {
     const source = input || {};
     const months = fiscalYearMonths(source.referenceAt);
     if (!months.length) return '基準日が無いので、年度4月〜翌3月の改削・購入計画は出しません。';
     const recordedMonths = new Map((source.months || []).filter(item => item && item.month).map(item => [item.month, item]));
-    const monthLines = months.map(month => {
+    const provisional = shiftBasis(PROVISIONAL_MONTH_TONS);
+    const monthFacts = months.map(month => {
         const recorded = recordedMonths.get(month);
-        const confirmed = recorded && typeof recorded.productionTons === 'number' && recorded.productionTons >= 0;
+        const confirmed = recordedMonthConfirmed(recorded);
         const tons = confirmed ? recorded.productionTons : PROVISIONAL_MONTH_TONS;
-        const shifts = Math.floor(tons / SHIFT_TONS_BASIS);
-        const remainder = tons % SHIFT_TONS_BASIS;
-        const singleSize = recorded && Array.isArray(recorded.sizes) && recorded.sizes.length === 1 ? recorded.sizes[0] : '';
-        const split = singleSize
-            ? `${singleSize} ${tons}t（この月の予定サイズ）`
-            : `D10 ${Math.round(tons * 0.35)}t / D13 ${Math.round(tons * 0.65)}t（既定35:65。確定比率ではありません）`;
-        return `${month} ${confirmed ? '確定月' : '暫定'} ${tons}t。${split}。直数の計算根拠は1直${SHIFT_TONS_BASIS}tで${shifts}直、余り${remainder}t。操業日には換算しません。パスラインは未確認です。`;
+        const after = shiftBasis(tons);
+        const singleSize = confirmed && recorded && Array.isArray(recorded.sizes) && recorded.sizes.length === 1 ? recorded.sizes[0] : '';
+        return { month, confirmed, tons, shifts: after.shifts, remainder: after.remainder, singleSize };
     });
+    const monthLines = monthFacts.map(fact => {
+        const split = fact.confirmed && fact.singleSize
+            ? `${fact.singleSize} ${fact.tons}t（確定月の予定サイズ。暫定の35:65は使いません）`
+            : fact.confirmed
+                ? `D10 ${Math.round(fact.tons * 0.35)}t / D13 ${Math.round(fact.tons * 0.65)}t（比率35:65は暫定値です。確定トン数とは別であり、確定データではありません）`
+                : `D10 ${Math.round(PROVISIONAL_MONTH_TONS * 0.35)}t / D13 ${Math.round(PROVISIONAL_MONTH_TONS * 0.65)}t（未確定月の暫定値です。10000tも35:65も確定データではありません）`;
+        if (!fact.confirmed) {
+            return `${fact.month} 暫定 ${PROVISIONAL_MONTH_TONS}t。${split}。直数の計算根拠は1直${SHIFT_TONS_BASIS}tで${provisional.shifts}直、余り${provisional.remainder}t。この月は確定値で置換していません。操業日には換算しません。パスラインは未確認です。`;
+        }
+        return `${fact.month} 確定月 ${fact.tons}t。${split}。変更前の計算根拠は暫定${PROVISIONAL_MONTH_TONS}t、1直${SHIFT_TONS_BASIS}tで${provisional.shifts}直、余り${provisional.remainder}t。変更後の計算根拠は確定${fact.tons}t、1直${SHIFT_TONS_BASIS}tで${fact.shifts}直、余り${fact.remainder}t。この月だけを置換し、他の月の暫定値は残します。操業日には換算しません。パスラインは未確認です。`;
+    });
+    const confirmedMonths = monthFacts.filter(fact => fact.confirmed);
+    const beforeShifts = months.length * provisional.shifts;
+    const beforeRemainder = months.length * provisional.remainder;
+    const afterShifts = monthFacts.reduce((sum, fact) => sum + fact.shifts, 0);
+    const afterRemainder = monthFacts.reduce((sum, fact) => sum + fact.remainder, 0);
+    const propagation = confirmedMonths.length
+        ? `確定値で置換した月は${confirmedMonths.map(fact => fact.month).join('、')}だけです。後続月の直数は、それぞれの暫定${PROVISIONAL_MONTH_TONS}t、またはその月自身の確定値から計算し直しました。変更前の年間直数は暫定${PROVISIONAL_MONTH_TONS}t×${months.length}か月、1直${SHIFT_TONS_BASIS}tで${beforeShifts}直、余り${beforeRemainder}t。変更後の年間直数は${afterShifts}直、余り${afterRemainder}tです。確定月の直数を後続月へコピーしません。後続の改削需要は計算し直しましたが、直数の差を改削の本数と日付にはしません。後続の購入需要も計算し直しましたが、直数の差を購入本数と購入日にはしません。`
+        : `確定月が無いので、全月の直数は暫定${PROVISIONAL_MONTH_TONS}tのままです。変更前も変更後も年間直数は1直${SHIFT_TONS_BASIS}tで${beforeShifts}直、余り${beforeRemainder}tです。後続の改削需要と購入需要は、月間トン数から本数と日付を作りません。`;
     const standLines = [];
     for (let stand = 2; stand <= 17; stand += 1) {
         const key = String(stand);
@@ -58,21 +85,51 @@ function buildFiscalOutlook(input) {
         const days = override === null ? provisionalReworkCalendarDays(key) : override;
         standLines.push(`#${key} 改削LT ${days}暦日（${override === null ? '初期の暫定値' : '個別の暫定値'}、変更可、土日祝を含む）。搬出日が無いので搬入日は作りません。`);
     }
-    const spare = source.installedSpareCount;
-    const warning = spare === 0
-        ? '3セット運用枠の早期警告: 組込済み予備がありません。改削のあいだ枠を維持できるかは未確認です。不足の確定日ではありません。3セットはロール3本のことではありません。'
-        : '3セット運用枠の早期警告は未確認です。日別の使用可能予備が無い月を不足なしにはしません。3セットはロール3本のことではありません。';
     return [
         `年度は${months[0]}から${months[months.length - 1]}です。年間改削計画と年間ロール購入計画は月単位の見通しです。`,
         '日別のロール・カリバ替日は、確定した月の生産予定があるときだけ別計算です。月間トン数からは作りません。',
-        `計算根拠: 直数は1直${SHIFT_TONS_BASIS}t。パスラインの確認が必要な値は未確認です。月${PROVISIONAL_MONTH_TONS}t・年120000t、D10 35%・D13 65%は本人指定の暫定です。`,
+        `計算根拠: 直数は1直${SHIFT_TONS_BASIS}t。パスラインの確認が必要な値は未確認です。未確定月の${PROVISIONAL_MONTH_TONS}t・年120000t、D10 35%・D13 65%は暫定値です。確定データではありません。`,
         monthLines.join('\n'),
+        propagation,
         '年間改削計画',
         standLines.join('\n'),
         '年間ロール購入計画',
         '購買データは未照合です。購入LTは暫定6か月で、確定の購入日ではありません。不足なしとは判定しません。発注済みの1本で他の不足を消しません。',
-        warning
+        threeSetForecast(source)
     ].join('\n');
+}
+
+function threeSetForecast(source) {
+    const spare = source.installedSpareCount;
+    const stand = String(source.standKey || '').replace(/^#/, '');
+    const override = source.reworkLeadDays && Number.isInteger(source.reworkLeadDays[stand]) ? source.reworkLeadDays[stand] : null;
+    const reworkDays = provisionalReworkCalendarDays(stand);
+    const days = override === null ? reworkDays : override;
+    const departure = String(source.reworkDepartureOn || '').slice(0, 10);
+    const orderedOn = String(source.purchaseOrderedOn || '').slice(0, 10);
+    const dated = value => /^\d{4}-\d{2}-\d{2}$/.test(value);
+    const lines = ['3セット運用枠の見通し: 3セットはロール3本のことではありません。'];
+    if (typeof spare !== 'number') {
+        lines.push('現在の組込済み予備は未確認です。');
+    } else if (spare === 0) {
+        lines.push('3セット運用枠の早期警告: 現在の組込済み予備は0です。これは早期警告であり、不足の確定日ではありません。');
+    } else {
+        lines.push(`現在の組込済み予備は${spare}です。この本数が将来の改削中も枠を埋めるかは未確認です。不足なしとは判定しません。`);
+    }
+    if (days === null) {
+        lines.push('対象スタンドの改削LTは未確認です。将来の戻り日は安全確定しません。');
+    } else if (!dated(departure)) {
+        lines.push(`#${stand}の改削LTは暫定${days}暦日です。搬出日が無いので、将来の戻り日は作らず未確認です。`);
+    } else {
+        lines.push(`#${stand}の搬出${departure}に暫定${days}暦日を足した戻り見込みは${addDays(departure, days)}です。確定の搬入日ではなく、組替完了でもありません。`);
+    }
+    if (!dated(orderedOn)) {
+        lines.push(`購入LTは暫定${PROVISIONAL_LEAD_TIME_MONTHS}か月です。発注日が無いので、将来の補充日は作らず未確認です。発注済みの1本で他の不足は消しません。`);
+    } else {
+        lines.push(`発注日${orderedOn}からの購入LTは暫定${PROVISIONAL_LEAD_TIME_MONTHS}か月です。補充の確定日にはしません。他のスタンドの不足は消しません。`);
+    }
+    lines.push('改削LTと購入LTを考慮しても、足りない情報は未確認のままです。不足なしとは判定しません。');
+    return lines.join('');
 }
 
 function planMonthKey(standKey, month) {
@@ -2913,6 +2970,7 @@ function renderStandDemandList() {
             referenceAt: activeForecastReference(form, schedule),
             months: schedule && schedule.months,
             reworkLeadDays: leadDays,
+            standKey: form.standKey,
             installedSpareCount: ledger.length ? spareCount : null
         });
     }

@@ -489,14 +489,24 @@ test('a fiscal year outlook keeps the 405 ton basis and does not invent dates', 
   assert.equal(c.addDays('2027-04-02', 20), '2027-04-22');
   const text = c.buildFiscalOutlook({
     referenceAt: '2027-01-15',
+    standKey: '10',
     months: [{ month: '2026-05', productionTons: 810, sizes: ['D10'] }],
     reworkLeadDays: { '14': 21 },
     installedSpareCount: 0
   });
   assert.match(text, /年度は2026-04から2027-03/);
   assert.match(text, /2026-04 暫定 10000t/);
+  assert.match(text, /未確定月の暫定値です。10000tも35:65も確定データではありません/);
   assert.match(text, /2026-05 確定月 810t。D10 810t/);
-  assert.match(text, /1直405tで2直/);
+  assert.match(text, /暫定の35:65は使いません/);
+  assert.match(text, /変更前の計算根拠は暫定10000t、1直405tで24直/);
+  assert.match(text, /変更後の計算根拠は確定810t、1直405tで2直/);
+  assert.match(text, /確定値で置換した月は2026-05だけ/);
+  assert.match(text, /2026-06 暫定 10000t/);
+  assert.match(text, /変更前の年間直数は暫定10000t×12か月、1直405tで288直/);
+  assert.match(text, /変更後の年間直数は266直/);
+  assert.match(text, /後続の改削需要は計算し直しましたが、直数の差を改削の本数と日付にはしません/);
+  assert.match(text, /後続の購入需要も計算し直しましたが、直数の差を購入本数と購入日にはしません/);
   assert.match(text, /パスラインは未確認/);
   assert.match(text, /#14 改削LT 21暦日（個別の暫定値/);
   assert.match(text, /#10 改削LT 30暦日（初期の暫定値/);
@@ -504,8 +514,25 @@ test('a fiscal year outlook keeps the 405 ton basis and does not invent dates', 
   assert.match(text, /購買データは未照合/);
   assert.match(text, /暫定6か月/);
   assert.match(text, /不足なしとは判定しません/);
-  assert.match(text, /3セット運用枠の早期警告/);
+  assert.match(text, /3セット運用枠の早期警告: 現在の組込済み予備は0/);
+  assert.match(text, /将来の戻り日は作らず未確認/);
+  assert.match(text, /将来の補充日は作らず未確認/);
   assert.equal(text.includes('2026-05-01'), false);
+  assert.equal(text.includes('不足なし。'), false);
+  const dated = c.buildFiscalOutlook({
+    referenceAt: '2027-01-15',
+    standKey: '10',
+    installedSpareCount: 0,
+    reworkDepartureOn: '2026-05-02',
+    purchaseOrderedOn: '2026-05-02'
+  });
+  assert.match(dated, /戻り見込みは2026-06-01/);
+  assert.match(dated, /確定の搬入日ではなく/);
+  assert.match(dated, /補充の確定日にはしません/);
+  const unknown = c.buildFiscalOutlook({ referenceAt: '2027-01-15' });
+  assert.match(unknown, /現在の組込済み予備は未確認/);
+  assert.match(unknown, /安全確定しません/);
+  assert.equal(unknown.includes('早期警告'), false);
   assert.equal(c.buildFiscalOutlook({}).includes('基準日が無い'), true);
 });
 
