@@ -327,6 +327,33 @@ async function main() {
     }
     assert.match(afterPlan.monthly_production_plan_history_v1, /prod-2027-04-v0/);
     assert.match(afterPlan.monthly_production_plan_history_v1, /prod-2027-04-v1/);
+    const downloadPromise = page.waitForEvent('download');
+    await page.locator('#prod-export').click();
+    const download = await downloadPromise;
+    assert.equal(download.suggestedFilename(), 'monthly-production-plan-history.json');
+    const exportedText = await fs.promises.readFile(await download.path(), 'utf8');
+    assert.match(exportedText, /monthly_production_plan_history_v1/);
+    assert.equal(exportedText.includes('operating_plan_revisions_v1'), false);
+    const yearFile = await page.evaluate(() => {
+      const month = updateMonthlyProductionMonth(createMonthlyProductionDraft(2026).draft, '2026-05', { classification: 'confirmed', productionTons: 405, size: 'D10' });
+      const sealed = sealMonthlyProductionPlan(month.draft, '2026-04-30');
+      return buildMonthlyProductionExport([sealed.plan], null, '2026-04-30T00:00:00.000Z').file;
+    });
+    await page.locator('#prod-import-file').setInputFiles({ name: 'monthly-production-plan-history.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(yearFile)) });
+    await page.locator('#prod-import-preview').waitFor({ state: 'attached' });
+    assert.match(await page.locator('#prod-import-preview').textContent(), /まだ反映していません/);
+    assert.match(await page.locator('#prod-import-preview').textContent(), /2026-04/);
+    await page.locator('#prod-import-apply').click();
+    assert.match(await page.locator('#prod-plan-message').textContent(), /確定版を1件追加しました/);
+    assert.match(await page.locator('#prod-plan-history').textContent(), /2026-05 確定 405t/);
+    assert.match(await page.locator('#prod-plan-history').textContent(), /2027-05 確定 810t/);
+    await page.locator('#prod-import-file').setInputFiles({ name: 'bad.json', mimeType: 'application/json', buffer: Buffer.from('{') });
+    assert.match(await page.locator('#prod-plan-message').textContent(), /壊れているので、反映していません/);
+    assert.match(await page.locator('#prod-plan-history').textContent(), /2027-05 確定 810t/);
+    await page.locator('#prod-import-undo').click();
+    assert.match(await page.locator('#prod-plan-message').textContent(), /取り込み前の履歴へ戻しました/);
+    assert.equal((await page.locator('#prod-plan-history').textContent()).includes('2026-05 確定 405t'), false);
+    assert.match(await page.locator('#prod-plan-history').textContent(), /2027-05 確定 810t/);
     await page.reload();
     await page.locator('#prod-plan-history').waitFor({ state: 'attached' });
     assert.match(await page.locator('#prod-plan-history').textContent(), /確定版 prod-2027-04-v0/);

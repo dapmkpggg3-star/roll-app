@@ -324,6 +324,156 @@ function writeMonthlyProductionHistory(storage, sealed, draft) {
     return { ok: true };
 }
 
+const MONTHLY_PRODUCTION_FILE_KIND = 'roll-app-monthly-production-history';
+const MONTHLY_PRODUCTION_IMPORT_ROLLBACK_KEY = 'monthly_production_plan_import_rollback_v1';
+
+function monthlyProductionChecksum(payload) {
+    const text = JSON.stringify(payload);
+    let hash = 0x811c9dc5;
+    for (let index = 0; index < text.length; index += 1) {
+        hash ^= text.charCodeAt(index);
+        hash = Math.imul(hash, 0x01000193);
+    }
+    return `fnv1a:${(hash >>> 0).toString(16).padStart(8, '0')}`;
+}
+
+function readMonthlyProductionText(raw) {
+    return readMonthlyProductionHistory({ getItem() { return raw; } });
+}
+
+function buildMonthlyProductionExport(sealed, draft, savedAt) {
+    const loaded = readMonthlyProductionText(JSON.stringify({ version: 1, scope: 'browser-local', sealed: sealed || [], draft: null }));
+    if (!loaded.ok) return { ok: false, reason: loaded.reason };
+    if (!loaded.sealed.length) return { ok: false, reason: '書き出す確定履歴がありません。ファイルは作っていません。' };
+    const file = {
+        kind: MONTHLY_PRODUCTION_FILE_KIND,
+        version: 1,
+        savedAt: String(savedAt || ''),
+        sourceKey: MONTHLY_PRODUCTION_HISTORY_KEY,
+        contains: 'monthly-production-plan-history-only',
+        history: { version: 1, scope: 'browser-local', sealed: loaded.sealed, draft: null }
+    };
+    file.checksum = monthlyProductionChecksum({
+        kind: file.kind,
+        version: file.version,
+        savedAt: file.savedAt,
+        sourceKey: file.sourceKey,
+        contains: file.contains,
+        history: file.history
+    });
+    return { ok: true, file };
+}
+
+function verifyMonthlyProductionFile(file) {
+    if (!file || file.kind !== MONTHLY_PRODUCTION_FILE_KIND || file.version !== 1) {
+        return { ok: false, reason: '月次生産計画の履歴ファイルではありません。ロールの復旧ファイルとは別なので、反映していません。' };
+    }
+    if (file.sourceKey !== MONTHLY_PRODUCTION_HISTORY_KEY || file.contains !== 'monthly-production-plan-history-only' || !file.history) {
+        return { ok: false, reason: '対象データが月次生産計画の履歴ではありません。反映していません。' };
+    }
+    const checksum = file.checksum;
+    const body = {
+        kind: file.kind,
+        version: file.version,
+        savedAt: file.savedAt,
+        sourceKey: file.sourceKey,
+        contains: file.contains,
+        history: file.history
+    };
+    if (checksum !== monthlyProductionChecksum(body)) {
+        return { ok: false, reason: '履歴ファイルの検証に失敗したので、反映していません。' };
+    }
+    const loaded = readMonthlyProductionText(JSON.stringify(file.history));
+    if (!loaded.ok) return { ok: false, reason: `${loaded.reason}反映していません。` };
+    return { ok: true, sealed: loaded.sealed };
+}
+
+function previewMonthlyProductionImport(file, current) {
+    const verified = verifyMonthlyProductionFile(file);
+    if (!verified.ok) return verified;
+    if (!current || current.ok === false || !Array.isArray(current.sealed)) {
+        return { ok: false, reason: '今の履歴を確認できないので、反映していません。' };
+    }
+    const additions = [];
+    const skipped = [];
+    for (const plan of verified.sealed) {
+        const existing = current.sealed.find(item => item.id === plan.id);
+        if (!existing) {
+            additions.push(plan);
+            continue;
+        }
+        if (JSON.stringify(existing) === JSON.stringify(plan)) {
+            skipped.push(plan.id);
+            continue;
+        }
+        return { ok: false, reason: `確定版${plan.id}は既にあり、内容が違うので上書きしません。反映していません。` };
+    }
+    const currentYears = new Set(current.sealed.map(plan => plan.fiscalStart));
+    const addedYears = [...new Set(additions.map(plan => plan.fiscalStart).filter(year => !currentYears.has(year)))];
+    const lines = [
+        `対象は ${MONTHLY_PRODUCTION_HISTORY_KEY} だけです。ロール台帳や通常の復旧ファイルは変更しません。`,
+        `追加する確定版は${additions.length}件です。`,
+        additions.map(plan => `${plan.id} 年度${plan.fiscalStart}から${plan.fiscalEnd}`).join('\n'),
+        addedYears.length ? `今の履歴に無い年度: ${addedYears.join('、')}` : '',
+        skipped.length ? `同じ内容の版は追加しません: ${skipped.join('、')}` : '',
+        '作業中の版はファイルで置き換えません。まだ反映していません。'
+    ].filter(Boolean);
+    return { ok: true, additions, skipped, addedYears, summary: lines.join('\n') };
+}
+
+function applyMonthlyProductionImport(storage, file, options) {
+    if (!options || options.confirmed !== true) return { ok: false, applied: false, reason: '確認前なので反映していません。' };
+    const current = readMonthlyProductionHistory(storage);
+    if (!current.ok) return { ok: false, applied: false, reason: `${current.reason}反映していません。` };
+    const preview = previewMonthlyProductionImport(file, current);
+    if (!preview.ok) return { ok: false, applied: false, reason: preview.reason };
+    const before = storage.getItem(MONTHLY_PRODUCTION_HISTORY_KEY);
+    try {
+        storage.setItem(MONTHLY_PRODUCTION_IMPORT_ROLLBACK_KEY, JSON.stringify({
+            version: 1,
+            scope: 'browser-local',
+            sealed: current.sealed,
+            draft: current.draft
+        }));
+    } catch (error) {
+        return { ok: false, applied: false, reason: '取り込み前の控えを保存できないので、反映していません。' };
+    }
+    const written = writeMonthlyProductionHistory(storage, current.sealed.concat(preview.additions), current.draft);
+    if (!written.ok) return { ok: false, applied: false, reason: `${written.reason}反映していません。` };
+    const after = readMonthlyProductionHistory(storage);
+    if (!after.ok || after.sealed.length !== current.sealed.length + preview.additions.length) {
+        try {
+            if (before === null) storage.removeItem(MONTHLY_PRODUCTION_HISTORY_KEY);
+            else storage.setItem(MONTHLY_PRODUCTION_HISTORY_KEY, before);
+        } catch (error) {
+            return { ok: false, applied: false, reason: '保存の確認に失敗し、元の履歴へ戻すことにも失敗しました。' };
+        }
+        return { ok: false, applied: false, reason: '保存の確認に失敗したので、元の履歴を維持します。反映していません。' };
+    }
+    return { ok: true, applied: true, added: preview.additions.length, skipped: preview.skipped };
+}
+
+function undoMonthlyProductionImport(storage, options) {
+    if (!options || options.confirmed !== true) return { ok: false, applied: false, reason: '確認前なので取り消していません。' };
+    let raw = null;
+    try {
+        raw = storage.getItem(MONTHLY_PRODUCTION_IMPORT_ROLLBACK_KEY);
+    } catch (error) {
+        return { ok: false, applied: false, reason: '取り消し用の控えを読めません。今の履歴は変更していません。' };
+    }
+    if (!raw) return { ok: false, applied: false, reason: '取り消す取り込みがありません。履歴は変更していません。' };
+    const loaded = readMonthlyProductionText(raw);
+    if (!loaded.ok) return { ok: false, applied: false, reason: '取り消し用の控えが壊れているので、今の履歴は変更していません。' };
+    const written = writeMonthlyProductionHistory(storage, loaded.sealed, loaded.draft);
+    if (!written.ok) return { ok: false, applied: false, reason: `${written.reason}取り消しは反映していません。` };
+    try {
+        storage.removeItem(MONTHLY_PRODUCTION_IMPORT_ROLLBACK_KEY);
+    } catch (error) {
+        return { ok: false, applied: true, reason: '履歴は戻しましたが、控えの削除に失敗しました。' };
+    }
+    return { ok: true, applied: true };
+}
+
 function planMonthKey(standKey, month) {
     return `${String(standKey)}|${String(month)}`;
 }
@@ -2573,6 +2723,7 @@ const reworkLeadOverrides = new Map();
 let monthlyProductionDraft = null;
 let monthlyProductionSealed = [];
 let monthlyProductionRestored = false;
+let monthlyProductionPendingImport = null;
 
 function scopedCycleSlots(slots, target, date, matchRoll) {
     return (Array.isArray(slots) ? slots : []).filter(slot => slot && slot.date === date
@@ -2769,6 +2920,100 @@ function addShiftBasisFromForm() {
     renderMonthlyProductionPlan();
 }
 
+function downloadMonthlyProductionHistory() {
+    const message = document.getElementById('prod-plan-message');
+    const built = buildMonthlyProductionExport(monthlyProductionSealed, monthlyProductionDraft, new Date().toISOString());
+    if (!built.ok) {
+        message.textContent = built.reason;
+        return;
+    }
+    const blob = new Blob([JSON.stringify(built.file, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'monthly-production-plan-history.json';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    message.textContent = `月次生産計画の確定履歴だけをファイルへ書き出しました。保存先はブラウザのダウンロードで、ファイル名は monthly-production-plan-history.json です。対象は ${MONTHLY_PRODUCTION_HISTORY_KEY} だけで、ロール台帳や通常の保存は含めていません。`;
+}
+
+function stageMonthlyProductionImport(event) {
+    const file = event.target.files && event.target.files[0];
+    event.target.value = '';
+    const message = document.getElementById('prod-plan-message');
+    const preview = document.getElementById('prod-import-preview');
+    monthlyProductionPendingImport = null;
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+        let parsed = null;
+        try {
+            parsed = JSON.parse(String(reader.result || ''));
+        } catch (error) {
+            if (preview) preview.textContent = '履歴ファイルを読めません。反映していません。';
+            message.textContent = '履歴ファイルが壊れているので、反映していません。';
+            return;
+        }
+        const result = previewMonthlyProductionImport(parsed, { ok: true, sealed: monthlyProductionSealed, draft: monthlyProductionDraft });
+        if (!result.ok) {
+            if (preview) preview.textContent = result.reason;
+            message.textContent = result.reason;
+            return;
+        }
+        monthlyProductionPendingImport = parsed;
+        if (preview) preview.textContent = result.summary;
+        message.textContent = '内容を確認しました。まだ反映していません。';
+    };
+    reader.readAsText(file, 'UTF-8');
+}
+
+function confirmMonthlyProductionImport() {
+    const message = document.getElementById('prod-plan-message');
+    if (!monthlyProductionPendingImport) {
+        message.textContent = '確認するファイルがありません。反映していません。';
+        return;
+    }
+    const result = applyMonthlyProductionImport(localStorage, monthlyProductionPendingImport, { confirmed: true });
+    if (!result.ok || !result.applied) {
+        message.textContent = result.reason;
+        return;
+    }
+    const loaded = readMonthlyProductionHistory(localStorage);
+    if (!loaded.ok) {
+        message.textContent = `${loaded.reason}反映した結果を画面へ戻していません。`;
+        return;
+    }
+    monthlyProductionSealed = loaded.sealed;
+    monthlyProductionDraft = loaded.draft;
+    monthlyProductionPendingImport = null;
+    message.textContent = result.added
+        ? `履歴ファイルから確定版を${result.added}件追加しました。既存の確定版は上書きしていません。${describeMonthlyProductionStore()}`
+        : `新しい確定版はないので追加していません。既存の確定版は変更していません。${describeMonthlyProductionStore()}`;
+    renderMonthlyProductionPlan();
+    renderStandDemandList();
+}
+
+function undoMonthlyProductionImportFromForm() {
+    const message = document.getElementById('prod-plan-message');
+    const result = undoMonthlyProductionImport(localStorage, { confirmed: true });
+    if (!result.applied) {
+        message.textContent = result.reason;
+        return;
+    }
+    const loaded = readMonthlyProductionHistory(localStorage);
+    if (!loaded.ok) {
+        message.textContent = '取り消し後の履歴を読めません。成功とは表示しません。';
+        return;
+    }
+    monthlyProductionSealed = loaded.sealed;
+    monthlyProductionDraft = loaded.draft;
+    message.textContent = `取り込み前の履歴へ戻しました。対象は ${MONTHLY_PRODUCTION_HISTORY_KEY} だけです。`;
+    renderMonthlyProductionPlan();
+    renderStandDemandList();
+}
+
 function ensureFiscalPlanTarget() {
     const list = document.getElementById('stand-demand-list');
     if (!list || document.getElementById('fiscal-plan')) return;
@@ -2784,6 +3029,11 @@ function ensureFiscalPlanTarget() {
         + '<label>確定日 <input id="prod-sealed-on" type="date"></label>'
         + '<button id="prod-seal" type="button">作業中の版を確定して履歴へ固定</button>'
         + '<button id="prod-revise" type="button">最新の確定版をコピーして改訂</button>'
+        + '<button id="prod-export" type="button">確定履歴だけをファイルへ書き出す</button>'
+        + '<label>履歴ファイル <input id="prod-import-file" type="file" accept="application/json,.json"></label>'
+        + '<button id="prod-import-apply" type="button">確認した履歴を反映</button>'
+        + '<button id="prod-import-undo" type="button">直前の履歴取り込みを取り消す</button>'
+        + '<pre id="prod-import-preview"></pre>'
         + '<pre id="prod-plan-history"></pre>'
         + '<h3>カリバ使用直数の確認表</h3><p>計算根拠は1直405tです。対象スタンド、サイズ、カリバ、使用期間、累計直数、計算過程を残します。パスラインは根拠が無いとき未確認です。</p>'
         + '<label>スタンド <input id="shift-stand" type="text"></label>'
@@ -2800,6 +3050,10 @@ function ensureFiscalPlanTarget() {
     document.getElementById('prod-month-save').addEventListener('click', saveProductionMonthFromForm);
     document.getElementById('prod-seal').addEventListener('click', sealProductionDraftFromForm);
     document.getElementById('prod-revise').addEventListener('click', reviseProductionPlanFromForm);
+    document.getElementById('prod-export').addEventListener('click', downloadMonthlyProductionHistory);
+    document.getElementById('prod-import-file').addEventListener('change', stageMonthlyProductionImport);
+    document.getElementById('prod-import-apply').addEventListener('click', confirmMonthlyProductionImport);
+    document.getElementById('prod-import-undo').addEventListener('click', undoMonthlyProductionImportFromForm);
     document.getElementById('shift-add').addEventListener('click', addShiftBasisFromForm);
     restoreMonthlyProductionHistory();
     renderMonthlyProductionPlan();

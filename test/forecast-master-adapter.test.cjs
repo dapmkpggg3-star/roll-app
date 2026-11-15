@@ -587,6 +587,60 @@ test('a fiscal year outlook keeps the 405 ton basis and does not invent dates', 
   assert.match(c.describeMonthlyProductionStore(), /別の端末や別のブラウザとは共有しません/);
 });
 
+test('a monthly production history file restores into another browser without touching normal keys', () => {
+  const c = api();
+  const box = () => {
+    const data = { roles: '[]', operating_plan_revisions_v1: 'keep' };
+    return {
+      data,
+      fail: false,
+      getItem(key) { return Object.prototype.hasOwnProperty.call(data, key) ? data[key] : null; },
+      setItem(key, value) {
+        if (this.fail === true || this.fail === key) { const error = new Error('full'); error.name = 'QuotaExceededError'; throw error; }
+        data[key] = String(value);
+      },
+      removeItem(key) { delete data[key]; }
+    };
+  };
+  const may = c.updateMonthlyProductionMonth(c.createMonthlyProductionDraft(2027).draft, '2027-05', { classification: 'confirmed', productionTons: 810, size: 'D10' });
+  const sealed = c.sealMonthlyProductionPlan(may.draft, '2027-04-30');
+  const otherYear = c.sealMonthlyProductionPlan(c.updateMonthlyProductionMonth(c.createMonthlyProductionDraft(2026).draft, '2026-05', { classification: 'confirmed', productionTons: 405, size: 'D10' }).draft, '2026-04-30');
+  const oneTon = c.sealMonthlyProductionPlan(c.updateMonthlyProductionMonth(c.createMonthlyProductionDraft(2027).draft, '2027-05', { classification: 'confirmed', productionTons: 1, size: 'D10' }).draft, '2027-04-30');
+  const exported = c.buildMonthlyProductionExport([sealed.plan], may.draft, '2027-04-30T00:00:00.000Z');
+  assert.equal(exported.file.sourceKey, 'monthly_production_plan_history_v1');
+  assert.equal(exported.file.history.draft, null);
+  assert.equal(JSON.stringify(exported.file).includes('operating_plan_revisions_v1'), false);
+  const phone = box();
+  const desktop = box();
+  assert.equal(c.applyMonthlyProductionImport(phone, exported.file, {}).applied, false);
+  assert.equal(c.applyMonthlyProductionImport(phone, exported.file, { confirmed: true }).added, 1);
+  assert.equal(c.applyMonthlyProductionImport(desktop, exported.file, { confirmed: true }).added, 1);
+  assert.equal(c.readMonthlyProductionHistory(desktop).sealed[0].months.find(item => item.month === '2027-05').productionTons, 810);
+  assert.equal(phone.data.roles, '[]');
+  assert.equal(phone.data.operating_plan_revisions_v1, 'keep');
+  const again = c.applyMonthlyProductionImport(phone, exported.file, { confirmed: true });
+  assert.equal(again.added, 0);
+  assert.equal(c.readMonthlyProductionHistory(phone).sealed.length, 1);
+  const conflict = c.buildMonthlyProductionExport([oneTon.plan], null, '2027-04-30T00:00:00.000Z');
+  const beforeConflict = phone.data.monthly_production_plan_history_v1;
+  assert.match(c.applyMonthlyProductionImport(phone, conflict.file, { confirmed: true }).reason, /上書きしません/);
+  assert.equal(phone.data.monthly_production_plan_history_v1, beforeConflict);
+  const yearFile = c.buildMonthlyProductionExport([otherYear.plan], null, '2026-04-30T00:00:00.000Z');
+  assert.equal(c.applyMonthlyProductionImport(phone, yearFile.file, { confirmed: true }).added, 1);
+  assert.equal(c.undoMonthlyProductionImport(phone, { confirmed: true }).applied, true);
+  const restored = c.readMonthlyProductionHistory(phone);
+  assert.equal(restored.sealed.some(item => item.fiscalStart === '2026-04'), false);
+  assert.equal(restored.sealed[0].months.find(item => item.month === '2027-05').productionTons, 810);
+  phone.fail = 'monthly_production_plan_history_v1';
+  const snapshot = phone.data.monthly_production_plan_history_v1;
+  assert.match(c.applyMonthlyProductionImport(phone, yearFile.file, { confirmed: true }).reason, /反映していません/);
+  assert.equal(phone.data.monthly_production_plan_history_v1, snapshot);
+  assert.match(c.previewMonthlyProductionImport({ kind: 'roll-app-offline-recovery', version: 1, roles: [] }, { ok: true, sealed: [] }).reason, /ロールの復旧ファイルとは別/);
+  phone.fail = false;
+  phone.setItem('monthly_production_plan_history_v1', '{');
+  assert.match(c.readMonthlyProductionHistory(phone).reason, /壊れています/);
+});
+
 test('used spare calibers are not restarted from the first one', () => {
   const c = api();
   const work = { date: '2027-04-02', period: 'day', repeatOnStops: true, workTypes: ['caliberChange', 'rollChange'],
