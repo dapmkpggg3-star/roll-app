@@ -251,10 +251,10 @@ function describeShiftBasis(plan) {
 function describeOutputFormSurvey() {
     return [
         '出力仕様案です。原本のセル配置は確定していません。',
-        '年間改削・購入計画: 同じExcelのA3一枚にまとめる、という本人確定はあります。縦横とセル配置の原本は見つかっていません。数値の差し替え先は未確定です。',
+        '年間改削・購入計画: 参照先は「ロール管理 必要エクセルまとめ.xlsx」（ID 1z8RShvQQcy9_1IzDjVJTj7DCQd970frt）です。同じシートの「2025年度 ロール改削計画」と「2025年度 ロール購入・払出計画」を一体の年間帳票として扱う、という本人確定はあります。この環境では原本を読めなかったため、4月〜翌3月、スタンド、ロール番号、月別本数、金額、年度計のセル位置は確定していません。2025年度の過去数値は現在の発注済みや確定予測にしません。',
         '月間ロール・カリバ替予定: ローカルの生産予定ファイルに「ロール・カリバ替予定2026.10」という過去月のシートがあり、見えた見出しは日付、曜日、サイズ、操業、常昼、ロール替とカリバ替の記入です。過去月の値は現在の計画にせず、この並びも出力様式としては確定しません。',
-        '#12〜#17の位置指示書: 位置指示書という原本は見つかっていません。ロール管理表にスタンド対のシートはありますが、位置指示書と同一とは扱いません。位置は推測で確定しません。',
-        '不足資料: 年間計画のA3原本、月間予定表の現行原本、#12〜#17位置指示書の原本。'
+        '#12〜#17の位置指示書: 正式な指示書の原本は未入手です。手書きの使用管理表は予定の参考であり、実績としては入れません。赤丸のカリバ番号と、日付の下の丸数字（使用予定直数）は別項目です。位置とパスラインは推測で確定しません。',
+        '不足資料: 上記ブックをこの隔離環境で読める書き出し、現行の月間予定表、#12〜#17位置指示書の原本。'
     ].join('\n');
 }
 
@@ -1778,14 +1778,40 @@ function standNumberFromName(name) {
     return match ? String(Number(match[1])) : '';
 }
 
+function rollingColumnRule(standKey, size) {
+    const stand = String(standKey || '').replace(/^#/, '').trim();
+    const sizeKey = String(size || '').normalize('NFKC').toUpperCase().replace(/\s+/g, '');
+    if (stand !== '16' && stand !== '17') return null;
+    if (sizeKey === 'D10') {
+        return {
+            columns: 2,
+            stands: ['16', '17'],
+            text: '#16と#17の2列圧延はD10のときだけです。対象スタンドは16と17です。カリバ配置と使用直数は各スタンドのD10の値だけを使い、D13へはコピーしません。'
+        };
+    }
+    if (sizeKey === 'D13') {
+        return {
+            columns: 1,
+            stands: [stand],
+            text: `D13では#${stand}を単独にします。D10の2列圧延は適用しません。相手スタンドの台帳、カリバ配置、使用直数は混ぜません。`
+        };
+    }
+    return {
+        columns: null,
+        stands: [stand],
+        text: 'サイズがD10と確認できないので、#16と#17は2列圧延にしません。'
+    };
+}
+
 function pairedStandKeys(standKey, size) {
     const stand = String(standKey || '').replace(/^#/, '').trim();
     if (!stand) return [];
+    const columnRule = rollingColumnRule(stand, size);
+    if (columnRule) return columnRule.stands.slice();
     const sizeKey = String(size || '').normalize('NFKC').toUpperCase().replace(/\s+/g, '');
     const partner = { '6': '7', '7': '6', '8': '9', '9': '8', '10': '11', '11': '10', '14': '15', '15': '14' }[stand];
     if (partner) return [stand, partner];
     if ((stand === '12' || stand === '13') && sizeKey === 'D13') return ['12', '13'];
-    if ((stand === '16' || stand === '17') && sizeKey === 'D10') return ['16', '17'];
     return [stand];
 }
 
@@ -1908,7 +1934,15 @@ function renderExchangeCycle() {
     const openingSource = form.openingUsedRuns === undefined
         ? (online && typeof online.runs === 'number' ? '保存した開始直数' : '未確認')
         : '画面の入力';
+    const columnRule = rollingColumnRule(form.standKey, form.size);
+    const ownLimit = knownCaliberLimit(form.standKey, form.size);
+    const comparedSize = String(form.size || '').normalize('NFKC').toUpperCase().replace(/\s+/g, '') === 'D10' ? 'D13' : 'D10';
+    const otherLimit = columnRule && ownLimit ? knownCaliberLimit(form.standKey, comparedSize) : null;
+    const columnText = columnRule
+        ? `${columnRule.text}${ownLimit ? `使用直数は${String(form.size || '').trim()}の${ownLimit.kind}${ownLimit.runs}直です。` : ''}${otherLimit ? `${comparedSize}の${otherLimit.runs}直は使いません。` : ''}`
+        : '';
     const ledgerText = [
+        columnText,
         !form.standKey
             ? 'スタンドが未選択なので、台帳の対象は混ぜません。'
             : `対象スタンドは${ledgerKeys.join('・')}です。${ledger.length
@@ -1917,7 +1951,7 @@ function renderExchangeCycle() {
         describeRemainingCalibers(form.standKey, form.size, openingRuns),
         `開始直数の出どころは${openingSource}です。未使用のカリバ本数ではありません。`,
         `予測設定は${forecastSettingKey({ rollId: form.forecastRoll || (online && online.id), standKey: form.standKey, size: form.size, referenceAt })}です。別のスタンド・サイズ・ロール・基準時点へは流用しません。予備の本数からはカリバIDを作りません。`
-    ].join('\n');
+    ].filter(Boolean).join('\n');
     const limit = knownCaliberLimit(form.standKey, form.size);
     const line = item => `${item.date} ${item.kind} ${item.note}`;
     let scheduleText = '生産予定が無いので、架空の操業では予測しません。';
@@ -2720,6 +2754,7 @@ let cycleSlotConfirmations = [];
 let reworkOpeningConfirmations = [];
 let unusableCaliberConfirmations = [];
 const reworkLeadOverrides = new Map();
+let caliberLayoutNotes = [];
 let monthlyProductionDraft = null;
 let monthlyProductionSealed = [];
 let monthlyProductionRestored = false;
@@ -3014,6 +3049,104 @@ function undoMonthlyProductionImportFromForm() {
     message.textContent = `取り込み前の履歴へ戻しました。対象は ${MONTHLY_PRODUCTION_HISTORY_KEY} だけです。`;
     renderMonthlyProductionPlan();
     renderStandDemandList();
+}
+
+function recordCaliberLayoutNote(input) {
+    const source = input || {};
+    const stand = String(source.standKey || '').replace(/^#/, '').trim();
+    const size = String(source.size || '').normalize('NFKC').toUpperCase().replace(/\s+/g, '');
+    if (!['12', '13', '14', '15', '16', '17'].includes(stand)) {
+        return { ok: false, reason: 'この画面は#12〜#17だけです。反映していません。' };
+    }
+    if (size !== 'D10' && size !== 'D13') {
+        return { ok: false, reason: 'サイズはD10かD13だけを受け付けます。反映していません。' };
+    }
+    const columnRule = rollingColumnRule(stand, size);
+    if (columnRule && columnRule.columns !== 2 && String(source.columns || '') === '2') {
+        return { ok: false, reason: 'D13にD10の2列は入れません。反映していません。' };
+    }
+    if (columnRule && columnRule.columns === 2 && String(source.columns || '') === '1') {
+        return { ok: false, reason: 'D10の#16と#17は2列です。単独にはしません。反映していません。' };
+    }
+    if (!columnRule && String(source.columns || '') === '2') {
+        return { ok: false, reason: 'このスタンドの2列は確認できないので、入れません。反映していません。' };
+    }
+    const positionNumber = String(source.positionNumber || '').trim();
+    const plannedText = String(source.plannedShifts || '').trim();
+    if (!positionNumber || plannedText === '') {
+        return { ok: false, reason: 'カリバ番号と使用予定直数は別々に入れてください。空欄はもう一方で埋めません。' };
+    }
+    if (!/^\d+$/.test(plannedText)) {
+        return { ok: false, reason: '使用予定直数は0以上の整数です。カリバ番号としては扱いません。' };
+    }
+    const side = ['WS', 'DS'].includes(String(source.side || '').toUpperCase()) ? String(source.side).toUpperCase() : '未確認';
+    const note = {
+        standKey: stand,
+        size,
+        rollId: String(source.rollId || '').trim() || '未確認',
+        side,
+        columns: columnRule ? columnRule.columns : null,
+        positionNumber,
+        plannedShifts: Number(plannedText),
+        from: /^\d{4}-\d{2}-\d{2}$/.test(String(source.from || '')) ? String(source.from) : '未確認',
+        to: /^\d{4}-\d{2}-\d{2}$/.test(String(source.to || '')) ? String(source.to) : '未確認',
+        passLine: '未確認',
+        source: 'anonymous-entry'
+    };
+    caliberLayoutNotes = caliberLayoutNotes.concat(note);
+    return { ok: true, note, sameToken: positionNumber === plannedText };
+}
+
+function describeCaliberLayoutNotes() {
+    const intro = '写真は予定表であり、実績としては入れていません。赤丸のカリバ番号と、日付の下の丸数字（使用予定直数）は別項目です。正式な位置指示書は未入手なので、パスラインは未確認です。実台帳には書いていません。';
+    if (!caliberLayoutNotes.length) return `${intro}\nカリバ配置の匿名メモはまだありません。`;
+    const lines = caliberLayoutNotes.map(note => {
+        const columns = note.columns === 2 ? '2列' : (note.columns === 1 ? '2列圧延は適用しない' : '列数未確認');
+        return `#${note.standKey} ${note.size} ロール${note.rollId} ${note.side} ${columns} カリバ番号${note.positionNumber} 使用予定${note.plannedShifts}直 期間${note.from}から${note.to} パスライン${note.passLine}`;
+    });
+    return `${intro}\n${lines.join('\n')}`;
+}
+
+function saveCaliberLayoutFromForm() {
+    const message = document.getElementById('caliber-layout-message');
+    const result = recordCaliberLayoutNote({
+        standKey: document.getElementById('layout-stand').value,
+        size: document.getElementById('layout-size').value,
+        rollId: document.getElementById('layout-roll').value,
+        side: document.getElementById('layout-side').value,
+        columns: document.getElementById('layout-columns').value,
+        positionNumber: document.getElementById('layout-position').value,
+        plannedShifts: document.getElementById('layout-shifts').value,
+        from: document.getElementById('layout-from').value,
+        to: document.getElementById('layout-to').value
+    });
+    message.textContent = result.ok
+        ? (result.sameToken
+            ? '同じ数字でも、カリバ番号と使用予定直数は別の項目のまま追加しました。写真や実台帳には書いていません。'
+            : '匿名の配置メモを追加しました。写真や実台帳には書いていません。')
+        : result.reason;
+    document.getElementById('caliber-layout-list').textContent = describeCaliberLayoutNotes();
+}
+
+function ensureCaliberLayoutPanel() {
+    if (typeof document === 'undefined' || document.getElementById('caliber-layout-panel')) return;
+    const host = document.getElementById('cycle-result');
+    if (!host) return;
+    host.insertAdjacentHTML('afterend', '<section id="caliber-layout-panel"><h3>#12〜#17のカリバ配置（匿名）</h3>'
+        + '<p>手書き管理表は予定の参考です。写真からは入れません。赤丸のカリバ番号と、日付の下の丸数字（使用予定直数）は別項目です。WS/DS、列、パスラインも分けます。パスラインは正式な指示書が無いので未確認のままです。このメモは画面の中だけで、月次確定履歴や実台帳には書きません。</p>'
+        + '<label>スタンド <input id="layout-stand" type="text" value="16"></label>'
+        + '<label>サイズ <input id="layout-size" type="text" value="D10"></label>'
+        + '<label>ロール番号 <input id="layout-roll" type="text" value=""></label>'
+        + '<label>WS/DS <select id="layout-side"><option value="">未確認</option><option value="WS">WS</option><option value="DS">DS</option></select></label>'
+        + '<label>列 <select id="layout-columns"><option value="">未確認</option><option value="2">2列</option><option value="1">単独</option></select></label>'
+        + '<label>カリバ番号 <input id="layout-position" type="text" value=""></label>'
+        + '<label>使用予定直数 <input id="layout-shifts" type="number" min="0" step="1" value=""></label>'
+        + '<label>使用開始 <input id="layout-from" type="date" value=""></label>'
+        + '<label>使用終了 <input id="layout-to" type="date" value=""></label>'
+        + '<button id="caliber-layout-save" type="button">匿名の配置メモを追加</button>'
+        + '<p id="caliber-layout-message"></p><pre id="caliber-layout-list"></pre></section>');
+    document.getElementById('caliber-layout-save').addEventListener('click', saveCaliberLayoutFromForm);
+    document.getElementById('caliber-layout-list').textContent = describeCaliberLayoutNotes();
 }
 
 function ensureFiscalPlanTarget() {
@@ -3763,6 +3896,7 @@ function bindMonthlyScheduleFileInput() {
 
 if (typeof document !== 'undefined') {
     const bindIsolatedProductionHistory = () => {
+        ensureCaliberLayoutPanel();
         if (!document.getElementById('stand-demand-list')) return;
         ensureFiscalPlanTarget();
         renderStandDemandList();

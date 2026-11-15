@@ -557,7 +557,7 @@ test('a fiscal year outlook keeps the 405 ton basis and does not invent dates', 
   assert.equal(next.row.cumulativeShifts, 3);
   assert.equal(c.addShiftBasisRow(next.draft, { standKey: '10', size: 'D10', caliberId: 'ca', from: '2027-05-04', to: '2027-05-04' }).ok, false);
   assert.match(c.describeOutputFormSurvey(), /原本のセル配置は確定していません/);
-  assert.match(c.describeOutputFormSurvey(), /位置指示書という原本は見つかっていません/);
+  assert.match(c.describeOutputFormSurvey(), /正式な指示書の原本は未入手です/);
   const memory = { roles: '[]', operating_plan_revisions_v1: '[]' };
   const store = {
     getItem(key) { return Object.prototype.hasOwnProperty.call(memory, key) ? memory[key] : null; },
@@ -676,4 +676,50 @@ test('a supplied anonymous horizon can pass thirteen months and a stopped return
   assert.equal(stopped.confirmedThrough < '2027-04-11', true);
   assert.match(stopped.reason, /対象期間は2027-04-01から2027-04-11です/);
   assert.match(stopped.reason, /確定して計算できた最終日は2027-04-09です/);
+});
+
+test('stands 16 and 17 use two columns only for D10', () => {
+  const c = api();
+  const rolls = [
+    { id: 'p16', name: '#16-1', status: 'オンライン', currentDiameter: 80, currentCaliber: 'a', openingRuns: 1 },
+    { id: 'p17', name: '#17-1', status: '新品予備（組込完了）', currentDiameter: 90, currentCaliber: 'b', openingRuns: 2 }
+  ];
+  assert.equal(c.pairedStandKeys('16', 'D10').join(','), '16,17');
+  assert.equal(c.pairedStandKeys('17', 'Ｄ１０').join(','), '16,17');
+  assert.equal(c.rollingColumnRule('16', 'D10').columns, 2);
+  assert.equal(c.pairedStandKeys('16', 'D13').join(','), '16');
+  assert.equal(c.pairedStandKeys('17', 'D13').join(','), '17');
+  assert.equal(c.rollingColumnRule('16', 'D13').columns, 1);
+  assert.match(c.rollingColumnRule('17', 'D13').text, /D10の2列圧延は適用しません/);
+  assert.equal(c.pairedStandKeys('16', '').join(','), '16');
+  const d10 = c.readLedgerResources(rolls, { standKey: '16', size: 'D10' }).map(item => item.id).join(',');
+  const d13 = c.readLedgerResources(rolls, { standKey: '16', size: 'D13' }).map(item => item.id).join(',');
+  assert.equal(d10, 'p16,p17');
+  assert.equal(d13, 'p16');
+  assert.equal(c.knownCaliberLimit('16', 'D10').runs, 13);
+  assert.equal(c.knownCaliberLimit('16', 'D13').runs, 14);
+  assert.equal(c.knownCaliberLimit('17', 'D10').runs, 6);
+  assert.equal(c.knownCaliberLimit('17', 'D13').runs, 6);
+  const saved = c.recordCaliberLayoutNote({ standKey: '16', size: 'D10', rollId: 'anon-16', side: 'WS', positionNumber: '3', plannedShifts: '3', from: '2027-04-01', to: '2027-04-02' });
+  assert.equal(saved.ok, true);
+  assert.equal(saved.sameToken, true);
+  assert.equal(saved.note.columns, 2);
+  assert.equal(saved.note.passLine, '未確認');
+  assert.equal(saved.note.positionNumber, '3');
+  assert.equal(saved.note.plannedShifts, 3);
+  const rejected = c.recordCaliberLayoutNote({ standKey: '16', size: 'D13', rollId: 'anon-16', columns: '2', positionNumber: '4', plannedShifts: '8' });
+  assert.equal(rejected.ok, false);
+  assert.match(rejected.reason, /反映していません/);
+  const single = c.recordCaliberLayoutNote({ standKey: '17', size: 'D13', rollId: 'anon-17', side: 'DS', positionNumber: '4', plannedShifts: '8' });
+  assert.equal(single.ok, true);
+  assert.equal(single.note.columns, 1);
+  const text = c.describeCaliberLayoutNotes();
+  assert.match(text, /カリバ番号3/);
+  assert.match(text, /使用予定3直/);
+  assert.match(text, /#17 D13/);
+  assert.match(text, /2列圧延は適用しない/);
+  assert.match(text, /パスライン未確認/);
+  assert.match(text, /実績としては入れていません/);
+  assert.match(c.describeOutputFormSurvey(), /2025年度の過去数値は現在の発注済みや確定予測にしません/);
+  assert.match(c.describeOutputFormSurvey(), /原本のセル配置は確定していません/);
 });
