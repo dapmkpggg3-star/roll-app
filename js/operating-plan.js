@@ -2875,6 +2875,7 @@ function renderMonthlyProductionPlan() {
     if (history) history.textContent = describeMonthlyProductionPlans(monthlyProductionSealed, monthlyProductionDraft);
     if (shifts) shifts.textContent = describeShiftBasis(monthlyProductionDraft || monthlyProductionSealed[monthlyProductionSealed.length - 1]);
     if (forms) forms.textContent = describeOutputFormSurvey();
+    if (document.getElementById('line-board')) renderCaliberLineBoard();
 }
 
 function createProductionDraftFromForm() {
@@ -3080,16 +3081,30 @@ function recordCaliberLayoutNote(input) {
         return { ok: false, reason: '使用予定直数は0以上の整数です。カリバ番号としては扱いません。' };
     }
     const side = ['WS', 'DS'].includes(String(source.side || '').toUpperCase()) ? String(source.side).toUpperCase() : '未確認';
+    const lane = source.lane === '東列' || source.lane === '西列' ? source.lane : '未確認';
+    const eventKind = ['ロール替', 'カリバ替', 'サイズ替'].includes(source.eventKind) ? source.eventKind : '';
+    const period = source.period === '昼' || source.period === '夜' ? source.period : '未確認';
+    const eventDate = /^\d{4}-\d{2}-\d{2}$/.test(String(source.eventDate || '')) ? String(source.eventDate) : '';
+    const from = /^\d{4}-\d{2}-\d{2}$/.test(String(source.from || '')) ? String(source.from) : '未確認';
+    const to = /^\d{4}-\d{2}-\d{2}$/.test(String(source.to || '')) ? String(source.to) : '未確認';
+    if (eventKind && !eventDate) return { ok: false, reason: '交換の日付が無いので、イベントは作りません。反映していません。' };
+    if (eventKind && from !== '未確認' && (eventDate < from || eventDate > to)) {
+        return { ok: false, reason: '交換の日付が使用期間の外です。反映していません。' };
+    }
     const note = {
         standKey: stand,
         size,
         rollId: String(source.rollId || '').trim() || '未確認',
         side,
+        lane,
         columns: columnRule ? columnRule.columns : null,
         positionNumber,
         plannedShifts: Number(plannedText),
-        from: /^\d{4}-\d{2}-\d{2}$/.test(String(source.from || '')) ? String(source.from) : '未確認',
-        to: /^\d{4}-\d{2}-\d{2}$/.test(String(source.to || '')) ? String(source.to) : '未確認',
+        from,
+        to,
+        eventKind,
+        period,
+        eventDate,
         passLine: '未確認',
         source: 'anonymous-entry'
     };
@@ -3102,9 +3117,132 @@ function describeCaliberLayoutNotes() {
     if (!caliberLayoutNotes.length) return `${intro}\nカリバ配置の匿名メモはまだありません。`;
     const lines = caliberLayoutNotes.map(note => {
         const columns = note.columns === 2 ? '2列' : (note.columns === 1 ? '2列圧延は適用しない' : '列数未確認');
-        return `#${note.standKey} ${note.size} ロール${note.rollId} ${note.side} ${columns} カリバ番号${note.positionNumber} 使用予定${note.plannedShifts}直 期間${note.from}から${note.to} パスライン${note.passLine}`;
+        const event = note.eventKind ? ` ${note.eventDate} ${note.period} ${note.eventKind}` : '';
+        return `#${note.standKey} ${note.size} ロール${note.rollId} ${note.side} ${note.lane || '未確認'} ${columns} カリバ番号${note.positionNumber} 使用予定${note.plannedShifts}直 期間${note.from}から${note.to}${event} パスライン${note.passLine}`;
     });
     return `${intro}\n${lines.join('\n')}`;
+}
+
+function daysInMonth(yearMonth) {
+    const match = /^(\d{4})-(\d{2})$/.exec(String(yearMonth || ''));
+    if (!match) return null;
+    const month = Number(match[2]);
+    if (month < 1 || month > 12) return null;
+    return new Date(Date.UTC(Number(match[1]), month, 0)).getUTCDate();
+}
+
+function caliberLineDate(yearMonth, day) {
+    const count = daysInMonth(yearMonth);
+    const number = Number(day);
+    if (!count || !Number.isInteger(number) || number < 1 || number > count) return null;
+    return `${yearMonth}-${String(number).padStart(2, '0')}`;
+}
+
+function noteCoversDate(note, date) {
+    return Boolean(note && note.from && note.to && note.from !== '未確認' && note.to !== '未確認' && note.from <= date && date <= note.to);
+}
+
+function buildCaliberLineView(input) {
+    const source = input || {};
+    const plan = source.plan || null;
+    const planBefore = plan ? JSON.stringify(plan) : '';
+    const notes = Array.isArray(source.notes) ? source.notes : [];
+    const yearMonth = String(source.yearMonth || '');
+    const dayCount = daysInMonth(yearMonth);
+    const date = caliberLineDate(yearMonth, source.day);
+    if (!date) return { ok: false, reason: '対象年月と、その月にある日を選んでください。計画に無い日は作りません。', dayCount };
+    if (plan && !(Array.isArray(plan.months) && plan.months.some(item => item.month === yearMonth))) {
+        return { ok: false, reason: '選んだ版にこの月がありません。月は作りません。', dayCount };
+    }
+    const dayNumber = Number(source.day);
+    const previous = dayNumber > 1 ? caliberLineDate(yearMonth, dayNumber - 1) : null;
+    const activeOn = day => notes.filter(note => noteCoversDate(note, day));
+    const todayNotes = activeOn(date);
+    const yesterdayNotes = previous ? activeOn(previous) : [];
+    const signature = note => [note.standKey, note.size, note.rollId, note.side, note.lane || '未確認', note.positionNumber].join('|');
+    const stands = ['12', '13', '14', '15', '16', '17'];
+    const cards = stands.map(stand => {
+        const items = todayNotes.filter(note => note.standKey === stand);
+        const prior = yesterdayNotes.filter(note => note.standKey === stand).map(signature);
+        const current = items.map(signature);
+        const changed = previous && (current.some(item => !prior.includes(item)) || prior.some(item => !current.includes(item)));
+        return { standKey: stand, changed: Boolean(changed), notes: items };
+    });
+    const lanes = [];
+    const d10 = todayNotes.filter(note => note.size === 'D10');
+    const east = d10.filter(note => note.lane === '東列');
+    const west = d10.filter(note => note.lane === '西列');
+    const unlabeled = d10.filter(note => note.lane !== '東列' && note.lane !== '西列');
+    if (east.length) lanes.push({ name: '東列', size: 'D10', notes: east });
+    if (west.length) lanes.push({ name: '西列', size: 'D10', notes: west });
+    const pair = unlabeled.filter(note => note.standKey === '16' || note.standKey === '17');
+    const other = unlabeled.filter(note => note.standKey !== '16' && note.standKey !== '17');
+    if (pair.length) {
+        lanes.push({ name: '2列の1本目（東列・西列は未確認）', size: 'D10', notes: pair.filter(note => note.standKey === '16') });
+        lanes.push({ name: '2列の2本目（東列・西列は未確認）', size: 'D10', notes: pair.filter(note => note.standKey === '17') });
+    }
+    if (other.length) lanes.push({ name: 'D10（東列・西列は未確認）', size: 'D10', notes: other });
+    const d13 = todayNotes.filter(note => note.size === 'D13');
+    if (d13.length) lanes.push({ name: 'D13（2列圧延は適用しない）', size: 'D13', notes: d13 });
+    const events = notes.filter(note => note.eventKind && note.eventDate === date).map(note => ({
+        standKey: note.standKey, kind: note.eventKind, period: note.period || '未確認', size: note.size, positionNumber: note.positionNumber
+    }));
+    const eventDays = [...new Set(notes.filter(note => note.eventKind && String(note.eventDate || '').startsWith(`${yearMonth}-`)).map(note => note.eventDate))].sort();
+    const shiftRows = ((plan && plan.shiftRows) || []).filter(row => row.from <= date && date <= row.to).map(row => {
+        const limit = knownCaliberLimit(row.standKey, row.size);
+        const remaining = limit && limit.kind === '最大' ? limit.runs - row.cumulativeShifts : null;
+        const unusable = Array.isArray(source.unusable) && source.unusable.some(item => item.standKey === row.standKey && item.size === row.size && item.caliberId === row.caliberId);
+        return {
+            standKey: row.standKey,
+            size: row.size,
+            caliberId: row.caliberId,
+            previousTotal: row.cumulativeShifts - row.shifts,
+            added: row.shifts,
+            cumulative: row.cumulativeShifts,
+            remaining: remaining === null ? '未確認' : (remaining < 0 ? '最大を超えています。0直にはしません' : String(remaining)),
+            unusable: unusable ? '使用不可' : '欠けは未確認',
+            process: row.process
+        };
+    });
+    const regrind = Array.isArray(source.regrindCalibers) ? source.regrindCalibers.map(item => item.unusable ? `${item.caliberId}は使用不可` : `${item.caliberId}は改削後0直`) : null;
+    if (plan && planBefore !== JSON.stringify(plan)) return { ok: false, reason: '閲覧で計画が変わりました。表示しません。' };
+    const changedStands = cards.filter(card => card.changed).map(card => `#${card.standKey}`);
+    return {
+        ok: true, date, dayCount, cards, lanes, events, eventDays, shiftRows, readOnly: true,
+        regrindText: regrind ? regrind.join('、') : '改削後の開始は未確認です。未記録を0直にはしません。',
+        diffText: previous
+            ? (changedStands.length ? `前日と違うスタンドは${changedStands.join('、')}です。` : '前日と記録が同じです。')
+            : '前日はこの月の外なので、差は出しません。'
+    };
+}
+
+function describeCaliberLine(view) {
+    if (!view || !view.ok) return view && view.reason ? view.reason : 'ラインを表示できません。';
+    const cards = view.cards.map(card => {
+        const body = card.notes.length
+            ? card.notes.map(note => `${note.size} ロール${note.rollId} ${note.side} ${note.lane || '未確認'} 今回のカリバ${note.positionNumber}`).join(' / ')
+            : '未確認';
+        return `#${card.standKey} ${body}${card.changed ? ' 前日と違います' : ''}`;
+    });
+    const lanes = view.lanes.length
+        ? view.lanes.map(lane => `${lane.name}: ${lane.notes.length ? lane.notes.map(note => `#${note.standKey} カリバ${note.positionNumber}`).join(' - ') : '未確認'}`).join('\n')
+        : 'この日につなぐ記録はありません。線は作りません。';
+    const events = view.events.length
+        ? view.events.map(item => `${item.period} #${item.standKey} ${item.kind} ${item.size} カリバ${item.positionNumber}`).join('\n')
+        : 'この日のロール替・カリバ替・サイズ替の記録はありません。';
+    const shifts = view.shiftRows.length
+        ? view.shiftRows.map(row => `#${row.standKey} ${row.size} カリバ${row.caliberId} 前回累計${row.previousTotal}直 今回加算${row.added}直 新しい累計${row.cumulative}直 残り${row.remaining} ${row.unusable}。${row.process}`).join('\n')
+        : 'この日を含む使用直数の記録はありません。直数は作りません。';
+    return [
+        `${view.date}の閲覧です。確定計画と実台帳は書き換えていません。`,
+        'パスラインずれの確認欄です。補正値と許容値は未確認です。数値と安全判定は作っていません。',
+        lanes,
+        cards.join('\n'),
+        events,
+        view.diffText,
+        shifts,
+        view.regrindText
+    ].join('\n');
 }
 
 function saveCaliberLayoutFromForm() {
@@ -3114,7 +3252,11 @@ function saveCaliberLayoutFromForm() {
         size: document.getElementById('layout-size').value,
         rollId: document.getElementById('layout-roll').value,
         side: document.getElementById('layout-side').value,
+        lane: document.getElementById('layout-lane').value,
         columns: document.getElementById('layout-columns').value,
+        eventKind: document.getElementById('layout-event').value,
+        period: document.getElementById('layout-period').value,
+        eventDate: document.getElementById('layout-event-date').value,
         positionNumber: document.getElementById('layout-position').value,
         plannedShifts: document.getElementById('layout-shifts').value,
         from: document.getElementById('layout-from').value,
@@ -3126,27 +3268,120 @@ function saveCaliberLayoutFromForm() {
             : '匿名の配置メモを追加しました。写真や実台帳には書いていません。')
         : result.reason;
     document.getElementById('caliber-layout-list').textContent = describeCaliberLayoutNotes();
+    renderCaliberLineBoard();
+}
+
+function linePlanChoices() {
+    const sealed = (monthlyProductionSealed || []).map(plan => ({ id: plan.id, plan, label: `確定版 ${plan.id}` }));
+    return monthlyProductionDraft ? sealed.concat({ id: monthlyProductionDraft.id, plan: monthlyProductionDraft, label: `作業中 ${monthlyProductionDraft.id}` }) : sealed;
+}
+
+function renderCaliberLineBoard() {
+    const board = document.getElementById('line-board');
+    const planSelect = document.getElementById('line-plan');
+    const monthSelect = document.getElementById('line-month');
+    const dayInput = document.getElementById('line-day');
+    if (!board || !planSelect || !monthSelect || !dayInput) return;
+    const choices = linePlanChoices();
+    const selectedId = planSelect.value;
+    planSelect.replaceChildren();
+    choices.forEach(choice => {
+        const option = document.createElement('option');
+        option.value = choice.id;
+        option.textContent = choice.label;
+        planSelect.appendChild(option);
+    });
+    if (!choices.length) {
+        board.textContent = '確定版も作業中の版もありません。日付だけの配置は作りません。';
+        document.getElementById('line-shift-table').textContent = '使用直数の記録はありません。';
+        document.getElementById('line-diff').textContent = '';
+        document.getElementById('line-markers').textContent = '';
+        return;
+    }
+    if (choices.some(choice => choice.id === selectedId)) planSelect.value = selectedId;
+    const chosen = choices.find(choice => choice.id === planSelect.value) || choices[choices.length - 1];
+    const selectedMonth = monthSelect.value;
+    monthSelect.replaceChildren();
+    chosen.plan.months.forEach(item => {
+        const option = document.createElement('option');
+        option.value = item.month;
+        option.textContent = item.classification === 'confirmed' ? `${item.month} 確定` : `${item.month} 暫定`;
+        monthSelect.appendChild(option);
+    });
+    if (chosen.plan.months.some(item => item.month === selectedMonth)) monthSelect.value = selectedMonth;
+    const dayCount = daysInMonth(monthSelect.value);
+    dayInput.max = String(dayCount || 1);
+    if (Number(dayInput.value) > dayCount) dayInput.value = String(dayCount);
+    const unusable = unusableCaliberConfirmations.map(item => item.value).filter(item => item && item.usable === false && item.owner).map(item => ({
+        standKey: String(item.owner.standKey || '').replace(/^#/, ''),
+        size: item.owner.size,
+        caliberId: item.caliberId
+    }));
+    const openings = reworkOpeningConfirmations.map(item => item.value).filter(item => item && item.caliberId && item.runs === 0 && item.owner);
+    const view = buildCaliberLineView({
+        plan: chosen.plan,
+        notes: caliberLayoutNotes,
+        yearMonth: monthSelect.value,
+        day: Number(dayInput.value),
+        unusable,
+        regrindCalibers: openings.length ? openings.map(item => ({
+            caliberId: item.caliberId,
+            unusable: unusable.some(mark => mark.caliberId === item.caliberId && mark.standKey === String(item.owner.standKey || '').replace(/^#/, ''))
+        })) : null
+    });
+    document.getElementById('line-day-label').textContent = view.ok ? `${view.date} / ${view.dayCount}日まで` : (view.reason || '');
+    document.getElementById('line-board').textContent = describeCaliberLine(view);
+    const markers = document.getElementById('line-markers');
+    markers.replaceChildren();
+    if (view.ok) {
+        view.eventDays.forEach(eventDate => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.textContent = eventDate.slice(-2).replace(/^0/, '');
+            button.addEventListener('click', () => {
+                dayInput.value = String(Number(eventDate.slice(-2)));
+                renderCaliberLineBoard();
+            });
+            markers.appendChild(button);
+        });
+    }
+    document.getElementById('line-diff').textContent = view.ok ? view.diffText : '';
+    document.getElementById('line-shift-table').textContent = view.ok ? [view.shiftRows.length
+        ? view.shiftRows.map(row => `#${row.standKey} ${row.size} カリバ${row.caliberId} 前回累計${row.previousTotal}直 今回加算${row.added}直 新しい累計${row.cumulative}直 残り${row.remaining} ${row.unusable}`).join('\n')
+        : 'この日を含む使用直数の記録はありません。直数は作りません。', view.regrindText].join('\n') : '';
 }
 
 function ensureCaliberLayoutPanel() {
     if (typeof document === 'undefined' || document.getElementById('caliber-layout-panel')) return;
     const host = document.getElementById('cycle-result');
     if (!host) return;
-    host.insertAdjacentHTML('afterend', '<section id="caliber-layout-panel"><h3>#12〜#17のカリバ配置（匿名）</h3>'
-        + '<p>手書き管理表は予定の参考です。写真からは入れません。赤丸のカリバ番号と、日付の下の丸数字（使用予定直数）は別項目です。WS/DS、列、パスラインも分けます。パスラインは正式な指示書が無いので未確認のままです。このメモは画面の中だけで、月次確定履歴や実台帳には書きません。</p>'
+    host.insertAdjacentHTML('afterend', '<section id="caliber-layout-panel"><h3>#12〜#17のカリバ配置と月間ライン</h3>'
+        + '<p>手書き管理表は予定の参考です。写真からは入れません。赤丸は今回使用するカリバ番号、日付の下の丸数字は使用予定直数です。WS/DS、東列・西列、パスラインは別項目です。スライダーは閲覧だけで、確定計画と実台帳は書き換えません。自動再生はありません。</p>'
+        + '<style>#caliber-layout-panel label{display:block;margin:4px 0}#line-day{width:100%}#line-board,#line-shift-table{white-space:pre-wrap}@media(max-width:720px){#caliber-layout-panel{font-size:15px}}</style>'
         + '<label>スタンド <input id="layout-stand" type="text" value="16"></label>'
         + '<label>サイズ <input id="layout-size" type="text" value="D10"></label>'
         + '<label>ロール番号 <input id="layout-roll" type="text" value=""></label>'
         + '<label>WS/DS <select id="layout-side"><option value="">未確認</option><option value="WS">WS</option><option value="DS">DS</option></select></label>'
+        + '<label>東列・西列 <select id="layout-lane"><option value="">未確認</option><option value="東列">東列</option><option value="西列">西列</option></select></label>'
         + '<label>列 <select id="layout-columns"><option value="">未確認</option><option value="2">2列</option><option value="1">単独</option></select></label>'
-        + '<label>カリバ番号 <input id="layout-position" type="text" value=""></label>'
+        + '<label>今回のカリバ番号 <input id="layout-position" type="text" value=""></label>'
         + '<label>使用予定直数 <input id="layout-shifts" type="number" min="0" step="1" value=""></label>'
         + '<label>使用開始 <input id="layout-from" type="date" value=""></label>'
         + '<label>使用終了 <input id="layout-to" type="date" value=""></label>'
+        + '<label>イベント <select id="layout-event"><option value="">なし</option><option value="ロール替">ロール替</option><option value="カリバ替">カリバ替</option><option value="サイズ替">サイズ替</option></select></label>'
+        + '<label>勤務帯 <select id="layout-period"><option value="">未確認</option><option value="昼">昼</option><option value="夜">夜</option></select></label>'
+        + '<label>イベント日 <input id="layout-event-date" type="date" value=""></label>'
         + '<button id="caliber-layout-save" type="button">匿名の配置メモを追加</button>'
-        + '<p id="caliber-layout-message"></p><pre id="caliber-layout-list"></pre></section>');
+        + '<p id="caliber-layout-message"></p><pre id="caliber-layout-list"></pre>'
+        + '<h3>月間のライン</h3><label>版 <select id="line-plan"></select></label><label>年月 <select id="line-month"></select></label>'
+        + '<label>日 <input id="line-day" type="range" min="1" max="31" value="1"></label><span id="line-day-label"></span>'
+        + '<div id="line-markers"></div><pre id="line-board"></pre><pre id="line-diff"></pre><pre id="line-shift-table"></pre></section>');
     document.getElementById('caliber-layout-save').addEventListener('click', saveCaliberLayoutFromForm);
+    document.getElementById('line-plan').addEventListener('change', renderCaliberLineBoard);
+    document.getElementById('line-month').addEventListener('change', renderCaliberLineBoard);
+    document.getElementById('line-day').addEventListener('input', renderCaliberLineBoard);
     document.getElementById('caliber-layout-list').textContent = describeCaliberLayoutNotes();
+    renderCaliberLineBoard();
 }
 
 function ensureFiscalPlanTarget() {

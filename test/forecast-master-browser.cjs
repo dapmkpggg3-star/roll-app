@@ -352,6 +352,24 @@ async function main() {
     assert.match(layout, /2列圧延は適用しない/);
     assert.match(layout, /パスライン未確認/);
     assert.match(layout, /実績としては入れていません/);
+    await page.evaluate(() => {
+      recordCaliberLayoutNote({ standKey: '16', size: 'D10', rollId: 'anon-16', side: 'WS', positionNumber: '3', plannedShifts: '1', from: '2027-05-01', to: '2027-05-01' });
+      recordCaliberLayoutNote({ standKey: '16', size: 'D10', rollId: 'anon-16', side: 'WS', positionNumber: '4', plannedShifts: '1', from: '2027-05-02', to: '2027-05-02', eventKind: 'カリバ替', eventDate: '2027-05-02', period: '昼' });
+      recordCaliberLayoutNote({ standKey: '17', size: 'D10', rollId: 'anon-17', side: 'DS', positionNumber: '5', plannedShifts: '1', from: '2027-05-02', to: '2027-05-02', eventKind: 'ロール替', eventDate: '2027-05-02', period: '夜' });
+      document.getElementById('line-month').value = '2027-05';
+      document.getElementById('line-day').value = '2';
+      renderCaliberLineBoard();
+    });
+    const line = await page.locator('#line-board').innerText();
+    assert.match(line, /2列の1本目/);
+    assert.match(line, /2列の2本目/);
+    assert.match(line, /昼 #16 カリバ替/);
+    assert.match(line, /夜 #17 ロール替/);
+    assert.match(line, /確定計画と実台帳は書き換えていません/);
+    assert.match(line, /補正値と許容値は未確認/);
+    assert.match(await page.locator('#line-diff').innerText(), /前日と違うスタンドは/);
+    await page.locator('#line-month').selectOption('2028-02');
+    assert.equal(await page.locator('#line-day').getAttribute('max'), '29');
     assert.match(await page.locator('#prod-store-scope').innerText(), /別の端末や別のブラウザとは共有しません/);
     const afterPlan = await page.evaluate(() => ({ ...localStorage }));
     const beforePlan = JSON.parse(storageBeforePlan);

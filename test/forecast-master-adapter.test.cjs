@@ -723,3 +723,49 @@ test('stands 16 and 17 use two columns only for D10', () => {
   assert.match(c.describeOutputFormSurvey(), /2025年度の過去数値は現在の発注済みや確定予測にしません/);
   assert.match(c.describeOutputFormSurvey(), /原本のセル配置は確定していません/);
 });
+
+test('a monthly line reads recorded days and draws two D10 tracks only', () => {
+  const c = api();
+  assert.equal(c.daysInMonth('2027-02'), 28);
+  assert.equal(c.daysInMonth('2028-02'), 29);
+  assert.equal(c.daysInMonth('2027-04'), 30);
+  assert.equal(c.daysInMonth('2027-05'), 31);
+  assert.equal(c.caliberLineDate('2027-02', 29), null);
+  const draft = c.updateMonthlyProductionMonth(c.createMonthlyProductionDraft(2027).draft, '2027-05', { classification: 'confirmed', productionTons: 810, size: 'D10' });
+  const shifted = c.addShiftBasisRow(draft.draft, { standKey: '16', size: 'D10', caliberId: '3', from: '2027-05-02', to: '2027-05-02', tons: 810 });
+  const planText = JSON.stringify(shifted.draft);
+  const note = (stand, day, extra) => Object.assign({
+    standKey: stand, size: 'D10', rollId: 'anon', side: 'WS', lane: '未確認', positionNumber: '3',
+    from: `2027-05-0${day}`, to: `2027-05-0${day}`, eventKind: '', eventDate: '', period: '未確認'
+  }, extra);
+  const view = c.buildCaliberLineView({
+    plan: shifted.draft,
+    notes: [
+      note('16', 1),
+      note('16', 2, { positionNumber: '4', eventKind: 'カリバ替', eventDate: '2027-05-02', period: '昼' }),
+      note('17', 2, { positionNumber: '5', eventKind: 'ロール替', eventDate: '2027-05-02', period: '夜' }),
+      note('16', 2, { size: 'D13', positionNumber: '8' })
+    ],
+    yearMonth: '2027-05',
+    day: 2,
+    unusable: [{ standKey: '16', size: 'D10', caliberId: '3' }],
+    regrindCalibers: [{ caliberId: '3', unusable: true }, { caliberId: '9', unusable: false }]
+  });
+  assert.equal(view.ok, true);
+  assert.equal(JSON.stringify(shifted.draft), planText);
+  assert.equal(view.lanes.filter(lane => String(lane.name).startsWith('2列')).length, 2);
+  assert.equal(view.events.map(item => item.period).join(','), '昼,夜');
+  const text = c.describeCaliberLine(view);
+  assert.match(text, /2列の1本目/);
+  assert.match(text, /2列の2本目/);
+  assert.match(text, /D13（2列圧延は適用しない）/);
+  assert.match(text, /前日と違うスタンドは/);
+  assert.match(text, /前回累計0直 今回加算2直 新しい累計2直 残り11/);
+  assert.match(text, /使用不可/);
+  assert.match(text, /3は使用不可/);
+  assert.match(text, /9は改削後0直/);
+  assert.match(text, /補正値と許容値は未確認/);
+  assert.equal(c.buildCaliberLineView({ plan: shifted.draft, notes: [], yearMonth: '2027-02', day: 1 }).ok, false);
+  const leap = c.buildCaliberLineView({ plan: { months: [{ month: '2028-02' }], shiftRows: [] }, notes: [], yearMonth: '2028-02', day: 29 });
+  assert.equal(leap.date, '2028-02-29');
+});
