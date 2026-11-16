@@ -776,24 +776,48 @@ test('a monthly line reads recorded days and draws two D10 tracks only', () => {
   assert.equal((gap.match(/<polyline/g) || []).length, 0);
   assert.match(c.describeCaliberLine(linked), /#12から#16は途中の#13、#14、#15が未確認なので線を切ります/);
   assert.match(c.describeCaliberLine(linked), /同じ列や隣接だけではつなぎません/);
+  const hinted = c.buildCaliberLineView({
+    plan: shifted.draft,
+    notes: [
+      note('15', 2, { lane: '東列', rollId: 'r15', positionNumber: '7', period: '昼', passTo: '16' }),
+      note('16', 2, { lane: '東列', rollId: 'r16', positionNumber: '4', period: '昼' }),
+      note('16', 2, { lane: '東列', rollId: 'r16', positionNumber: '8', period: '夜' })
+    ],
+    yearMonth: '2027-05',
+    day: 2
+  });
+  assert.equal((c.renderCaliberLineSvg(hinted).match(/<polyline/g) || []).length, 0);
+  assert.match(c.describeCaliberLine(hinted), /通過先入力だけでは接続確認済みにしません/);
   const hop = c.buildCaliberLineView({
     plan: shifted.draft,
     notes: [
-      note('15', 2, { lane: '東列', positionNumber: '7', passTo: '16' }),
-      note('16', 2, { lane: '東列', positionNumber: '4' }),
-      note('16', 2, { size: 'D13', lane: '東列', positionNumber: '8', passTo: '17' }),
-      note('17', 2, { size: 'D13', lane: '東列', positionNumber: '9' }),
-      note('16', 2, { size: 'D10', lane: '未確認', positionNumber: '1', passTo: '17' })
+      note('15', 2, { lane: '東列', rollId: 'r15', positionNumber: '7', period: '昼', passTo: '16', passRollId: 'r16', passCaliber: '4' }),
+      note('16', 2, { lane: '東列', rollId: 'r16', positionNumber: '4', period: '昼', acceptStand: '15', acceptRoll: 'r15', acceptCaliber: '7' }),
+      note('16', 2, { lane: '東列', rollId: 'r16', positionNumber: '8', period: '夜', acceptStand: '15', acceptRoll: 'r15', acceptCaliber: '7' }),
+      note('16', 2, { size: 'D13', lane: '東列', rollId: 'd16', positionNumber: '8', period: '昼', passTo: '17', passRollId: 'd17', passCaliber: '9' }),
+      note('17', 2, { size: 'D13', lane: '東列', rollId: 'd17', positionNumber: '9', period: '夜', acceptStand: '16', acceptRoll: 'd16', acceptCaliber: '8' })
     ],
     yearMonth: '2027-05',
     day: 2
   });
   const svg = c.renderCaliberLineSvg(hop);
-  assert.equal((svg.match(/<polyline/g) || []).length, 2);
-  assert.match(svg, /data-line="D10-東列" data-from="15" data-to="16"/);
-  assert.match(svg, /data-line="D13-東列" data-from="16" data-to="17"/);
-  assert.equal(svg.includes('data-from="12"'), false);
-  assert.match(c.describeCaliberLine(hop), /東西が未確認なので線は引きません/);
+  assert.equal((svg.match(/<polyline/g) || []).length, 1);
+  assert.match(svg, /data-line="D10-東列" data-from="15" data-to="16" data-from-roll="r15" data-to-roll="r16" data-from-caliber="7" data-to-caliber="4" data-period="昼"/);
+  assert.equal(svg.includes('data-to-caliber="8"'), false);
+  assert.equal(svg.includes('data-line="D13'), false);
+  assert.match(c.describeCaliberLine(hop), /時点が一致しないので線は引きません/);
+  const ambiguous = c.buildCaliberLineView({
+    plan: shifted.draft,
+    notes: [
+      note('15', 2, { lane: '東列', rollId: 'r15', positionNumber: '7', period: '昼', passTo: '16', passRollId: 'r16', passCaliber: '4' }),
+      note('16', 2, { lane: '東列', rollId: 'r16', positionNumber: '4', period: '昼', acceptStand: '15', acceptRoll: 'r15', acceptCaliber: '7' }),
+      note('16', 2, { lane: '東列', rollId: 'r16', positionNumber: '4', period: '昼', acceptStand: '15', acceptRoll: 'r15', acceptCaliber: '7' })
+    ],
+    yearMonth: '2027-05',
+    day: 2
+  });
+  assert.equal((c.renderCaliberLineSvg(ambiguous).match(/<polyline/g) || []).length, 0);
+  assert.match(c.describeCaliberLine(ambiguous), /候補が複数なので線は引きません/);
   assert.match(text, /前日と違うスタンドは/);
   assert.match(text, /前回累計0直 今回加算2直 新しい累計2直 残り11/);
   assert.match(text, /使用不可/);

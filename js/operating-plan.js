@@ -3096,6 +3096,10 @@ function recordCaliberLayoutNote(input) {
     if (passTo && standOrder.indexOf(passTo) !== standOrder.indexOf(stand) + 1) {
         return { ok: false, reason: '通過先は隣のスタンドだけです。途中を飛ばす線は反映しません。' };
     }
+    const named = value => {
+        const text = String(value || '').trim();
+        return text && text !== '未確認' ? text : '';
+    };
     const note = {
         standKey: stand,
         size,
@@ -3111,6 +3115,11 @@ function recordCaliberLayoutNote(input) {
         period,
         eventDate,
         passTo,
+        passRollId: named(source.passRollId),
+        passCaliber: named(source.passCaliber),
+        acceptStand: String(source.acceptStand || '').replace(/^#/, '').trim(),
+        acceptRoll: named(source.acceptRoll),
+        acceptCaliber: named(source.acceptCaliber),
         passLine: '未確認',
         source: 'anonymous-entry'
     };
@@ -3124,7 +3133,7 @@ function describeCaliberLayoutNotes() {
     const lines = caliberLayoutNotes.map(note => {
         const columns = note.columns === 2 ? '2列' : (note.columns === 1 ? '2列圧延は適用しない' : '列数未確認');
         const event = note.eventKind ? ` ${note.eventDate} ${note.period} ${note.eventKind}` : '';
-        const pass = note.passTo ? ` 通過先#${note.passTo}` : ' 通過先未確認';
+        const pass = note.passTo ? ` 通過先入力#${note.passTo}` : ' 通過先未確認';
         return `#${note.standKey} ${note.size} ロール${note.rollId} ${note.side} ${note.lane || '未確認'} ${columns} カリバ番号${note.positionNumber} 使用予定${note.plannedShifts}直 期間${note.from}から${note.to}${event}${pass} パスライン${note.passLine}`;
     });
     return `${intro}\n${lines.join('\n')}`;
@@ -3180,31 +3189,46 @@ function buildCaliberLineView(input) {
     const withheld = [];
     todayNotes.forEach(note => {
         const passTo = String(note.passTo || '').replace(/^#/, '').trim();
-        if (!passTo) return;
+        if (!passTo && !note.passRollId && !note.passCaliber) return;
         const fromIndex = standOrder.indexOf(note.standKey);
         const toIndex = standOrder.indexOf(passTo);
-        if (fromIndex < 0 || toIndex < 0 || toIndex !== fromIndex + 1) {
+        if (!passTo || fromIndex < 0 || toIndex !== fromIndex + 1) {
             const between = toIndex > fromIndex ? standOrder.slice(fromIndex + 1, toIndex) : [];
             withheld.push(between.length
                 ? `#${note.standKey}から#${passTo}は途中の${between.map(stand => `#${stand}`).join('、')}が未確認なので線を切ります。`
-                : `#${note.standKey}から#${passTo}は確認できた隣接区間ではないので、線は引きません。`);
+                : `#${note.standKey || '未確認'}の通過先は確認できた隣接区間ではないので、線は引きません。`);
             return;
         }
-        if (note.lane !== '東列' && note.lane !== '西列') {
-            withheld.push(`#${note.standKey}から#${passTo}は東西が未確認なので線は引きません。`);
+        if (!note.passRollId || !note.passCaliber || note.rollId === '未確認' || (note.period !== '昼' && note.period !== '夜') || (note.lane !== '東列' && note.lane !== '西列')) {
+            withheld.push(`#${note.standKey}の通過先入力だけでは接続確認済みにしません。ロール、カリバ、列、昼夜が未確認です。`);
             return;
         }
-        const target = todayNotes.find(item => item.standKey === passTo && item.size === note.size && item.lane === note.lane);
-        if (!target) {
-            withheld.push(`#${note.standKey}から#${passTo}の接続先は未確認なので線は切ります。`);
+        const samePlace = todayNotes.filter(item => item.standKey === passTo && item.size === note.size && item.lane === note.lane);
+        const periodMismatch = samePlace.filter(item => item.period !== note.period);
+        const matches = samePlace.filter(item => item.rollId === note.passRollId && item.positionNumber === note.passCaliber && item.period === note.period
+            && item.acceptStand === note.standKey && item.acceptRoll === note.rollId && item.acceptCaliber === note.positionNumber);
+        if (matches.length > 1) {
+            withheld.push(`#${note.standKey}から#${passTo}は候補が複数なので線は引きません。`);
             return;
         }
+        if (matches.length !== 1) {
+            withheld.push(periodMismatch.length
+                ? `#${note.standKey}から#${passTo}は時点が一致しないので線は引きません。`
+                : `#${note.standKey}から#${passTo}は接続先を一意に特定できないので線は引きません。`);
+            return;
+        }
+        const target = matches[0];
         segments.push({
-            name: `${note.size} ${note.lane} #${note.standKey}-#${passTo}`,
+            name: `${note.size} ${note.lane} ${note.period} #${note.standKey} ${note.rollId} カリバ${note.positionNumber}-#${passTo} ${target.rollId} カリバ${target.positionNumber}`,
             size: note.size,
             lane: note.lane,
+            period: note.period,
             from: note.standKey,
             to: passTo,
+            fromRoll: note.rollId,
+            toRoll: target.rollId,
+            fromCaliber: note.positionNumber,
+            toCaliber: target.positionNumber,
             notes: [note, target],
             connect: true
         });
@@ -3291,6 +3315,11 @@ function saveCaliberLayoutFromForm() {
         period: document.getElementById('layout-period').value,
         eventDate: document.getElementById('layout-event-date').value,
         passTo: document.getElementById('layout-pass-to').value,
+        passRollId: document.getElementById('layout-pass-roll').value,
+        passCaliber: document.getElementById('layout-pass-caliber').value,
+        acceptStand: document.getElementById('layout-accept-stand').value,
+        acceptRoll: document.getElementById('layout-accept-roll').value,
+        acceptCaliber: document.getElementById('layout-accept-caliber').value,
         positionNumber: document.getElementById('layout-position').value,
         plannedShifts: document.getElementById('layout-shifts').value,
         from: document.getElementById('layout-from').value,
@@ -3317,24 +3346,46 @@ function escapeLineText(value) {
 function renderCaliberLineSvg(view) {
     if (!view || !view.ok) return '';
     const stands = ['12', '13', '14', '15', '16', '17'];
-    const xOf = stand => 64 + stands.indexOf(String(stand)) * 118;
+    const widths = stands.map(stand => {
+        const count = view.cards.find(item => item.standKey === stand).notes.length;
+        return Math.max(108, count * 78);
+    });
+    const origin = {};
+    let cursor = 40;
+    stands.forEach((stand, index) => {
+        origin[stand] = cursor;
+        cursor += widths[index];
+    });
+    const boardWidth = cursor + 24;
+    const xOf = stand => origin[String(stand)] + widths[stands.indexOf(String(stand))] / 2;
     const yOf = note => note.lane === '東列' ? 42 : (note.lane === '西列' ? 220 : 136);
     const rolls = [];
+    const pointOf = new Map();
     stands.forEach(stand => {
-        const notes = view.cards.find(card => card.standKey === stand).notes;
+        const card = view.cards.find(item => item.standKey === stand);
+        const notes = card.notes;
         if (!notes.length) {
-            rolls.push({ stand, x: xOf(stand), y: 136, label: '未確認', caliber: '', changed: false, size: '', side: '' });
+            rolls.push({ stand, x: xOf(stand), y: 136, label: '未確認', caliber: '', changed: false, size: '', side: '', period: '' });
             return;
         }
-        notes.forEach(note => rolls.push({
-            stand, x: xOf(stand), y: yOf(note), changed: view.cards.find(card => card.standKey === stand).changed,
-            label: note.rollId, caliber: note.positionNumber, size: note.size, side: note.side || '未確認', lane: note.lane || '未確認'
-        }));
+        notes.forEach((note, index) => {
+            const x = origin[stand] + 39 + index * 78;
+            const y = yOf(note);
+            pointOf.set(note, { x, y });
+            rolls.push({
+                stand, x, y, changed: card.changed,
+                label: note.rollId, caliber: note.positionNumber, size: note.size,
+                side: note.side || '未確認', lane: note.lane || '未確認', period: note.period || ''
+            });
+        });
     });
     const lines = (view.segments || []).map(segment => {
-        const points = segment.notes.map(note => `${xOf(note.standKey)},${yOf(note)}`).join(' ');
+        const points = segment.notes.map(note => {
+            const point = pointOf.get(note) || { x: xOf(note.standKey), y: yOf(note) };
+            return `${point.x},${point.y}`;
+        }).join(' ');
         const color = segment.size === 'D13' ? '#b45309' : (segment.lane === '西列' ? '#15803d' : '#1d4ed8');
-        return `<polyline data-line="${escapeLineText(segment.size)}-${escapeLineText(segment.lane)}" data-from="${escapeLineText(segment.from)}" data-to="${escapeLineText(segment.to)}" points="${points}" fill="none" stroke="${color}" stroke-width="4" stroke-linecap="round" />`;
+        return `<polyline data-line="${escapeLineText(segment.size)}-${escapeLineText(segment.lane)}" data-from="${escapeLineText(segment.from)}" data-to="${escapeLineText(segment.to)}" data-from-roll="${escapeLineText(segment.fromRoll)}" data-to-roll="${escapeLineText(segment.toRoll)}" data-from-caliber="${escapeLineText(segment.fromCaliber)}" data-to-caliber="${escapeLineText(segment.toCaliber)}" data-period="${escapeLineText(segment.period)}" points="${points}" fill="none" stroke="${color}" stroke-width="4" stroke-linecap="round" />`;
     }).join('');
     const bodies = rolls.map(roll => {
         const stroke = roll.changed ? '#c2410c' : '#334155';
@@ -3343,12 +3394,12 @@ function renderCaliberLineSvg(view) {
             + `<ellipse cx="${roll.x - 20}" cy="${roll.y}" rx="14" ry="26" fill="#cbd5e1" stroke="${stroke}" />`
             + `<circle cx="${roll.x + 8}" cy="${roll.y - 2}" r="13" fill="#dc2626" />`
             + `<text x="${roll.x + 8}" y="${roll.y + 3}" text-anchor="middle" font-size="12" fill="#fff">${escapeLineText(roll.caliber || '未')}</text>`
-            + `<text x="${roll.x}" y="${roll.y + 46}" text-anchor="middle" font-size="12" fill="#0f172a">#${roll.stand} ${escapeLineText(roll.size)} ${escapeLineText(roll.label)}</text>`
-            + `<text x="${roll.x}" y="${roll.y + 62}" text-anchor="middle" font-size="11" fill="#475569">${escapeLineText(roll.side || '')} ${escapeLineText(roll.lane || '')}</text>`
+            + `<text x="${roll.x}" y="${roll.y + 46}" text-anchor="middle" font-size="11" fill="#0f172a">#${roll.stand} ${escapeLineText(roll.caliber ? roll.label : '')}</text>`
+            + `<text x="${roll.x}" y="${roll.y + 60}" text-anchor="middle" font-size="11" fill="#475569">${escapeLineText(roll.period || roll.side || '')} ${escapeLineText(roll.lane || '')}</text>`
             + '</g>';
     }).join('');
-    return `<svg id="caliber-line-svg" viewBox="0 0 760 360" width="100%" role="img" aria-label="カリバ配置図">`
-        + '<rect x="8" y="8" width="744" height="344" rx="8" fill="#f8fafc" stroke="#cbd5e1" />'
+    return `<svg id="caliber-line-svg" viewBox="0 0 ${boardWidth} 360" width="100%" role="img" aria-label="カリバ配置図">`
+        + `<rect x="8" y="8" width="${boardWidth - 16}" height="344" rx="8" fill="#f8fafc" stroke="#cbd5e1" />`
         + lines
         + bodies
         + '<rect x="24" y="324" width="220" height="22" fill="none" stroke="#64748b" stroke-dasharray="4 3" />'
@@ -3451,7 +3502,12 @@ function ensureCaliberLayoutPanel() {
         + '<label>ロール番号 <input id="layout-roll" type="text" value=""></label>'
         + '<label>WS/DS <select id="layout-side"><option value="">未確認</option><option value="WS">WS</option><option value="DS">DS</option></select></label>'
         + '<label>東列・西列 <select id="layout-lane"><option value="">未確認</option><option value="東列">東列</option><option value="西列">西列</option></select></label>'
-        + '<label>通過先の隣スタンド <input id="layout-pass-to" type="text" value=""></label>'
+        + '<label>通過先スタンド <input id="layout-pass-to" type="text" value=""></label>'
+        + '<label>接続先ロール <input id="layout-pass-roll" type="text" value=""></label>'
+        + '<label>接続先カリバ <input id="layout-pass-caliber" type="text" value=""></label>'
+        + '<label>接続元スタンド <input id="layout-accept-stand" type="text" value=""></label>'
+        + '<label>接続元ロール <input id="layout-accept-roll" type="text" value=""></label>'
+        + '<label>接続元カリバ <input id="layout-accept-caliber" type="text" value=""></label>'
         + '<label>列 <select id="layout-columns"><option value="">未確認</option><option value="2">2列</option><option value="1">単独</option></select></label>'
         + '<label>今回のカリバ番号 <input id="layout-position" type="text" value=""></label>'
         + '<label>使用予定直数 <input id="layout-shifts" type="number" min="0" step="1" value=""></label>'
