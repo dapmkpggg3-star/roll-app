@@ -320,6 +320,8 @@ async function main() {
     assert.match(basis, /パスラインは記入がありますが根拠資料が無いので未確認/);
     assert.match(await page.locator('#output-form-gaps').innerText(), /印刷範囲A1:AC49/);
     assert.match(await page.locator('#annual-form-basis').innerText(), /D5だけ405t/);
+    assert.match(await page.locator('#annual-form-link').innerText(), /暫定10000tは帳票へ入れていません/);
+    assert.match(await page.locator('#output-form-gaps').innerText(), /印刷指示書写真は受領済みです/);
     assert.equal(await page.locator('#annual-form-grid td[data-ref="AB5"]').innerText(), '405');
     assert.equal(await page.locator('#annual-form-grid td[data-ref="D8"]').innerText(), 'anon-2a');
     assert.equal(await page.locator('#annual-form-grid td[data-ref="AC25"]').getAttribute('title'), 'AC24/AB5*1000');

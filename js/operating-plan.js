@@ -291,6 +291,8 @@ function annualFormSource() {
         orientation: 'landscape',
         scale: 72,
         fitToPage: true,
+        fitToWidth: 1,
+        fitToHeight: 1,
         showGridLines: false,
         margins: {
             left: 0.7874015748031497,
@@ -348,12 +350,23 @@ function annualFormFormulas() {
     amount.forEach(column => {
         formulas[column + '24'] = `SUM(${column}7:${column}23)`;
     });
-    [30, 31, 36, 39, 42, 43, 46, 47, 48].forEach(row => {
-        formulas['AB' + row] = `COUNTA(${countList(row)})*2`;
-    });
-    [30, 35, 37, 38, 39, 42, 43, 47, 48].forEach(row => {
-        formulas['AC' + row] = `SUM(D${row}:AA${row})`;
-    });
+    for (let row = 8; row <= 23; row += 1) formulas['AB' + row] = `COUNTA(${countList(row)})*2`;
+    for (let row = 8; row <= 22; row += 1) formulas['AC' + row] = `SUM(${amount.map(column => column + row).join('+')})`;
+    formulas.AC23 = `SUM(${amount.map(column => column + '23').join('+')})`;
+    for (let row = 30; row <= 36; row += 1) formulas['AC' + row] = `SUM(D${row}:AA${row})`;
+    for (let row = 31; row <= 38; row += 1) formulas['AB' + row] = `COUNTA(${countList(row)})*2`;
+    formulas.AB30 = `COUNTA(${countList(30)})*2`;
+    formulas.AB39 = `COUNTA(${countList(39)})*2`;
+    formulas.AC37 = 'SUM(D37:AA37)';
+    formulas.AC38 = 'SUM(D38:AA38)';
+    formulas.AC39 = 'SUM(D39:AA39)';
+    formulas.AB42 = `COUNTA(${countList(42)})*2`;
+    formulas.AC42 = 'SUM(D42:AA42)';
+    for (let row = 43; row <= 45; row += 1) formulas['AB' + row] = `COUNTA(${countList(row)})*2`;
+    for (let row = 43; row <= 46; row += 1) formulas['AC' + row] = `SUM(D${row}:AA${row})`;
+    [46, 47, 48].forEach(row => { formulas['AB' + row] = `COUNTA(${countList(row)})*2`; });
+    formulas.AC47 = 'SUM(D47:AA47)';
+    formulas.AC48 = 'SUM(D48:AA48)';
     return formulas;
 }
 
@@ -486,7 +499,9 @@ function describeAnnualFormBasis(sample) {
         'COUNTAやCOUNTを2倍する式は原本の式です。印刷範囲のコメントは実績の記入先だけで、2倍の意味は書かれていないため、見本も同じ式を置いて意味は加えていません。',
         '払出の49行右にある見出しY49は、原本でも「上期計」です。見本も同じ文字にしています。',
         '原本の日付AC3と、2025年度のロール番号・金額・本数・生産量は見本へコピーしていません。2025年度の過去数値は現在の発注済みや確定予測にしません。',
-        '列幅、行高、結合、数式、印刷設定は原本に合わせています。色と罫線の細かな様式番号までは写していません。'
+        '印刷はA3横の1枚です。原本はfitToPageだけで横1・縦1を省略しているので、見本はfitToWidth=1、fitToHeight=1を明示しています。倍率72も残しています。',
+        '原本の共有数式は行ごとに展開しています。改削の本数はAB8からAB23、金額はAC8からAC22、購入の金額はAC30からAC36、本数はAB31からAB38、払出の本数はAB43からAB45、金額はAC43からAC46です。',
+        '見本の罫線は細い実線です。原本の色番号と罫線の太さの違いは写していません。'
     ].join('\n');
 }
 
@@ -504,13 +519,14 @@ function annualFormSheetXml(sample) {
             const ref = annualColumnName(column) + row;
             const formula = built.formulas[ref];
             const value = built.values[ref];
+            const style = row === 6 ? ' s="2"' : ' s="1"';
             if (formula) {
                 const text = typeof value === 'string';
-                cells.push(`<c r="${ref}"${text ? ' t="str"' : ''}><f>${annualFormXmlEscape(formula)}</f>${value === null || value === undefined ? '' : `<v>${annualFormXmlEscape(value)}</v>`}</c>`);
+                cells.push(`<c r="${ref}"${style}${text ? ' t="str"' : ''}><f>${annualFormXmlEscape(formula)}</f>${value === null || value === undefined ? '' : `<v>${annualFormXmlEscape(value)}</v>`}</c>`);
             } else if (value !== undefined && value !== '') {
-                if (typeof value === 'number') cells.push(`<c r="${ref}"><v>${value}</v></c>`);
-                else cells.push(`<c r="${ref}" t="inlineStr"><is><t>${annualFormXmlEscape(value)}</t></is></c>`);
-            }
+                if (typeof value === 'number') cells.push(`<c r="${ref}"${style}><v>${value}</v></c>`);
+                else cells.push(`<c r="${ref}"${style} t="inlineStr"><is><t>${annualFormXmlEscape(value)}</t></is></c>`);
+            } else cells.push(`<c r="${ref}"${style}/>`);
         }
         const height = heights[row] || (row >= 8 && row <= 25 ? 24.75 : (row >= 29 && row <= 39 ? 24.75 : (row >= 43 && row <= 48 ? 24 : null)));
         rows.push(`<row r="${row}"${height ? ` ht="${height}" customHeight="1"` : ''}>${cells.join('')}</row>`);
@@ -526,13 +542,14 @@ function annualFormSheetXml(sample) {
     return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`
         + '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
         + '<sheetPr><pageSetUpPr fitToPage="1"/></sheetPr><dimension ref="A1:AC49"/>'
-        + '<sheetViews><sheetView showGridLines="0" workbookViewId="0"/></sheetViews>'
+        + '<sheetViews><sheetView showGridLines="0" zoomScale="70" zoomScaleNormal="70" workbookViewId="0"/></sheetViews>'
         + '<sheetFormatPr defaultRowHeight="15"/>'
         + cols
         + `<sheetData>${rows.join('')}</sheetData>`
         + `<mergeCells count="${built.merges.length}">${built.merges.map(ref => `<mergeCell ref="${ref}"/>`).join('')}</mergeCells>`
         + `<pageMargins left="${margins.left}" right="${margins.right}" top="${margins.top}" bottom="${margins.bottom}" header="${margins.header}" footer="${margins.footer}"/>`
-        + '<pageSetup paperSize="8" scale="72" orientation="landscape"/>'
+        + '<pageSetup paperSize="8" scale="72" fitToWidth="1" fitToHeight="1" orientation="landscape"/>'
+        + '<headerFooter alignWithMargins="0"/>'
         + '</worksheet>';
 }
 
@@ -622,7 +639,7 @@ function annualFormWorkbookFiles(sample) {
         { name: '_rels/.rels', data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>' },
         { name: 'xl/workbook.xml', data: workbook },
         { name: 'xl/_rels/workbook.xml.rels', data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>' },
-        { name: 'xl/styles.xml', data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="1"><font><sz val="11"/><name val="Calibri"/></font></fonts><fills count="1"><fill><patternFill patternType="none"/></fill></fills><borders count="1"><border/></borders><cellStyleXfs count="1"><xf/></cellStyleXfs><cellXfs count="1"><xf/></cellXfs></styleSheet>' },
+        { name: 'xl/styles.xml', data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="1"><font><sz val="11"/><name val="Calibri"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="2"><border/><border><left style="thin"/><right style="thin"/><top style="thin"/><bottom style="thin"/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="3"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf></cellXfs></styleSheet>' },
         { name: 'xl/worksheets/sheet1.xml', data: annualFormSheetXml(built) }
     ];
 }
@@ -631,22 +648,98 @@ function annualFormSampleWorkbook(sample) {
     return annualFormZip(annualFormWorkbookFiles(sample));
 }
 
+function annualFormMergeMap(merges) {
+    const origin = {};
+    const covered = new Set();
+    merges.forEach(ref => {
+        const parts = ref.split(':');
+        const startColumn = parts[0].replace(/\d+/g, '');
+        const startRow = Number(parts[0].replace(/[A-Z]+/g, ''));
+        const endColumn = parts[1].replace(/\d+/g, '');
+        const endRow = Number(parts[1].replace(/[A-Z]+/g, ''));
+        origin[parts[0]] = {
+            colspan: annualColumnIndex(endColumn) - annualColumnIndex(startColumn) + 1,
+            rowspan: endRow - startRow + 1
+        };
+        for (let row = startRow; row <= endRow; row += 1) {
+            for (let column = annualColumnIndex(startColumn); column <= annualColumnIndex(endColumn); column += 1) {
+                const cell = annualColumnName(column) + row;
+                if (cell !== parts[0]) covered.add(cell);
+            }
+        }
+    });
+    return { origin, covered };
+}
+
 function renderAnnualFormTable(sample) {
     const built = sample && sample.ok ? sample : buildAnnualFormSample();
+    const map = annualFormMergeMap(built.merges);
     const rows = [];
     for (let row = 1; row <= 49; row += 1) {
         const cells = [];
         for (let column = 1; column <= 29; column += 1) {
             const ref = annualColumnName(column) + row;
+            if (map.covered.has(ref)) continue;
             const formula = built.formulas[ref];
             const value = built.values[ref];
             const shown = value === null || value === undefined || value === '' ? '' : value;
             const kind = formula ? 'formula' : (built.inputs[ref] !== undefined ? 'input' : 'label');
-            cells.push(`<td data-ref="${ref}" data-kind="${kind}"${formula ? ` title="${annualFormXmlEscape(formula)}"` : ''}>${annualFormXmlEscape(shown)}</td>`);
+            const span = map.origin[ref] || { colspan: 1, rowspan: 1 };
+            cells.push(`<td data-ref="${ref}" data-kind="${kind}" colspan="${span.colspan}" rowspan="${span.rowspan}"${formula ? ` title="${annualFormXmlEscape(formula)}"` : ''}>${annualFormXmlEscape(shown)}</td>`);
         }
         rows.push(`<tr>${cells.join('')}</tr>`);
     }
-    return `<table id="annual-form-grid"><caption>匿名見本 A3横 ${built.source.printArea}</caption><tbody>${rows.join('')}</tbody></table>`;
+    return `<table id="annual-form-grid"><caption>匿名見本 A3横1枚 ${built.source.printArea}</caption><tbody>${rows.join('')}</tbody></table>`;
+}
+
+function buildConnectedAnnualForm(plan) {
+    const formulas = annualFormFormulas();
+    const labels = annualFormLabels();
+    labels.B2 = 'ロール改削計画（12か月見通し）';
+    labels.B27 = 'ロール購入・払出計画（12か月見通し）';
+    const inputs = {};
+    const notes = [];
+    const months = plan && Array.isArray(plan.months) ? plan.months : [];
+    const columns = annualFormNoColumns();
+    if (months.length !== 12) {
+        notes.push('12か月の生産計画が無いので、生産量は未確認です。帳票の生産量には入れていません。');
+    } else {
+        months.forEach((item, index) => {
+            const confirmed = item && item.classification === 'confirmed' && typeof item.productionTons === 'number' && item.productionTons >= 0;
+            if (confirmed) {
+                inputs[columns[index] + '5'] = item.productionTons;
+                notes.push(`${item.month}の確定生産量${item.productionTons}tを${columns[index]}5へ入れました。`);
+            } else {
+                notes.push(`${item && item.month ? item.month : '対象月'}の生産量は未確認です。暫定10000tは帳票へ入れていません。`);
+            }
+        });
+    }
+    notes.push('改削の本数と金額、購入と払出の本数と金額は、直数の差からは作りません。ロール番号と金額の実データが無いので未確認です。');
+    notes.push('3セットはロール3本のことではありません。組込済み予備、搬出日、発注日が無いので、戻り日と補充日は未確認です。購入LTは暫定6か月で、確定の購入日ではありません。不足なしとは判定しません。');
+    const values = annualFormEvaluate(formulas, Object.assign({}, labels, inputs));
+    return {
+        ok: true,
+        source: annualFormSource(),
+        sampleSheetName: '見通しロール(計画)',
+        merges: annualFormMerges(),
+        formulas,
+        labels,
+        inputs,
+        values,
+        notes,
+        historicalValuesCopied: false
+    };
+}
+
+function describeConnectedAnnualForm(connected) {
+    const built = connected && connected.ok ? connected : buildConnectedAnnualForm(null);
+    const price = built.values.AC25 === null || built.values.AC25 === undefined ? '未計算' : built.values.AC25;
+    return [
+        built.notes.join('\n'),
+        `見通しの年度生産量AB5は${built.values.AB5 || 0}です。確定月が無い、または0のときは原単価AC25は${price}です。`,
+        'スタンド別の改削LTは初期の暫定暦日のままです。搬出日が無いので搬入日は作りません。',
+        threeSetForecast({})
+    ].join('\n');
 }
 
 function downloadAnnualFormSample() {
@@ -669,7 +762,7 @@ function describeOutputFormSurvey() {
         '出力仕様案です。年間帳票の印刷範囲は原本で確認しました。月間予定と位置指示書のセル配置は未確定です。',
         '年間改削・購入計画: 原本「ロール管理 必要エクセルまとめ.xlsx」のシート「2025年度ロール(計画)」を読みました。A3横、印刷範囲A1:AC49、倍率72です。同じシートの改削計画と購入・払出計画を一体の帳票として、結合・数式・印刷設定を匿名見本に再現しています。2025年度の過去数値は現在の発注済みや確定予測にしません。',
         '月間ロール・カリバ替予定: ローカルの生産予定ファイルに「ロール・カリバ替予定2026.10」という過去月のシートがあり、見えた見出しは日付、曜日、サイズ、操業、常昼、ロール替とカリバ替の記入です。過去月の値は現在の計画にせず、この並びも出力様式としては確定しません。',
-        '#12〜#17の位置指示書: 正式な指示書の原本は未入手です。手書きの使用管理表は予定の参考であり、実績としては入れません。赤丸のカリバ番号と、日付の下の丸数字（使用予定直数）は別項目です。位置とパスラインは推測で確定しません。',
+        '#12〜#17の位置指示書: 11月5日のD10と11月14日のD13東列の印刷指示書写真は受領済みです。赤丸は今回使用するカリバ番号です。編集元のExcelとパスラインの数値は未取得なので、位置とずれ量は未確認です。手書きの使用管理表は予定の参考であり、実績としては入れません。',
         '不足資料: 現行の月間予定表、#12〜#17位置指示書の原本。年間帳票の2025年度シートは読み取り済みです。'
     ].join('\n');
 }
@@ -3295,6 +3388,11 @@ function renderMonthlyProductionPlan() {
     const sheet = document.getElementById('annual-form-sheet');
     if (basis) basis.textContent = describeAnnualFormBasis();
     if (sheet) sheet.innerHTML = renderAnnualFormTable();
+    const link = document.getElementById('annual-form-link');
+    if (link) {
+        const plan = monthlyProductionDraft || monthlyProductionSealed[monthlyProductionSealed.length - 1] || null;
+        link.textContent = describeConnectedAnnualForm(buildConnectedAnnualForm(plan));
+    }
     if (document.getElementById('line-board')) renderCaliberLineBoard();
 }
 
@@ -3548,7 +3646,7 @@ function recordCaliberLayoutNote(input) {
 }
 
 function describeCaliberLayoutNotes() {
-    const intro = '写真は予定表であり、実績としては入れていません。赤丸のカリバ番号と、日付の下の丸数字（使用予定直数）は別項目です。正式な位置指示書は未入手なので、パスラインは未確認です。実台帳には書いていません。';
+    const intro = '写真は予定表であり、実績としては入れていません。赤丸のカリバ番号と、日付の下の丸数字（使用予定直数）は別項目です。11月5日のD10と11月14日のD13東列の印刷指示書写真は受領済みです。編集元のExcelとパスラインの数値は未取得なので、位置とずれ量は未確認です。実台帳には書いていません。';
     if (!caliberLayoutNotes.length) return `${intro}\nカリバ配置の匿名メモはまだありません。`;
     const lines = caliberLayoutNotes.map(note => {
         const columns = note.columns === 2 ? '2列' : (note.columns === 1 ? '2列圧延は適用しない' : '列数未確認');
@@ -3983,7 +4081,8 @@ function ensureFiscalPlanTarget() {
         + '<h3>帳票の出力仕様案</h3><pre id="output-form-gaps"></pre>'
         + '<h3>年間改削・購入の匿名見本</h3><style>#annual-form-grid{border-collapse:collapse;font-size:12px}#annual-form-grid td{border:1px solid #cbd5e1;min-width:4.5rem;padding:2px 4px;white-space:nowrap}#annual-form-grid td[data-kind="formula"]{background:#eff6ff}#annual-form-grid td[data-kind="input"]{background:#fef3c7}</style><p>A3横の見本です。2025年度の数値は入っていません。青いセルは原本の数式、黄色いセルは匿名の入力です。</p>'
         + '<button id="annual-form-download" type="button">匿名見本のA3帳票を書き出す</button>'
-        + '<pre id="annual-form-basis"></pre><div id="annual-form-sheet" style="overflow:auto;max-width:100%"></div>');
+        + '<pre id="annual-form-basis"></pre><div id="annual-form-sheet" style="overflow:auto;max-width:100%"></div>'
+        + '<h3>12か月見通しと帳票の接続</h3><p>確定した月の生産量だけを帳票へ入れます。暫定10000t、改削本数、購入本数は未確認のままです。</p><pre id="annual-form-link"></pre>');
     document.getElementById('prod-create').addEventListener('click', createProductionDraftFromForm);
     document.getElementById('prod-month-save').addEventListener('click', saveProductionMonthFromForm);
     document.getElementById('prod-seal').addEventListener('click', sealProductionDraftFromForm);

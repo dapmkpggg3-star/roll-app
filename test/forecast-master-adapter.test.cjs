@@ -557,7 +557,7 @@ test('a fiscal year outlook keeps the 405 ton basis and does not invent dates', 
   assert.equal(next.row.cumulativeShifts, 3);
   assert.equal(c.addShiftBasisRow(next.draft, { standKey: '10', size: 'D10', caliberId: 'ca', from: '2027-05-04', to: '2027-05-04' }).ok, false);
   assert.match(c.describeOutputFormSurvey(), /年間帳票の印刷範囲は原本で確認しました/);
-  assert.match(c.describeOutputFormSurvey(), /正式な指示書の原本は未入手です/);
+  assert.match(c.describeOutputFormSurvey(), /印刷指示書写真は受領済みです/);
   const memory = { roles: '[]', operating_plan_revisions_v1: '[]' };
   const store = {
     getItem(key) { return Object.prototype.hasOwnProperty.call(memory, key) ? memory[key] : null; },
@@ -740,13 +740,21 @@ test('an anonymous annual form keeps the original formulas and leaves out the 20
   assert.equal(sample.merges.includes('B42:B48'), true);
   assert.equal(sample.merges.includes('D4:E4'), true);
   assert.equal(sample.merges.includes('AB5:AC5'), true);
-  assert.equal(Object.keys(sample.formulas).length, 78);
+  assert.equal(Object.keys(sample.formulas).length, 123);
   assert.equal(sample.formulas.AB5, 'SUM(D5:AA5)');
   assert.equal(sample.formulas.D24, 'COUNTA(D8:D23)*2');
   assert.equal(sample.formulas.E24, 'SUM(E7:E23)');
   assert.equal(sample.formulas.AC25, 'AC24/AB5*1000');
   assert.equal(sample.formulas.D29, '+D4');
   assert.equal(sample.formulas.N40, 'COUNT(E30:E39,G30:G39,I30:I39,K30:K39,M30:M39,O30:O39)*2');
+  assert.equal(sample.formulas.AB9, 'COUNTA(Z9,X9,V9,T9,R9,P9,N9,L9,J9,H9,F9,D9)*2');
+  assert.equal(sample.formulas.AC22, 'SUM(E22+G22+I22+K22+M22+O22+Q22+S22+U22+W22+Y22+AA22)');
+  assert.equal(sample.formulas.AC31, 'SUM(D31:AA31)');
+  assert.equal(sample.formulas.AB32, 'COUNTA(Z32,X32,V32,T32,R32,P32,N32,L32,J32,H32,F32,D32)*2');
+  assert.equal(sample.formulas.AB44, 'COUNTA(Z44,X44,V44,T44,R44,P44,N44,L44,J44,H44,F44,D44)*2');
+  assert.equal(sample.formulas.AC46, 'SUM(D46:AA46)');
+  assert.equal(sample.values.AB40, 4);
+  assert.equal(sample.values.AC40, 50);
   assert.equal(sample.values.D5, 405);
   assert.equal(sample.values.AB5, 405);
   assert.equal(sample.values.D24, 2);
@@ -777,7 +785,20 @@ test('an anonymous annual form keeps the original formulas and leaves out the 20
   assert.match(basis, /AC24\/AB5\*1000/);
   assert.match(basis, /2025年度の過去数値は現在の発注済みや確定予測にしません/);
   const xml = c.annualFormSheetXml(sample);
-  assert.match(xml, /paperSize="8" scale="72" orientation="landscape"/);
+  assert.match(xml, /paperSize="8" scale="72" fitToWidth="1" fitToHeight="1" orientation="landscape"/);
+  const draft = c.createMonthlyProductionDraft(2027);
+  const may = c.updateMonthlyProductionMonth(draft.draft, '2027-05', { classification: 'confirmed', productionTons: 810, size: 'D10' });
+  const connected = c.buildConnectedAnnualForm(may.draft);
+  assert.equal(connected.values.F5, 810);
+  assert.equal(connected.inputs.D5, undefined);
+  assert.equal(connected.inputs.F5, 810);
+  assert.equal(connected.values.AB5, 810);
+  assert.equal(JSON.stringify(connected.values).includes('10000'), false);
+  assert.equal(JSON.stringify(connected.inputs).includes('anon-2a'), false);
+  assert.match(c.describeConnectedAnnualForm(connected), /暫定10000tは帳票へ入れていません/);
+  assert.match(c.describeConnectedAnnualForm(connected), /直数の差からは作りません/);
+  assert.match(c.describeConnectedAnnualForm(connected), /3セットはロール3本のことではありません/);
+  assert.equal(c.buildConnectedAnnualForm(null).values.AB5, 0);
   assert.match(xml, /<mergeCell ref="B8:B23"\/>/);
   assert.match(xml, /<f>SUM\(D5:AA5\)<\/f><v>405<\/v>/);
   assert.equal(xml.includes('#17-86'), false);
