@@ -371,19 +371,25 @@ async function main() {
     fs.mkdirSync(path.join(root, 'artifacts/roll001-dom'), { recursive: true });
     await page.locator('#caliber-line-svg').screenshot({ path: path.join(root, 'artifacts/roll001-dom/caliber-line-unlinked.png') });
     await page.evaluate(() => {
-      recordCaliberLayoutNote({ standKey: '12', size: 'D10', rollId: 'anon-12', side: 'WS', lane: '東列', positionNumber: '2', plannedShifts: '1', from: '2027-05-01', to: '2027-05-02' });
+      recordCaliberLayoutNote({ standKey: '12', size: 'D10', rollId: 'anon-12', side: 'WS', lane: '東列', positionNumber: '2', plannedShifts: '1', from: '2027-05-02', to: '2027-05-02' });
       recordCaliberLayoutNote({ standKey: '16', size: 'D10', rollId: 'anon-16', side: 'WS', lane: '東列', positionNumber: '4', plannedShifts: '1', from: '2027-05-02', to: '2027-05-02' });
-      recordCaliberLayoutNote({ standKey: '13', size: 'D10', rollId: 'anon-13', side: 'DS', lane: '西列', positionNumber: '6', plannedShifts: '1', from: '2027-05-02', to: '2027-05-02' });
-      recordCaliberLayoutNote({ standKey: '17', size: 'D10', rollId: 'anon-17', side: 'DS', lane: '西列', positionNumber: '5', plannedShifts: '1', from: '2027-05-02', to: '2027-05-02' });
+      document.getElementById('line-day').value = '2';
+      renderCaliberLineBoard();
+    });
+    assert.equal(await page.locator('#caliber-line-svg polyline').count(), 0);
+    assert.match(await page.locator('#line-summary').innerText(), /同じ列や隣接だけではつなぎません/);
+    await page.locator('#caliber-line-svg').screenshot({ path: path.join(root, 'artifacts/roll001-dom/caliber-line-gap.png') });
+    await page.evaluate(() => {
+      recordCaliberLayoutNote({ standKey: '15', size: 'D10', rollId: 'anon-15', side: 'WS', lane: '東列', positionNumber: '7', plannedShifts: '1', passTo: '16', from: '2027-05-02', to: '2027-05-02' });
       document.getElementById('line-day').value = '1';
       renderCaliberLineBoard();
     });
     assert.equal(await page.locator('#caliber-line-svg polyline').count(), 0);
     await page.locator('#caliber-line-svg').screenshot({ path: path.join(root, 'artifacts/roll001-dom/caliber-line-day1.png') });
     await page.locator('#line-day').fill('2');
-    assert.equal(await page.locator('#caliber-line-svg polyline').count(), 2);
-    assert.equal(await page.locator('#caliber-line-svg polyline[data-line="D10-東列"]').count(), 1);
-    assert.equal(await page.locator('#caliber-line-svg polyline[data-line="D10-西列"]').count(), 1);
+    assert.equal(await page.locator('#caliber-line-svg polyline').count(), 1);
+    assert.equal(await page.locator('#caliber-line-svg polyline[data-from="15"][data-to="16"]').count(), 1);
+    assert.equal(await page.locator('#caliber-line-svg polyline[data-from="12"]').count(), 0);
     await page.locator('#caliber-line-svg').screenshot({ path: path.join(root, 'artifacts/roll001-dom/caliber-line-day2.png') });
     await page.locator('#line-month').selectOption('2028-02');
     assert.equal(await page.locator('#line-day').getAttribute('max'), '29');

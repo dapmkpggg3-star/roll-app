@@ -763,20 +763,37 @@ test('a monthly line reads recorded days and draws two D10 tracks only', () => {
   const linked = c.buildCaliberLineView({
     plan: shifted.draft,
     notes: [
-      note('12', 2, { lane: '東列', positionNumber: '2' }),
+      note('12', 2, { lane: '東列', positionNumber: '2', passTo: '16' }),
       note('16', 2, { lane: '東列', positionNumber: '4' }),
+      note('15', 2, { lane: '東列', positionNumber: '7' }),
       note('13', 2, { lane: '西列', positionNumber: '6' }),
-      note('17', 2, { lane: '西列', positionNumber: '5' }),
-      note('16', 2, { size: 'D13', positionNumber: '8' })
+      note('17', 2, { lane: '西列', positionNumber: '5' })
     ],
     yearMonth: '2027-05',
     day: 2
   });
-  const svg = c.renderCaliberLineSvg(linked);
+  const gap = c.renderCaliberLineSvg(linked);
+  assert.equal((gap.match(/<polyline/g) || []).length, 0);
+  assert.match(c.describeCaliberLine(linked), /#12から#16は途中の#13、#14、#15が未確認なので線を切ります/);
+  assert.match(c.describeCaliberLine(linked), /同じ列や隣接だけではつなぎません/);
+  const hop = c.buildCaliberLineView({
+    plan: shifted.draft,
+    notes: [
+      note('15', 2, { lane: '東列', positionNumber: '7', passTo: '16' }),
+      note('16', 2, { lane: '東列', positionNumber: '4' }),
+      note('16', 2, { size: 'D13', lane: '東列', positionNumber: '8', passTo: '17' }),
+      note('17', 2, { size: 'D13', lane: '東列', positionNumber: '9' }),
+      note('16', 2, { size: 'D10', lane: '未確認', positionNumber: '1', passTo: '17' })
+    ],
+    yearMonth: '2027-05',
+    day: 2
+  });
+  const svg = c.renderCaliberLineSvg(hop);
   assert.equal((svg.match(/<polyline/g) || []).length, 2);
-  assert.match(svg, /data-line="D10-東列"/);
-  assert.match(svg, /data-line="D10-西列"/);
-  assert.equal(svg.includes('data-line="D13'), false);
+  assert.match(svg, /data-line="D10-東列" data-from="15" data-to="16"/);
+  assert.match(svg, /data-line="D13-東列" data-from="16" data-to="17"/);
+  assert.equal(svg.includes('data-from="12"'), false);
+  assert.match(c.describeCaliberLine(hop), /東西が未確認なので線は引きません/);
   assert.match(text, /前日と違うスタンドは/);
   assert.match(text, /前回累計0直 今回加算2直 新しい累計2直 残り11/);
   assert.match(text, /使用不可/);

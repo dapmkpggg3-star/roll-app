@@ -3091,6 +3091,11 @@ function recordCaliberLayoutNote(input) {
     if (eventKind && from !== '未確認' && (eventDate < from || eventDate > to)) {
         return { ok: false, reason: '交換の日付が使用期間の外です。反映していません。' };
     }
+    const passTo = String(source.passTo || '').replace(/^#/, '').trim();
+    const standOrder = ['12', '13', '14', '15', '16', '17'];
+    if (passTo && standOrder.indexOf(passTo) !== standOrder.indexOf(stand) + 1) {
+        return { ok: false, reason: '通過先は隣のスタンドだけです。途中を飛ばす線は反映しません。' };
+    }
     const note = {
         standKey: stand,
         size,
@@ -3105,6 +3110,7 @@ function recordCaliberLayoutNote(input) {
         eventKind,
         period,
         eventDate,
+        passTo,
         passLine: '未確認',
         source: 'anonymous-entry'
     };
@@ -3118,7 +3124,8 @@ function describeCaliberLayoutNotes() {
     const lines = caliberLayoutNotes.map(note => {
         const columns = note.columns === 2 ? '2列' : (note.columns === 1 ? '2列圧延は適用しない' : '列数未確認');
         const event = note.eventKind ? ` ${note.eventDate} ${note.period} ${note.eventKind}` : '';
-        return `#${note.standKey} ${note.size} ロール${note.rollId} ${note.side} ${note.lane || '未確認'} ${columns} カリバ番号${note.positionNumber} 使用予定${note.plannedShifts}直 期間${note.from}から${note.to}${event} パスライン${note.passLine}`;
+        const pass = note.passTo ? ` 通過先#${note.passTo}` : ' 通過先未確認';
+        return `#${note.standKey} ${note.size} ロール${note.rollId} ${note.side} ${note.lane || '未確認'} ${columns} カリバ番号${note.positionNumber} 使用予定${note.plannedShifts}直 期間${note.from}から${note.to}${event}${pass} パスライン${note.passLine}`;
     });
     return `${intro}\n${lines.join('\n')}`;
 }
@@ -3168,21 +3175,46 @@ function buildCaliberLineView(input) {
         const changed = previous && (current.some(item => !prior.includes(item)) || prior.some(item => !current.includes(item)));
         return { standKey: stand, changed: Boolean(changed), notes: items };
     });
+    const standOrder = ['12', '13', '14', '15', '16', '17'];
     const segments = [];
-    ['D10', 'D13'].forEach(size => {
-        ['東列', '西列'].forEach(lane => {
-            const group = todayNotes.filter(note => note.size === size && note.lane === lane)
-                .sort((left, right) => Number(left.standKey) - Number(right.standKey));
-            if (group.length >= 2) segments.push({ name: `${size} ${lane}`, size, lane, notes: group, connect: true });
+    const withheld = [];
+    todayNotes.forEach(note => {
+        const passTo = String(note.passTo || '').replace(/^#/, '').trim();
+        if (!passTo) return;
+        const fromIndex = standOrder.indexOf(note.standKey);
+        const toIndex = standOrder.indexOf(passTo);
+        if (fromIndex < 0 || toIndex < 0 || toIndex !== fromIndex + 1) {
+            const between = toIndex > fromIndex ? standOrder.slice(fromIndex + 1, toIndex) : [];
+            withheld.push(between.length
+                ? `#${note.standKey}から#${passTo}は途中の${between.map(stand => `#${stand}`).join('、')}が未確認なので線を切ります。`
+                : `#${note.standKey}から#${passTo}は確認できた隣接区間ではないので、線は引きません。`);
+            return;
+        }
+        if (note.lane !== '東列' && note.lane !== '西列') {
+            withheld.push(`#${note.standKey}から#${passTo}は東西が未確認なので線は引きません。`);
+            return;
+        }
+        const target = todayNotes.find(item => item.standKey === passTo && item.size === note.size && item.lane === note.lane);
+        if (!target) {
+            withheld.push(`#${note.standKey}から#${passTo}の接続先は未確認なので線は切ります。`);
+            return;
+        }
+        segments.push({
+            name: `${note.size} ${note.lane} #${note.standKey}-#${passTo}`,
+            size: note.size,
+            lane: note.lane,
+            from: note.standKey,
+            to: passTo,
+            notes: [note, target],
+            connect: true
         });
     });
     const lanes = segments;
     const d10Pair = todayNotes.filter(note => note.size === 'D10' && (note.standKey === '16' || note.standKey === '17'));
     const d10Unlabeled = d10Pair.filter(note => note.lane !== '東列' && note.lane !== '西列');
     const d13Notes = todayNotes.filter(note => note.size === 'D13');
-    const withheld = [];
     if (d10Unlabeled.length) withheld.push('#16と#17のD10は2列圧延です。東西の対応が未確認なので、線は引きません。');
-    if (d13Notes.length) withheld.push('D13にD10の2列圧延は適用しません。東西が未確認のカリバはつなぎません。');
+    if (d13Notes.some(note => note.lane !== '東列' && note.lane !== '西列')) withheld.push('D13にD10の2列圧延は適用しません。東西が未確認のカリバはつなぎません。');
     const events = notes.filter(note => note.eventKind && note.eventDate === date).map(note => ({
         standKey: note.standKey, kind: note.eventKind, period: note.period || '未確認', size: note.size, positionNumber: note.positionNumber
     }));
@@ -3225,7 +3257,7 @@ function describeCaliberLine(view) {
     });
     const lanes = view.segments.length
         ? view.segments.map(lane => `${lane.name}: ${lane.notes.map(note => `#${note.standKey} カリバ${note.positionNumber}`).join(' - ')}`).join('\n')
-        : '同じサイズで東列または西列が記録されたカリバが2つ無いので、線は引きません。';
+        : '確認できた隣接の通過区間が無いので、線は引きません。同じ列や隣接だけではつなぎません。';
     const withheld = (view.withheld || []).join('\n');
     const events = view.events.length
         ? view.events.map(item => `${item.period} #${item.standKey} ${item.kind} ${item.size} カリバ${item.positionNumber}`).join('\n')
@@ -3258,6 +3290,7 @@ function saveCaliberLayoutFromForm() {
         eventKind: document.getElementById('layout-event').value,
         period: document.getElementById('layout-period').value,
         eventDate: document.getElementById('layout-event-date').value,
+        passTo: document.getElementById('layout-pass-to').value,
         positionNumber: document.getElementById('layout-position').value,
         plannedShifts: document.getElementById('layout-shifts').value,
         from: document.getElementById('layout-from').value,
@@ -3301,7 +3334,7 @@ function renderCaliberLineSvg(view) {
     const lines = (view.segments || []).map(segment => {
         const points = segment.notes.map(note => `${xOf(note.standKey)},${yOf(note)}`).join(' ');
         const color = segment.size === 'D13' ? '#b45309' : (segment.lane === '西列' ? '#15803d' : '#1d4ed8');
-        return `<polyline data-line="${escapeLineText(segment.size)}-${escapeLineText(segment.lane)}" points="${points}" fill="none" stroke="${color}" stroke-width="4" stroke-linecap="round" />`;
+        return `<polyline data-line="${escapeLineText(segment.size)}-${escapeLineText(segment.lane)}" data-from="${escapeLineText(segment.from)}" data-to="${escapeLineText(segment.to)}" points="${points}" fill="none" stroke="${color}" stroke-width="4" stroke-linecap="round" />`;
     }).join('');
     const bodies = rolls.map(roll => {
         const stroke = roll.changed ? '#c2410c' : '#334155';
@@ -3320,6 +3353,9 @@ function renderCaliberLineSvg(view) {
         + bodies
         + '<rect x="24" y="324" width="220" height="22" fill="none" stroke="#64748b" stroke-dasharray="4 3" />'
         + '<text x="32" y="339" font-size="12" fill="#334155">パスラインずれ 未確認</text>'
+        + ((view.withheld || []).some(line => line.includes('線を切り') || line.includes('未確認'))
+            ? '<text x="260" y="339" font-size="12" fill="#b45309">未確認の区間は線を切っています</text>'
+            : '')
         + '</svg>';
 }
 
@@ -3415,6 +3451,7 @@ function ensureCaliberLayoutPanel() {
         + '<label>ロール番号 <input id="layout-roll" type="text" value=""></label>'
         + '<label>WS/DS <select id="layout-side"><option value="">未確認</option><option value="WS">WS</option><option value="DS">DS</option></select></label>'
         + '<label>東列・西列 <select id="layout-lane"><option value="">未確認</option><option value="東列">東列</option><option value="西列">西列</option></select></label>'
+        + '<label>通過先の隣スタンド <input id="layout-pass-to" type="text" value=""></label>'
         + '<label>列 <select id="layout-columns"><option value="">未確認</option><option value="2">2列</option><option value="1">単独</option></select></label>'
         + '<label>今回のカリバ番号 <input id="layout-position" type="text" value=""></label>'
         + '<label>使用予定直数 <input id="layout-shifts" type="number" min="0" step="1" value=""></label>'
