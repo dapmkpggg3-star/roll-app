@@ -248,13 +248,429 @@ function describeShiftBasis(plan) {
     return rows.map(row => `#${row.standKey} ${row.size} カリバ${row.caliberId} 使用期間${row.from}から${row.to} 累計${row.cumulativeShifts}直。${row.process}`).join('\n');
 }
 
+function annualColumnIndex(column) {
+    let index = 0;
+    for (const ch of String(column)) index = index * 26 + (ch.charCodeAt(0) - 64);
+    return index;
+}
+
+function annualColumnName(index) {
+    let name = '';
+    let current = index;
+    while (current > 0) {
+        const rest = (current - 1) % 26;
+        name = String.fromCharCode(65 + rest) + name;
+        current = Math.floor((current - 1) / 26);
+    }
+    return name;
+}
+
+function annualFormMonths() {
+    return [
+        ['4 月', 'D', 'E'], ['5 月', 'F', 'G'], ['6 月', 'H', 'I'], ['7 月', 'J', 'K'],
+        ['8 月', 'L', 'M'], ['9 月', 'N', 'O'], ['10 月', 'P', 'Q'], ['11 月', 'R', 'S'],
+        ['12 月', 'T', 'U'], ['1月', 'V', 'W'], ['2月', 'X', 'Y'], ['3月', 'Z', 'AA']
+    ];
+}
+
+function annualFormNoColumns() {
+    return annualFormMonths().map(item => item[1]);
+}
+
+function annualFormAmountColumns() {
+    return annualFormMonths().map(item => item[2]);
+}
+
+function annualFormSource() {
+    return {
+        fileName: 'ロール管理 必要エクセルまとめ.xlsx',
+        sheetName: '2025年度ロール(計画)',
+        printArea: 'A1:AC49',
+        paperSize: 8,
+        paperName: 'A3',
+        orientation: 'landscape',
+        scale: 72,
+        fitToPage: true,
+        showGridLines: false,
+        margins: {
+            left: 0.7874015748031497,
+            right: 0.19685039370078741,
+            top: 0.39370078740157483,
+            bottom: 0.19685039370078741,
+            header: 0.19685039370078741,
+            footer: 0.19685039370078741
+        }
+    };
+}
+
+function annualFormMerges() {
+    const pairs = [['B', 'C']].concat(annualFormMonths().map(item => [item[1], item[2]]), [['AB', 'AC']]);
+    const merges = ['B2:H2', 'B6:B7', 'B8:B23', 'B24:C24', 'B27:I27', 'B30:B39', 'B42:B48'];
+    [4, 5, 29].forEach(row => pairs.forEach(pair => merges.push(`${pair[0]}${row}:${pair[1]}${row}`)));
+    return merges;
+}
+
+function annualFormFormulas() {
+    const amount = annualFormAmountColumns();
+    const numbers = annualFormNoColumns();
+    const reversed = list => list.slice().reverse();
+    const countList = row => reversed(numbers).map(column => column + row).join(',');
+    const formulas = {
+        AB5: 'SUM(D5:AA5)',
+        AC7: `SUM(${amount.map(column => column + '7').join('+')})`,
+        AB8: `COUNTA(${countList(8)})*2`,
+        AC8: `SUM(${amount.map(column => column + '8').join('+')})`,
+        AC23: `SUM(${amount.map(column => column + '23').join('+')})`,
+        AB24: reversed(numbers).map(column => column + '24').join('+'),
+        AC24: reversed(amount).map(column => column + '24').join('+'),
+        N25: `SUM(${numbers.slice(0, 6).map(column => column + '24').join('+')})`,
+        O25: `SUM(${amount.slice(0, 6).map(column => column + '24').join('+')})`,
+        Z25: `SUM(${numbers.slice(6).map(column => column + '24').join('+')})`,
+        AA25: `SUM(${amount.slice(6).map(column => column + '24').join('+')})`,
+        AC25: 'AC24/AB5*1000',
+        N40: `COUNT(${amount.slice(0, 6).map(column => `${column}30:${column}39`).join(',')})*2`,
+        O40: `SUM(${amount.slice(0, 6).map(column => `${column}30:${column}39`).join(',')})`,
+        Z40: `COUNT(${amount.slice(6).map(column => `${column}30:${column}39`).join(',')})*2`,
+        AA40: `SUM(${amount.slice(6).map(column => `${column}30:${column}39`).join(',')})`,
+        AB40: 'SUM(AB30:AB39)',
+        AC40: 'SUM(AC30:AC39)',
+        N49: `COUNT(${amount.slice(0, 6).map(column => `${column}42:${column}48`).join(',')})*2`,
+        O49: `SUM(${amount.slice(0, 6).map(column => `${column}42:${column}48`).join(',')})`,
+        Z49: `COUNT(${amount.slice(6).map(column => `${column}42:${column}48`).join(',')})*2`,
+        AA49: `SUM(${amount.slice(6).map(column => `${column}42:${column}48`).join(',')})`,
+        AB49: 'SUM(AB42:AB48)',
+        AC49: 'SUM(AC42:AC48)'
+    };
+    numbers.forEach(column => {
+        formulas[column + '24'] = `COUNTA(${column}8:${column}23)*2`;
+        formulas[column + '29'] = `+${column}4`;
+    });
+    amount.forEach(column => {
+        formulas[column + '24'] = `SUM(${column}7:${column}23)`;
+    });
+    [30, 31, 36, 39, 42, 43, 46, 47, 48].forEach(row => {
+        formulas['AB' + row] = `COUNTA(${countList(row)})*2`;
+    });
+    [30, 35, 37, 38, 39, 42, 43, 47, 48].forEach(row => {
+        formulas['AC' + row] = `SUM(D${row}:AA${row})`;
+    });
+    return formulas;
+}
+
+function annualFormLabels() {
+    const labels = {
+        B2: 'ロール改削計画（匿名見本）',
+        B5: '生産量(t)',
+        C7: '運賃',
+        B8: 'No.',
+        B24: '計',
+        M25: '上期計',
+        Y25: '下期計',
+        AB25: '原単価',
+        B27: 'ロール購入・払出計画（匿名見本）',
+        AB4: '年度計',
+        AB6: '本数',
+        AC6: '金額',
+        AB29: '年度計',
+        B30: '購入',
+        M40: '上期計',
+        Y40: '下期計',
+        B42: '払出',
+        M49: '上期計',
+        Y49: '上期計'
+    };
+    annualFormMonths().forEach(item => {
+        labels[item[1] + '4'] = item[0];
+        labels[item[1] + '6'] = 'No.';
+        labels[item[2] + '6'] = '金額（千円）';
+    });
+    for (let stand = 2; stand <= 17; stand += 1) labels['C' + (stand + 6)] = `#${stand}`;
+    const purchase = { 30: '#2', 31: '#3', 32: '#4', 33: '#5', 34: '#7', 35: '#', 36: '#', 37: '#11', 38: '#12', 39: '#17' };
+    const payout = { 42: '#5', 43: '#10', 44: '#12', 45: '#', 46: '#', 47: '#', 48: '#' };
+    Object.keys(purchase).forEach(row => { labels['C' + row] = purchase[row]; });
+    Object.keys(payout).forEach(row => { labels['C' + row] = payout[row]; });
+    return labels;
+}
+
+function annualFormAnonymousInputs() {
+    return { D5: 405, E7: 5, D8: 'anon-2a', E8: 12, X30: 'anon-buy', Y30: 20, D39: 'anon-17', E39: 30, N42: 'anon-out', O42: 7 };
+}
+
+function annualFormRange(ref) {
+    const match = /^([A-Z]+)(\d+):([A-Z]+)(\d+)$/.exec(ref);
+    if (!match) return [];
+    const cells = [];
+    for (let row = Number(match[2]); row <= Number(match[4]); row += 1) {
+        for (let column = annualColumnIndex(match[1]); column <= annualColumnIndex(match[3]); column += 1) {
+            cells.push(annualColumnName(column) + row);
+        }
+    }
+    return cells;
+}
+
+function annualFormSplitArgs(list) {
+    return String(list).split(',').map(item => item.trim()).filter(Boolean);
+}
+
+function annualFormEvaluate(formulas, inputs) {
+    const values = Object.assign({}, inputs);
+    const numeric = ref => {
+        const value = values[ref];
+        return typeof value === 'number' && Number.isFinite(value) ? value : null;
+    };
+    const present = ref => values[ref] !== undefined && values[ref] !== '';
+    const refsOf = token => token.includes(':') ? annualFormRange(token) : [token];
+    for (let pass = 0; pass < 8; pass += 1) {
+        Object.keys(formulas).forEach(ref => {
+            const formula = formulas[ref];
+            const plus = /^\+([A-Z]+\d+)$/.exec(formula);
+            const countA = /^COUNTA\((.*)\)\*2$/.exec(formula);
+            const count = /^COUNT\((.*)\)\*2$/.exec(formula);
+            const sumRange = /^SUM\(([A-Z]+\d+:[A-Z]+\d+)\)$/.exec(formula);
+            const sumPlus = /^SUM\(([A-Z]+\d+(?:\+[A-Z]+\d+)+)\)$/.exec(formula);
+            const added = /^([A-Z]+\d+(?:\+[A-Z]+\d+)+)$/.exec(formula);
+            const price = /^([A-Z]+\d+)\/([A-Z]+\d+)\*1000$/.exec(formula);
+            const sumList = /^SUM\(([A-Z]+\d+:[A-Z]+\d+(?:,[A-Z]+\d+:[A-Z]+\d+)+)\)$/.exec(formula);
+            if (plus) values[ref] = values[plus[1]];
+            else if (countA) values[ref] = annualFormSplitArgs(countA[1]).reduce((total, token) => total + refsOf(token).filter(present).length, 0) * 2;
+            else if (count) values[ref] = annualFormSplitArgs(count[1]).reduce((total, token) => total + refsOf(token).filter(item => numeric(item) !== null).length, 0) * 2;
+            else if (sumRange) values[ref] = annualFormRange(sumRange[1]).reduce((total, item) => total + (numeric(item) || 0), 0);
+            else if (sumPlus) values[ref] = sumPlus[1].split('+').reduce((total, item) => total + (numeric(item) || 0), 0);
+            else if (added) values[ref] = added[1].split('+').reduce((total, item) => total + (numeric(item) || 0), 0);
+            else if (sumList) values[ref] = annualFormSplitArgs(sumList[1]).reduce((total, token) => total + refsOf(token).reduce((sum, item) => sum + (numeric(item) || 0), 0), 0);
+            else if (price) {
+                const denominator = numeric(price[2]);
+                values[ref] = denominator ? (numeric(price[1]) || 0) / denominator * 1000 : null;
+            }
+        });
+    }
+    return values;
+}
+
+function buildAnnualFormSample(overrides) {
+    const formulas = annualFormFormulas();
+    const labels = annualFormLabels();
+    const inputs = Object.assign({}, annualFormAnonymousInputs(), overrides || {});
+    const blocked = ['120660', '16900', '2025.1.23', '#17-86', '#2-11', '10000'];
+    const illegal = Object.keys(inputs).filter(ref => formulas[ref] || labels[ref] || blocked.some(token => String(inputs[ref]) === token));
+    if (illegal.length) {
+        return { ok: false, reason: '見本の入力が数式・見出し、または2025年度原本の数値と重なっています。過去数値は発注実績や確定予測にしません。' };
+    }
+    const values = annualFormEvaluate(formulas, Object.assign({}, labels, inputs));
+    const source = annualFormSource();
+    return {
+        ok: true,
+        source,
+        sampleSheetName: '匿名見本ロール(計画)',
+        merges: annualFormMerges(),
+        formulas,
+        labels,
+        inputs,
+        values,
+        historicalValuesCopied: false
+    };
+}
+
+function describeAnnualFormBasis(sample) {
+    const built = sample && sample.ok ? sample : buildAnnualFormSample();
+    if (!built.ok) return built.reason;
+    const source = built.source;
+    const price = built.values.AC25;
+    return [
+        `原本は「${source.fileName}」のシート「${source.sheetName}」。印刷は${source.paperName}横、範囲${source.printArea}、倍率${source.scale}、ページに合わせる設定です。`,
+        '改削計画は2〜25行、購入は30〜40行、払出は42〜49行です。月はD列からAA列まで2列一組で、4月から翌3月です。AB列とAC列が年度計の本数と金額です。',
+        '見本の生産量は4月のD5だけ405tです。運賃E7は5、改削はD8がanon-2aでE8が12、購入はX30がanon-buyでY30が20、D39がanon-17でE39が30、払出はN42がanon-outでO42が7です。',
+        `年度の生産量AB5はSUM(D5:AA5)で${built.values.AB5}です。4月の本数D24はCOUNTA(D8:D23)*2で${built.values.D24}、4月の金額E24はSUM(E7:E23)で${built.values.E24}です。`,
+        `年度金額AC24は各月の金額計の和で${built.values.AC24}です。原単価AC25はAC24/AB5*1000で${price}です。金額の見出しは千円なので、この式は千円合計を1000倍して生産量tで割っています。`,
+        `購入の年度本数AB30はCOUNTA*2で${built.values.AB30}、金額AC30はSUM(D30:AA30)で${built.values.AC30}です。上期の購入本数N40は金額セルのCOUNT*2で${built.values.N40}、下期Z40は${built.values.Z40}です。`,
+        'COUNTAやCOUNTを2倍する式は原本の式です。印刷範囲のコメントは実績の記入先だけで、2倍の意味は書かれていないため、見本も同じ式を置いて意味は加えていません。',
+        '払出の49行右にある見出しY49は、原本でも「上期計」です。見本も同じ文字にしています。',
+        '原本の日付AC3と、2025年度のロール番号・金額・本数・生産量は見本へコピーしていません。2025年度の過去数値は現在の発注済みや確定予測にしません。',
+        '列幅、行高、結合、数式、印刷設定は原本に合わせています。色と罫線の細かな様式番号までは写していません。'
+    ].join('\n');
+}
+
+function annualFormXmlEscape(value) {
+    return String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function annualFormSheetXml(sample) {
+    const built = sample && sample.ok ? sample : buildAnnualFormSample();
+    const heights = { 1: 27.75, 2: 48, 3: 33.75, 4: 22.5, 5: 22.5, 6: 32.25, 7: 24, 26: 12.75, 27: 28.5, 28: 8.25, 40: 27, 41: 9, 42: 24, 49: 26.25 };
+    const rows = [];
+    for (let row = 1; row <= 49; row += 1) {
+        const cells = [];
+        for (let column = 1; column <= 29; column += 1) {
+            const ref = annualColumnName(column) + row;
+            const formula = built.formulas[ref];
+            const value = built.values[ref];
+            if (formula) {
+                const text = typeof value === 'string';
+                cells.push(`<c r="${ref}"${text ? ' t="str"' : ''}><f>${annualFormXmlEscape(formula)}</f>${value === null || value === undefined ? '' : `<v>${annualFormXmlEscape(value)}</v>`}</c>`);
+            } else if (value !== undefined && value !== '') {
+                if (typeof value === 'number') cells.push(`<c r="${ref}"><v>${value}</v></c>`);
+                else cells.push(`<c r="${ref}" t="inlineStr"><is><t>${annualFormXmlEscape(value)}</t></is></c>`);
+            }
+        }
+        const height = heights[row] || (row >= 8 && row <= 25 ? 24.75 : (row >= 29 && row <= 39 ? 24.75 : (row >= 43 && row <= 48 ? 24 : null)));
+        rows.push(`<row r="${row}"${height ? ` ht="${height}" customHeight="1"` : ''}>${cells.join('')}</row>`);
+    }
+    const cols = '<cols>'
+        + '<col min="1" max="1" width="1.875" customWidth="1"/>'
+        + '<col min="2" max="2" width="7.25" customWidth="1"/>'
+        + '<col min="3" max="27" width="9.25" customWidth="1"/>'
+        + '<col min="28" max="28" width="10.5" customWidth="1"/>'
+        + '<col min="29" max="29" width="18" customWidth="1"/>'
+        + '</cols>';
+    const margins = built.source.margins;
+    return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`
+        + '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+        + '<sheetPr><pageSetUpPr fitToPage="1"/></sheetPr><dimension ref="A1:AC49"/>'
+        + '<sheetViews><sheetView showGridLines="0" workbookViewId="0"/></sheetViews>'
+        + '<sheetFormatPr defaultRowHeight="15"/>'
+        + cols
+        + `<sheetData>${rows.join('')}</sheetData>`
+        + `<mergeCells count="${built.merges.length}">${built.merges.map(ref => `<mergeCell ref="${ref}"/>`).join('')}</mergeCells>`
+        + `<pageMargins left="${margins.left}" right="${margins.right}" top="${margins.top}" bottom="${margins.bottom}" header="${margins.header}" footer="${margins.footer}"/>`
+        + '<pageSetup paperSize="8" scale="72" orientation="landscape"/>'
+        + '</worksheet>';
+}
+
+function annualFormCrc32(bytes) {
+    let crc = ~0;
+    for (let index = 0; index < bytes.length; index += 1) {
+        crc ^= bytes[index];
+        for (let bit = 0; bit < 8; bit += 1) crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0);
+    }
+    return ~crc >>> 0;
+}
+
+function annualFormEncode(text) {
+    const bytes = [];
+    for (const ch of String(text)) {
+        const code = ch.codePointAt(0);
+        if (code < 0x80) bytes.push(code);
+        else if (code < 0x800) bytes.push(0xc0 | (code >> 6), 0x80 | (code & 63));
+        else if (code < 0x10000) bytes.push(0xe0 | (code >> 12), 0x80 | ((code >> 6) & 63), 0x80 | (code & 63));
+        else bytes.push(0xf0 | (code >> 18), 0x80 | ((code >> 12) & 63), 0x80 | ((code >> 6) & 63), 0x80 | (code & 63));
+    }
+    return Uint8Array.from(bytes);
+}
+
+function annualFormZip(files) {
+    const locals = [];
+    const centrals = [];
+    let offset = 0;
+    files.forEach(file => {
+        const name = annualFormEncode(file.name);
+        const data = annualFormEncode(file.data);
+        const crc = annualFormCrc32(data);
+        const local = new Uint8Array(30 + name.length + data.length);
+        const view = new DataView(local.buffer);
+        view.setUint32(0, 0x04034b50, true);
+        view.setUint16(4, 20, true);
+        view.setUint16(8, 0, true);
+        view.setUint32(14, crc, true);
+        view.setUint32(18, data.length, true);
+        view.setUint32(22, data.length, true);
+        view.setUint16(26, name.length, true);
+        local.set(name, 30);
+        local.set(data, 30 + name.length);
+        const central = new Uint8Array(46 + name.length);
+        const centralView = new DataView(central.buffer);
+        centralView.setUint32(0, 0x02014b50, true);
+        centralView.setUint16(4, 20, true);
+        centralView.setUint16(6, 20, true);
+        centralView.setUint32(16, crc, true);
+        centralView.setUint32(20, data.length, true);
+        centralView.setUint32(24, data.length, true);
+        centralView.setUint16(28, name.length, true);
+        centralView.setUint32(42, offset, true);
+        central.set(name, 46);
+        locals.push(local);
+        centrals.push(central);
+        offset += local.length;
+    });
+    const centralSize = centrals.reduce((total, item) => total + item.length, 0);
+    const end = new Uint8Array(22);
+    const endView = new DataView(end.buffer);
+    endView.setUint32(0, 0x06054b50, true);
+    endView.setUint16(8, files.length, true);
+    endView.setUint16(10, files.length, true);
+    endView.setUint32(12, centralSize, true);
+    endView.setUint32(16, offset, true);
+    const total = offset + centralSize + end.length;
+    const archive = new Uint8Array(total);
+    let cursor = 0;
+    locals.concat(centrals, [end]).forEach(part => {
+        archive.set(part, cursor);
+        cursor += part.length;
+    });
+    return archive;
+}
+
+function annualFormWorkbookFiles(sample) {
+    const built = sample && sample.ok ? sample : buildAnnualFormSample();
+    const sheetName = built.sampleSheetName;
+    const workbook = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`
+        + '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+        + `<sheets><sheet name="${sheetName}" sheetId="1" r:id="rId1"/></sheets>`
+        + `<definedNames><definedName name="_xlnm.Print_Area" localSheetId="0">'${sheetName}'!$A$1:$AC$49</definedName></definedNames>`
+        + '</workbook>';
+    return [
+        { name: '[Content_Types].xml', data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>' },
+        { name: '_rels/.rels', data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>' },
+        { name: 'xl/workbook.xml', data: workbook },
+        { name: 'xl/_rels/workbook.xml.rels', data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>' },
+        { name: 'xl/styles.xml', data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="1"><font><sz val="11"/><name val="Calibri"/></font></fonts><fills count="1"><fill><patternFill patternType="none"/></fill></fills><borders count="1"><border/></borders><cellStyleXfs count="1"><xf/></cellStyleXfs><cellXfs count="1"><xf/></cellXfs></styleSheet>' },
+        { name: 'xl/worksheets/sheet1.xml', data: annualFormSheetXml(built) }
+    ];
+}
+
+function annualFormSampleWorkbook(sample) {
+    return annualFormZip(annualFormWorkbookFiles(sample));
+}
+
+function renderAnnualFormTable(sample) {
+    const built = sample && sample.ok ? sample : buildAnnualFormSample();
+    const rows = [];
+    for (let row = 1; row <= 49; row += 1) {
+        const cells = [];
+        for (let column = 1; column <= 29; column += 1) {
+            const ref = annualColumnName(column) + row;
+            const formula = built.formulas[ref];
+            const value = built.values[ref];
+            const shown = value === null || value === undefined || value === '' ? '' : value;
+            const kind = formula ? 'formula' : (built.inputs[ref] !== undefined ? 'input' : 'label');
+            cells.push(`<td data-ref="${ref}" data-kind="${kind}"${formula ? ` title="${annualFormXmlEscape(formula)}"` : ''}>${annualFormXmlEscape(shown)}</td>`);
+        }
+        rows.push(`<tr>${cells.join('')}</tr>`);
+    }
+    return `<table id="annual-form-grid"><caption>匿名見本 A3横 ${built.source.printArea}</caption><tbody>${rows.join('')}</tbody></table>`;
+}
+
+function downloadAnnualFormSample() {
+    const bytes = annualFormSampleWorkbook();
+    const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'annual-form-anonymous-sample.xlsx';
+    document.body.appendChild(link);
+    link.click();
+    setTimeout(() => {
+        URL.revokeObjectURL(url);
+        link.remove();
+    }, 1500);
+}
+
 function describeOutputFormSurvey() {
     return [
-        '出力仕様案です。原本のセル配置は確定していません。',
-        '年間改削・購入計画: 参照先は「ロール管理 必要エクセルまとめ.xlsx」（ID 1z8RShvQQcy9_1IzDjVJTj7DCQd970frt）です。同じシートの「2025年度 ロール改削計画」と「2025年度 ロール購入・払出計画」を一体の年間帳票として扱う、という本人確定はあります。この環境では原本を読めなかったため、4月〜翌3月、スタンド、ロール番号、月別本数、金額、年度計のセル位置は確定していません。2025年度の過去数値は現在の発注済みや確定予測にしません。',
+        '出力仕様案です。年間帳票の印刷範囲は原本で確認しました。月間予定と位置指示書のセル配置は未確定です。',
+        '年間改削・購入計画: 原本「ロール管理 必要エクセルまとめ.xlsx」のシート「2025年度ロール(計画)」を読みました。A3横、印刷範囲A1:AC49、倍率72です。同じシートの改削計画と購入・払出計画を一体の帳票として、結合・数式・印刷設定を匿名見本に再現しています。2025年度の過去数値は現在の発注済みや確定予測にしません。',
         '月間ロール・カリバ替予定: ローカルの生産予定ファイルに「ロール・カリバ替予定2026.10」という過去月のシートがあり、見えた見出しは日付、曜日、サイズ、操業、常昼、ロール替とカリバ替の記入です。過去月の値は現在の計画にせず、この並びも出力様式としては確定しません。',
         '#12〜#17の位置指示書: 正式な指示書の原本は未入手です。手書きの使用管理表は予定の参考であり、実績としては入れません。赤丸のカリバ番号と、日付の下の丸数字（使用予定直数）は別項目です。位置とパスラインは推測で確定しません。',
-        '不足資料: 上記ブックをこの隔離環境で読める書き出し、現行の月間予定表、#12〜#17位置指示書の原本。'
+        '不足資料: 現行の月間予定表、#12〜#17位置指示書の原本。年間帳票の2025年度シートは読み取り済みです。'
     ].join('\n');
 }
 
@@ -2875,6 +3291,10 @@ function renderMonthlyProductionPlan() {
     if (history) history.textContent = describeMonthlyProductionPlans(monthlyProductionSealed, monthlyProductionDraft);
     if (shifts) shifts.textContent = describeShiftBasis(monthlyProductionDraft || monthlyProductionSealed[monthlyProductionSealed.length - 1]);
     if (forms) forms.textContent = describeOutputFormSurvey();
+    const basis = document.getElementById('annual-form-basis');
+    const sheet = document.getElementById('annual-form-sheet');
+    if (basis) basis.textContent = describeAnnualFormBasis();
+    if (sheet) sheet.innerHTML = renderAnnualFormTable();
     if (document.getElementById('line-board')) renderCaliberLineBoard();
 }
 
@@ -3560,7 +3980,10 @@ function ensureFiscalPlanTarget() {
         + '<label>パスライン <input id="shift-pass" type="text"></label>'
         + '<button id="shift-add" type="button">直数の計算根拠を作業中の版へ追加</button>'
         + '<pre id="shift-basis-table"></pre><p id="prod-plan-message" aria-live="polite"></p>'
-        + '<h3>帳票の出力仕様案</h3><pre id="output-form-gaps"></pre>');
+        + '<h3>帳票の出力仕様案</h3><pre id="output-form-gaps"></pre>'
+        + '<h3>年間改削・購入の匿名見本</h3><style>#annual-form-grid{border-collapse:collapse;font-size:12px}#annual-form-grid td{border:1px solid #cbd5e1;min-width:4.5rem;padding:2px 4px;white-space:nowrap}#annual-form-grid td[data-kind="formula"]{background:#eff6ff}#annual-form-grid td[data-kind="input"]{background:#fef3c7}</style><p>A3横の見本です。2025年度の数値は入っていません。青いセルは原本の数式、黄色いセルは匿名の入力です。</p>'
+        + '<button id="annual-form-download" type="button">匿名見本のA3帳票を書き出す</button>'
+        + '<pre id="annual-form-basis"></pre><div id="annual-form-sheet" style="overflow:auto;max-width:100%"></div>');
     document.getElementById('prod-create').addEventListener('click', createProductionDraftFromForm);
     document.getElementById('prod-month-save').addEventListener('click', saveProductionMonthFromForm);
     document.getElementById('prod-seal').addEventListener('click', sealProductionDraftFromForm);
@@ -3570,6 +3993,7 @@ function ensureFiscalPlanTarget() {
     document.getElementById('prod-import-apply').addEventListener('click', confirmMonthlyProductionImport);
     document.getElementById('prod-import-undo').addEventListener('click', undoMonthlyProductionImportFromForm);
     document.getElementById('shift-add').addEventListener('click', addShiftBasisFromForm);
+    document.getElementById('annual-form-download').addEventListener('click', downloadAnnualFormSample);
     restoreMonthlyProductionHistory();
     renderMonthlyProductionPlan();
 }

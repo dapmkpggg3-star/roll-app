@@ -318,7 +318,14 @@ async function main() {
     assert.match(basis, /#10 D10 カリバca 使用期間2027-05-01から2027-05-02 累計2直/);
     assert.match(basis, /810t ÷ 1直405t = 2直/);
     assert.match(basis, /パスラインは記入がありますが根拠資料が無いので未確認/);
-    assert.match(await page.locator('#output-form-gaps').innerText(), /原本のセル配置は確定していません/);
+    assert.match(await page.locator('#output-form-gaps').innerText(), /印刷範囲A1:AC49/);
+    assert.match(await page.locator('#annual-form-basis').innerText(), /D5だけ405t/);
+    assert.equal(await page.locator('#annual-form-grid td[data-ref="AB5"]').innerText(), '405');
+    assert.equal(await page.locator('#annual-form-grid td[data-ref="D8"]').innerText(), 'anon-2a');
+    assert.equal(await page.locator('#annual-form-grid td[data-ref="AC25"]').getAttribute('title'), 'AC24/AB5*1000');
+    assert.equal((await page.locator('#annual-form-grid').innerText()).includes('#17-86'), false);
+    await page.locator('#annual-form-basis').screenshot({ path: path.join(root, 'artifacts/roll001-dom/annual-form-basis.png') });
+    await page.locator('#annual-form-sheet').screenshot({ path: path.join(root, 'artifacts/roll001-dom/annual-form-sample.png') });
     assert.match(await page.locator('#output-form-gaps').innerText(), /2025年度の過去数値は現在の発注済みや確定予測にしません/);
     await page.evaluate(() => {
       document.getElementById('caliber-stand').value = '16';
