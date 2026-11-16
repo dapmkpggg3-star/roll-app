@@ -753,12 +753,30 @@ test('a monthly line reads recorded days and draws two D10 tracks only', () => {
   });
   assert.equal(view.ok, true);
   assert.equal(JSON.stringify(shifted.draft), planText);
-  assert.equal(view.lanes.filter(lane => String(lane.name).startsWith('2列')).length, 2);
+  assert.equal(view.segments.length, 0);
+  assert.equal(c.renderCaliberLineSvg(view).includes('<polyline'), false);
+  assert.match(c.renderCaliberLineSvg(view), /<svg id="caliber-line-svg"/);
   assert.equal(view.events.map(item => item.period).join(','), '昼,夜');
   const text = c.describeCaliberLine(view);
-  assert.match(text, /2列の1本目/);
-  assert.match(text, /2列の2本目/);
-  assert.match(text, /D13（2列圧延は適用しない）/);
+  assert.match(text, /東西の対応が未確認なので、線は引きません/);
+  assert.match(text, /D13にD10の2列圧延は適用しません/);
+  const linked = c.buildCaliberLineView({
+    plan: shifted.draft,
+    notes: [
+      note('12', 2, { lane: '東列', positionNumber: '2' }),
+      note('16', 2, { lane: '東列', positionNumber: '4' }),
+      note('13', 2, { lane: '西列', positionNumber: '6' }),
+      note('17', 2, { lane: '西列', positionNumber: '5' }),
+      note('16', 2, { size: 'D13', positionNumber: '8' })
+    ],
+    yearMonth: '2027-05',
+    day: 2
+  });
+  const svg = c.renderCaliberLineSvg(linked);
+  assert.equal((svg.match(/<polyline/g) || []).length, 2);
+  assert.match(svg, /data-line="D10-東列"/);
+  assert.match(svg, /data-line="D10-西列"/);
+  assert.equal(svg.includes('data-line="D13'), false);
   assert.match(text, /前日と違うスタンドは/);
   assert.match(text, /前回累計0直 今回加算2直 新しい累計2直 残り11/);
   assert.match(text, /使用不可/);
