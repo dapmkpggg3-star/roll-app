@@ -798,10 +798,6 @@ function normalizeRole(role) {
         ? role.history.filter(entry => entry && typeof entry === 'object')
         : [];
 
-    if (role && role.requestSent === true && progress.cycleId && !progress.vendorSentAt) {
-        progress.vendorSentAt = role.updatedAt || new Date().toISOString();
-    }
-
     if (typeof WORK_PROGRESS_STEPS !== 'undefined') {
         WORK_PROGRESS_STEPS.forEach(step => {
             progress[step.key] = progress[step.key] || '';

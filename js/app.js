@@ -1136,10 +1136,6 @@ function normalizeWorkProgress(role) {
         }
     });
 
-    if (role && role.requestSent === true && source.cycleId && !source.vendorSentAt) {
-        source.vendorSentAt = role.updatedAt || new Date().toISOString();
-    }
-
     WORK_PROGRESS_STEPS.forEach(step => {
         progress[step.key] = normalizeWorkProgressStepState(source[step.key]);
     });
@@ -1250,7 +1246,8 @@ function snapshotReworkProgress(progress, extra) {
             updatedBy: state.updatedBy
         };
     });
-    if (extra && extra.requestSent === true) {
+    const dateReference = extra && extra.recordKind === 'date-reference';
+    if (!dateReference && extra && extra.requestSent === true) {
         const vendor = steps.find(step => step.key === 'vendorSentAt');
         if (vendor && !vendor.done) {
             vendor.done = true;
@@ -1258,22 +1255,54 @@ function snapshotReworkProgress(progress, extra) {
             vendor.updatedBy = vendor.updatedBy || extra.updatedBy || '';
         }
     }
+    const recordedSteps = dateReference ? [] : steps;
     return {
-        cycleId: progress && progress.cycleId || '',
+        recordKind: dateReference ? 'date-reference' : 'cycle-close',
+        cycleId: dateReference ? '' : (progress && progress.cycleId || ''),
         closedAt: extra && extra.closedAt || '',
         reason: extra && extra.reason || '',
-        judgment: progress && progress.cycleId ? '前回サイクル' : '判定不能',
-        completedCount: steps.filter(step => step.done).length,
-        incomplete: steps.filter(step => !step.done).map(step => step.label),
-        steps,
-        requestSent: extra && extra.requestSent === true,
+        judgment: dateReference ? '前回日付' : (progress && progress.cycleId ? '前回サイクル' : '判定不能'),
+        completedCount: recordedSteps.filter(step => step.done).length,
+        incomplete: recordedSteps.filter(step => !step.done).map(step => step.label),
+        steps: recordedSteps,
+        requestSent: !dateReference && extra && extra.requestSent === true,
         dispatchDate: (extra && extra.dispatchDate) || (progress && progress.dispatchDate) || '',
         arrivalDate: (extra && extra.arrivalDate) || (progress && progress.arrivalDate) || ''
     };
 }
 
+function isReworkDateReference(item) {
+    return Boolean(item && (item.recordKind === 'date-reference' || item.reason === '前回の搬出日・搬入日は今回の欄へ戻しません'));
+}
+
+function normalizeReworkHistoryItem(item) {
+    if (!item || typeof item !== 'object') {
+        return null;
+    }
+    if (isReworkDateReference(item)) {
+        return {
+            ...item,
+            recordKind: 'date-reference',
+            cycleId: '',
+            judgment: '前回日付',
+            completedCount: 0,
+            incomplete: [],
+            steps: [],
+            requestSent: false
+        };
+    }
+    return {
+        ...item,
+        recordKind: item.recordKind || 'cycle-close'
+    };
+}
+
 function reworkHistoryKey(item) {
+    if (item && item.recordKind === 'date-reference') {
+        return ['date-reference', item.dispatchDate || '', item.arrivalDate || ''].join('|');
+    }
     return [
+        item && item.recordKind || 'cycle-close',
         item && item.cycleId || '',
         item && item.closedAt || '',
         item && item.judgment || '',
@@ -1284,13 +1313,24 @@ function reworkHistoryKey(item) {
 }
 
 function appendReworkHistory(history, snapshot) {
-    const next = Array.isArray(history) ? history.slice() : [];
-    if (!snapshot) {
+    const next = [];
+    (Array.isArray(history) ? history : []).forEach(item => {
+        const normalized = normalizeReworkHistoryItem(item);
+        if (!normalized) {
+            return;
+        }
+        const key = reworkHistoryKey(normalized);
+        if (!next.some(existing => reworkHistoryKey(existing) === key)) {
+            next.push(normalized);
+        }
+    });
+    const item = normalizeReworkHistoryItem(snapshot);
+    if (!item) {
         return next;
     }
-    const key = reworkHistoryKey(snapshot);
-    if (!next.some(item => reworkHistoryKey(item) === key)) {
-        next.push(snapshot);
+    const key = reworkHistoryKey(item);
+    if (!next.some(existing => reworkHistoryKey(existing) === key)) {
+        next.push(item);
     }
     return next;
 }
@@ -1309,12 +1349,10 @@ function settleStoredReworkCycle(role, changedAt) {
     const archivedDates = archivedReworkDates(role, progress);
     if (progress.cycleId) {
         if (!progress.dispatchDate && !progress.arrivalDate && (archivedDates.dispatchDate || archivedDates.arrivalDate)) {
-            history = appendReworkHistory(history, snapshotReworkProgress(progress, {
+            history = appendReworkHistory(history, snapshotReworkProgress({}, {
+                recordKind: 'date-reference',
                 closedAt: changedAt,
                 reason: '前回の搬出日・搬入日は今回の欄へ戻しません',
-                requestSent,
-                updatedAt: role && role.updatedAt || changedAt,
-                updatedBy: '',
                 dispatchDate: archivedDates.dispatchDate,
                 arrivalDate: archivedDates.arrivalDate
             }));
@@ -1365,6 +1403,7 @@ function settleReworkCycle(role, previousStatus, nextStatus, changedAt) {
             const closed = history.some(item => item && progress.cycleId && item.cycleId === progress.cycleId);
             if (!closed) {
                 history = appendReworkHistory(history, snapshotReworkProgress(progress, {
+                    recordKind: 'cycle-close',
                     closedAt: changedAt,
                     reason: entering ? '新しい改削サイクル' : '改削サイクルを終了',
                     requestSent,
@@ -1407,7 +1446,8 @@ function guardMergedReworkProgress(mergedRole, remoteRole, localRole) {
     [remoteRole, localRole, mergedRole].forEach(role => {
         history = (Array.isArray(role && role.workProgressHistory) ? role.workProgressHistory : []).reduce(appendReworkHistory, history);
     });
-    const closed = new Set(history.map(item => item && item.cycleId).filter(Boolean));
+    history = appendReworkHistory(history, null);
+    const closed = new Set(history.filter(item => item.recordKind !== 'date-reference' && item.cycleId).map(item => item.cycleId));
     const candidates = [localRole, remoteRole].filter(role => role && role.workProgress && role.workProgress.cycleId);
     candidates.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
     const open = candidates.find(role => !closed.has(role.workProgress.cycleId));
@@ -3375,6 +3415,13 @@ function getWorkProgressHtml(role) {
     }).join('');
 
     const historyHtml = (Array.isArray(role.workProgressHistory) ? role.workProgressHistory : []).map(item => {
+        if (item.recordKind === 'date-reference') {
+            const note = [
+                item.dispatchDate ? `前回搬出日 ${formatDateForDisplay(item.dispatchDate)}` : '',
+                item.arrivalDate ? `前回搬入日 ${formatDateForDisplay(item.arrivalDate)}` : ''
+            ].filter(Boolean).join('、');
+            return `<div class="work-progress-history" data-rework-history="date-reference" data-previous-dispatch="${escapeHtml(item.dispatchDate || '')}" data-previous-arrival="${escapeHtml(item.arrivalDate || '')}">前回の搬出日・搬入日は今回の欄には使いません。${escapeHtml(note)}</div>`;
+        }
         const dated = (item.steps || []).filter(step => step.done).map(step => {
             const when = step.updatedAt ? ` ${step.updatedAt}` : '';
             const who = step.updatedBy ? ` ${step.updatedBy}` : '';

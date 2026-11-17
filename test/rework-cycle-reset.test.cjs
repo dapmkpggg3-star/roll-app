@@ -246,6 +246,85 @@ test('advancing with item 6 incomplete returns a warning and does not block the 
     assert.equal(done, '');
 });
 
+function currentCycle(doneFirst) {
+    const progress = {
+        cycleId: 'rework-anon-16-current',
+        dispatchDate: '',
+        arrivalDate: '',
+        requestFormCreatedAt: { done: doneFirst, updatedAt: doneFirst ? '2026-11-17T01:00:00.000Z' : '', updatedBy: doneFirst ? 'anon-b' : '' }
+    };
+    return {
+        id: 'anon-16',
+        status: ready,
+        updatedAt: '2026-11-17T02:00:00.000Z',
+        dispatchDate: '2026-08-01',
+        arrivalDate: '2026-08-20',
+        requestSent: true,
+        reworkCycleWarning: '',
+        workProgress: progress,
+        workProgressHistory: []
+    };
+}
+
+function doneCount(progress) {
+    return steps.filter(step => progress[step.key] && progress[step.key].done).length;
+}
+
+test('load and repeated sync keep the open cycle at 1/6 and record August dates once', () => {
+    const role = currentCycle(true);
+    const loaded = api.applySettledReworkCycle({ ...role }, api.settleStoredReworkCycle(role, role.updatedAt));
+    assert.equal(loaded.workProgress.cycleId, 'rework-anon-16-current');
+    assert.equal(doneCount(loaded.workProgress), 1);
+    assert.equal(loaded.dispatchDate, '');
+    assert.equal(loaded.arrivalDate, '');
+    assert.equal(loaded.workProgress.vendorSentAt.done, false);
+    assert.equal(loaded.reworkCycleWarning, '');
+    const notes = loaded.workProgressHistory.filter(item => item.recordKind === 'date-reference');
+    assert.equal(notes.length, 1);
+    assert.equal(notes[0].cycleId, '');
+    assert.equal(notes[0].dispatchDate, '2026-08-01');
+    assert.equal(notes[0].arrivalDate, '2026-08-20');
+
+    function syncPair(local, remote) {
+        const merged = { ...remote, workProgress: { ...remote.workProgress }, workProgressHistory: (remote.workProgressHistory || []).slice() };
+        api.guardMergedReworkProgress(merged, remote, local);
+        return merged;
+    }
+    const remote = { ...loaded, updatedAt: '2026-11-17T03:00:00.000Z', dispatchDate: '2026-08-01', arrivalDate: '2026-08-20', requestSent: true };
+    const synced = syncPair(loaded, remote);
+    const reversed = syncPair(remote, loaded);
+    const reloaded = api.applySettledReworkCycle({ ...synced, dispatchDate: '2026-08-01', arrivalDate: '2026-08-20' }, api.settleStoredReworkCycle({ ...synced, dispatchDate: '2026-08-01', arrivalDate: '2026-08-20' }, synced.updatedAt));
+    const resynced = syncPair(reloaded, { ...reloaded, updatedAt: '2026-11-17T04:00:00.000Z', dispatchDate: '2026-08-01', arrivalDate: '2026-08-20', requestSent: true });
+    for (const result of [synced, reversed, reloaded, resynced]) {
+        assert.equal(result.workProgress.cycleId, 'rework-anon-16-current');
+        assert.equal(doneCount(result.workProgress), 1);
+        assert.equal(result.dispatchDate, '');
+        assert.equal(result.arrivalDate, '');
+        assert.equal(result.workProgress.vendorSentAt.done, false);
+        assert.equal(result.workProgressHistory.filter(item => item.recordKind === 'date-reference').length, 1);
+        assert.equal(result.workProgressHistory.filter(item => item.recordKind !== 'date-reference' && item.cycleId === 'rework-anon-16-current').length, 0);
+    }
+});
+
+test('an older date note that reused the open cycle id does not close that cycle', () => {
+    const role = currentCycle(true);
+    role.dispatchDate = '';
+    role.arrivalDate = '';
+    role.workProgressHistory = [{
+        cycleId: 'rework-anon-16-current',
+        reason: '前回の搬出日・搬入日は今回の欄へ戻しません',
+        completedCount: 1,
+        dispatchDate: '2026-08-01',
+        arrivalDate: '2026-08-20',
+        steps: [{ key: 'requestFormCreatedAt', done: true }]
+    }];
+    const merged = { ...role, workProgress: { ...role.workProgress } };
+    api.guardMergedReworkProgress(merged, { ...role, updatedAt: '2026-11-17T05:00:00.000Z' }, role);
+    assert.equal(merged.workProgress.cycleId, 'rework-anon-16-current');
+    assert.equal(doneCount(merged.workProgress), 1);
+    assert.equal(merged.workProgressHistory.filter(item => item.recordKind === 'date-reference' && item.cycleId === '').length, 1);
+});
+
 test('requestSent alone does not mark the current vendor step done without a cycle id', () => {
     const progress = api.normalizeWorkProgress({
         requestSent: true,
@@ -253,4 +332,10 @@ test('requestSent alone does not mark the current vendor step done without a cyc
         workProgress: {}
     });
     assert.equal(progress.vendorSentAt.done, false);
+    const withCycle = api.normalizeWorkProgress({
+        requestSent: true,
+        updatedAt: '2026-08-06T01:00:00.000Z',
+        workProgress: { cycleId: 'rework-anon-16-current', dispatchDate: '', arrivalDate: '' }
+    });
+    assert.equal(withCycle.vendorSentAt.done, false);
 });

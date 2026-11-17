@@ -270,6 +270,74 @@ async function main(){
   await page.locator('#role-anon-16 .work-progress').screenshot({ path: path.join(out, '05-rework-cycle-reset.png') });
   checks.push('anonymous rework re-entry renders 0/6, keeps August dates only in history, and does not revive them on reload, auto move, or sync');
 
+  const repeated = await page.evaluate(() => {
+    const progress = {
+      cycleId: 'rework-anon-sync',
+      dispatchDate: '',
+      arrivalDate: '',
+      requestFormCreatedAt: { done: true, updatedAt: '2026-11-17T01:00:00.000Z', updatedBy: 'anon-b' },
+      sealConfirmedAt: { done: false, updatedAt: '', updatedBy: '' },
+      pdfCreatedAt: { done: false, updatedAt: '', updatedBy: '' },
+      vendorSentAt: { done: false, updatedAt: '', updatedBy: '' },
+      vendorContactedAt: { done: false, updatedAt: '', updatedBy: '' },
+      pickupAdjustedAt: { done: false, updatedAt: '', updatedBy: '' }
+    };
+    const role = {
+      id: 'anon-sync',
+      name: '#16-sync',
+      status: '改削行き（搬出可能）',
+      updatedAt: '2026-11-17T02:00:00.000Z',
+      dispatchDate: '2026-08-01',
+      arrivalDate: '2026-08-20',
+      requestSent: true,
+      reworkCycleWarning: '',
+      memo: '',
+      isActiveThreeSet: false,
+      workProgress: progress,
+      workProgressHistory: []
+    };
+    const loaded = applySettledReworkCycle({ ...role }, settleStoredReworkCycle(role, role.updatedAt));
+    const remote = { ...loaded, updatedAt: '2026-11-17T03:00:00.000Z', dispatchDate: '2026-08-01', arrivalDate: '2026-08-20', requestSent: true };
+    const merged = { ...remote, workProgress: { ...remote.workProgress }, workProgressHistory: remote.workProgressHistory.slice() };
+    guardMergedReworkProgress(merged, remote, loaded);
+    const reloaded = applySettledReworkCycle({ ...merged, dispatchDate: '2026-08-01', arrivalDate: '2026-08-20' }, settleStoredReworkCycle({ ...merged, dispatchDate: '2026-08-01', arrivalDate: '2026-08-20' }, merged.updatedAt));
+    const resynced = { ...reloaded, updatedAt: '2026-11-17T04:00:00.000Z', dispatchDate: '2026-08-01', arrivalDate: '2026-08-20', requestSent: true, workProgress: { ...reloaded.workProgress }, workProgressHistory: reloaded.workProgressHistory.slice() };
+    guardMergedReworkProgress(resynced, resynced, reloaded);
+    roles = [resynced];
+    searchQuery = '';
+    statusFilter = 'all';
+    memoOnlyFilter = false;
+    watchStandFilter = null;
+    renderRoles();
+    const text = document.querySelector('#role-anon-sync .work-progress').textContent;
+    return {
+      cycleId: resynced.workProgress.cycleId,
+      done: resynced.workProgress.requestFormCreatedAt.done,
+      vendor: resynced.workProgress.vendorSentAt.done,
+      dispatch: resynced.dispatchDate,
+      arrival: resynced.arrivalDate,
+      notes: resynced.workProgressHistory.filter(item => item.recordKind === 'date-reference').length,
+      closedCurrent: resynced.workProgressHistory.filter(item => item.recordKind !== 'date-reference' && item.cycleId === 'rework-anon-sync').length,
+      warning: resynced.reworkCycleWarning || '',
+      text
+    };
+  });
+  assert.equal(repeated.cycleId, 'rework-anon-sync');
+  assert.equal(repeated.done, true);
+  assert.equal(repeated.vendor, false);
+  assert.equal(repeated.dispatch, '');
+  assert.equal(repeated.arrival, '');
+  assert.equal(repeated.notes, 1);
+  assert.equal(repeated.closedCurrent, 0);
+  assert.equal(repeated.warning, '');
+  assert.match(repeated.text, /作業依頼進捗 1\/6/);
+  assert.match(repeated.text, /前回搬出日 2026\/08\/01/);
+  assert.match(repeated.text, /前回搬入日 2026\/08\/20/);
+  assert.doesNotMatch(repeated.text, /仮搬入予定：2026\/08/);
+  assert.doesNotMatch(repeated.text, /⑥は未完了です/);
+  await page.locator('#role-anon-sync .work-progress').screenshot({ path: path.join(out, '06-rework-sync-keeps-cycle.png') });
+  checks.push('repeated load and sync keep the open cycle at 1/6 and store the August dates once');
+
   fs.writeFileSync(path.join(out,'evidence.json'),JSON.stringify({status:'PASS',scope:'actual index.html + app scripts in ephemeral disconnected browser, authentication UI bypassed only within fixture; fake roles',checks,networkRequestsBlocked:outbound.length},null,2));
   console.log('ROLL-001 ISOLATED FULL UI PASS:',checks.length);
   checks.forEach(x=>console.log(' - '+x));
