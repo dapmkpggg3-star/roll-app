@@ -1136,7 +1136,7 @@ function normalizeWorkProgress(role) {
         }
     });
 
-    if (role && role.requestSent === true && !source.vendorSentAt) {
+    if (role && role.requestSent === true && source.cycleId && !source.vendorSentAt) {
         source.vendorSentAt = role.updatedAt || new Date().toISOString();
     }
 
@@ -1144,6 +1144,7 @@ function normalizeWorkProgress(role) {
         progress[step.key] = normalizeWorkProgressStepState(source[step.key]);
     });
 
+    progress.cycleId = source.cycleId ? String(source.cycleId) : '';
     progress.dispatchDate = normalizeDateInputValue(source.dispatchDate || (role && role.dispatchDate));
     progress.arrivalDate = normalizeDateInputValue(source.arrivalDate);
     progress.pickupAdjustedBy = source.pickupAdjustedBy || progress[PICKUP_ADJUSTED_STEP_KEY].updatedBy || '';
@@ -1188,6 +1189,228 @@ function getWorkProgressStepUpdatedBy(progress, stepKey) {
         return progress.pickupAdjustedBy;
     }
     return state && typeof state === 'object' ? state.updatedBy || '' : '';
+}
+
+function isReworkChecklistStatus(status) {
+    const value = normalizeRoleStatusValue(status);
+    return value === REWORK_READY_STATUS || value === REWORKING_STATUS;
+}
+
+function readReworkProgress(role) {
+    return normalizeWorkProgress({ ...(role || {}), requestSent: false });
+}
+
+function reworkProgressHasRecord(progress, requestSent) {
+    if (requestSent === true) {
+        return true;
+    }
+    return WORK_PROGRESS_STEPS.some(step => {
+        const state = progress && progress[step.key];
+        return Boolean(state && (state.done === true || state.updatedAt));
+    });
+}
+
+function emptyReworkProgress(cycleId) {
+    const progress = {
+        cycleId: cycleId || '',
+        dispatchDate: '',
+        arrivalDate: '',
+        pickupAdjustedBy: ''
+    };
+    WORK_PROGRESS_STEPS.forEach(step => {
+        progress[step.key] = { done: false, updatedAt: '', updatedBy: '' };
+    });
+    return progress;
+}
+
+function snapshotReworkProgress(progress, extra) {
+    const steps = WORK_PROGRESS_STEPS.map(step => {
+        const state = normalizeWorkProgressStepState(progress && progress[step.key]);
+        return {
+            key: step.key,
+            label: step.label,
+            done: state.done,
+            updatedAt: state.updatedAt,
+            updatedBy: state.updatedBy
+        };
+    });
+    if (extra && extra.requestSent === true) {
+        const vendor = steps.find(step => step.key === 'vendorSentAt');
+        if (vendor && !vendor.done) {
+            vendor.done = true;
+            vendor.updatedAt = vendor.updatedAt || extra.updatedAt || '';
+            vendor.updatedBy = vendor.updatedBy || extra.updatedBy || '';
+        }
+    }
+    return {
+        cycleId: progress && progress.cycleId || '',
+        closedAt: extra && extra.closedAt || '',
+        reason: extra && extra.reason || '',
+        judgment: progress && progress.cycleId ? '前回サイクル' : '判定不能',
+        completedCount: steps.filter(step => step.done).length,
+        incomplete: steps.filter(step => !step.done).map(step => step.label),
+        steps,
+        requestSent: extra && extra.requestSent === true,
+        dispatchDate: progress && progress.dispatchDate || '',
+        arrivalDate: progress && progress.arrivalDate || ''
+    };
+}
+
+function reworkHistoryKey(item) {
+    return [
+        item && item.cycleId || '',
+        item && item.closedAt || '',
+        item && item.judgment || '',
+        item && item.completedCount || 0
+    ].join('|');
+}
+
+function appendReworkHistory(history, snapshot) {
+    const next = Array.isArray(history) ? history.slice() : [];
+    if (!snapshot) {
+        return next;
+    }
+    const key = reworkHistoryKey(snapshot);
+    if (!next.some(item => reworkHistoryKey(item) === key)) {
+        next.push(snapshot);
+    }
+    return next;
+}
+
+function reworkCheckFingerprint(progress) {
+    return WORK_PROGRESS_STEPS.map(step => {
+        const state = normalizeWorkProgressStepState(progress && progress[step.key]);
+        return `${step.key}:${state.done ? '1' : '0'}:${state.updatedAt}:${state.updatedBy}`;
+    }).join('|');
+}
+
+function settleStoredReworkCycle(role, changedAt) {
+    const progress = readReworkProgress(role);
+    let history = Array.isArray(role && role.workProgressHistory) ? role.workProgressHistory.slice() : [];
+    const requestSent = role && role.requestSent === true;
+    if (progress.cycleId) {
+        return {
+            progress,
+            history,
+            requestSent: requestSent && isWorkProgressStepDone(progress, 'vendorSentAt')
+        };
+    }
+    if (reworkProgressHasRecord(progress, requestSent)) {
+        history = appendReworkHistory(history, snapshotReworkProgress(progress, {
+            closedAt: changedAt,
+            reason: '保存済みの回次IDがないため今回の完了にはしません',
+            requestSent,
+            updatedAt: role && role.updatedAt || changedAt,
+            updatedBy: ''
+        }));
+        return {
+            progress: isReworkChecklistStatus(role && role.status)
+                ? emptyReworkProgress(`rework-${role && role.id || 'anon'}-${changedAt}`)
+                : emptyReworkProgress(''),
+            history,
+            requestSent: false
+        };
+    }
+    if (isReworkChecklistStatus(role && role.status)) {
+        progress.cycleId = `rework-${role && role.id || 'anon'}-${changedAt}`;
+    }
+    return { progress, history, requestSent: false };
+}
+
+function settleReworkCycle(role, previousStatus, nextStatus, changedAt) {
+    const progress = readReworkProgress(role);
+    let history = Array.isArray(role && role.workProgressHistory) ? role.workProgressHistory.slice() : [];
+    const previous = normalizeRoleStatusValue(previousStatus);
+    const next = normalizeRoleStatusValue(nextStatus);
+    const entering = next === REWORK_READY_STATUS && previous !== REWORK_READY_STATUS && previous !== REWORKING_STATUS;
+    const staying = isReworkChecklistStatus(previous) && isReworkChecklistStatus(next);
+    const leaving = isReworkChecklistStatus(previous) && !isReworkChecklistStatus(next);
+    const requestSent = role && role.requestSent === true;
+
+    if (entering || leaving) {
+        if (reworkProgressHasRecord(progress, requestSent)) {
+            const closed = history.some(item => item && progress.cycleId && item.cycleId === progress.cycleId);
+            if (!closed) {
+                history = appendReworkHistory(history, snapshotReworkProgress(progress, {
+                    closedAt: changedAt,
+                    reason: entering ? '新しい改削サイクル' : '改削サイクルを終了',
+                    requestSent,
+                    updatedAt: role && role.updatedAt || '',
+                    updatedBy: ''
+                }));
+            }
+        }
+        if (entering) {
+            return {
+                progress: emptyReworkProgress(`rework-${role && role.id || 'anon'}-${changedAt}`),
+                history,
+                requestSent: false,
+                reset: true
+            };
+        }
+        return {
+            progress: emptyReworkProgress(''),
+            history,
+            requestSent: false,
+            reset: true
+        };
+    }
+
+    if (staying && !progress.cycleId) {
+        progress.cycleId = `rework-${role && role.id || 'anon'}-${changedAt}`;
+    }
+    return {
+        progress,
+        history,
+        requestSent: requestSent && isWorkProgressStepDone(progress, 'vendorSentAt'),
+        reset: false
+    };
+}
+
+function guardMergedReworkProgress(mergedRole, remoteRole, localRole) {
+    let history = [];
+    [remoteRole, localRole, mergedRole].forEach(role => {
+        history = (Array.isArray(role && role.workProgressHistory) ? role.workProgressHistory : []).reduce(appendReworkHistory, history);
+    });
+    const closed = new Set(history.map(item => item && item.cycleId).filter(Boolean));
+    const candidates = [localRole, remoteRole].filter(role => role && role.workProgress && role.workProgress.cycleId);
+    candidates.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+    const open = candidates.find(role => !closed.has(role.workProgress.cycleId));
+    const chosen = open || null;
+    if (chosen) {
+        mergedRole.workProgress = { ...chosen.workProgress };
+        mergedRole.requestSent = chosen.requestSent === true;
+    } else if (mergedRole.workProgress && mergedRole.workProgress.cycleId && closed.has(mergedRole.workProgress.cycleId)) {
+        const archived = snapshotReworkProgress(mergedRole.workProgress, {
+            closedAt: mergedRole.updatedAt,
+            reason: '閉じた改削サイクルは現在のチェックに戻しません',
+            requestSent: mergedRole.requestSent === true,
+            updatedAt: mergedRole.updatedAt,
+            updatedBy: ''
+        });
+        history = appendReworkHistory(history, archived);
+        mergedRole.workProgress = emptyReworkProgress('');
+        mergedRole.requestSent = false;
+    }
+    [remoteRole, localRole].forEach(role => {
+        const progress = role && role.workProgress;
+        if (!progress || progress.cycleId || !reworkProgressHasRecord(progress, role.requestSent === true)) {
+            return;
+        }
+        history = appendReworkHistory(history, snapshotReworkProgress(progress, {
+            closedAt: role.updatedAt,
+            reason: '回次IDのない再取込は今回の完了にしません',
+            requestSent: role.requestSent === true,
+            updatedAt: role.updatedAt,
+            updatedBy: ''
+        }));
+    });
+    mergedRole.workProgressHistory = history;
+    const settled = settleStoredReworkCycle(mergedRole, mergedRole.updatedAt || new Date().toISOString());
+    mergedRole.workProgress = settled.progress;
+    mergedRole.workProgressHistory = settled.history;
+    mergedRole.requestSent = settled.requestSent;
+    return mergedRole;
 }
 
 function getReworkPickupDateSummaryHtml(progress) {
@@ -2741,11 +2964,12 @@ function addRoleHistoryEntry(role, type, label, beforeValue, afterValue, at = ne
 function loadLocalRoles() {
     roles = JSON.parse(localStorage.getItem('roles')) || [];
     roles = roles.map(role => {
-        const workProgress = normalizeWorkProgress(role);
+        const storedAt = role.updatedAt || new Date().toISOString();
+        const settled = settleStoredReworkCycle({ ...role, updatedAt: storedAt }, storedAt);
 
         return {
             ...role,
-            updatedAt: role.updatedAt || new Date().toISOString(),
+            updatedAt: storedAt,
             memo: role.memo || '',
             status: normalizeRoleStatusValue(role.status),
             coatingStatus: normalizeCoatingStatusValue(role.coatingStatus, role.status, role.name),
@@ -2755,11 +2979,12 @@ function loadLocalRoles() {
             assemblyInstructionDue: normalizeAssemblyInstructionDue(role.assemblyInstructionDue),
             isActiveThreeSet: role.isActiveThreeSet === true,
             nextAssemblyPlanned: role.isActiveThreeSet === true && role.nextAssemblyPlanned === true,
-            dispatchDate: workProgress.dispatchDate || normalizeDateInputValue(role.dispatchDate),
+            dispatchDate: settled.progress.dispatchDate || normalizeDateInputValue(role.dispatchDate),
             currentDiameter: normalizeCurrentDiameter(role.currentDiameter),
-            workProgress,
+            workProgress: settled.progress,
+            workProgressHistory: settled.history,
             history: normalizeRoleHistory(role),
-            requestSent: role.requestSent === true || isWorkProgressStepDone(workProgress, 'vendorSentAt')
+            requestSent: settled.requestSent
         };
     });
     migrateLegacyThreeSetManagementReworkChecklistToRoles();
@@ -2934,7 +3159,14 @@ function autoMoveUsedStandbyToReworkReadyForNewInstalled(sourceRole, changedAt =
         const beforeStatus = role.status;
         role.status = REWORK_READY_STATUS;
         role.updatedAt = changedAt;
-        role.workProgress = normalizeWorkProgress(role);
+        const cycle = settleReworkCycle(role, beforeStatus, REWORK_READY_STATUS, changedAt);
+        role.workProgressHistory = cycle.history;
+        role.requestSent = cycle.requestSent;
+        role.workProgress = normalizeWorkProgress({
+            ...role,
+            requestSent: false,
+            workProgress: cycle.progress
+        });
         addRoleHistoryEntry(
             role,
             'status',
@@ -3076,9 +3308,19 @@ function getWorkProgressHtml(role) {
         `;
     }).join('');
 
+    const historyHtml = (Array.isArray(role.workProgressHistory) ? role.workProgressHistory : []).map(item => {
+        const dated = (item.steps || []).filter(step => step.done).map(step => {
+            const when = step.updatedAt ? ` ${step.updatedAt}` : '';
+            const who = step.updatedBy ? ` ${step.updatedBy}` : '';
+            return `${step.label}${when}${who}`;
+        });
+        return `<div class="work-progress-history" data-rework-history="${escapeHtml(item.cycleId || 'unscoped')}">前回 ${item.completedCount}/6 ${escapeHtml(item.judgment || '')}。未完了：${escapeHtml((item.incomplete || []).join('、') || 'なし')}。${escapeHtml(dated.join('、'))}</div>`;
+    }).join('');
+
     return `
         <div class="work-progress" aria-label="作業依頼進捗">
             <div class="work-progress-summary">作業依頼進捗 ${completedCount}/${WORK_PROGRESS_STEPS.length}</div>
+            ${historyHtml}
             <div class="work-progress-steps">${stepsHtml}</div>
         </div>
     `;
@@ -4152,20 +4394,39 @@ function migrateLegacyThreeSetManagementReworkChecklistToRoles() {
         }
 
         const roleKey = getThreeSetManagementReworkRoleKey(role);
+        if (!roleKey || !checklist[roleKey]) {
+            return;
+        }
         const legacyEntry = normalizeThreeSetManagementReworkChecklistEntry(checklist[roleKey]);
-
-        if (!roleKey || !legacyEntry) {
+        if (!reworkProgressHasRecord(legacyEntry, false)) {
             return;
         }
 
-        role.workProgress = normalizeWorkProgress(role);
-
-        THREE_SET_MANAGEMENT_REWORK_CHECKLIST_STEPS.forEach(step => {
-            if (!isWorkProgressStepDone(role.workProgress, step.key) && legacyEntry[step.key] && legacyEntry[step.key].done) {
-                role.workProgress[step.key] = legacyEntry[step.key];
-                migrated = true;
-            }
-        });
+        const fingerprint = reworkCheckFingerprint(legacyEntry);
+        const consumed = Array.isArray(role.workProgressConsumedFingerprints) ? role.workProgressConsumedFingerprints : [];
+        if (!fingerprint || consumed.includes(fingerprint)) {
+            return;
+        }
+        const sameCycle = legacyEntry.cycleId && role.workProgress && legacyEntry.cycleId === role.workProgress.cycleId;
+        if (sameCycle) {
+            role.workProgress = normalizeWorkProgress(role);
+            THREE_SET_MANAGEMENT_REWORK_CHECKLIST_STEPS.forEach(step => {
+                if (!isWorkProgressStepDone(role.workProgress, step.key) && legacyEntry[step.key] && legacyEntry[step.key].done) {
+                    role.workProgress[step.key] = legacyEntry[step.key];
+                    migrated = true;
+                }
+            });
+            return;
+        }
+        role.workProgressHistory = appendReworkHistory(role.workProgressHistory, snapshotReworkProgress(legacyEntry, {
+            closedAt: role.updatedAt,
+            reason: '回次IDのない旧チェックは今回の完了にしません',
+            requestSent: false,
+            updatedAt: role.updatedAt,
+            updatedBy: ''
+        }));
+        role.workProgressConsumedFingerprints = consumed.concat(fingerprint);
+        migrated = true;
     });
 
     return migrated;
@@ -4224,12 +4485,15 @@ function getThreeSetManagementReworkChecklistEntry(roleOrKey) {
 
     const legacyEntry = getLegacyThreeSetManagementReworkChecklistEntry(getThreeSetManagementReworkRoleKey(role));
     const merged = { ...progress };
+    const sameCycle = legacyEntry.cycleId && progress.cycleId && legacyEntry.cycleId === progress.cycleId;
 
-    THREE_SET_MANAGEMENT_REWORK_CHECKLIST_STEPS.forEach(step => {
-        if (!isWorkProgressStepDone(merged, step.key) && legacyEntry[step.key] && legacyEntry[step.key].done) {
-            merged[step.key] = legacyEntry[step.key];
-        }
-    });
+    if (sameCycle) {
+        THREE_SET_MANAGEMENT_REWORK_CHECKLIST_STEPS.forEach(step => {
+            if (!isWorkProgressStepDone(merged, step.key) && legacyEntry[step.key] && legacyEntry[step.key].done) {
+                merged[step.key] = legacyEntry[step.key];
+            }
+        });
+    }
 
     return normalizeThreeSetManagementReworkChecklistEntry(merged);
 }
@@ -7894,10 +8158,15 @@ function updateRole() {
     role.useStartDate = roleStatus === ONLINE_STATUS ? (roleUseStartDate || getTodayDateString()) : beforeUseStartDate;
     role.useEndDate = startsAutomaticOnlineAssignment ? '' : roleUseEndDate;
     role.updatedAt = changedAt;
+    const cycle = settleReworkCycle(role, beforeStatus, roleStatus, changedAt);
+    role.workProgressHistory = cycle.history;
+    role.requestSent = cycle.requestSent;
     role.workProgress = normalizeWorkProgress({
         ...role,
+        requestSent: false,
+        dispatchDate: roleDispatchDate,
         workProgress: {
-            ...(role.workProgress || {}),
+            ...cycle.progress,
             dispatchDate: roleDispatchDate,
             arrivalDate: roleArrivalDate
         }

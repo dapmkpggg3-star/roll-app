@@ -128,6 +128,75 @@ async function main(){
   await page.locator('#purchase-confirmation-board').screenshot({path:path.join(out,'04-procurement-missing-master.png')});
   checks.push('actual procurement dashboard retains all three unhandled roles with missing master data as unknown; discarded roll excluded');
 
+  const rework = await page.evaluate(() => {
+    const previous = {
+      requestFormCreatedAt: { done: true, updatedAt: '2026-08-03T01:00:00.000Z', updatedBy: 'anon-a' },
+      sealConfirmedAt: { done: true, updatedAt: '2026-08-04T01:00:00.000Z', updatedBy: 'anon-a' },
+      pdfCreatedAt: { done: true, updatedAt: '2026-08-05T01:00:00.000Z', updatedBy: 'anon-a' },
+      vendorSentAt: { done: true, updatedAt: '2026-08-06T01:00:00.000Z', updatedBy: 'anon-a' },
+      vendorContactedAt: { done: true, updatedAt: '2026-08-07T01:00:00.000Z', updatedBy: 'anon-a' },
+      pickupAdjustedAt: { done: false, updatedAt: '', updatedBy: '' }
+    };
+    const role = {
+      id: 'anon-16',
+      name: '#16-anon',
+      status: '中古予備（バラシ前）',
+      updatedAt: '2026-08-07T01:00:00.000Z',
+      requestSent: true,
+      workProgress: previous,
+      memo: '',
+      isActiveThreeSet: false
+    };
+    const entered = settleReworkCycle(role, role.status, '改削行き（搬出可能）', '2026-11-17T00:00:00.000Z');
+    role.status = '改削行き（搬出可能）';
+    role.workProgress = entered.progress;
+    role.workProgressHistory = entered.history;
+    role.requestSent = entered.requestSent;
+    const continued = settleReworkCycle(role, '改削行き（搬出可能）', '改削中', '2026-11-17T01:00:00.000Z');
+    const legacy = guardMergedReworkProgress({
+      ...role,
+      updatedAt: '2026-11-17T04:00:00.000Z',
+      workProgress: previous
+    }, {
+      ...role,
+      updatedAt: '2026-11-17T04:00:00.000Z',
+      requestSent: true,
+      workProgress: previous
+    }, role);
+    roles = [role];
+    searchQuery = '';
+    statusFilter = 'all';
+    memoOnlyFilter = false;
+    watchStandFilter = null;
+    renderRoles();
+    const text = document.querySelector('#role-anon-16 .work-progress').textContent;
+    return {
+      enteredCycle: entered.progress.cycleId,
+      enteredDone: ['requestFormCreatedAt', 'sealConfirmedAt', 'pdfCreatedAt', 'vendorSentAt', 'vendorContactedAt', 'pickupAdjustedAt'].filter(key => entered.progress[key] && entered.progress[key].done).length,
+      historyCount: entered.history[0] && entered.history[0].completedCount,
+      judgment: entered.history[0] && entered.history[0].judgment,
+      incomplete: entered.history[0] && entered.history[0].incomplete,
+      continuedDone: ['requestFormCreatedAt', 'vendorContactedAt'].filter(key => continued.progress[key] && continued.progress[key].done).length,
+      continuedReset: continued.reset,
+      legacyCycle: legacy.workProgress.cycleId,
+      legacyRevived: Boolean(legacy.workProgress.requestFormCreatedAt && legacy.workProgress.requestFormCreatedAt.done),
+      text
+    };
+  });
+  assert.equal(rework.enteredDone, 0, 'new rework cycle must render 0/6');
+  assert.equal(rework.historyCount, 5);
+  assert.equal(rework.judgment, '判定不能');
+  assert.deepEqual(rework.incomplete, ['引き取り日設定']);
+  assert.equal(rework.continuedReset, false);
+  assert.equal(rework.continuedDone, 0);
+  assert.equal(rework.legacyRevived, false);
+  assert.equal(rework.legacyCycle, rework.enteredCycle);
+  assert.match(rework.text, /作業依頼進捗 0\/6/);
+  assert.match(rework.text, /判定不能/);
+  assert.match(rework.text, /引き取り日設定/);
+  await page.locator('#role-anon-16 .work-progress').screenshot({ path: path.join(out, '05-rework-cycle-reset.png') });
+  checks.push('anonymous rework re-entry renders 0/6 and keeps the prior incomplete cycle in history');
+
   fs.writeFileSync(path.join(out,'evidence.json'),JSON.stringify({status:'PASS',scope:'actual index.html + app scripts in ephemeral disconnected browser, authentication UI bypassed only within fixture; fake roles',checks,networkRequestsBlocked:outbound.length},null,2));
   console.log('ROLL-001 ISOLATED FULL UI PASS:',checks.length);
   checks.forEach(x=>console.log(' - '+x));

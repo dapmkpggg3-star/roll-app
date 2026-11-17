@@ -798,7 +798,7 @@ function normalizeRole(role) {
         ? role.history.filter(entry => entry && typeof entry === 'object')
         : [];
 
-    if (role && role.requestSent === true && !progress.vendorSentAt) {
+    if (role && role.requestSent === true && progress.cycleId && !progress.vendorSentAt) {
         progress.vendorSentAt = role.updatedAt || new Date().toISOString();
     }
 
@@ -813,7 +813,7 @@ function normalizeRole(role) {
         ? normalizeRoleStatusValue(rawStatus)
         : (ALLOWED_STATUSES.includes(rawStatus) ? rawStatus : '中古予備（バラシ前）');
 
-    return {
+    const normalized = {
         ...role,
         updatedAt: role.updatedAt || new Date().toISOString(),
         memo: role.memo || '',
@@ -836,6 +836,18 @@ function normalizeRole(role) {
         history: history,
         requestSent: role.requestSent === true || Boolean(progress.vendorSentAt)
     };
+    return applyStoredReworkCycleGuard(normalized);
+}
+
+function applyStoredReworkCycleGuard(role) {
+    if (!role || typeof settleStoredReworkCycle !== 'function') {
+        return role;
+    }
+    const settled = settleStoredReworkCycle(role, role.updatedAt || new Date().toISOString());
+    role.workProgress = settled.progress;
+    role.workProgressHistory = settled.history;
+    role.requestSent = settled.requestSent;
+    return role;
 }
 
 function mergeRoleHistory(aHistory, bHistory) {
@@ -909,6 +921,11 @@ function mergeRoleVersions(remoteRole, localRole) {
     mergedRole.history = mergeRoleHistory(remoteRole && remoteRole.history, localRole && localRole.history);
     mergedRole.requestSent = mergedRole.requestSent === true
         || Boolean(mergedRole.workProgress && mergedRole.workProgress.vendorSentAt);
+    if (typeof guardMergedReworkProgress === 'function') {
+        guardMergedReworkProgress(mergedRole, remoteRole, localRole);
+    } else {
+        applyStoredReworkCycleGuard(mergedRole);
+    }
 
     return {
         role: mergedRole,
