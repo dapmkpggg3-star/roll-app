@@ -56,7 +56,7 @@ const context = vm.createContext({
         return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : '';
     }
 });
-vm.runInContext(`${source.slice(start, end)}\nthis.api={settleReworkCycle,settleStoredReworkCycle,guardMergedReworkProgress,normalizeWorkProgress};`, context);
+vm.runInContext(`${source.slice(start, end)}\nthis.api={settleReworkCycle,settleStoredReworkCycle,guardMergedReworkProgress,normalizeWorkProgress,applySettledReworkCycle,describeIncompleteReworkAdvance};`, context);
 
 const api = context.api;
 const ready = '改削行き（搬出可能）';
@@ -145,6 +145,105 @@ test('a legacy reimport does not restore old checks onto the new cycle', () => {
     assert.equal(merged.workProgress.cycleId, 'rework-anon-16-new');
     assert.notEqual(merged.workProgress.requestFormCreatedAt && merged.workProgress.requestFormCreatedAt.done, true);
     assert.ok(merged.workProgressHistory.some(item => item.completedCount === 5 && item.judgment === '判定不能'));
+});
+
+test('an empty new-cycle dispatch date does not revive the August role date', () => {
+    const progress = api.normalizeWorkProgress({
+        dispatchDate: '2026-08-01',
+        arrivalDate: '2026-08-20',
+        workProgress: { cycleId: 'rework-anon-16-new', dispatchDate: '', arrivalDate: '' }
+    });
+    assert.equal(progress.dispatchDate, '');
+    assert.equal(progress.arrivalDate, '');
+    const role = {
+        id: 'anon-16',
+        status: '中古予備（バラシ前）',
+        dispatchDate: '2026-08-01',
+        arrivalDate: '2026-08-20',
+        requestSent: true,
+        workProgress: augustProgress()
+    };
+    const entered = api.settleReworkCycle(role, role.status, ready, '2026-11-17T00:00:00.000Z');
+    assert.equal(entered.progress.dispatchDate, '');
+    assert.equal(entered.progress.arrivalDate, '');
+    assert.equal(entered.history[0].dispatchDate, '2026-08-01');
+    assert.equal(entered.history[0].arrivalDate, '2026-08-20');
+    const loaded = api.settleStoredReworkCycle({
+        id: 'anon-16',
+        status: ready,
+        updatedAt: '2026-11-17T00:00:00.000Z',
+        dispatchDate: '2026-08-01',
+        arrivalDate: '2026-08-20',
+        workProgress: entered.progress,
+        workProgressHistory: entered.history
+    }, '2026-11-17T00:00:00.000Z');
+    const applied = api.applySettledReworkCycle({ dispatchDate: '2026-08-01', arrivalDate: '2026-08-20' }, loaded);
+    assert.equal(applied.dispatchDate, '');
+    assert.equal(applied.arrivalDate, '');
+    assert.equal(applied.workProgress.dispatchDate, '');
+});
+
+test('the same cycle keeps a newly entered dispatch date across save and sync', () => {
+    const progress = augustProgress();
+    progress.cycleId = 'rework-anon-16-current';
+    progress.dispatchDate = '2026-11-20';
+    progress.arrivalDate = '2026-12-01';
+    const role = {
+        id: 'anon-16',
+        status: ready,
+        dispatchDate: '2026-11-20',
+        arrivalDate: '2026-12-01',
+        requestSent: true,
+        workProgress: progress
+    };
+    const onward = api.settleReworkCycle(role, ready, reworking, '2026-11-17T01:00:00.000Z');
+    assert.equal(onward.reset, false);
+    assert.equal(onward.progress.dispatchDate, '2026-11-20');
+    assert.equal(onward.progress.arrivalDate, '2026-12-01');
+    const current = {
+        id: 'anon-16',
+        status: ready,
+        updatedAt: '2026-11-17T03:00:00.000Z',
+        dispatchDate: '2026-11-20',
+        arrivalDate: '2026-12-01',
+        requestSent: false,
+        workProgress: {
+            cycleId: 'rework-anon-16-current',
+            dispatchDate: '2026-11-20',
+            arrivalDate: '2026-12-01',
+            requestFormCreatedAt: { done: false, updatedAt: '', updatedBy: '' }
+        }
+    };
+    const remote = {
+        id: 'anon-16',
+        status: ready,
+        updatedAt: '2026-11-17T04:00:00.000Z',
+        dispatchDate: '2026-08-01',
+        arrivalDate: '2026-08-20',
+        requestSent: true,
+        workProgress: augustProgress()
+    };
+    const merged = { ...remote, workProgress: { ...remote.workProgress } };
+    api.guardMergedReworkProgress(merged, remote, current);
+    assert.equal(merged.workProgress.cycleId, 'rework-anon-16-current');
+    assert.equal(merged.dispatchDate, '2026-11-20');
+    assert.equal(merged.arrivalDate, '2026-12-01');
+    assert.notEqual(merged.workProgress.requestFormCreatedAt && merged.workProgress.requestFormCreatedAt.done, true);
+    assert.ok(merged.workProgressHistory.some(item => item.dispatchDate === '2026-08-01' && item.arrivalDate === '2026-08-20'));
+});
+
+test('advancing with item 6 incomplete returns a warning and does not block the history', () => {
+    const progress = augustProgress();
+    progress.dispatchDate = '2026-08-01';
+    const warning = api.describeIncompleteReworkAdvance(progress);
+    assert.match(warning, /⑥/);
+    assert.match(warning, /未完了/);
+    const done = api.describeIncompleteReworkAdvance({
+        ...progress,
+        dispatchDate: '2026-11-20',
+        pickupAdjustedAt: { done: true, updatedAt: '2026-11-20T00:00:00.000Z', updatedBy: 'anon-b' }
+    });
+    assert.equal(done, '');
 });
 
 test('requestSent alone does not mark the current vendor step done without a cycle id', () => {

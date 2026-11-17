@@ -143,36 +143,79 @@ async function main(){
       status: '中古予備（バラシ前）',
       updatedAt: '2026-08-07T01:00:00.000Z',
       requestSent: true,
+      dispatchDate: '2026-08-01',
+      arrivalDate: '2026-08-20',
       workProgress: previous,
       memo: '',
       isActiveThreeSet: false
     };
     const entered = settleReworkCycle(role, role.status, '改削行き（搬出可能）', '2026-11-17T00:00:00.000Z');
+    applySettledReworkCycle(role, entered);
     role.status = '改削行き（搬出可能）';
-    role.workProgress = entered.progress;
-    role.workProgressHistory = entered.history;
-    role.requestSent = entered.requestSent;
+    role.reworkCycleWarning = describeIncompleteReworkAdvance(role.workProgressHistory[role.workProgressHistory.length - 1]);
     const continued = settleReworkCycle(role, '改削行き（搬出可能）', '改削中', '2026-11-17T01:00:00.000Z');
     const legacy = guardMergedReworkProgress({
       ...role,
       updatedAt: '2026-11-17T04:00:00.000Z',
+      dispatchDate: '2026-08-01',
+      arrivalDate: '2026-08-20',
       workProgress: previous
     }, {
       ...role,
       updatedAt: '2026-11-17T04:00:00.000Z',
+      dispatchDate: '2026-08-01',
+      arrivalDate: '2026-08-20',
       requestSent: true,
       workProgress: previous
     }, role);
+    localStorage.setItem('roles', JSON.stringify([{
+      ...role,
+      dispatchDate: '2026-08-01',
+      arrivalDate: '2026-08-20'
+    }]));
+    loadLocalRoles();
+    const reloaded = roles.find(item => item.id === 'anon-16');
+    const standby = {
+      ...role,
+      status: '中古予備（バラシ前）',
+      dispatchDate: '2026-08-01',
+      arrivalDate: '2026-08-20',
+      workProgress: previous,
+      workProgressHistory: []
+    };
+    const installed = {
+      id: 'anon-16b',
+      name: '#16-new',
+      status: '新品予備（組込完了）',
+      memo: '',
+      isActiveThreeSet: false,
+      updatedAt: '2026-11-17T02:00:00.000Z'
+    };
+    roles = [standby, installed];
+    const autoMoved = autoMoveUsedStandbyToReworkReadyForNewInstalled(installed, '2026-11-17T02:00:00.000Z');
+    role.workProgress = {
+      ...role.workProgress,
+      dispatchDate: '2026-11-20',
+      arrivalDate: '2026-12-01'
+    };
+    role.dispatchDate = '2026-11-20';
+    role.arrivalDate = '2026-12-01';
+    const kept = settleReworkCycle(role, '改削行き（搬出可能）', '改削中', '2026-11-17T03:00:00.000Z');
     roles = [role];
     searchQuery = '';
     statusFilter = 'all';
     memoOnlyFilter = false;
     watchStandFilter = null;
     renderRoles();
+    editRole('anon-16');
     const text = document.querySelector('#role-anon-16 .work-progress').textContent;
     return {
       enteredCycle: entered.progress.cycleId,
       enteredDone: ['requestFormCreatedAt', 'sealConfirmedAt', 'pdfCreatedAt', 'vendorSentAt', 'vendorContactedAt', 'pickupAdjustedAt'].filter(key => entered.progress[key] && entered.progress[key].done).length,
+      enteredDispatch: entered.progress.dispatchDate,
+      enteredArrival: entered.progress.arrivalDate,
+      historyDispatch: entered.history[0] && entered.history[0].dispatchDate,
+      historyArrival: entered.history[0] && entered.history[0].arrivalDate,
       historyCount: entered.history[0] && entered.history[0].completedCount,
       judgment: entered.history[0] && entered.history[0].judgment,
       incomplete: entered.history[0] && entered.history[0].incomplete,
@@ -180,6 +223,17 @@ async function main(){
       continuedReset: continued.reset,
       legacyCycle: legacy.workProgress.cycleId,
       legacyRevived: Boolean(legacy.workProgress.requestFormCreatedAt && legacy.workProgress.requestFormCreatedAt.done),
+      legacyDispatch: legacy.dispatchDate,
+      reloadedDispatch: reloaded && reloaded.dispatchDate,
+      reloadedArrival: reloaded && reloaded.arrivalDate,
+      autoDispatch: autoMoved[0] && autoMoved[0].dispatchDate,
+      autoArrival: autoMoved[0] && autoMoved[0].arrivalDate,
+      autoProgressDispatch: autoMoved[0] && autoMoved[0].workProgress.dispatchDate,
+      keptDispatch: kept.progress.dispatchDate,
+      keptArrival: kept.progress.arrivalDate,
+      formDispatch: document.getElementById('role-dispatch-date').value,
+      formArrival: document.getElementById('role-arrival-date').value,
+      storedArrival: getRoleArrivalDate(role),
       text
     };
   });
@@ -191,11 +245,30 @@ async function main(){
   assert.equal(rework.continuedDone, 0);
   assert.equal(rework.legacyRevived, false);
   assert.equal(rework.legacyCycle, rework.enteredCycle);
+  assert.equal(rework.enteredDispatch, '');
+  assert.equal(rework.enteredArrival, '');
+  assert.equal(rework.historyDispatch, '2026-08-01');
+  assert.equal(rework.historyArrival, '2026-08-20');
+  assert.equal(rework.legacyDispatch, '');
+  assert.equal(rework.reloadedDispatch, '');
+  assert.equal(rework.reloadedArrival, '');
+  assert.equal(rework.autoDispatch, '');
+  assert.equal(rework.autoArrival, '');
+  assert.equal(rework.autoProgressDispatch, '');
+  assert.equal(rework.keptDispatch, '2026-11-20');
+  assert.equal(rework.keptArrival, '2026-12-01');
+  assert.equal(rework.formDispatch, '2026-11-20');
+  assert.equal(rework.formArrival, '');
+  assert.equal(rework.storedArrival, '2026-12-01');
   assert.match(rework.text, /作業依頼進捗 0\/6/);
   assert.match(rework.text, /判定不能/);
   assert.match(rework.text, /引き取り日設定/);
+  assert.match(rework.text, /前回搬出日 2026\/08\/01/);
+  assert.match(rework.text, /前回搬入日 2026\/08\/20/);
+  assert.match(rework.text, /引き取り日設定（⑥）は未完了です/);
+  assert.doesNotMatch(rework.text, /仮搬入予定：2026\/08/);
   await page.locator('#role-anon-16 .work-progress').screenshot({ path: path.join(out, '05-rework-cycle-reset.png') });
-  checks.push('anonymous rework re-entry renders 0/6 and keeps the prior incomplete cycle in history');
+  checks.push('anonymous rework re-entry renders 0/6, keeps August dates only in history, and does not revive them on reload, auto move, or sync');
 
   fs.writeFileSync(path.join(out,'evidence.json'),JSON.stringify({status:'PASS',scope:'actual index.html + app scripts in ephemeral disconnected browser, authentication UI bypassed only within fixture; fake roles',checks,networkRequestsBlocked:outbound.length},null,2));
   console.log('ROLL-001 ISOLATED FULL UI PASS:',checks.length);

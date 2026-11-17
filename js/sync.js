@@ -844,9 +844,14 @@ function applyStoredReworkCycleGuard(role) {
         return role;
     }
     const settled = settleStoredReworkCycle(role, role.updatedAt || new Date().toISOString());
+    if (typeof applySettledReworkCycle === 'function') {
+        return applySettledReworkCycle(role, settled);
+    }
     role.workProgress = settled.progress;
     role.workProgressHistory = settled.history;
     role.requestSent = settled.requestSent;
+    role.dispatchDate = settled.progress.dispatchDate || '';
+    role.arrivalDate = settled.progress.arrivalDate || '';
     return role;
 }
 
