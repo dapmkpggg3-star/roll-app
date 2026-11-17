@@ -56,7 +56,7 @@ const context = vm.createContext({
         return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : '';
     }
 });
-vm.runInContext(`${source.slice(start, end)}\nthis.api={settleReworkCycle,settleStoredReworkCycle,guardMergedReworkProgress,normalizeWorkProgress,applySettledReworkCycle,describeIncompleteReworkAdvance};`, context);
+vm.runInContext(`${source.slice(start, end)}\nthis.api={settleReworkCycle,settleStoredReworkCycle,guardMergedReworkProgress,normalizeWorkProgress,applySettledReworkCycle,describeIncompleteReworkAdvance,openReworkCycleOnCreate};`, context);
 
 const api = context.api;
 const ready = '改削行き（搬出可能）';
@@ -323,6 +323,99 @@ test('an older date note that reused the open cycle id does not close that cycle
     assert.equal(merged.workProgress.cycleId, 'rework-anon-16-current');
     assert.equal(doneCount(merged.workProgress), 1);
     assert.equal(merged.workProgressHistory.filter(item => item.recordKind === 'date-reference' && item.cycleId === '').length, 1);
+});
+
+test('repeated sync keeps the cycle created at registration and records August dates once', () => {
+    const createdAt = '2026-11-17T12:44:01.727Z';
+    const created = api.openReworkCycleOnCreate({
+        id: 'anon-new',
+        status: ready,
+        dispatchDate: '',
+        arrivalDate: '',
+        workProgress: { dispatchDate: '', arrivalDate: '' }
+    }, createdAt);
+    created.progress.requestFormCreatedAt = { done: true, updatedAt: createdAt, updatedBy: 'anon-b' };
+    const local = {
+        id: 'anon-new',
+        name: '#16-anon-new',
+        status: ready,
+        updatedAt: createdAt,
+        dispatchDate: '',
+        arrivalDate: '',
+        requestSent: false,
+        workProgress: created.progress,
+        workProgressHistory: created.history
+    };
+    function sync(localRole, remoteRole) {
+        const merged = {
+            ...remoteRole,
+            workProgress: { ...remoteRole.workProgress },
+            workProgressHistory: (remoteRole.workProgressHistory || []).slice()
+        };
+        api.guardMergedReworkProgress(merged, remoteRole, localRole);
+        return merged;
+    }
+    const remote = { ...local, updatedAt: '2026-11-17T13:00:00.000Z', dispatchDate: '2026-08-01', arrivalDate: '2026-08-20' };
+    const once = sync(local, remote);
+    const twice = sync(once, { ...once, updatedAt: '2026-11-17T13:05:00.000Z', dispatchDate: '2026-08-01', arrivalDate: '2026-08-20' });
+    for (const result of [once, twice]) {
+        assert.equal(result.workProgress.cycleId, created.progress.cycleId);
+        assert.equal(result.workProgress.requestFormCreatedAt.done, true);
+        assert.equal(result.dispatchDate, '');
+        assert.equal(result.arrivalDate, '');
+        assert.equal(result.workProgressHistory.filter(item => item.recordKind === 'date-reference').length, 1);
+    }
+});
+
+test('a role created as rework ready keeps step 1 on the same cycle after reload', () => {
+    const createdAt = '2026-11-17T12:44:01.727Z';
+    const created = api.openReworkCycleOnCreate({
+        id: 'anon-new',
+        status: ready,
+        dispatchDate: '',
+        arrivalDate: '',
+        workProgress: { dispatchDate: '', arrivalDate: '' }
+    }, createdAt);
+    assert.ok(created.progress.cycleId);
+    created.progress.requestFormCreatedAt = { done: true, updatedAt: createdAt, updatedBy: 'anon-b' };
+    const reloaded = api.settleStoredReworkCycle({
+        id: 'anon-new',
+        status: ready,
+        updatedAt: createdAt,
+        dispatchDate: '',
+        arrivalDate: '',
+        requestSent: false,
+        workProgress: created.progress,
+        workProgressHistory: created.history
+    }, createdAt);
+    assert.equal(reloaded.progress.cycleId, created.progress.cycleId);
+    assert.equal(reloaded.progress.requestFormCreatedAt.done, true);
+    assert.equal(steps.filter(step => reloaded.progress[step.key] && reloaded.progress[step.key].done).length, 1);
+    const continued = api.settleReworkCycle({
+        id: 'anon-new',
+        status: ready,
+        requestSent: false,
+        workProgress: reloaded.progress,
+        workProgressHistory: reloaded.history
+    }, ready, reworking, '2026-11-17T13:00:00.000Z');
+    assert.equal(continued.reset, false);
+    assert.equal(continued.progress.cycleId, created.progress.cycleId);
+    assert.equal(continued.progress.requestFormCreatedAt.done, true);
+});
+
+test('stored checks without a cycle id stay out of the current cycle after a new role is created', () => {
+    const legacy = api.settleStoredReworkCycle({
+        id: 'anon-old',
+        status: ready,
+        updatedAt: '2026-08-07T01:00:00.000Z',
+        requestSent: true,
+        dispatchDate: '2026-08-01',
+        arrivalDate: '2026-08-20',
+        workProgress: augustProgress()
+    }, '2026-08-07T01:00:00.000Z');
+    assert.equal(legacy.progress.requestFormCreatedAt.done, false);
+    assert.equal(legacy.history[0].judgment, '判定不能');
+    assert.equal(legacy.history[0].completedCount, 5);
 });
 
 test('requestSent alone does not mark the current vendor step done without a cycle id', () => {

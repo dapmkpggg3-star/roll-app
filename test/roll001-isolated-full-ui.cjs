@@ -30,6 +30,7 @@ async function main(){
   });
   const page=await context.newPage();
   page.on('pageerror',e=>failures.push(String(e.message)));
+  page.on('dialog',dialog=>dialog.accept());
   await page.goto('http://roll-app.test/index.html',{waitUntil:'load'});
   assert.ok(await page.locator('#main-screen').count(),'real app main screen not present');
   assert.ok(await page.locator('#today-task-list').count(),'real task DOM absent');
@@ -337,6 +338,148 @@ async function main(){
   assert.doesNotMatch(repeated.text, /⑥は未完了です/);
   await page.locator('#role-anon-sync .work-progress').screenshot({ path: path.join(out, '06-rework-sync-keeps-cycle.png') });
   checks.push('repeated load and sync keep the open cycle at 1/6 and store the August dates once');
+
+  await page.evaluate(() => {
+    localStorage.removeItem('roles');
+    localStorage.removeItem('current_operator');
+  });
+  const screen = await context.newPage();
+  screen.on('dialog', dialog => dialog.accept());
+  screen.on('pageerror', e => failures.push(String(e.message)));
+  await screen.goto('http://roll-app.test/index.html', { waitUntil: 'load' });
+  await screen.evaluate(() => {
+    document.getElementById('login-screen').style.display = 'none';
+    document.getElementById('main-screen').style.display = 'block';
+    roles = [];
+    nextId = 1;
+    renderRoles();
+  });
+  if (await screen.locator('body').evaluate(el => el.classList.contains('simple-overview'))) {
+    await screen.locator('#detailModeBtn').click();
+  }
+  await screen.locator('#operator-select').selectOption('hiwatashi');
+  await screen.locator('#toggleRoleFormBtn').click();
+  await screen.locator('#role-name').fill('#16-case1');
+  await screen.locator('#role-status').selectOption('改削行き（搬出可能）');
+  await screen.locator('#role-dispatch-date').fill('');
+  await screen.locator('#addRoleBtn').click();
+  const created = await screen.evaluate(() => {
+    const role = roles.find(item => item.name === '#16-case1');
+    return { cycleId: role.workProgress.cycleId, done: role.workProgress.requestFormCreatedAt.done };
+  });
+  assert.ok(created.cycleId, 'new rework role must receive a cycle id at registration');
+  assert.equal(created.done, false);
+  await screen.locator('tr', { hasText: '#16-case1' }).locator('button', { hasText: '改削依頼書作成' }).click();
+  await screen.reload({ waitUntil: 'load' });
+  await screen.evaluate(() => {
+    document.getElementById('login-screen').style.display = 'none';
+    document.getElementById('main-screen').style.display = 'block';
+    renderRoles();
+  });
+  if (await screen.locator('body').evaluate(el => el.classList.contains('simple-overview'))) {
+    await screen.locator('#detailModeBtn').click();
+  }
+  const reloaded = await screen.evaluate(() => {
+    const role = roles.find(item => item.name === '#16-case1');
+    const done = ['requestFormCreatedAt', 'sealConfirmedAt', 'pdfCreatedAt', 'vendorSentAt', 'vendorContactedAt', 'pickupAdjustedAt']
+      .filter(key => role.workProgress[key] && role.workProgress[key].done).length;
+    return { cycleId: role.workProgress.cycleId, done, text: document.querySelector('#role-1 .work-progress').textContent };
+  });
+  assert.equal(reloaded.cycleId, created.cycleId);
+  assert.equal(reloaded.done, 1);
+  assert.match(reloaded.text, /作業依頼進捗 1\/6/);
+  await screen.locator('#role-1 .work-progress').screenshot({ path: path.join(out, '07-add-role-keeps-cycle.png') });
+  const synced = await screen.evaluate(() => {
+    const local = roles.find(item => item.name === '#16-case1');
+    const remote = { ...local, updatedAt: '2026-11-17T13:00:00.000Z', dispatchDate: '2026-08-01', arrivalDate: '2026-08-20' };
+    const first = { ...remote, workProgress: { ...remote.workProgress }, workProgressHistory: (remote.workProgressHistory || []).slice() };
+    guardMergedReworkProgress(first, remote, local);
+    const secondRemote = { ...first, updatedAt: '2026-11-17T13:05:00.000Z', dispatchDate: '2026-08-01', arrivalDate: '2026-08-20' };
+    const second = { ...secondRemote, workProgress: { ...secondRemote.workProgress }, workProgressHistory: secondRemote.workProgressHistory.slice() };
+    guardMergedReworkProgress(second, secondRemote, first);
+    const mergedList = mergeRemoteAndLocalRoles([secondRemote], [first]);
+    const merged = mergedList.find(item => item.name === '#16-case1');
+    return {
+      cycleId: second.workProgress.cycleId,
+      done: second.workProgress.requestFormCreatedAt.done,
+      dispatch: second.dispatchDate,
+      notes: second.workProgressHistory.filter(item => item.recordKind === 'date-reference').length,
+      mergedCycle: merged.workProgress.cycleId,
+      mergedDone: merged.workProgress.requestFormCreatedAt.done
+    };
+  });
+  assert.equal(synced.cycleId, created.cycleId);
+  assert.equal(synced.done, true);
+  assert.equal(synced.dispatch, '');
+  assert.equal(synced.notes, 1);
+  assert.equal(synced.mergedCycle, created.cycleId);
+  assert.equal(synced.mergedDone, true);
+  checks.push('adding a rework role issues a cycle id and keeps 1/6 after reload and repeated anonymous sync merge');
+
+  await screen.locator('#toggleRoleFormBtn').click();
+  await screen.locator('#role-name').fill('#16-case2');
+  await screen.locator('#role-status').selectOption('改削行き（搬出可能）');
+  await screen.locator('#role-dispatch-date').fill('2026-08-01');
+  await screen.locator('#addRoleBtn').click();
+  const case2Row = screen.locator('tr', { hasText: '#16-case2' });
+  for (const label of ['改削依頼書作成', '押印確認', 'PDF化', '業者へ送信', '業者連絡']) {
+    await case2Row.locator('button', { hasText: label }).click();
+  }
+  await case2Row.locator('button.edit-btn').click();
+  await screen.locator('#role-status').selectOption('改削中');
+  if (await screen.locator('#role-arrival-date').isVisible()) await screen.locator('#role-arrival-date').fill('2026-08-20');
+  await screen.locator('#updateRoleBtn').click();
+  await screen.locator('tr', { hasText: '#16-case2' }).locator('button.edit-btn').click();
+  await screen.locator('#role-status').selectOption('中古予備（バラシ前）');
+  await screen.locator('#updateRoleBtn').click();
+  await screen.locator('tr', { hasText: '#16-case2' }).locator('button.edit-btn').click();
+  await screen.locator('#role-status').selectOption('改削行き（搬出可能）');
+  await screen.locator('#updateRoleBtn').click();
+  const case2 = await screen.evaluate(() => {
+    const role = roles.find(item => item.name === '#16-case2');
+    const done = ['requestFormCreatedAt', 'sealConfirmedAt', 'pdfCreatedAt', 'vendorSentAt', 'vendorContactedAt', 'pickupAdjustedAt']
+      .filter(key => role.workProgress[key] && role.workProgress[key].done).length;
+    return {
+      done,
+      dispatch: role.dispatchDate,
+      arrival: role.arrivalDate,
+      historyDispatch: role.workProgressHistory[0] && role.workProgressHistory[0].dispatchDate,
+      historyArrival: role.workProgressHistory[0] && role.workProgressHistory[0].arrivalDate,
+      historyCount: role.workProgressHistory[0] && role.workProgressHistory[0].completedCount
+    };
+  });
+  assert.equal(case2.done, 0);
+  assert.equal(case2.dispatch, '');
+  assert.equal(case2.arrival, '');
+  assert.equal(case2.historyCount, 5);
+  assert.equal(case2.historyDispatch, '2026-08-01');
+  assert.equal(case2.historyArrival, '2026-08-20');
+  await screen.locator('tr', { hasText: '#16-case2' }).locator('.work-progress').screenshot({ path: path.join(out, '08-new-cycle-zero.png') });
+  checks.push('a second rework entry stays at 0/6 and keeps the August dates in history');
+
+  await screen.locator('#toggleRoleFormBtn').click();
+  await screen.locator('#role-name').fill('#16-case3');
+  await screen.locator('#role-status').selectOption('改削行き（搬出可能）');
+  await screen.locator('#role-dispatch-date').fill('');
+  await screen.locator('#addRoleBtn').click();
+  const case3Row = screen.locator('tr', { hasText: '#16-case3' });
+  await case3Row.locator('button', { hasText: '改削依頼書作成' }).click();
+  const case3Cycle = await screen.evaluate(() => roles.find(item => item.name === '#16-case3').workProgress.cycleId);
+  await case3Row.locator('button.edit-btn').click();
+  await screen.locator('#role-status').selectOption('改削中');
+  await screen.locator('#updateRoleBtn').click();
+  const case3 = await screen.evaluate(expectedCycle => {
+    const role = roles.find(item => item.name === '#16-case3');
+    const done = ['requestFormCreatedAt', 'sealConfirmedAt', 'pdfCreatedAt', 'vendorSentAt', 'vendorContactedAt', 'pickupAdjustedAt']
+      .filter(key => role.workProgress[key] && role.workProgress[key].done).length;
+    return { done, cycleId: role.workProgress.cycleId, warning: role.reworkCycleWarning || '', status: role.status };
+  }, case3Cycle);
+  assert.equal(case3.status, '改削中');
+  assert.equal(case3.cycleId, case3Cycle);
+  assert.equal(case3.done, 1);
+  assert.match(case3.warning, /⑥/);
+  await screen.locator('tr', { hasText: '#16-case3' }).screenshot({ path: path.join(out, '09-same-cycle-warning.png') });
+  checks.push('moving from rework ready to rework in progress keeps 1/6 and shows the incomplete pickup warning');
 
   fs.writeFileSync(path.join(out,'evidence.json'),JSON.stringify({status:'PASS',scope:'actual index.html + app scripts in ephemeral disconnected browser, authentication UI bypassed only within fixture; fake roles',checks,networkRequestsBlocked:outbound.length},null,2));
   console.log('ROLL-001 ISOLATED FULL UI PASS:',checks.length);

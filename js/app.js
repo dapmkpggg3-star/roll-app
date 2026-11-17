@@ -1342,6 +1342,19 @@ function reworkCheckFingerprint(progress) {
     }).join('|');
 }
 
+function openReworkCycleOnCreate(role, changedAt) {
+    const progress = readReworkProgress(role);
+    const history = Array.isArray(role && role.workProgressHistory) ? role.workProgressHistory.slice() : [];
+    if (isReworkChecklistStatus(role && role.status) && !progress.cycleId) {
+        progress.cycleId = `rework-${role && role.id || 'anon'}-${changedAt}`;
+    }
+    return {
+        progress,
+        history,
+        requestSent: false
+    };
+}
+
 function settleStoredReworkCycle(role, changedAt) {
     const progress = readReworkProgress(role);
     let history = Array.isArray(role && role.workProgressHistory) ? role.workProgressHistory.slice() : [];
@@ -8014,6 +8027,7 @@ function addRole() {
     if (!resolvedThreeSetAssignment) return;
     isActiveThreeSet = resolvedThreeSetAssignment.isActiveThreeSet;
     nextAssemblyPlanned = resolvedThreeSetAssignment.nextAssemblyPlanned;
+    const createdAt = new Date().toISOString();
     const newRole = {
         id: nextId++,
         name: roleName,
@@ -8028,15 +8042,17 @@ function addRole() {
         dispatchDate: roleDispatchDate,
         useStartDate: roleUseStartDate,
         useEndDate: roleUseEndDate,
-        updatedAt: new Date().toISOString(),
-        workProgress: normalizeWorkProgress({
-            workProgress: {
-                dispatchDate: roleDispatchDate,
-                arrivalDate: roleArrivalDate
-            }
-        }),
+        updatedAt: createdAt,
+        workProgress: {
+            dispatchDate: roleDispatchDate,
+            arrivalDate: roleArrivalDate
+        },
+        workProgressHistory: [],
         history: []
     };
+    const openedCycle = openReworkCycleOnCreate(newRole, createdAt);
+    newRole.workProgress = openedCycle.progress;
+    newRole.workProgressHistory = openedCycle.history;
     addRoleHistoryEntry(newRole, 'create', '新規追加', '-', roleStatus, newRole.updatedAt);
     addRoleHistoryEntry(newRole, 'useEndDate', '使用終了日変更', '', roleUseEndDate, newRole.updatedAt);
     addRoleHistoryEntry(newRole, 'isActiveThreeSet', '運用3セット指定', '対象外', isActiveThreeSet ? '対象' : '対象外', newRole.updatedAt);
