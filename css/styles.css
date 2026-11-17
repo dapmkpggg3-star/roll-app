@@ -5926,7 +5926,7 @@ body.editing-mode #addRoleBtn {
   grid-auto-flow: row;
   grid-auto-rows: minmax(56px, auto);
   gap: 8px;
-  align-items: stretch;
+  align-items: start;
 }
 
 .progress-step-btn {
@@ -5989,6 +5989,16 @@ body.editing-mode #addRoleBtn {
   font-size: 0.68rem;
   line-height: 1.2;
   overflow-wrap: anywhere;
+}
+
+.rework-pickup-step > .progress-step-help,
+.rework-pickup-step > .progress-step-date,
+.rework-pickup-step > .rework-pickup-fields {
+  grid-column: 1 / -1;
+  min-width: 0;
+  line-height: 1.35;
+  overflow-wrap: break-word;
+  word-break: normal;
 }
 
 .action-buttons {
@@ -6534,6 +6544,7 @@ body:not(.tablet-mode) #role-table .action-btn {
   }
 
   body:not(.mobile-layout) #role-table .progress-step-btn {
+    align-self: start;
     min-height: 58px;
     height: auto !important;
   }
@@ -6825,6 +6836,7 @@ body.tablet-mode #role-table .work-progress-steps {
 }
 
 body.tablet-mode #role-table .progress-step-btn {
+  align-self: start;
   min-height: 58px;
   height: auto !important;
 }
@@ -7232,6 +7244,21 @@ body.mobile-layout #role-table tbody tr {
   width: 100% !important;
   max-width: 100% !important;
   min-width: 0 !important;
+}
+
+body.mobile-layout #role-table .progress-cell {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+body.mobile-layout #role-table .progress-cell::before,
+body.mobile-layout #role-table .progress-cell > .work-progress,
+body.mobile-layout #role-table .progress-cell > .work-progress-warning {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+
+body.mobile-layout #role-table .work-progress-steps {
+  grid-template-columns: minmax(0, 1fr) !important;
 }
 
 body.mobile-layout #role-table tbody td {

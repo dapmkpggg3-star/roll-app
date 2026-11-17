@@ -478,8 +478,80 @@ async function main(){
   assert.equal(case3.cycleId, case3Cycle);
   assert.equal(case3.done, 1);
   assert.match(case3.warning, /⑥/);
-  await screen.locator('tr', { hasText: '#16-case3' }).screenshot({ path: path.join(out, '09-same-cycle-warning.png') });
+  const case3Clip = await screen.evaluate(() => {
+    const role = roles.find(item => item.name === '#16-case3');
+    const node = document.getElementById(`role-${role.id}`);
+    node.scrollIntoView({ block: 'start' });
+    const rect = node.getBoundingClientRect();
+    const x = Math.max(rect.x, 0);
+    const y = Math.max(rect.y, 0);
+    return {
+      x,
+      y,
+      width: Math.max(Math.min(rect.width, window.innerWidth - x), 1),
+      height: Math.max(Math.min(rect.height, window.innerHeight - y), 1)
+    };
+  });
+  await screen.screenshot({ path: path.join(out, '09-same-cycle-warning.png'), clip: case3Clip });
   checks.push('moving from rework ready to rework in progress keeps 1/6 and shows the incomplete pickup warning');
+
+  const reworkingView = await screen.evaluate(() => {
+    const role = roles.find(item => item.name === '#16-case3');
+    const card = document.getElementById(`role-${role.id}`);
+    return { steps: card.querySelectorAll('.progress-step-btn').length };
+  });
+  assert.equal(reworkingView.steps, 0);
+  const case3Back = screen.locator('tr', { hasText: '#16-case3' });
+  await case3Back.locator('button.edit-btn').click();
+  await screen.locator('#role-status').selectOption('改削行き（搬出可能）');
+  await screen.locator('#updateRoleBtn').click();
+  await case3Back.locator('button', { hasText: '押印確認' }).click();
+  const resumed = await screen.evaluate(expectedCycle => {
+    const role = roles.find(item => item.name === '#16-case3');
+    const done = ['requestFormCreatedAt', 'sealConfirmedAt', 'pdfCreatedAt', 'vendorSentAt', 'vendorContactedAt', 'pickupAdjustedAt']
+      .filter(key => role.workProgress[key] && role.workProgress[key].done).length;
+    return { status: role.status, done, cycleId: role.workProgress.cycleId };
+  }, case3Cycle);
+  assert.equal(resumed.status, '改削行き（搬出可能）');
+  assert.equal(resumed.cycleId, case3Cycle);
+  assert.equal(resumed.done, 2);
+  checks.push('incomplete work while reworking is continued by returning to rework ready on the same cycle');
+
+  const layoutBox = async () => screen.evaluate(() => {
+    const role = roles.find(item => item.name === '#16-case2');
+    const card = document.getElementById(`role-${role.id}`);
+    const help = card.querySelector('.progress-step-help');
+    const step = help ? help.closest('.rework-pickup-step') : null;
+    const rect = node => node ? { w: node.getBoundingClientRect().width, h: node.getBoundingClientRect().height } : null;
+    return { help: rect(help), step: rect(step), mobile: document.body.classList.contains('mobile-layout') };
+  });
+  const desktopLayout = await layoutBox();
+  assert.ok(desktopLayout.help.w > 160, 'pickup help must stay on one readable line at desktop width');
+  assert.ok(desktopLayout.help.h < 48, 'pickup help must not wrap one character per line');
+  await screen.setViewportSize({ width: 390, height: 844 });
+  await screen.waitForTimeout(250);
+  const mobileLayout = await layoutBox();
+  assert.equal(mobileLayout.mobile, true);
+  assert.ok(mobileLayout.help.w > 160, 'pickup help must use the phone card width');
+  assert.ok(mobileLayout.help.h < 80, 'pickup help must stay readable on a phone');
+  assert.ok(mobileLayout.step.w > 240, 'pickup step must not stay squeezed beside the progress label');
+  const mobileClip = await screen.evaluate(() => {
+    const role = roles.find(item => item.name === '#16-case2');
+    const node = document.getElementById(`role-${role.id}`).querySelector('.work-progress');
+    node.scrollIntoView({ block: 'start' });
+    const rect = node.getBoundingClientRect();
+    const x = Math.max(rect.x, 0);
+    const y = Math.max(rect.y, 0);
+    return {
+      x,
+      y,
+      width: Math.max(Math.min(rect.width, window.innerWidth - x), 1),
+      height: Math.max(Math.min(rect.height, window.innerHeight - y), 1)
+    };
+  });
+  await screen.screenshot({ path: path.join(out, '10-pickup-layout-mobile.png'), clip: mobileClip });
+  await screen.setViewportSize({ width: 1280, height: 800 });
+  checks.push('pickup step text stays readable at desktop and phone widths');
 
   fs.writeFileSync(path.join(out,'evidence.json'),JSON.stringify({status:'PASS',scope:'actual index.html + app scripts in ephemeral disconnected browser, authentication UI bypassed only within fixture; fake roles',checks,networkRequestsBlocked:outbound.length},null,2));
   console.log('ROLL-001 ISOLATED FULL UI PASS:',checks.length);
