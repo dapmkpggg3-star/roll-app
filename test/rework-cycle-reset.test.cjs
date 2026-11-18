@@ -56,7 +56,7 @@ const context = vm.createContext({
         return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : '';
     }
 });
-vm.runInContext(`${source.slice(start, end)}\nthis.api={settleReworkCycle,settleStoredReworkCycle,guardMergedReworkProgress,normalizeWorkProgress,applySettledReworkCycle,describeIncompleteReworkAdvance,openReworkCycleOnCreate};`, context);
+vm.runInContext(`${source.slice(start, end)}\nthis.api={settleReworkCycle,settleStoredReworkCycle,guardMergedReworkProgress,normalizeWorkProgress,applySettledReworkCycle,describeIncompleteReworkAdvance,openReworkCycleOnCreate,getReworkCycleReadout};`, context);
 
 const api = context.api;
 const ready = '改削行き（搬出可能）';
@@ -431,4 +431,33 @@ test('requestSent alone does not mark the current vendor step done without a cyc
         workProgress: { cycleId: 'rework-anon-16-current', dispatchDate: '', arrivalDate: '' }
     });
     assert.equal(withCycle.vendorSentAt.done, false);
+});
+
+test('a reworking readout shows 1/6, the incomplete items, and the confirmer without completing anything', () => {
+    const confirmedAt = '2026-11-17T12:44:01.727Z';
+    const readout = api.getReworkCycleReadout({
+        id: 'anon-reworking',
+        status: reworking,
+        dispatchDate: '',
+        arrivalDate: '',
+        requestSent: false,
+        workProgress: {
+            cycleId: 'rework-anon-reworking',
+            dispatchDate: '',
+            arrivalDate: '',
+            requestFormCreatedAt: { done: true, updatedAt: confirmedAt, updatedBy: '樋渡' },
+            sealConfirmedAt: { done: false, updatedAt: '', updatedBy: '' },
+            pdfCreatedAt: { done: false, updatedAt: '', updatedBy: '' },
+            vendorSentAt: { done: false, updatedAt: '', updatedBy: '' },
+            vendorContactedAt: { done: false, updatedAt: '', updatedBy: '' },
+            pickupAdjustedAt: { done: false, updatedAt: '', updatedBy: '' }
+        }
+    });
+    assert.equal(readout.cycleId, 'rework-anon-reworking');
+    assert.equal(readout.completedCount, 1);
+    assert.equal(readout.totalCount, 6);
+    assert.deepEqual(readout.incomplete, ['押印確認', 'PDF化', '業者へ送信', '業者連絡', '引き取り日設定']);
+    assert.equal(readout.items[0].updatedAt, confirmedAt);
+    assert.equal(readout.items[0].updatedBy, '樋渡');
+    assert.equal(readout.items[5].done, false);
 });

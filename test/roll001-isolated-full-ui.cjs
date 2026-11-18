@@ -498,9 +498,50 @@ async function main(){
   const reworkingView = await screen.evaluate(() => {
     const role = roles.find(item => item.name === '#16-case3');
     const card = document.getElementById(`role-${role.id}`);
-    return { steps: card.querySelectorAll('.progress-step-btn').length };
+    const doneRow = card.querySelector('[data-step="requestFormCreatedAt"]');
+    return {
+      buttons: card.querySelectorAll('button.progress-step-btn').length,
+      inputs: card.querySelectorAll('input').length,
+      rows: card.querySelectorAll('.progress-step-readonly').length,
+      summary: card.querySelector('.work-progress-summary').textContent,
+      incomplete: card.querySelector('.work-progress-incomplete').textContent,
+      doneText: doneRow ? doneRow.textContent : '',
+      status: role.status,
+      done: role.workProgress.requestFormCreatedAt.done
+    };
   });
-  assert.equal(reworkingView.steps, 0);
+  assert.equal(reworkingView.buttons, 0);
+  assert.equal(reworkingView.inputs, 0);
+  assert.equal(reworkingView.rows, 6);
+  assert.match(reworkingView.summary, /作業依頼進捗 1\/6/);
+  assert.match(reworkingView.incomplete, /未完了：/);
+  assert.match(reworkingView.incomplete, /引き取り日設定/);
+  assert.match(reworkingView.doneText, /樋渡/);
+  assert.equal(reworkingView.status, '改削中');
+  assert.equal(reworkingView.done, true);
+  checks.push('a reworking card shows the current 1/6, incomplete items, and confirmer as read-only');
+  async function clipProgress(name) {
+    return screen.evaluate(roleName => {
+      const role = roles.find(item => item.name === roleName);
+      const node = document.getElementById(`role-${role.id}`).querySelector('.work-progress');
+      node.scrollIntoView({ block: 'start' });
+      const rect = node.getBoundingClientRect();
+      const x = Math.max(rect.x, 0);
+      const y = Math.max(rect.y, 0);
+      return {
+        x,
+        y,
+        width: Math.max(Math.min(rect.width, window.innerWidth - x), 1),
+        height: Math.max(Math.min(rect.height, window.innerHeight - y), 1)
+      };
+    }, name);
+  }
+  await screen.screenshot({ path: path.join(out, '11-reworking-readonly-desktop.png'), clip: await clipProgress('#16-case3') });
+  await screen.setViewportSize({ width: 390, height: 844 });
+  await screen.waitForTimeout(250);
+  await screen.screenshot({ path: path.join(out, '12-reworking-readonly-mobile.png'), clip: await clipProgress('#16-case3') });
+  await screen.setViewportSize({ width: 1280, height: 800 });
+  await screen.waitForTimeout(200);
   const case3Back = screen.locator('tr', { hasText: '#16-case3' });
   await case3Back.locator('button.edit-btn').click();
   await screen.locator('#role-status').selectOption('改削行き（搬出可能）');

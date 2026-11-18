@@ -1524,6 +1524,32 @@ function describeIncompleteReworkAdvance(progress) {
     return '引き取り日設定（⑥）は未完了です。未完了のまま次の状態へ進みました。前回の搬出日・搬入日と未完了は履歴に残しています。';
 }
 
+function getReworkCycleReadout(role) {
+    const progress = normalizeWorkProgress(role);
+    const items = WORK_PROGRESS_STEPS.map((step, index) => {
+        const state = progress[step.key] && typeof progress[step.key] === 'object' ? progress[step.key] : {};
+        const done = isWorkProgressStepDone(progress, step.key);
+        const updatedBy = step.key === PICKUP_ADJUSTED_STEP_KEY && progress.pickupAdjustedBy
+            ? progress.pickupAdjustedBy
+            : (state.updatedBy || '');
+        return {
+            index: index + 1,
+            key: step.key,
+            label: step.label,
+            done,
+            updatedAt: done ? (state.updatedAt || '') : '',
+            updatedBy: done ? updatedBy : ''
+        };
+    });
+    return {
+        cycleId: progress.cycleId || '',
+        completedCount: items.filter(item => item.done).length,
+        totalCount: items.length,
+        incomplete: items.filter(item => !item.done).map(item => item.label),
+        items
+    };
+}
+
 function getReworkPickupDateSummaryHtml(progress) {
     const pickupAction = getReworkPickupActionInfo(progress);
     const lines = [
@@ -3385,14 +3411,27 @@ function getWorkProgressHtml(role) {
     const warningHtml = role && role.reworkCycleWarning
         ? `<div class="work-progress-warning" data-rework-warning="1">${escapeHtml(role.reworkCycleWarning)}</div>`
         : '';
-    if (role.status !== REWORK_READY_STATUS) {
+    if (role.status !== REWORK_READY_STATUS && role.status !== REWORKING_STATUS) {
         return warningHtml;
     }
 
+    const readOnly = role.status === REWORKING_STATUS;
     const progress = normalizeWorkProgress(role);
+    const readout = getReworkCycleReadout(role);
     const roleKey = getThreeSetManagementReworkRoleKey(role);
-    const completedCount = getWorkProgressCompletedCount(role);
-    const stepsHtml = WORK_PROGRESS_STEPS.map((step, index) => {
+    const completedCount = readout.completedCount;
+    const stepsHtml = readOnly
+        ? readout.items.map(item => `
+            <div class="progress-step-readonly ${item.done ? 'is-done' : ''}" data-step="${escapeHtml(item.key)}">
+                <span class="progress-step-index">${item.index}</span>
+                <span class="progress-step-label">${escapeHtml(item.label)}</span>
+                ${item.done ? `
+                    <span class="progress-step-date">${escapeHtml(formatProgressTimestamp(item.updatedAt))}</span>
+                    <span class="progress-step-date">更新者：${escapeHtml(item.updatedBy || '未設定')}</span>
+                ` : '<span class="progress-step-date">未完了</span>'}
+            </div>
+        `).join('')
+        : WORK_PROGRESS_STEPS.map((step, index) => {
         const completedAt = getWorkProgressStepUpdatedAt(progress, step.key);
         const completedBy = getWorkProgressStepUpdatedBy(progress, step.key);
         const isDone = isWorkProgressStepDone(progress, step.key);
@@ -3447,11 +3486,20 @@ function getWorkProgressHtml(role) {
         return `<div class="work-progress-history" data-rework-history="${escapeHtml(item.cycleId || 'unscoped')}" data-previous-dispatch="${escapeHtml(item.dispatchDate || '')}" data-previous-arrival="${escapeHtml(item.arrivalDate || '')}">前回 ${item.completedCount}/6 ${escapeHtml(item.judgment || '')}。未完了：${escapeHtml((item.incomplete || []).join('、') || 'なし')}。${escapeHtml(previousDates)}。${escapeHtml(dated.join('、'))}</div>`;
     }).join('');
 
+    const incompleteHtml = readOnly
+        ? `<div class="work-progress-incomplete">未完了：${escapeHtml(readout.incomplete.join('、') || 'なし')}</div>`
+        : '';
+    const readOnlyNote = readOnly
+        ? '<p class="work-progress-readonly-note">改削中は表示のみです。ここでは完了も訂正もできません。</p>'
+        : '';
+
     return `
-        <div class="work-progress" aria-label="作業依頼進捗">
+        <div class="work-progress${readOnly ? ' is-readonly' : ''}" aria-label="作業依頼進捗" ${readOnly ? 'data-rework-readonly="1"' : ''}>
             <div class="work-progress-summary">作業依頼進捗 ${completedCount}/${WORK_PROGRESS_STEPS.length}</div>
+            ${incompleteHtml}
             ${historyHtml}
             ${warningHtml}
+            ${readOnlyNote}
             <div class="work-progress-steps">${stepsHtml}</div>
         </div>
     `;
