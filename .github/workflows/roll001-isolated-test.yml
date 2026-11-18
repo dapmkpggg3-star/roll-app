@@ -85,5 +85,13 @@ jobs:
             artifacts/roll001-real-filter/
             artifacts/roll001-full-ui/
             artifacts/roll005-print/
+            artifacts/roll003-file-recovery/evidence.json
           if-no-files-found: warn
+      - name: Upload ROLL-003 anonymous recovery evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: roll003-recovery-evidence
+          path: artifacts/roll003-file-recovery/evidence.json
+          if-no-files-found: error
 

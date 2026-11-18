@@ -79,6 +79,29 @@ async function roleNames(page) {
   });
 }
 
+async function requireRollbackDownload(download, savedName) {
+  assert.ok(download, '取り消し用JSONのダウンロードがありません');
+  assert.equal(download.suggestedFilename(), 'roll-offline-recovery-rollback.json');
+  const dir = path.join(root, 'artifacts/roll003-file-recovery');
+  fs.mkdirSync(dir, { recursive: true });
+  const filePath = path.join(dir, savedName);
+  await download.saveAs(filePath);
+  const pkg = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  const { checksum, ...payload } = pkg;
+  assert.equal(pkg.kind, 'roll-app-offline-recovery');
+  assert.equal(pkg.version, 1);
+  assert.equal(checksum, recoveryChecksum(payload));
+  assert.deepEqual(pkg.roles.map(role => role.name), [otherName]);
+  assert.equal(pkg.roles[0].memo, 'anon-other');
+  assert.equal(pkg.roles.some(role => exportedNames.includes(role.name)), false);
+  return {
+    fileName: download.suggestedFilename(),
+    checksum,
+    names: pkg.roles.map(role => role.name),
+    bytes: fs.statSync(filePath).size
+  };
+}
+
 async function exportRecoveryFile(browser, outbound) {
   const { context, page } = await openAnonymousPage(browser, outbound);
   try {
@@ -143,19 +166,21 @@ async function restoreRecoveryFileInNewBrowser(browser, filePath, outbound) {
     assert.equal(await page.locator('#role-file-1').count(), 0);
 
     const secondRefuse = armDialogs(page, ['accept', 'dismiss']);
-    const rollbackDownload = page.waitForEvent('download', { timeout: 5000 }).catch(() => null);
+    const refusedRollbackPromise = page.waitForEvent('download', { timeout: 10000 });
     await input.setInputFiles(filePath);
     const secondMessages = await secondRefuse;
     assert.match(secondMessages[0], /復旧ファイルは2件です/);
     assert.match(secondMessages[1], /取り消し用ファイルの保存を開始しました/);
-    await rollbackDownload;
+    const refusedRollback = await requireRollbackDownload(await refusedRollbackPromise, 'rollback-on-refuse.json');
     const afterSecondRefuse = await roleNames(page);
     assert.deepEqual(afterSecondRefuse.memory, [otherName]);
     assert.deepEqual(afterSecondRefuse.stored, [otherName]);
 
     const applied = armDialogs(page, ['accept', 'accept', 'accept']);
+    const beforeApplyPromise = page.waitForEvent('download', { timeout: 10000 });
     await input.setInputFiles(filePath);
     const appliedMessages = await applied;
+    const beforeApply = await requireRollbackDownload(await beforeApplyPromise, 'roll-offline-recovery-rollback.json');
     assert.match(appliedMessages[2], /復旧ファイルを適用しました/);
     await page.locator('#role-file-1').waitFor();
     const afterApply = await roleNames(page);
@@ -173,7 +198,13 @@ async function restoreRecoveryFileInNewBrowser(browser, filePath, outbound) {
     assert.deepEqual(afterUndo.memory, [otherName]);
     assert.deepEqual(afterUndo.stored, [otherName]);
     assert.equal(await page.locator('#role-file-1').count(), 0);
-    return { refusedName: afterRefuse.memory[0], restoredNames: afterApply.memory, undoneName: afterUndo.memory[0] };
+    return {
+      refusedName: afterRefuse.memory[0],
+      restoredNames: afterApply.memory,
+      undoneName: afterUndo.memory[0],
+      refusedRollback,
+      beforeApply
+    };
   } finally {
     await context.close();
   }
@@ -246,6 +277,11 @@ async function main() {
       checksum: saved.checksum,
       checksumMatchesCanonicalPayload: true,
       refusedLeftOtherRole: restored.refusedName,
+      rollbackFileName: restored.beforeApply.fileName,
+      rollbackChecksum: restored.beforeApply.checksum,
+      rollbackNames: restored.beforeApply.names,
+      rollbackBytes: restored.beforeApply.bytes,
+      refusedRollbackChecksum: restored.refusedRollback.checksum,
       restoredNames: restored.restoredNames,
       undoneName: restored.undoneName,
       remoteRequestsBlocked: outbound.length

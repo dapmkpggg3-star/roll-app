@@ -241,3 +241,141 @@ test('paired originals survive a failure while writing legacy keys', () => {
   assert.equal(pair.remoteOriginal[0].memo, 'sheet-before-sync');
   assert.ok(storage.has('roles_sync_original_pair_v1'));
 });
+
+function jsonResponse(body, status = 200) {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    async text() { return JSON.stringify(body); }
+  };
+}
+
+function liveHarness() {
+  const base = harness();
+  base.context.AbortController = class {
+    constructor() { this.signal = { aborted: false }; }
+    abort() { this.signal.aborted = true; }
+  };
+  base.context.setTimeout = (fn, delay) => {
+    if (delay >= 30000) return 0;
+    Promise.resolve().then(fn);
+    return 1;
+  };
+  base.context.clearTimeout = () => {};
+  base.context.roles = [];
+  return base;
+}
+
+async function runUnverifiedStop(statusFor) {
+  const { context, storage } = liveHarness();
+  const local = [{ id: '1', name: '#99-1', status: 'オンライン', memo: 'local-kept', updatedAt: '2026-11-12T00:00:00.000Z', history: [] }];
+  const remote = [{ id: '1', name: '#99-1', status: 'オンライン', memo: 'remote-kept', updatedAt: '2026-11-01T00:00:00.000Z', history: [] }];
+  storage.set('roles', JSON.stringify(local));
+  storage.set('roles_backup_before_sync', JSON.stringify([{ id: '1', memo: 'previous-success' }]));
+  let writes = 0;
+  const calls = [];
+  context.saveLocalRoles = () => { writes += 1; storage.set('roles', JSON.stringify(context.roles)); };
+  context.rollApiFetch = async (url, options = {}) => {
+    const href = String(url);
+    assert.equal(new URL(href).hostname, 'fixture.invalid');
+    const action = new URL(href).searchParams.get('action');
+    calls.push({ method: options.method || 'GET', href, action, body: options.body || '' });
+    if (options.method === 'POST') return jsonResponse({ success: true, accepted: true });
+    if (action === 'fetch') return jsonResponse({ success: true, revision: 'rev-remote', roles: remote });
+    if (action === 'fetchSaveStatus') {
+      return jsonResponse(statusFor(new URL(href).searchParams.get('requestId'), calls));
+    }
+    throw new Error('unexpected request ' + href);
+  };
+  const result = await context.syncRoles();
+  const originals = context.readIndependentSyncOriginals();
+  const posts = calls.filter(call => call.method === 'POST');
+  return { result, writes, storage, context, originals, posts, calls };
+}
+
+function assertOriginalsKept(outcome) {
+  assert.notEqual(outcome.result, true);
+  assert.equal(outcome.writes, 0);
+  assert.equal(JSON.parse(outcome.storage.get('roles'))[0].memo, 'local-kept');
+  assert.equal(outcome.originals.localOriginal[0].memo, 'local-kept');
+  assert.equal(outcome.originals.remoteOriginal[0].memo, 'remote-kept');
+  assert.equal(JSON.parse(outcome.storage.get('roles_backup_before_sync'))[0].memo, 'previous-success');
+  assert.equal(outcome.storage.get('lastSyncAt') || null, null);
+  assert.notEqual(outcome.context.getSyncContentState().phase, 'verified');
+  assert.equal(outcome.posts.length, 1);
+  assert.match(outcome.posts[0].body, /"expectedRevision":"rev-remote"/);
+}
+
+test('a remote revision conflict stops before the local copy is replaced', async () => {
+  const outcome = await runUnverifiedStop(requestId => ({
+    success: true,
+    status: { requestId, state: 'error', error: '取得後にスプレッドシートが更新されたため上書きせず停止しました。' }
+  }));
+  assertOriginalsKept(outcome);
+  assert.match(outcome.context.getSyncContentState().error, /上書きせず停止/);
+  assert.equal(outcome.calls.filter(call => call.action === 'fetchSaveStatus').length, 1);
+});
+
+test('partial reflection is not a completed save and keeps both originals', async () => {
+  const outcome = await runUnverifiedStop(requestId => ({
+    success: true,
+    status: {
+      requestId,
+      state: 'partial',
+      rolesSaved: true,
+      error: '管理データは保存済みですが履歴表が未反映です。'
+    }
+  }));
+  assertOriginalsKept(outcome);
+  assert.match(outcome.context.getSyncContentState().error, /一部未反映/);
+  assert.equal(outcome.calls.filter(call => call.action === 'fetch').length, 1);
+});
+
+test('an unfinished save status stays unknown and does not commit either original', async () => {
+  const pending = await runUnverifiedStop(() => ({ success: true, pending: true }));
+  assertOriginalsKept(pending);
+  assert.match(pending.context.getSyncContentState().error, /時間内に終わりませんでした/);
+  assert.equal(pending.calls.filter(call => call.action === 'fetchSaveStatus').length, 12);
+
+  const unknown = await runUnverifiedStop(requestId => ({
+    success: true,
+    status: { requestId, state: 'accepted' }
+  }));
+  assertOriginalsKept(unknown);
+  assert.match(unknown.context.getSyncContentState().error, /保存結果が未確定です/);
+
+  const dropped = await runUnverifiedStop(() => { throw new Error('status unread'); });
+  assertOriginalsKept(dropped);
+  assert.match(dropped.context.getSyncContentState().error, /status unread/);
+});
+
+test('a failed send leaves no confirmed result and keeps the independent originals', async () => {
+  const { context, storage } = liveHarness();
+  const local = [{ id: '1', name: '#99-1', status: 'オンライン', memo: 'local-kept', updatedAt: '2026-11-12T00:00:00.000Z', history: [] }];
+  const remote = [{ id: '1', name: '#99-1', status: 'オンライン', memo: 'remote-kept', updatedAt: '2026-11-01T00:00:00.000Z', history: [] }];
+  storage.set('roles', JSON.stringify(local));
+  let posts = 0;
+  let statusReads = 0;
+  context.saveLocalRoles = () => { throw new Error('local commit is forbidden'); };
+  context.rollApiFetch = async (url, options = {}) => {
+    assert.equal(new URL(String(url)).hostname, 'fixture.invalid');
+    if (options.method === 'POST') {
+      posts += 1;
+      throw new Error('network down');
+    }
+    const action = new URL(String(url)).searchParams.get('action');
+    if (action === 'fetch') return jsonResponse({ success: true, revision: 'rev-remote', roles: remote });
+    statusReads += 1;
+    throw new Error('must not read a save status');
+  };
+  const result = await context.syncRoles();
+  assert.notEqual(result, true);
+  assert.equal(posts, 1);
+  assert.equal(statusReads, 0);
+  assert.equal(JSON.parse(storage.get('roles'))[0].memo, 'local-kept');
+  const originals = context.readIndependentSyncOriginals();
+  assert.equal(originals.localOriginal[0].memo, 'local-kept');
+  assert.equal(originals.remoteOriginal[0].memo, 'remote-kept');
+  assert.match(context.getSyncContentState().error, /network down/);
+  assert.notEqual(context.getSyncContentState().phase, 'verified');
+});
