@@ -19,6 +19,7 @@ on:
       - 'test/roll005-print-contract.test.cjs'
       - 'test/roll003-offline-recovery.test.cjs'
       - 'test/roll003-offline-recovery-browser.cjs'
+      - 'test/roll002-sync-stop-browser.cjs'
       - 'test/roll005-print-browser.cjs'
       - 'js/planning-import.js'
       - 'test/planning-import.test.js'
@@ -73,6 +74,7 @@ jobs:
           node test/roll001-isolated-full-ui.cjs
           node test/roll005-print-browser.cjs
           node test/roll003-offline-recovery-browser.cjs
+          node test/roll002-sync-stop-browser.cjs
           node test/operating-plan-browser.cjs
           node test/forecast-master-browser.cjs
       - name: Upload anonymous screenshot and assertion evidence
@@ -93,5 +95,12 @@ jobs:
         with:
           name: roll003-recovery-evidence
           path: artifacts/roll003-file-recovery/evidence.json
+          if-no-files-found: error
+      - name: Upload ROLL-002 anonymous sync-stop evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: roll002-sync-stop-evidence
+          path: artifacts/roll002-sync-stop/evidence.json
           if-no-files-found: error
 

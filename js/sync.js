@@ -1513,7 +1513,11 @@ async function syncRoles() {
         }
     } catch (error) {
         console.error('syncRoles error:', error);
-        setSyncMessage((error.message || 'スプレッドシート同期に失敗しました。') + ' ブラウザ内のデータは残っています。', true);
+        const raw = String(error && error.message || '');
+        const reason = !raw || /failed to fetch|networkerror|load failed/i.test(raw)
+            ? '送信できませんでした。保存できたかは未確定です。'
+            : raw;
+        setSyncMessage(reason + ' ブラウザ内のデータは残っています。', true);
         return false;
     } finally {
         isSyncing = false;
