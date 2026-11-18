@@ -238,6 +238,31 @@ test('advancing with item 6 incomplete returns a warning and does not block the 
     const warning = api.describeIncompleteReworkAdvance(progress);
     assert.match(warning, /⑥/);
     assert.match(warning, /未完了/);
+    assert.doesNotMatch(warning, /前回の搬出日/);
+    const withHistory = api.describeIncompleteReworkAdvance(progress, [{
+        recordKind: 'cycle-close',
+        cycleId: 'rework-anon-old',
+        dispatchDate: '2026-08-01',
+        arrivalDate: '2026-08-20',
+        incomplete: ['引き取り日設定']
+    }]);
+    assert.match(withHistory, /引き取り日設定（⑥）は未完了です/);
+    assert.match(withHistory, /前回の搬出日・搬入日は履歴に残しています/);
+    const closedWithoutDates = api.describeIncompleteReworkAdvance({
+        recordKind: 'cycle-close',
+        incomplete: ['引き取り日設定'],
+        dispatchDate: '',
+        arrivalDate: ''
+    });
+    assert.match(closedWithoutDates, /引き取り日設定（⑥）は未完了です/);
+    assert.doesNotMatch(closedWithoutDates, /前回の搬出日/);
+    const closedWithDates = api.describeIncompleteReworkAdvance({
+        recordKind: 'cycle-close',
+        incomplete: ['引き取り日設定'],
+        dispatchDate: '2026-08-01',
+        arrivalDate: '2026-08-20'
+    });
+    assert.match(closedWithDates, /前回の搬出日・搬入日は履歴に残しています/);
     const done = api.describeIncompleteReworkAdvance({
         ...progress,
         dispatchDate: '2026-11-20',

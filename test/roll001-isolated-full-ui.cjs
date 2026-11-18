@@ -477,7 +477,8 @@ async function main(){
   assert.equal(case3.status, '改削中');
   assert.equal(case3.cycleId, case3Cycle);
   assert.equal(case3.done, 1);
-  assert.match(case3.warning, /⑥/);
+  assert.match(case3.warning, /引き取り日設定（⑥）は未完了です/);
+  assert.doesNotMatch(case3.warning, /前回の搬出日/);
   const case3Clip = await screen.evaluate(() => {
     const role = roles.find(item => item.name === '#16-case3');
     const node = document.getElementById(`role-${role.id}`);

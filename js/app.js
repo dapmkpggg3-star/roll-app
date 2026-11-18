@@ -1510,7 +1510,14 @@ function applySettledReworkCycle(role, settled) {
     return role;
 }
 
-function describeIncompleteReworkAdvance(progress) {
+function reworkRecordHasPreviousDates(record) {
+    if (!record || (!record.recordKind && !Array.isArray(record.incomplete))) {
+        return false;
+    }
+    return Boolean(normalizeDateInputValue(record.dispatchDate) || normalizeDateInputValue(record.arrivalDate));
+}
+
+function describeIncompleteReworkAdvance(progress, history) {
     if (!progress) {
         return '';
     }
@@ -1521,7 +1528,13 @@ function describeIncompleteReworkAdvance(progress) {
     } else if (isWorkProgressStepDone(progress, PICKUP_ADJUSTED_STEP_KEY)) {
         return '';
     }
-    return '引き取り日設定（⑥）は未完了です。未完了のまま次の状態へ進みました。前回の搬出日・搬入日と未完了は履歴に残しています。';
+    const records = Array.isArray(history) ? history.slice() : [];
+    if (progress.recordKind || Array.isArray(progress.incomplete)) {
+        records.push(progress);
+    }
+    const previousDates = records.some(reworkRecordHasPreviousDates);
+    const current = '引き取り日設定（⑥）は未完了です。未完了のまま次の状態へ進みました。';
+    return previousDates ? `${current}前回の搬出日・搬入日は履歴に残しています。` : current;
 }
 
 function getReworkCycleReadout(role) {
@@ -3308,7 +3321,7 @@ function autoMoveUsedStandbyToReworkReadyForNewInstalled(sourceRole, changedAt =
         role.dispatchDate = role.workProgress.dispatchDate || '';
         role.arrivalDate = role.workProgress.arrivalDate || '';
         const archivedCycle = cycle.history[cycle.history.length - 1];
-        role.reworkCycleWarning = archivedCycle ? describeIncompleteReworkAdvance(archivedCycle) : '';
+        role.reworkCycleWarning = archivedCycle ? describeIncompleteReworkAdvance(archivedCycle, cycle.history) : '';
         addRoleHistoryEntry(
             role,
             'status',
@@ -8361,9 +8374,10 @@ function updateRole() {
     role.dispatchDate = role.workProgress.dispatchDate || '';
     role.arrivalDate = role.workProgress.arrivalDate || '';
     if (normalizeRoleStatusValue(beforeStatus) !== normalizeRoleStatusValue(roleStatus)) {
-        role.reworkCycleWarning = isReworkChecklistStatus(beforeStatus)
-            ? describeIncompleteReworkAdvance(beforeCycleProgress)
-            : describeIncompleteReworkAdvance(role.workProgressHistory[role.workProgressHistory.length - 1]);
+        const warningProgress = isReworkChecklistStatus(beforeStatus)
+            ? beforeCycleProgress
+            : role.workProgressHistory[role.workProgressHistory.length - 1];
+        role.reworkCycleWarning = describeIncompleteReworkAdvance(warningProgress, role.workProgressHistory);
     }
     if (beforeName !== roleName) {
         role.history = normalizeRoleHistory(role).map(entry => ({
