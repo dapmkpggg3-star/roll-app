@@ -1196,8 +1196,17 @@ function getLastSaveDebugState() {
   }
 }
 
+function getRolesSheetForRead_() {
+  const ss = openRollManagementSpreadsheet_();
+  const sheet = ss.getSheetByName(SHEET_NAME);
+  if (!sheet) {
+    throw new Error('Rolesシートが見つかりません。読み取りでは作成しません。');
+  }
+  return sheet;
+}
+
 function fetchRoles() {
-  const sheet = getSheet();
+  const sheet = getRolesSheetForRead_();
   const values = sheet.getDataRange().getValues();
   Logger.log('fetchRoles: sheet has ' + values.length + ' rows');
   
