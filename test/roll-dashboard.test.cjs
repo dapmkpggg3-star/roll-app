@@ -212,6 +212,35 @@ test('a night-only stop is not an exchange date, and a checked daytime stop can 
     replacementPlan: [{ standKey: '10', date: '2026-04-02', workType: 'caliberChange', kind: 'plan', withinShift: 'yes', constraintsKnown: 'yes', setsWritten: 1 }]
   });
   assert.equal(context.buildDashboardRow(past, fixture.revisions[0], fixture.referenceAt, null).auto.exchangeDate, null);
+  const noDay = Object.assign({}, day, {
+    days: day.days.filter(item => item.date !== '2027-04-02'),
+    replacementPlan: planned.replacementPlan
+  });
+  assert.equal(context.buildDashboardRow(noDay, fixture.revisions[0], fixture.referenceAt, null).auto.exchangeDate, null);
+  const noCount = Object.assign({}, day, {
+    replacementPlan: [{ standKey: '10', date: '2027-04-02', workType: 'caliberChange', kind: 'plan', withinShift: 'yes', constraintsKnown: 'yes' }]
+  });
+  const missingCount = context.dashboardReplacementCandidate(noCount, fixture.referenceAt);
+  assert.equal(missingCount.date, null);
+  assert.equal(missingCount.sets, null);
+  assert.equal(context.buildDashboardRow(noCount, fixture.revisions[0], fixture.referenceAt, null).auto.exchangeDate, null);
+  const several = Object.assign({}, day, {
+    replacementPlan: [
+      planned.replacementPlan[0],
+      { standKey: '10', date: '2027-04-03', workType: 'caliberChange', kind: 'plan', withinShift: 'yes', constraintsKnown: 'yes', setsWritten: 1 }
+    ]
+  });
+  const severalResult = context.dashboardReplacementCandidate(several, fixture.referenceAt);
+  assert.equal(severalResult.date, '2027-04-02');
+  assert.equal(severalResult.sets, 1);
+  assert.equal(severalResult.jobs, 2);
+  assert.equal(context.dashboardReplacementSets({ requiredHours: 2, frameHours: 8, packedFromHours: true }).sets, null);
+  const template = context.anonymousReplacementTemplate();
+  assert.deepEqual(Array.from(template.columns), ['日付', '曜日', 'サイズ', '操業A', '操業B', '常昼', '作業予定', '予定件数', '区分']);
+  const classes = template.rows.map(row => context.classifyReplacementTemplateRow(row, fixture.referenceAt));
+  assert.equal(Array.from(classes).join(','), '過去の計画,現在の計画,完了実績');
+  const fromTemplate = Object.assign({}, day, { replacementPlan: context.replacementJobsFromTemplate(template, '10') });
+  assert.equal(context.buildDashboardRow(fromTemplate, fixture.revisions[0], fixture.referenceAt, null).auto.exchangeDate, null);
   assert.equal(accepted.diff.manualVersusAuto.includes('使用終了予定と交換候補は種類が違う'), true);
 });
 

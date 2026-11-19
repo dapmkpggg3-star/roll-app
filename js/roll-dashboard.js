@@ -203,16 +203,65 @@ function dashboardReplacementCandidate(roll, referenceAt) {
             return;
         }
         const day = (roll.days || []).find(item => String(item && item.date || '').slice(0, 10) === date);
-        if (day && (dashboardNightOnly(day) || Number(day.productionAmount) > 0)) {
+        if (!day) {
+            notes.push('日別操業予定が無いので、交換可能日は確定しません。');
+            return;
+        }
+        if (dashboardNightOnly(day) || Number(day.productionAmount) > 0) {
             notes.push('操業予定と重なる日は、予定表の行だけでは交換日にしません。');
             return;
         }
         const capacity = dashboardReplacementSets(entry);
         notes.push(capacity.note);
+        if (capacity.sets === null) return;
         if (!chosen || date < chosen.date) chosen = { date, sets: capacity.sets };
     });
-    if (!chosen) return { date: null, sets: null, note: notes.join('') };
-    return { date: chosen.date, sets: chosen.sets, note: `ロールカリバ替予定表の予定は${chosen.date}です。${notes.join('')}` };
+    if (!chosen) return { date: null, sets: null, jobs: rows.length, note: notes.join('') };
+    return { date: chosen.date, sets: chosen.sets, jobs: rows.length, period: '現在の計画', note: `現在の計画にある交換可能日は${chosen.date}です。上限到達の見込みとは別です。${notes.join('')}` };
+}
+
+function replacementTemplateColumns() {
+    return ['日付', '曜日', 'サイズ', '操業A', '操業B', '常昼', '作業予定', '予定件数', '区分'];
+}
+
+function anonymousReplacementTemplate() {
+    return {
+        title: '匿名ロールカリバ替予定',
+        note: '実ブックは開いていません。2026年6月度で確認できた列は、日付、曜日、サイズ、操業A/B、常昼、各作業予定です。下の行は匿名の記入例で、6月の実値ではありません。予定件数と区分は、件数不明と過去・現在・実績を分けて残すための欄です。',
+        columns: replacementTemplateColumns(),
+        rows: [
+            { 日付: '2026-04-02', 曜日: '木', サイズ: 'D1', 操業A: 'A', 操業B: '', 常昼: '記入あり', 作業予定: '#10 カリバ替', 予定件数: 1, 区分: '過去の計画' },
+            { 日付: '2027-04-02', 曜日: '金', サイズ: 'D1', 操業A: 'A', 操業B: '', 常昼: '記入あり', 作業予定: '#10 カリバ替', 予定件数: 1, 区分: '現在の計画' },
+            { 日付: '2026-08-20', 曜日: '木', サイズ: 'D1', 操業A: '', 操業B: '', 常昼: '記入あり', 作業予定: '#10 カリバ替', 予定件数: 1, 区分: '完了実績' }
+        ]
+    };
+}
+
+function classifyReplacementTemplateRow(row, referenceAt) {
+    const label = String(row && row.区分 || '');
+    const date = String(row && row.日付 || '').slice(0, 10);
+    const reference = String(referenceAt || '').slice(0, 10);
+    if (label === '完了実績') return '完了実績';
+    if (label === '過去の計画' || (date && reference && date < reference)) return '過去の計画';
+    if (label === '現在の計画' && date >= reference) return '現在の計画';
+    return '未確認';
+}
+
+function replacementJobsFromTemplate(template, standKey) {
+    const stand = String(standKey || '').replace(/^#/, '');
+    return (template && template.rows || []).filter(row => String(row.作業予定 || '').includes('#' + stand)).map(row => ({
+        standKey: stand,
+        date: row.日付,
+        workType: String(row.作業予定 || '').includes('カリバ替') ? 'caliberChange' : '',
+        kind: row.区分 === '完了実績' ? 'actual' : 'plan',
+        withinShift: '',
+        constraintsKnown: '',
+        setsWritten: row.予定件数,
+        daytime: row.常昼,
+        operationA: row.操業A,
+        operationB: row.操業B,
+        size: row.サイズ
+    }));
 }
 
 function dashboardConfirmedExchange(roll, referenceAt) {

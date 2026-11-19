@@ -157,6 +157,9 @@ async function main() {
     assert.match(prepText, /手入力の使用終了/);
     assert.match(prepText, /useEndDateには入れない/);
     assert.match(prepText, /権限不足で停止します/);
+    assert.match(prepText, /操業A/);
+    assert.match(prepText, /過去の計画/);
+    assert.match(prepText, /完了実績/);
     assert.match(prepText, /liveConnected false/);
     assert.match(prepText, /#10-ANON-1/);
     assert.match(prepText, /作業枠未確認/);

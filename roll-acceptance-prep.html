@@ -39,6 +39,9 @@
         <p id="connection"></p>
         <h2>資料とコードで分かれた項目</h2>
         <div id="findings"></div>
+        <h2>匿名の予定表テンプレート</h2>
+        <p id="template-note"></p>
+        <table id="replacement-template"></table>
         <h2>匿名の受入チェック</h2>
         <div id="checks"></div>
     </main>
@@ -80,6 +83,11 @@
                 <p>予測への影響: ${escapeHtml(item.impact)}</p>
             </article>
         `).join('');
+        const template = anonymousReplacementTemplate();
+        document.getElementById('template-note').textContent = template.note;
+        document.getElementById('replacement-template').innerHTML = `<thead><tr>${template.columns.map(column => `<th>${escapeHtml(column)}</th>`).join('')}</tr></thead><tbody>`
+            + template.rows.map(row => `<tr>${template.columns.map(column => `<td data-label="${escapeHtml(column)}">${escapeHtml(row[column])}</td>`).join('')}</tr>`).join('')
+            + '</tbody>';
         const fixture = anonymousDashboardFixture('2026-11-19T06:00:00.000Z');
         document.getElementById('checks').innerHTML = fixture.rolls.map(roll => {
             const result = evaluateAcceptance(roll, fixture.revisions[0], fixture.referenceAt);
