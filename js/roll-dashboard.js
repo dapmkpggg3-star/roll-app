@@ -162,15 +162,14 @@ function dashboardReplacementSets(entry) {
     return { sets, countState: '正の件数', note: '予定表に書かれた正の件数です。時間枠からの割増はしていません。' };
 }
 
-function dashboardWorkReady(roll, date, expected) {
-    const work = roll && roll.workConfirmation;
-    if (!work) return { ok: false, note: '作業確認が明示されていないので、作業枠未確認です。' };
-    if (String(work.date || '').slice(0, 10) !== date) return { ok: false, note: '作業確認の日付が予定日と違うので、作業枠未確認です。' };
-    if (work.period !== 'day') return { ok: false, note: '昼間の作業確認が明示されていないので、作業枠未確認です。' };
-    if (!expected || work.workType !== expected) return { ok: false, note: '作業確認の種別が違うので、作業枠未確認です。' };
-    if (work.continuous === 'yes') return { ok: false, note: '連続操業では交換日にしません。' };
-    if (work.continuous !== 'no') return { ok: false, note: '連続操業の確認が明示されていないので、作業枠未確認です。' };
-    return { ok: true, note: '' };
+function dashboardWorkReady(roll, date, expected, day) {
+    const described = typeof describeExchangeSlot === 'function'
+        ? describeExchangeSlot(roll && roll.workConfirmation, day, expected)
+        : { ok: false, state: '未確認', note: '作業枠の判定を読み込めないので、確認済み交換可能日にはしません。' };
+    if (String(date || '').slice(0, 10) !== String(day && day.date || '').slice(0, 10)) {
+        return { ok: false, state: '未確認', note: '作業確認の日付が予定日と違うので、作業枠未確認です。' };
+    }
+    return described;
 }
 
 function dashboardReplacementCandidate(roll, referenceAt) {
@@ -234,19 +233,11 @@ function dashboardReplacementCandidate(roll, referenceAt) {
             notes.push('日別操業予定が無いので、確認済み交換可能日は確定しません。');
             return;
         }
-        if (dashboardNightOnly(day)) {
-            notes.push('夜勤のみの日は確認済み交換可能日にしません。');
-            return;
-        }
-        if (Number(day.productionAmount) > 0) {
-            notes.push('生産中の日は確認済み交換可能日にしません。');
-            return;
-        }
         if (day.daytimeStop !== 'yes') {
             notes.push('日別操業予定があるだけでは作業可能にしません。昼間の停止枠が明示されていないので、作業枠未確認です。');
             return;
         }
-        const work = dashboardWorkReady(roll, date, expected);
+        const work = dashboardWorkReady(roll, date, expected, day);
         if (!work.ok) {
             notes.push(work.note);
             return;
@@ -468,7 +459,7 @@ function buildDashboardRow(roll, revision, referenceAt, previousRevision) {
         warningLabel: warning ? '予備0本' : '',
         basis: {
             source: `${roll.rollId} / スタンド#${roll.standKey} / ${roll.status} / 現在径${roll.currentDiameter === '' ? '未確認' : roll.currentDiameter} / 廃却径${roll.scrapDiameter === '' ? '未確認' : roll.scrapDiameter} / カリバ${roll.currentCaliber || '未確認'} / 開始直数${Number.isInteger(roll.openingUsedRuns) ? roll.openingUsedRuns : '未確認'}`,
-            formula: '使用回数は計画版の各月で、実績があれば実績、無ければ計画を足します。上限到達の見込みは交換日にしません。予定表上の交換候補日はロールカリバ替予定表の現在の計画です。確認済み交換可能日は、正の予定件数、昼間の停止枠、作業確認がそろった日だけです。所要時間は補助情報で、時間枠へは詰め込みません。改削残回数は（現在径−廃却径）÷切込みです。購入日にはしません。',
+            formula: '使用回数は計画版の各月で、実績があれば実績、無ければ計画を足します。上限到達の見込みは交換日にしません。予定表上の交換候補日はロールカリバ替予定表の現在の計画です。確認済み交換可能日は、正の予定件数、昼間の停止枠、作業人数、必要時間と確保時間、組替準備、固定3セットが成立した日だけです。欠損した生産量は0tにしません。所要時間から件数は増やしません。改削残回数は（現在径−廃却径）÷切込みです。購入日にはしません。',
             steps: [
                 exchange.limitText,
                 exchange.reason,

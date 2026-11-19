@@ -1796,23 +1796,62 @@ function anonymousOperatingDays(start, dayCount) {
     return days;
 }
 
-function exchangeSlotReady(confirmation, row, expectedType) {
+function describeExchangeSlot(confirmation, row, expectedType) {
     const source = confirmation || {};
     const date = String(row && row.date || '').slice(0, 10);
     const repeat = source.repeatOnStops === true;
-    if (!repeat && String(source.date || '').slice(0, 10) !== date) return false;
+    if (!repeat && String(source.date || '').slice(0, 10) !== date) {
+        return { ok: false, state: '未確認', note: '作業確認の日付が予定日と違うので、作業枠未確認です。' };
+    }
     const types = Array.isArray(source.workTypes) ? source.workTypes : [source.workType];
-    if (!types.includes(expectedType)) return false;
-    if (source.period !== 'day') return false;
-    if (Number(row.productionAmount) !== 0) return false;
-    if (row.shift3Team && !row.shift1Team) return false;
+    if (!types.includes(expectedType)) {
+        return { ok: false, state: '不成立', note: '作業確認の種別が違うので、作業枠未確認です。' };
+    }
+    if (!source.period) return { ok: false, state: '未確認', note: '昼間の作業確認が明示されていないので、作業枠未確認です。' };
+    if (source.period !== 'day') return { ok: false, state: '不成立', note: '昼間の作業確認が成立していないので、作業枠未確認です。' };
+    if (!row || typeof row.productionAmount !== 'number' || !Number.isFinite(row.productionAmount)) {
+        return { ok: false, state: '未確認', note: '日別生産量が欠損しているので、0tとはみなさず、確認済み交換可能日にはしません。' };
+    }
+    if (row.productionAmount !== 0) return { ok: false, state: '不成立', note: '生産中の日は確認済み交換可能日にしません。' };
+    if (row.shift3Team && !row.shift1Team) return { ok: false, state: '不成立', note: '夜勤のみの日は確認済み交換可能日にしません。' };
     const required = source.requiredHours;
     const reserved = source.reservedHours;
     const people = source.people;
-    if (!(typeof required === 'number' && Number.isFinite(required) && required > 0)) return false;
-    if (!(typeof reserved === 'number' && Number.isFinite(reserved) && reserved >= required)) return false;
-    if (!(typeof people === 'number' && Number.isInteger(people) && people > 0)) return false;
-    return source.continuous === 'no' && source.changeover === 'yes' && source.threeSet === 'yes';
+    if (required === undefined || required === null || required === '') {
+        return { ok: false, state: '未確認', note: '必要時間が未確認なので、確認済み交換可能日にはしません。' };
+    }
+    if (!(typeof required === 'number' && Number.isFinite(required) && required > 0)) {
+        return { ok: false, state: '不成立', note: '必要時間が成立しないので、確認済み交換可能日にはしません。' };
+    }
+    if (reserved === undefined || reserved === null || reserved === '') {
+        return { ok: false, state: '未確認', note: '確保時間が未確認なので、確認済み交換可能日にはしません。' };
+    }
+    if (!(typeof reserved === 'number' && Number.isFinite(reserved) && reserved >= required)) {
+        return { ok: false, state: '不成立', note: '確保時間が必要時間に足りないので、確認済み交換可能日にはしません。' };
+    }
+    if (people === undefined || people === null || people === '') {
+        return { ok: false, state: '未確認', note: '作業人数が未確認なので、確認済み交換可能日にはしません。' };
+    }
+    if (!(typeof people === 'number' && Number.isInteger(people) && people > 0)) {
+        return { ok: false, state: '不成立', note: '作業人数が成立しないので、確認済み交換可能日にはしません。' };
+    }
+    if (source.continuous !== 'yes' && source.continuous !== 'no') {
+        return { ok: false, state: '未確認', note: '連続操業の確認が明示されていないので、作業枠未確認です。' };
+    }
+    if (source.continuous !== 'no') return { ok: false, state: '不成立', note: '連続操業では交換日にしません。' };
+    if (source.changeover !== 'yes' && source.changeover !== 'no') {
+        return { ok: false, state: '未確認', note: '組替準備が未確認なので、確認済み交換可能日にはしません。' };
+    }
+    if (source.changeover !== 'yes') return { ok: false, state: '不成立', note: '組替準備が成立していないので、確認済み交換可能日にはしません。' };
+    if (source.threeSet !== 'yes' && source.threeSet !== 'no') {
+        return { ok: false, state: '未確認', note: '固定3セットが未確認なので、確認済み交換可能日にはしません。' };
+    }
+    if (source.threeSet !== 'yes') return { ok: false, state: '不成立', note: '固定3セットが成立していないので、確認済み交換可能日にはしません。' };
+    return { ok: true, state: '成立', note: '作業人数、必要時間、確保時間、組替準備、固定3セットは成立しています。予定表の件数を超える追加はしません。' };
+}
+
+function exchangeSlotReady(confirmation, row, expectedType) {
+    return describeExchangeSlot(confirmation, row, expectedType).ok;
 }
 
 function assemblySlotReady(confirmation, row) {

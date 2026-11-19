@@ -222,6 +222,55 @@ test('a night-only stop is not an exchange date, and a checked daytime stop can 
   assert.equal(accepted.auto.exchange, '2027-04-02');
   assert.equal(accepted.auto.countState, '正の件数');
   assert.equal(accepted.manual.useEnd, beforeManual);
+  const readyDay = planned.days.find(item => item.date === '2027-04-02');
+  const established = context.dashboardWorkReady(planned, '2027-04-02', 'caliberChange', readyDay);
+  assert.equal(established.state, '成立');
+  assert.equal(context.dashboardReplacementCandidate(planned, fixture.referenceAt).sets, 1);
+  const longHours = Object.assign({}, planned, {
+    workConfirmation: Object.assign({}, planned.workConfirmation, { requiredHours: 2, reservedHours: 8 })
+  });
+  const longResult = context.dashboardReplacementCandidate(longHours, fixture.referenceAt);
+  assert.equal(longResult.date, '2027-04-02');
+  assert.equal(longResult.sets, 1);
+  function varied(workPatch, dayPatch) {
+    const roll = Object.assign({}, planned, {
+      workConfirmation: Object.assign({}, planned.workConfirmation, workPatch || {}),
+      days: planned.days.map(item => item.date === '2027-04-02' ? Object.assign({}, item, dayPatch || {}) : item)
+    });
+    const decision = context.dashboardWorkReady(roll, '2027-04-02', 'caliberChange', roll.days.find(item => item.date === '2027-04-02'));
+    const candidate = context.dashboardReplacementCandidate(roll, fixture.referenceAt);
+    return { decision, candidate };
+  }
+  [
+    [{ people: undefined }, '未確認'],
+    [{ requiredHours: undefined }, '未確認'],
+    [{ reservedHours: undefined }, '未確認'],
+    [{ changeover: '' }, '未確認'],
+    [{ threeSet: '' }, '未確認']
+  ].forEach(([patch, state]) => {
+    const result = varied(patch);
+    assert.equal(result.decision.state, state, JSON.stringify(patch));
+    assert.equal(result.candidate.date, null, JSON.stringify(patch));
+  });
+  const missingTons = varied({}, { productionAmount: null });
+  assert.equal(missingTons.decision.state, '未確認');
+  assert.match(missingTons.decision.note, /0tとはみなさず/);
+  assert.equal(missingTons.candidate.date, null);
+  [
+    [{ people: 0 }, '不成立'],
+    [{ requiredHours: 0 }, '不成立'],
+    [{ reservedHours: 0.5 }, '不成立'],
+    [{ changeover: 'no' }, '不成立'],
+    [{ threeSet: 'no' }, '不成立'],
+    [{ continuous: 'yes' }, '不成立']
+  ].forEach(([patch, state]) => {
+    const result = varied(patch);
+    assert.equal(result.decision.state, state, JSON.stringify(patch));
+    assert.equal(result.candidate.date, null, JSON.stringify(patch));
+  });
+  const producing = varied({}, { productionAmount: 10 });
+  assert.equal(producing.decision.state, '不成立');
+  assert.equal(producing.candidate.date, null);
   const withoutWork = Object.assign({}, planned, { workConfirmation: null });
   assert.equal(context.buildDashboardRow(withoutWork, fixture.revisions[0], fixture.referenceAt, null).auto.exchangeDate, null);
   assert.equal(context.dashboardReplacementSets({ requiredHours: 2, frameHours: 8, packedFromHours: true }).sets, null);
