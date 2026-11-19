@@ -151,6 +151,18 @@ async function main() {
     await page.screenshot({ path: path.join(evidenceDir, 'sheet-400.png'), fullPage: true });
     const sheetOverflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     assert.ok(sheetOverflow < 8, `sheet overflow ${sheetOverflow}`);
+    await page.goto('http://roll-app.test/roll-acceptance-prep.html');
+    await page.waitForSelector('#checks article');
+    const prepText = await page.locator('main').innerText();
+    assert.match(prepText, /手入力の使用終了/);
+    assert.match(prepText, /useEndDateには入れない/);
+    assert.match(prepText, /権限不足で停止します/);
+    assert.match(prepText, /liveConnected false/);
+    assert.match(prepText, /#10-ANON-1/);
+    assert.match(prepText, /作業枠未確認/);
+    assert.equal(prepText.includes('googleapis'), false);
+    const prepOverflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    assert.ok(prepOverflow < 8, `prep overflow ${prepOverflow}`);
     fs.writeFileSync(path.join(evidenceDir, 'evidence.json'), JSON.stringify({
       page: 'roll-dashboard.html',
       data: 'anonymous',

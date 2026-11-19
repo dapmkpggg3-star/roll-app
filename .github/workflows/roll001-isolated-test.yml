@@ -33,6 +33,9 @@ on:
       - 'roll-management-sheet.html'
       - 'test/roll-dashboard.test.cjs'
       - 'test/roll-dashboard-browser.cjs'
+      - 'js/roll-acceptance-prep.js'
+      - 'roll-acceptance-prep.html'
+      - 'test/roll-acceptance-prep.test.cjs'
       - 'test/forecast-master-adapter.test.cjs'
       - 'test/forecast-master-browser.cjs'
       - 'test/rework-cycle-reset.test.cjs'
@@ -53,7 +56,7 @@ jobs:
         with:
           node-version: '22'
       - name: Run real repository test with mock data only
-        run: node --test test/today-task-target-visibility.test.js test/roll001-spare-readiness.test.cjs test/roll001-procurement-risk-audit.test.cjs test/sync-revision-guard.test.js test/auth-boundary.test.js test/roll003-independent-originals.test.cjs test/roll003-offline-recovery.test.cjs test/roll004-hidden-status-filter.test.cjs test/roll005-print-contract.test.cjs test/planning-import.test.js test/operating-plan-forecast.test.cjs test/forecast-master-adapter.test.cjs test/rework-cycle-reset.test.cjs test/roll-dashboard.test.cjs
+        run: node --test test/today-task-target-visibility.test.js test/roll001-spare-readiness.test.cjs test/roll001-procurement-risk-audit.test.cjs test/sync-revision-guard.test.js test/auth-boundary.test.js test/roll003-independent-originals.test.cjs test/roll003-offline-recovery.test.cjs test/roll004-hidden-status-filter.test.cjs test/roll005-print-contract.test.cjs test/planning-import.test.js test/operating-plan-forecast.test.cjs test/forecast-master-adapter.test.cjs test/rework-cycle-reset.test.cjs test/roll-dashboard.test.cjs test/roll-acceptance-prep.test.cjs
 
   isolated-browser:
     runs-on: ubuntu-24.04
