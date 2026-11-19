@@ -68,7 +68,8 @@ test('the field map keeps handwritten plans, forecasts, and confirmed dates apar
   assert.equal(item('手入力の使用終了').state, '未確認');
   assert.match(item('手入力の使用終了').roles, /useEndDateには入れない/);
   assert.equal(item('確定の使用終了').roles, 'useEndDate');
-  assert.match(item('確認済み交換候補').sheet, /使用終了日とは別/);
+  assert.match(item('予定表上の交換候補日').sheet, /使用終了日とは別/);
+  assert.match(item('確認済み交換可能日').sheet, /予定表の日付だけでは確定しない/);
   assert.match(item('購入').roles, /購入予測日ではない/);
   assert.match(item('使用回数').production, /実績があれば実績/);
   assert.match(item('固定3セット').roles, /ロール3本ではない/);
@@ -81,7 +82,7 @@ test('the field map keeps handwritten plans, forecasts, and confirmed dates apar
 
 test('each forecast records its source, adopted value, formula, revision, and open gaps', () => {
   const traces = context.acceptanceForecastTrace();
-  assert.deepEqual(Array.from(traces, trace => trace.value), ['確認済み交換候補', '上限到達の見込み', '使用回数', '改削残回数', '購入', '予備']);
+  assert.deepEqual(Array.from(traces, trace => trace.value), ['予定表上の交換候補日', '確認済み交換可能日', '上限到達の見込み', '使用回数', '改削残回数', '購入', '予備']);
   traces.forEach(trace => {
     assert.ok(trace.sources.length > 0);
     assert.ok(trace.adopted);
@@ -89,8 +90,8 @@ test('each forecast records its source, adopted value, formula, revision, and op
     assert.ok(trace.revision);
     assert.ok(trace.unresolved.length > 0);
   });
-  const exchange = traces[0];
-  assert.match(exchange.formula, /夜勤|昼の停止/);
+  const exchange = traces.find(trace => trace.value === '確認済み交換可能日');
+  assert.match(exchange.formula, /夜勤|昼間の停止枠/);
   assert.match(exchange.unresolved.join('\n'), /未確認|保存する列/);
 });
 
@@ -142,7 +143,7 @@ test('acceptance checks separate daytime work, continuous running, three-set, an
     continuous: 'no', changeover: 'yes', threeSet: 'yes'
   };
   day.days = day.days.map(item => item.date === '2027-04-02'
-    ? Object.assign({}, item, { shift1Team: 'A', shift3Team: '', productionAmount: 0, operatingHours: 0 })
+    ? Object.assign({}, item, { shift1Team: 'A', shift3Team: '', productionAmount: 0, operatingHours: 0, daytimeStop: 'yes' })
     : item);
   const hoursReady = context.evaluateAcceptance(day, fixture.revisions[0], fixture.referenceAt);
   assert.equal(hoursReady.checks.find(check => check.id === 'exchange-time').result, '未確認');

@@ -147,14 +147,30 @@ function dashboardConfirmedEffort(stand) {
 
 function dashboardReplacementSets(entry) {
     if (!entry || entry.packedFromHours === true) {
-        return { sets: null, note: '所要時間からセット数は作りません。8時間枠へは詰め込みません。' };
+        return { sets: null, countState: '時間から作成', note: '所要時間からセット数は作りません。8時間枠へは詰め込みません。' };
     }
     if (entry.setsWritten === undefined || entry.setsWritten === null || entry.setsWritten === '') {
-        return { sets: null, note: '予定表に件数が無いので、追加可能量は確定しません。' };
+        return { sets: null, countState: '件数不明', note: '予定件数が不明なので、確認済み交換可能日にも作業量にもしません。' };
     }
     const sets = Number(entry.setsWritten);
-    if (!Number.isInteger(sets) || sets < 0) return { sets: null, note: '予定表の件数を確認できないので、追加可能量は確定しません。' };
-    return { sets, note: '予定表に書かれた件数です。時間枠からの割増はしていません。' };
+    if (!Number.isInteger(sets) || sets < 0) {
+        return { sets: null, countState: '件数不明', note: '予定表の件数を確認できないので、確認済み交換可能日にも作業量にもしません。' };
+    }
+    if (sets === 0) {
+        return { sets: null, countState: '0件', note: '予定件数が0件なので、交換候補日は確定しません。' };
+    }
+    return { sets, countState: '正の件数', note: '予定表に書かれた正の件数です。時間枠からの割増はしていません。' };
+}
+
+function dashboardWorkReady(roll, date, expected) {
+    const work = roll && roll.workConfirmation;
+    if (!work) return { ok: false, note: '作業確認が明示されていないので、作業枠未確認です。' };
+    if (String(work.date || '').slice(0, 10) !== date) return { ok: false, note: '作業確認の日付が予定日と違うので、作業枠未確認です。' };
+    if (work.period !== 'day') return { ok: false, note: '昼間の作業確認が明示されていないので、作業枠未確認です。' };
+    if (!expected || work.workType !== expected) return { ok: false, note: '作業確認の種別が違うので、作業枠未確認です。' };
+    if (work.continuous === 'yes') return { ok: false, note: '連続操業では交換日にしません。' };
+    if (work.continuous !== 'no') return { ok: false, note: '連続操業の確認が明示されていないので、作業枠未確認です。' };
+    return { ok: true, note: '' };
 }
 
 function dashboardReplacementCandidate(roll, referenceAt) {
@@ -163,10 +179,12 @@ function dashboardReplacementCandidate(roll, referenceAt) {
     const rows = Array.isArray(roll.replacementPlan) ? roll.replacementPlan : [];
     const hours = dashboardConfirmedEffort(roll.standKey);
     if (!rows.length) {
-        return { date: null, sets: null, note: `${hours.note}ロールカリバ替予定表が無いので、交換可能日も追加可能量も確定しません。` };
+        return { date: null, sets: null, listedDate: null, countState: '予定なし', note: `${hours.note}ロールカリバ替予定表が無いので、交換可能日も追加可能量も確定しません。` };
     }
     const notes = [hours.note];
     let chosen = null;
+    let listed = null;
+    let sawZero = false;
     rows.forEach(entry => {
         const stand = String(entry && entry.standKey || '').replace(/^#/, '');
         if (stand !== String(roll.standKey || '').replace(/^#/, '')) {
@@ -190,34 +208,61 @@ function dashboardReplacementCandidate(roll, referenceAt) {
             notes.push('過去の予定や日付未確認は、将来の交換日にしません。');
             return;
         }
+        const capacity = dashboardReplacementSets(entry);
+        notes.push(capacity.note);
+        if (capacity.countState === '0件') {
+            sawZero = true;
+            return;
+        }
+        if (capacity.countState !== '正の件数' && capacity.countState !== '件数不明') return;
+        if (!listed || date < listed.date) listed = { date, countState: capacity.countState, sets: capacity.sets };
+        if (capacity.countState !== '正の件数') return;
         if (entry.withinShift !== 'yes') {
-            notes.push('その直内で終える確認が無いので、交換日にしません。');
+            notes.push('その直内で終える確認が無いので、確認済み交換可能日にはしません。');
             return;
         }
         if (entry.constraintsKnown !== 'yes') {
-            notes.push('休憩、暑熱、段取り、組み合わせが未確認なので、交換日にしません。');
+            notes.push('休憩、暑熱、段取り、組み合わせが未確認なので、確認済み交換可能日にはしません。');
             return;
         }
-        if (entry.continuous === 'yes' || (roll.workConfirmation && roll.workConfirmation.continuous === 'yes')) {
+        if (entry.continuous === 'yes') {
             notes.push('連続操業では交換日にしません。');
             return;
         }
         const day = (roll.days || []).find(item => String(item && item.date || '').slice(0, 10) === date);
         if (!day) {
-            notes.push('日別操業予定が無いので、交換可能日は確定しません。');
+            notes.push('日別操業予定が無いので、確認済み交換可能日は確定しません。');
             return;
         }
-        if (dashboardNightOnly(day) || Number(day.productionAmount) > 0) {
-            notes.push('操業予定と重なる日は、予定表の行だけでは交換日にしません。');
+        if (dashboardNightOnly(day)) {
+            notes.push('夜勤のみの日は確認済み交換可能日にしません。');
             return;
         }
-        const capacity = dashboardReplacementSets(entry);
-        notes.push(capacity.note);
-        if (capacity.sets === null) return;
+        if (Number(day.productionAmount) > 0) {
+            notes.push('生産中の日は確認済み交換可能日にしません。');
+            return;
+        }
+        if (day.daytimeStop !== 'yes') {
+            notes.push('日別操業予定があるだけでは作業可能にしません。昼間の停止枠が明示されていないので、作業枠未確認です。');
+            return;
+        }
+        const work = dashboardWorkReady(roll, date, expected);
+        if (!work.ok) {
+            notes.push(work.note);
+            return;
+        }
         if (!chosen || date < chosen.date) chosen = { date, sets: capacity.sets };
     });
-    if (!chosen) return { date: null, sets: null, jobs: rows.length, note: notes.join('') };
-    return { date: chosen.date, sets: chosen.sets, jobs: rows.length, period: '現在の計画', note: `現在の計画にある交換可能日は${chosen.date}です。上限到達の見込みとは別です。${notes.join('')}` };
+    const listedDate = listed ? listed.date : null;
+    const countState = listed ? listed.countState : (sawZero ? '0件' : '予定なし');
+    const base = { jobs: rows.length, listedDate, countState, note: notes.join('') };
+    if (!chosen) return Object.assign({ date: null, sets: null }, base);
+    return Object.assign(base, {
+        date: chosen.date,
+        sets: chosen.sets,
+        period: '現在の計画',
+        note: `予定表上の交換候補日は${listedDate}です。確認済み交換可能日は${chosen.date}です。予定表に書いてあるだけでは実施可能とはしません。上限到達の見込みとは別です。${notes.join('')}`
+    });
 }
 
 function replacementTemplateColumns() {
@@ -269,37 +314,43 @@ function dashboardConfirmedExchange(roll, referenceAt) {
 }
 
 function dashboardExchange(roll, referenceAt) {
-    if (!Array.isArray(roll.days) || roll.days.length === 0 || typeof projectCaliberReplacement !== 'function') {
-        return {
-            date: null,
-            text: '作業枠未確認',
-            limitText: '日別の操業予定がないので、上限到達の見込みも交換候補も出しません。',
-            reason: '交換候補は作業枠未確認です。無い予定を作業日にはしません。'
-        };
-    }
-    const projected = projectCaliberReplacement({
-        standKey: roll.standKey,
-        referenceDate: String(referenceAt || '').slice(0, 10),
-        currentCaliber: roll.currentCaliber,
-        openingUsedRuns: roll.openingUsedRuns,
-        size: roll.size,
-        days: roll.days
-    });
-    const limitText = dashboardLimitText(projected);
     const confirmed = dashboardConfirmedExchange(roll, referenceAt);
+    let limitText = '日別の操業予定がないので、上限到達の見込みは出しません。予定表の日付だけでは作業可能にしません。';
+    if (Array.isArray(roll.days) && roll.days.length > 0 && typeof projectCaliberReplacement === 'function') {
+        const projected = projectCaliberReplacement({
+            standKey: roll.standKey,
+            referenceDate: String(referenceAt || '').slice(0, 10),
+            currentCaliber: roll.currentCaliber,
+            openingUsedRuns: roll.openingUsedRuns,
+            size: roll.size,
+            days: roll.days
+        });
+        limitText = dashboardLimitText(projected);
+    }
+    const listedDate = confirmed.listedDate || null;
+    const listedText = listedDate || 'なし';
+    const listedSentence = listedDate
+        ? `予定表上の交換候補日は${listedDate}です。予定表に書いてあるだけでは実施可能とはしません。`
+        : '予定表上の交換候補日はありません。';
     if (!confirmed.date) {
         return {
             date: null,
             text: '作業枠未確認',
+            listedDate,
+            listedText,
+            countState: confirmed.countState || '予定なし',
             limitText,
-            reason: `交換候補は作業枠未確認です。${confirmed.note}${limitText}交換候補にはしません。`
+            reason: `確認済み交換可能日は作業枠未確認です。${listedSentence}${confirmed.note || ''}${limitText}交換候補にはしません。`
         };
     }
     return {
         date: confirmed.date,
         text: confirmed.date,
+        listedDate,
+        listedText,
+        countState: confirmed.countState,
         limitText,
-        reason: `作業枠を確認した交換候補は${confirmed.date}です。${confirmed.note}${limitText}`
+        reason: `予定表上の交換候補日は${listedText}です。確認済み交換可能日は${confirmed.date}です。予定表に書いてあるだけでは実施可能とはしません。${confirmed.note}${limitText}`
     };
 }
 
@@ -398,6 +449,8 @@ function buildDashboardRow(roll, revision, referenceAt, previousRevision) {
             useEnd: '判定不能',
             exchange: exchange.text,
             exchangeDate: exchange.date,
+            listedExchange: exchange.listedText,
+            countState: exchange.countState,
             limitText: exchange.limitText,
             rework,
             purchase,
@@ -415,7 +468,7 @@ function buildDashboardRow(roll, revision, referenceAt, previousRevision) {
         warningLabel: warning ? '予備0本' : '',
         basis: {
             source: `${roll.rollId} / スタンド#${roll.standKey} / ${roll.status} / 現在径${roll.currentDiameter === '' ? '未確認' : roll.currentDiameter} / 廃却径${roll.scrapDiameter === '' ? '未確認' : roll.scrapDiameter} / カリバ${roll.currentCaliber || '未確認'} / 開始直数${Number.isInteger(roll.openingUsedRuns) ? roll.openingUsedRuns : '未確認'}`,
-            formula: '使用回数は計画版の各月で、実績があれば実績、無ければ計画を足します。上限到達の見込みは交換候補にしません。交換候補はロールカリバ替予定表の予定行だけです。所要時間は補助情報で、時間枠へは詰め込みません。改削残回数は（現在径−廃却径）÷切込みです。購入日にはしません。',
+            formula: '使用回数は計画版の各月で、実績があれば実績、無ければ計画を足します。上限到達の見込みは交換日にしません。予定表上の交換候補日はロールカリバ替予定表の現在の計画です。確認済み交換可能日は、正の予定件数、昼間の停止枠、作業確認がそろった日だけです。所要時間は補助情報で、時間枠へは詰め込みません。改削残回数は（現在径−廃却径）÷切込みです。購入日にはしません。',
             steps: [
                 exchange.limitText,
                 exchange.reason,
@@ -492,7 +545,8 @@ function buildAnonymousManagementSheet(model) {
         add('手入力予定', '次の予定', row.manualSummary);
         add('手入力予定', '使用終了', row.manual.useEnd);
         add('手入力予定', '改削', row.manual.rework);
-        add('予測', '確認済み交換候補', row.auto.exchange);
+        add('予測', '予定表上の交換候補日', row.auto.listedExchange);
+        add('予測', '確認済み交換可能日', row.auto.exchange);
         add('予測', '使用終了', row.auto.useEnd);
         add('予測', '購入', row.auto.purchase);
         add('予測', '使用回数', row.auto.totalUseCount);

@@ -11,7 +11,8 @@ function acceptanceFieldMap() {
         { item: '廃却径', roles: '対応列なし', sheet: '対応列なし', production: '対応列なし', caliber: '対応列なし。StandMasterのscrapDiameterは別表', state: '未確認' },
         { item: '切込み', roles: '対応列なし。作業履歴の改削量とは別', sheet: '対応列なし', production: '対応列なし', caliber: '対応列なし', state: '未確認' },
         { item: '予備本数', roles: '本数の列は無い。状態からの本数換算は未確認', sheet: '役割ごとの行であり本数合計ではない', production: '対応列なし', caliber: '対応列なし', state: '未確認' },
-        { item: '確認済み交換候補', roles: '対応列なし', sheet: '使用終了日とは別', production: '日別の昼停止と照合。月間トン数からは作らない', caliber: '上限到達の見込みとは別', state: '計算' },
+        { item: '予定表上の交換候補日', roles: '対応列なし', sheet: '使用終了日とは別。予定表に書いてある日付', production: '日別予定があっても、この日付だけでは作業可能にしない', caliber: '上限到達の見込みとは別', state: '計算' },
+        { item: '確認済み交換可能日', roles: '対応列なし', sheet: '使用終了日とは別。予定表の日付だけでは確定しない', production: '昼間の停止枠が明示され、夜勤のみ・生産中・連続操業ではない日', caliber: '上限到達の見込みとは別', state: '計算' },
         { item: '上限到達の見込み', roles: '対応列なし', sheet: '対応列なし', production: '日別の生産量と時間', caliber: '最大直数と開始直数', state: '計算' },
         { item: '使用回数', roles: '対応列なし', sheet: '対応列なし', production: '計画版の各月。実績があれば実績、無ければ計画', caliber: '直数であり使用回数ではない', state: '計算' },
         { item: '購入', roles: 'orderExpectedDeliveryDateは納入予定であり購入予測日ではない', sheet: '対応列なし', production: 'トン数からは本数も購入日も作らない', caliber: '対応列なし', state: '判定不能' },
@@ -24,11 +25,19 @@ function acceptanceFieldMap() {
 function acceptanceForecastTrace() {
     return [
         {
-            value: '確認済み交換候補',
-            sources: ['日別生産予定の日付・昼勤務・夜勤・生産量', '作業確認の時間・人数・組替・連続操業・固定3セット', 'スタンド別の交換時間'],
-            adopted: 'confirmedWorkCandidateに加え、夜勤のみ、昼勤務なし、生産中をダッシュボードで除外する',
-            formula: '上限到達日より前で、昼の停止かつ必要時間以上の確保、人数、組替あり、連続操業なし、固定3セットありの日だけを交換候補にする',
-            revision: '基準日時と作業日を照合する。計画版の使用回数では交換日を変えない',
+            value: '予定表上の交換候補日',
+            sources: ['ロールカリバ替予定表の現在の計画', '予定件数'],
+            adopted: '同じスタンド、同じ作業種別、基準日以降の予定行。0件は候補日にしない',
+            formula: '書いてある日付を予定表上の候補にする。件数不明は日付だけ残し、作業量は確定しない。実施可能とはしない',
+            revision: '過去の計画と完了実績は将来の候補にしない',
+            unresolved: ['作業欄の正式な小見出し']
+        },
+        {
+            value: '確認済み交換可能日',
+            sources: ['予定表上の交換候補日', '日別操業予定の昼間の停止枠', '作業確認', '予定件数'],
+            adopted: '正の件数、明示された昼間の停止枠、同じ日の昼間の作業確認がそろったときだけ',
+            formula: '日別予定があるだけでは確定しない。夜勤のみ、生産中、連続操業、件数不明、0件は作業枠未確認のままにする',
+            revision: '基準日時と作業日を照合する。計画版の使用回数でも所要時間でも交換日を変えない',
             unresolved: ['実台帳に作業確認を保存する列', '6番から9番の確定作業時間']
         },
         {

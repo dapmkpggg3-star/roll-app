@@ -81,7 +81,8 @@
                     <th>ロール</th>
                     <th>状態</th>
                     <th>次の手入力予定</th>
-                    <th>確認済み交換候補</th>
+                    <th>予定表上の交換候補日</th>
+                    <th>確認済み交換可能日</th>
                     <th>警告</th>
                 </tr>
             </thead>
@@ -131,11 +132,12 @@
                     <td data-label="ロール">${escapeHtml(row.rollId)}</td>
                     <td data-label="状態">${escapeHtml(row.status)}</td>
                     <td data-label="次の手入力予定">${row.manualSummary === 'なし' ? 'なし' : `<span class="is-manual-plan">${escapeHtml(row.manualSummary)}</span>`}</td>
-                    <td data-label="確認済み交換候補" data-exchange="${escapeHtml(row.auto.exchange)}">${escapeHtml(row.auto.exchange)}</td>
+                    <td data-label="予定表上の交換候補日">${escapeHtml(row.auto.listedExchange)}</td>
+                    <td data-label="確認済み交換可能日" data-exchange="${escapeHtml(row.auto.exchange)}">${escapeHtml(row.auto.exchange)}</td>
                     <td data-label="警告">${row.warningLabel ? `<span class="is-warning">${escapeHtml(row.warningLabel)}</span>` : '警告なし'}</td>
                 </tr>
                 <tr class="detail-row">
-                    <td colspan="6">
+                    <td colspan="7">
                         <button type="button" data-basis="${escapeHtml(row.rollId)}">根拠を見る</button>
                         <div class="basis" id="${basisId}" hidden></div>
                     </td>

@@ -154,18 +154,21 @@ test('the anonymous sheet repeats the dashboard values in separate kinds', () =>
   assert.deepEqual(kinds, ['手入力予定', '予測', '確定・実績', '根拠', '警告']);
   const cell = (rollId, kind, item) => sheet.rows.find(row => row.rollId === rollId && row.kind === kind && row.item === item);
   assert.equal(cell('#10-ANON-1', '手入力予定', '使用終了').value, '2027-02-15');
-  assert.equal(cell('#10-ANON-1', '予測', '確認済み交換候補').value, '作業枠未確認');
+  assert.equal(cell('#10-ANON-1', '予測', '予定表上の交換候補日').value, 'なし');
+  assert.equal(cell('#10-ANON-1', '予測', '確認済み交換可能日').value, '作業枠未確認');
   assert.equal(cell('#10-ANON-1', '予測', '購入').value, '判定不能');
   assert.equal(cell('#10-ANON-1', '予測', '使用回数').value, '24');
   assert.equal(cell('#10-ANON-1', '確定・実績', '使用終了').value, '2026-08-20');
   assert.match(cell('#10-ANON-1', '根拠', '計算式').value, /ロールカリバ替予定表/);
-  assert.equal(cell('#10-ANON-1', '予測', '確認済み交換候補').value.includes('2027-04-02'), false);
+  assert.equal(cell('#10-ANON-1', '予測', '確認済み交換可能日').value.includes('2027-04-02'), false);
+  assert.equal(cell('#10-ANON-1', '予測', '予定表上の交換候補日').value.includes('2027-04-02'), false);
   assert.equal(cell('#16-ANON-3', '警告', '表示').value, '予備0本');
-  assert.equal(cell('#16-ANON-3', '予測', '確認済み交換候補').value, '作業枠未確認');
+  assert.equal(cell('#16-ANON-3', '予測', '確認済み交換可能日').value, '作業枠未確認');
   const tsv = context.anonymousManagementSheetTsv(sheet);
   assert.match(tsv, /手入力予定\t#10\t#10-ANON-1\t使用終了\t2027-02-15/);
   assert.match(tsv, /手入力予定\t#10\t#10-ANON-1\t改削\t2027-01-20/);
-  assert.match(tsv, /予測\t#10\t#10-ANON-1\t確認済み交換候補\t作業枠未確認/);
+  assert.match(tsv, /予測\t#10\t#10-ANON-1\t予定表上の交換候補日\tなし/);
+  assert.match(tsv, /予測\t#10\t#10-ANON-1\t確認済み交換可能日\t作業枠未確認/);
   assert.match(tsv, /予測\t#10\t#10-ANON-1\t購入\t判定不能/);
   assert.match(tsv, /確定・実績\t#10\t#10-ANON-1\t使用終了\t2026-08-20/);
   assert.match(tsv, /警告\t#16\t#16-ANON-3\t表示\t予備0本/);
@@ -193,7 +196,20 @@ test('a night-only stop is not an exchange date, and a checked daytime stop can 
   const hoursOnly = context.buildDashboardRow(day, fixture.revisions[0], fixture.referenceAt, null);
   assert.equal(hoursOnly.auto.exchangeDate, null);
   assert.match(hoursOnly.basis.steps.join('\n'), /所要時間は補助情報/);
+  const scheduleOnly = context.buildDashboardRow(Object.assign({}, day, {
+    replacementPlan: [{
+      standKey: '10', date: '2027-04-02', workType: 'caliberChange', kind: 'plan',
+      withinShift: 'yes', constraintsKnown: 'yes', setsWritten: 1
+    }]
+  }), fixture.revisions[0], fixture.referenceAt, null);
+  assert.equal(scheduleOnly.auto.listedExchange, '2027-04-02');
+  assert.equal(scheduleOnly.auto.exchangeDate, null);
+  assert.equal(scheduleOnly.auto.exchange, '作業枠未確認');
+  const stoppedDays = day.days.map(item => item.date === '2027-04-02'
+    ? Object.assign({}, item, { daytimeStop: 'yes' })
+    : item);
   const planned = Object.assign({}, day, {
+    days: stoppedDays,
     replacementPlan: [{
       standKey: '10', date: '2027-04-02', workType: 'caliberChange', kind: 'plan',
       withinShift: 'yes', constraintsKnown: 'yes', setsWritten: 1
@@ -201,8 +217,13 @@ test('a night-only stop is not an exchange date, and a checked daytime stop can 
   });
   const beforeManual = planned.manual.useEnd;
   const accepted = context.buildDashboardRow(planned, fixture.revisions[0], fixture.referenceAt, null);
+  assert.equal(accepted.auto.listedExchange, '2027-04-02');
   assert.equal(accepted.auto.exchangeDate, '2027-04-02');
+  assert.equal(accepted.auto.exchange, '2027-04-02');
+  assert.equal(accepted.auto.countState, '正の件数');
   assert.equal(accepted.manual.useEnd, beforeManual);
+  const withoutWork = Object.assign({}, planned, { workConfirmation: null });
+  assert.equal(context.buildDashboardRow(withoutWork, fixture.revisions[0], fixture.referenceAt, null).auto.exchangeDate, null);
   assert.equal(context.dashboardReplacementSets({ requiredHours: 2, frameHours: 8, packedFromHours: true }).sets, null);
   const actual = Object.assign({}, day, {
     replacementPlan: [{ standKey: '10', date: '2027-04-02', workType: 'caliberChange', kind: 'actual', withinShift: 'yes', constraintsKnown: 'yes', setsWritten: 1 }]
@@ -223,8 +244,21 @@ test('a night-only stop is not an exchange date, and a checked daytime stop can 
   const missingCount = context.dashboardReplacementCandidate(noCount, fixture.referenceAt);
   assert.equal(missingCount.date, null);
   assert.equal(missingCount.sets, null);
+  assert.equal(missingCount.listedDate, '2027-04-02');
+  assert.equal(missingCount.countState, '件数不明');
   assert.equal(context.buildDashboardRow(noCount, fixture.revisions[0], fixture.referenceAt, null).auto.exchangeDate, null);
-  const several = Object.assign({}, day, {
+  const zeroCount = Object.assign({}, planned, {
+    replacementPlan: [{ standKey: '10', date: '2027-04-02', workType: 'caliberChange', kind: 'plan', withinShift: 'yes', constraintsKnown: 'yes', setsWritten: 0 }]
+  });
+  const zero = context.dashboardReplacementCandidate(zeroCount, fixture.referenceAt);
+  assert.equal(zero.date, null);
+  assert.equal(zero.listedDate, null);
+  assert.equal(zero.sets, null);
+  assert.equal(zero.countState, '0件');
+  assert.equal(context.dashboardReplacementSets({ setsWritten: 0 }).countState, '0件');
+  assert.equal(context.dashboardReplacementSets({}).countState, '件数不明');
+  assert.equal(context.dashboardReplacementSets({ setsWritten: 1 }).countState, '正の件数');
+  const several = Object.assign({}, planned, {
     replacementPlan: [
       planned.replacementPlan[0],
       { standKey: '10', date: '2027-04-03', workType: 'caliberChange', kind: 'plan', withinShift: 'yes', constraintsKnown: 'yes', setsWritten: 1 }
