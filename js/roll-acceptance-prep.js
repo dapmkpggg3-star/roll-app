@@ -94,18 +94,69 @@ function assessReadOnlyConnection(probe) {
     };
 }
 
+function acceptanceSourceFindings() {
+    return [
+        {
+            id: 'stand-10-hours',
+            resolved: '10番と11番の3人・経過1時間はカリバ替だけです。同じスタンドのロール替は3人・経過6時間で、出典はどちらも2026-09-05のコード上の確認値です。サイズ替と組替にはこの時間の定義がありません。',
+            unresolved: '2026-09-05の原本資料そのものはこのリポジトリにありません。',
+            impact: '交換候補はexpectedWorkTypeが返す種別だけを見ます。10番以降はカリバ替です。1時間をロール替・サイズ替・組替に使うと交換候補を止めます。'
+        },
+        {
+            id: 'handwritten-plan',
+            resolved: 'ロール履歴の使用終了日はoffset 14です。赤・青・灰の文字色、または「予」は予定としてplannedになります。plannedの使用終了は完了サイクルにしません。',
+            unresolved: 'Rolesとロール管理表に、赤字の将来予定を手入力列として保存する独立列は見当たりません。ダッシュボードの手入力へどの履歴セルを載せるかは未確認です。',
+            impact: '予定の使用終了を確定のuseEndDateや交換候補へ入れません。列が未確認の間は手入力予定を空のままにします。'
+        },
+        {
+            id: 'scrap-diameter',
+            resolved: '予測が読む廃却径は、読込済みStandMasterの同じスタンドのscrapDiameterです。スタンド不一致や未記録はnullで、他スタンドの径は使いません。',
+            unresolved: 'local/stand-premises.jsonは未配置です。StandMasterを実読込する承認はまだありません。',
+            impact: '廃却径が無いと改削残回数は出さず、0回にもしません。'
+        },
+        {
+            id: 'cut-mm',
+            resolved: '予測のpremisesFactは、有効な改削マスタのcalculationCutMmだけを採用します。標準値と実績平均では埋めません。',
+            unresolved: '台帳画面のgetRemainingDiameterInfoは計算用が空のとき標準値へ落ちます。予測と台帳画面のどちらを業務の正とするかは未確認です。',
+            impact: '予測では切込みが無いと改削残回数を出さず、標準値で補完しません。'
+        },
+        {
+            id: 'spare-count',
+            resolved: '年間見通しの予備数は、台帳があるとき同じスタンドで状態が組込完了またはinstalledSpareの件数です。台帳が空ならnullで、0にはしません。',
+            unresolved: '中古予備や新品保管を予備本数に数える規則は未確認です。ダッシュボードは件数を自分で数えず、渡されたspareCountだけを見ます。',
+            impact: '本数が未確認なら不足なしにはしません。0本は警告だけで、不足の確定にはしません。'
+        },
+        {
+            id: 'purchase-lead',
+            resolved: '未保存の購入期間は暫定6か月です。確認済みになるのはstand_lead_times_v1でstatusがconfirmedのときだけです。StandMasterの月数があっても、leadTimeConfirmedがtrueでない限り購入日にはしません。',
+            unresolved: 'スタンド別の確認済み月数は実台帳を読んでいません。fetchStandMasterはleadTimeMonthsだけで、確認済みフラグは返していません。',
+            impact: '暫定の期間では購入を判定不能のままにし、購入日を作りません。'
+        },
+        {
+            id: 'work-confirmation',
+            resolved: '交換の作業確認は画面の作業日、昼夜、種別、必要時間、人数、連続操業、組替、固定3セットです。組替枠は別入力で、交換の1時間を初期値にしません。',
+            unresolved: 'これらの項目をRolesの列として保存する定義は見当たりません。',
+            impact: '作業確認が無い、種別が違う、確認値と時間が違う、6から9番のように確認値が無い場合は交換候補を出しません。'
+        },
+        {
+            id: 'stands-6-9',
+            resolved: '6番から9番のカリバ替は対象外です。10番の1時間も、2026-05-08の4時間も使いません。人数と時間はnullです。',
+            unresolved: '6番から9番の確認済み人数と経過時間はコードにも資料にもありません。',
+            impact: '対象外のスタンドは、手入力で1時間と入れても交換候補にしません。'
+        }
+    ];
+}
+
 function acceptanceExchangeTime(roll) {
-    const workType = typeof expectedWorkType === 'function' ? expectedWorkType(roll.standKey) : '';
-    const effort = typeof knownWorkEffort === 'function' ? knownWorkEffort(roll.standKey, workType) : null;
-    if (!effort || effort.kind !== '確認' || effort.people == null || effort.hours == null) {
-        return { id: 'exchange-time', result: '未確認', detail: effort ? effort.text : 'このスタンドの交換時間は確認値ではありません。' };
+    if (!roll.workConfirmation) {
+        const workType = typeof expectedWorkType === 'function' ? expectedWorkType(roll.standKey) : '';
+        const effort = typeof knownWorkEffort === 'function' ? knownWorkEffort(roll.standKey, workType) : null;
+        return { id: 'exchange-time', result: '未確認', detail: effort && effort.kind !== '確認' ? effort.text : '作業確認が無いので、確認済みの時間と照合できません。' };
     }
-    const confirmation = roll.workConfirmation;
-    if (!confirmation) return { id: 'exchange-time', result: '未確認', detail: '作業確認が無いので、確認済みの時間と照合できません。' };
-    if (confirmation.people !== effort.people || confirmation.requiredHours !== effort.hours) {
-        return { id: 'exchange-time', result: '停止', detail: effort.text + '今回の人数または時間と違うため、受入済みにしません。' };
-    }
-    return { id: 'exchange-time', result: '一致', detail: effort.text };
+    const decision = dashboardConfirmedEffort(roll.standKey, roll.workConfirmation);
+    if (!decision.ok && /確認値ではない|未確認/.test(decision.note)) return { id: 'exchange-time', result: '未確認', detail: decision.note };
+    if (!decision.ok) return { id: 'exchange-time', result: '停止', detail: decision.note };
+    return { id: 'exchange-time', result: '一致', detail: decision.note };
 }
 
 function acceptanceDaySlot(roll, revision, referenceAt) {

@@ -15,6 +15,54 @@ function item(name) {
   return context.acceptanceFieldMap().find(row => row.item === name);
 }
 
+test('saved code separates the six open items and stops a forecast that lacks them', () => {
+  const findings = context.acceptanceSourceFindings();
+  assert.equal(findings.length, 8);
+  findings.forEach(item => {
+    assert.ok(item.resolved);
+    assert.ok(item.unresolved);
+    assert.ok(item.impact);
+  });
+  const hours = findings.find(item => item.id === 'stand-10-hours');
+  assert.match(hours.resolved, /カリバ替だけ/);
+  assert.match(hours.resolved, /ロール替は3人・経過6時間/);
+  assert.match(hours.resolved, /サイズ替と組替にはこの時間の定義がありません/);
+  const gas = fs.readFileSync(path.join(root, 'google-apps-script.gs'), 'utf8');
+  assert.match(gas, /ROLL_HISTORY_PLANNED_FONT_COLORS = \['#ff0000'/);
+  assert.match(gas, /useEndDate: \{ offset: 14/);
+  assert.match(gas, /!useEndField\.planned/);
+  assert.equal(context.knownWorkEffort('10', 'caliberChange').hours, 1);
+  assert.equal(context.knownWorkEffort('10', 'rollChange').hours, 6);
+  assert.equal(context.knownWorkEffort('10', 'sizeChange'), null);
+  assert.equal(context.knownWorkEffort('10', 'assembly'), null);
+  assert.equal(context.knownWorkEffort('6', 'caliberChange').kind, '対象外');
+  const oneHour = { date: '2027-04-02', period: 'day', workType: 'caliberChange', requiredHours: 1, reservedHours: 1, people: 3, continuous: 'no', changeover: 'yes', threeSet: 'yes' };
+  assert.equal(context.dashboardConfirmedEffort('10', oneHour).ok, true);
+  assert.equal(context.dashboardConfirmedEffort('10', Object.assign({}, oneHour, { workType: 'rollChange', requiredHours: 6, reservedHours: 6 })).ok, false);
+  assert.equal(context.dashboardConfirmedEffort('10', Object.assign({}, oneHour, { requiredHours: 6, reservedHours: 6 })).ok, false);
+  assert.equal(context.dashboardConfirmedEffort('10', Object.assign({}, oneHour, { workType: 'sizeChange' })).ok, false);
+  assert.equal(context.dashboardConfirmedEffort('6', oneHour).ok, false);
+  assert.equal(context.dashboardConfirmedEffort('16', Object.assign({}, oneHour, { people: 4, requiredHours: 6, reservedHours: 6 })).ok, false);
+  const fixture = context.anonymousDashboardFixture();
+  const missing = JSON.parse(JSON.stringify(fixture.rolls[0]));
+  missing.scrapDiameter = '';
+  missing.cutMm = '';
+  missing.spareCount = null;
+  missing.leadTime = { months: 6, status: 'provisional' };
+  delete missing.workConfirmation;
+  const row = context.buildDashboardRow(missing, fixture.revisions[0], fixture.referenceAt, null);
+  assert.match(row.auto.rework, /0回にしません/);
+  assert.match(row.spareText, /不足なしにはしません/);
+  assert.equal(row.auto.purchase, '判定不能');
+  assert.equal(row.auto.exchangeDate, null);
+  const wrongType = JSON.parse(JSON.stringify(fixture.rolls[0]));
+  wrongType.workConfirmation = { date: '2027-04-02', period: 'day', workType: 'rollChange', requiredHours: 6, reservedHours: 6, people: 3, continuous: 'no', changeover: 'yes', threeSet: 'yes' };
+  wrongType.days = wrongType.days.map(item => item.date === '2027-04-02'
+    ? Object.assign({}, item, { shift1Team: 'A', shift3Team: '', productionAmount: 0, operatingHours: 0 })
+    : item);
+  assert.equal(context.buildDashboardRow(wrongType, fixture.revisions[0], fixture.referenceAt, null).auto.exchangeDate, null);
+});
+
 test('the field map keeps handwritten plans, forecasts, and confirmed dates apart', () => {
   assert.equal(item('手入力の使用終了').state, '未確認');
   assert.match(item('手入力の使用終了').roles, /useEndDateには入れない/);

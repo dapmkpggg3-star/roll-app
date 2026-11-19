@@ -37,6 +37,8 @@
         <div id="traces"></div>
         <h2>読取接続の停止条件</h2>
         <p id="connection"></p>
+        <h2>資料とコードで分かれた項目</h2>
+        <div id="findings"></div>
         <h2>匿名の受入チェック</h2>
         <div id="checks"></div>
     </main>
@@ -70,6 +72,14 @@
         const connection = assessReadOnlyConnection({});
         document.getElementById('prep-note').textContent = connection.note;
         document.getElementById('connection').innerHTML = `<span class="stop">liveConnected ${connection.liveConnected}</span>。ready ${connection.ready}。${connection.stops.map(stop => `<span class="stop">${escapeHtml(stop)}</span>`).join('<br>')}`;
+        document.getElementById('findings').innerHTML = acceptanceSourceFindings().map(item => `
+            <article data-finding="${escapeHtml(item.id)}">
+                <h3>${escapeHtml(item.id)}</h3>
+                <p>確認できたこと: ${escapeHtml(item.resolved)}</p>
+                <p>未確認: ${escapeHtml(item.unresolved)}</p>
+                <p>予測への影響: ${escapeHtml(item.impact)}</p>
+            </article>
+        `).join('');
         const fixture = anonymousDashboardFixture('2026-11-19T06:00:00.000Z');
         document.getElementById('checks').innerHTML = fixture.rolls.map(roll => {
             const result = evaluateAcceptance(roll, fixture.revisions[0], fixture.referenceAt);

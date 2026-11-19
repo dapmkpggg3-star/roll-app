@@ -138,11 +138,29 @@ function dashboardLimitText(projected) {
     return `${limit}${stop}`;
 }
 
+function dashboardConfirmedEffort(stand, confirmation) {
+    const expected = typeof expectedWorkType === 'function' ? expectedWorkType(stand) : '';
+    const source = confirmation || {};
+    if (!expected || source.workType !== expected) {
+        return { ok: false, note: 'このスタンドの交換作業種別と違う時間は使いません。' };
+    }
+    const effort = typeof knownWorkEffort === 'function' ? knownWorkEffort(stand, expected) : null;
+    if (!effort || effort.kind !== '確認' || effort.people == null || effort.hours == null) {
+        return { ok: false, note: effort && effort.text ? `${effort.text}確認値ではないので交換候補にしません。` : 'このスタンドの交換時間は未確認です。' };
+    }
+    if (source.people !== effort.people || source.requiredHours !== effort.hours) {
+        return { ok: false, note: `${effort.text}今回の人数または時間と違うので交換候補にしません。` };
+    }
+    return { ok: true, note: effort.text };
+}
+
 function dashboardConfirmedExchange(roll, referenceAt, projected) {
     const reach = projected && (projected.exceedsOnDate || projected.exchangeDate);
     if (!reach || typeof confirmedWorkCandidate !== 'function' || !roll.workConfirmation) {
         return { date: null, note: '昼の作業時間、人数、組替、3セットは未確認です。' };
     }
+    const effort = dashboardConfirmedEffort(roll.standKey, roll.workConfirmation);
+    if (!effort.ok) return { date: null, note: effort.note };
     const assessed = confirmedWorkCandidate(reach, roll.standKey, roll.workConfirmation, roll.days, referenceAt);
     if (!assessed || !assessed.date) {
         return { date: null, note: assessed && assessed.note ? assessed.note : '昼の作業枠は確認できていません。' };
