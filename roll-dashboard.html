@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ロール管理ダッシュボード（匿名試作）</title>
+    <style>
+        body { margin: 0; font-family: "Segoe UI", sans-serif; color: #1f2937; background: #f8fafc; }
+        header, main { width: min(1180px, calc(100% - 32px)); margin: 0 auto; }
+        header { padding: 24px 0 8px; }
+        h1 { margin: 0 0 8px; font-size: 1.6rem; }
+        p { line-height: 1.5; }
+        .note { color: #475569; }
+        .filters, .actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; margin: 16px 0; }
+        label { display: grid; gap: 4px; font-size: 0.9rem; }
+        input, select, button { font: inherit; }
+        input, select { padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 8px; background: #fff; }
+        button { padding: 8px 12px; border: 0; border-radius: 8px; background: #1f4e78; color: #fff; cursor: pointer; }
+        table { width: 100%; border-collapse: collapse; background: #fff; }
+        th, td { border-bottom: 1px solid #e2e8f0; padding: 10px; text-align: left; vertical-align: top; }
+        th { background: #e2e8f0; }
+        .is-manual-plan, .is-forecast { color: #b91c1c; font-weight: 700; }
+        .kind { display: inline-block; margin-right: 6px; padding: 1px 6px; border-radius: 999px; background: #e2e8f0; color: #1f2937; font-weight: 700; font-size: 0.75rem; }
+        .is-warning { display: inline-block; margin-top: 4px; padding: 2px 6px; border: 1px solid #b45309; color: #9a3412; background: #fff7ed; font-weight: 700; }
+        #result-count, #recalc-status { margin: 8px 0; }
+        .basis { margin-top: 8px; padding: 8px; background: #f8fafc; }
+        .snapshot { margin: 24px 0 40px; padding: 16px; background: #fff; border: 1px solid #cbd5e1; }
+        .match { font-weight: 700; }
+    </style>
+</head>
+<body>
+    <header>
+        <p><a href="index.html">ロール管理アプリへ戻る</a></p>
+        <h1>ロール管理ダッシュボード</h1>
+        <p class="note">匿名試作です。実台帳には接続していません。年間提出のA3様式はこの画面では作りません。提出用は、同じ計算の数値だけを時点で固定します。</p>
+        <p id="plan-label"></p>
+    </header>
+    <main>
+        <div class="filters">
+            <label>スタンド番号<input id="filter-stand" placeholder="#10"></label>
+            <label>ロール番号<input id="filter-roll" placeholder="ANON-1"></label>
+            <label>月<input id="filter-month" placeholder="2027-02"></label>
+            <label>計画の版
+                <select id="plan-version"></select>
+            </label>
+        </div>
+        <div class="actions">
+            <button type="button" id="recalculate">予測を再計算</button>
+            <button type="button" id="freeze">この数値を提出用に固定</button>
+        </div>
+        <p id="result-count"></p>
+        <p id="recalc-status" class="note">まだ再計算していません。表示中の値は読み取り専用です。</p>
+        <table>
+            <thead>
+                <tr>
+                    <th>スタンド</th>
+                    <th>ロール</th>
+                    <th>手入力予定</th>
+                    <th>自動予測</th>
+                    <th>確定・実績</th>
+                    <th>差分・計画版</th>
+                    <th>警告</th>
+                </tr>
+            </thead>
+            <tbody id="dashboard-rows"></tbody>
+        </table>
+        <section class="snapshot" aria-label="提出時点の数値">
+            <h2>提出時点の数値</h2>
+            <p id="snapshot-status">まだ固定していません。</p>
+            <p id="snapshot-match" class="match"></p>
+            <pre id="snapshot-numbers"></pre>
+        </section>
+    </main>
+    <script src="js/planning-rules.js"></script>
+    <script src="js/planning-schedule.js"></script>
+    <script src="js/planning-calibers.js"></script>
+    <script src="js/operating-plan.js"></script>
+    <script src="js/roll-dashboard.js"></script>
+    <script>
+        const fixture = anonymousDashboardFixture('2026-11-19T06:00:00.000Z');
+        let activeRevisionId = fixture.revisions[0].id;
+        let snapshot = null;
+
+        function currentModel() {
+            return buildRollDashboardWithRevision(fixture, activeRevisionId);
+        }
+
+        function escapeHtml(value) {
+            return String(value ?? '').replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[character]));
+        }
+
+        function forecastDate(value) {
+            return /^\d{4}-\d{2}-\d{2}$/.test(value) ? `<span class="is-forecast">${escapeHtml(value)}</span>` : escapeHtml(value);
+        }
+
+        function render() {
+            const model = currentModel();
+            document.getElementById('plan-label').textContent = `基準日時 ${model.referenceAt} / 計画 ${model.revision.label}（${model.revision.id}）`;
+            const query = {
+                stand: document.getElementById('filter-stand').value,
+                roll: document.getElementById('filter-roll').value,
+                month: document.getElementById('filter-month').value
+            };
+            const rows = filterDashboardRows(model.rows, query);
+            document.getElementById('result-count').textContent = `表示 ${rows.length}件。警告がある行を先に並べています。`;
+            document.getElementById('dashboard-rows').innerHTML = rows.map(row => `
+                <tr data-roll="${escapeHtml(row.rollId)}">
+                    <td>#${escapeHtml(row.standKey)}<br>${escapeHtml(row.spareText)}</td>
+                    <td>${escapeHtml(row.rollId)}<br>${escapeHtml(row.status)}</td>
+                    <td><span class="kind">手入力予定</span><span class="is-manual-plan">使用終了 ${escapeHtml(row.manual.useEnd || 'なし')} / 改削 ${escapeHtml(row.manual.rework || 'なし')}</span><br>入力 ${escapeHtml(row.manual.enteredAt || 'なし')} / ${escapeHtml(row.manual.operator || '担当なし')}</td>
+                    <td><span class="kind">予測</span>使用終了 ${forecastDate(row.auto.useEnd)}<br>交換 ${forecastDate(row.auto.exchange)}<br>改削 ${escapeHtml(row.auto.rework)}<br>購入 ${forecastDate(row.auto.purchase)}<br>${escapeHtml(row.auto.lead)}<br>${escapeHtml(row.auto.orderStatus)}<br>使用回数 ${escapeHtml(row.auto.totalUseCount === null || row.auto.totalUseCount === undefined ? '判定不能' : row.auto.totalUseCount)}
+                        <div><button type="button" data-basis="${escapeHtml(row.rollId)}">根拠を見る</button></div>
+                        <div class="basis" id="basis-${escapeHtml(row.rollId).replace(/[^a-zA-Z0-9]/g, '')}" hidden></div>
+                    </td>
+                    <td><span class="kind">確定・実績</span>${escapeHtml(row.confirmed.useEnd || 'なし')}</td>
+                    <td>${escapeHtml(row.diff.manualVersusAuto)}<br>${escapeHtml(row.diff.manualVersusConfirmed)}<br>${escapeHtml(row.diff.planRevision)}</td>
+                    <td>${row.warning ? `<span class="is-warning">${escapeHtml(row.warning)}</span>` : '警告なし'}</td>
+                </tr>
+            `).join('');
+            document.querySelectorAll('[data-basis]').forEach(button => {
+                button.addEventListener('click', () => {
+                    const roll = model.rows.find(item => item.rollId === button.getAttribute('data-basis'));
+                    const host = document.getElementById('basis-' + roll.rollId.replace(/[^a-zA-Z0-9]/g, ''));
+                    host.hidden = !host.hidden;
+                    host.innerHTML = `<p>元データ: ${escapeHtml(roll.basis.source)}</p><p>計算式: ${escapeHtml(roll.basis.formula)}</p><p>途中: ${escapeHtml(roll.basis.steps.join(' / '))}</p><p>計画の版: ${escapeHtml(roll.basis.revision)}</p><p>基準日時: ${escapeHtml(roll.basis.referenceAt)}</p><p>未確認: ${escapeHtml(roll.basis.unverified)}</p>`;
+                });
+            });
+            const same = snapshot && JSON.stringify(snapshot.numbers) === JSON.stringify(dashboardComparableNumbers(model));
+            document.getElementById('snapshot-match').textContent = snapshot
+                ? (same ? '同じ基準では日常用と提出用の数値は一致しています。' : '提出用は固定済みです。日常用だけ計画版が変わっています。')
+                : '';
+        }
+
+        const version = document.getElementById('plan-version');
+        fixture.revisions.forEach(revision => {
+            const option = document.createElement('option');
+            option.value = revision.id;
+            option.textContent = revision.label;
+            version.appendChild(option);
+        });
+        version.addEventListener('change', () => { activeRevisionId = version.value; render(); });
+        ['filter-stand', 'filter-roll', 'filter-month'].forEach(id => document.getElementById(id).addEventListener('input', render));
+        document.getElementById('recalculate').addEventListener('click', () => {
+            document.getElementById('recalc-status').textContent = '再計算しました。手入力予定、確定・実績、ロールの状態は変えていません。';
+            render();
+        });
+        document.getElementById('freeze').addEventListener('click', () => {
+            snapshot = freezeDashboardSnapshot(currentModel());
+            document.getElementById('snapshot-status').textContent = `固定した基準日時 ${snapshot.frozenAt} / ${snapshot.revisionId}`;
+            document.getElementById('snapshot-numbers').textContent = JSON.stringify(snapshot.numbers, null, 2);
+            render();
+        });
+        render();
+    </script>
+</body>
+</html>
