@@ -87,6 +87,87 @@ test('search, revision difference, and frozen numbers stay separate', () => {
   assert.deepEqual(ids(first, {}), ['#16-ANON-3', '#10-ANON-1', '#11-ANON-2']);
 });
 
+function checkedDayRoll(workPatch, dayPatch) {
+  const fixture = context.anonymousDashboardFixture();
+  const roll = JSON.parse(JSON.stringify(fixture.rolls[0]));
+  roll.workConfirmation = Object.assign({
+    date: '2027-04-02', period: 'day', workType: 'caliberChange', requiredHours: 1, reservedHours: 1, people: 3,
+    continuous: 'no', changeover: 'yes', threeSet: 'yes'
+  }, workPatch || {});
+  roll.days = roll.days.map(item => item.date === '2027-04-02'
+    ? Object.assign({}, item, { shift1Team: 'A', shift3Team: '', productionAmount: 0, operatingHours: 0 }, dayPatch || {})
+    : item);
+  return context.buildDashboardRow(roll, fixture.revisions[0], fixture.referenceAt, null);
+}
+
+test('daytime work, continuous running, spare shortage, and missing conditions stay distinct', () => {
+  const ready = checkedDayRoll();
+  assert.equal(ready.auto.exchangeDate, '2027-04-02');
+  assert.equal(ready.manual.useEnd, '2027-02-15');
+  assert.equal(ready.warningLabel, '');
+  const blocked = [
+    ['continuous', { continuous: 'yes' }, {}],
+    ['changeover', { changeover: 'no' }, {}],
+    ['threeSet', { threeSet: '' }, {}],
+    ['people', { people: undefined }, {}],
+    ['short reserve', { reservedHours: 0 }, {}],
+    ['night period', { period: 'night' }, {}],
+    ['producing', {}, { productionAmount: 10, operatingHours: 8 }]
+  ];
+  blocked.forEach(([name, workPatch, dayPatch]) => {
+    const row = checkedDayRoll(workPatch, dayPatch);
+    assert.equal(row.auto.exchangeDate, null, name);
+    assert.equal(row.auto.exchange, '作業枠未確認', name);
+    assert.match(row.auto.limitText, /上限到達の見込み/, name);
+    assert.equal(row.manual.useEnd, '2027-02-15', name);
+  });
+  const short = checkedDayRoll();
+  short.warningLabel = '予備0本';
+  const fixture = context.anonymousDashboardFixture();
+  const scarce = JSON.parse(JSON.stringify(fixture.rolls[0]));
+  scarce.spareCount = 0;
+  scarce.workConfirmation = {
+    date: '2027-04-02', period: 'day', workType: 'caliberChange', requiredHours: 1, reservedHours: 1, people: 3,
+    continuous: 'no', changeover: 'yes', threeSet: 'yes'
+  };
+  scarce.days = scarce.days.map(item => item.date === '2027-04-02'
+    ? Object.assign({}, item, { shift1Team: 'A', shift3Team: '', productionAmount: 0, operatingHours: 0 })
+    : item);
+  const scarceRow = context.buildDashboardRow(scarce, fixture.revisions[0], fixture.referenceAt, null);
+  assert.equal(scarceRow.auto.exchangeDate, '2027-04-02');
+  assert.equal(scarceRow.warningLabel, '予備0本');
+  assert.match(scarceRow.warning, /不足の確定にはしません/);
+  const unverifiedSpare = context.buildRollDashboard();
+  const stand16 = unverifiedSpare.rows.find(row => row.rollId === '#16-ANON-3');
+  assert.equal(stand16.auto.exchangeDate, null);
+  assert.equal(stand16.warningLabel, '予備0本');
+  assert.equal(short.auto.exchangeDate, '2027-04-02');
+});
+
+test('the anonymous sheet repeats the dashboard values in separate kinds', () => {
+  const model = context.buildRollDashboard();
+  const before = JSON.stringify(model);
+  const sheet = context.buildAnonymousManagementSheet(model);
+  assert.equal(JSON.stringify(model), before);
+  assert.deepEqual(Array.from(sheet.headers), ['区分', 'スタンド', 'ロール', '項目', '値']);
+  const kinds = Array.from(new Set(Array.from(sheet.rows, row => row.kind)));
+  assert.deepEqual(kinds, ['手入力予定', '予測', '確定・実績', '根拠', '警告']);
+  const cell = (rollId, kind, item) => sheet.rows.find(row => row.rollId === rollId && row.kind === kind && row.item === item);
+  assert.equal(cell('#10-ANON-1', '手入力予定', '使用終了').value, '2027-02-15');
+  assert.equal(cell('#10-ANON-1', '予測', '確認済み交換候補').value, '作業枠未確認');
+  assert.equal(cell('#10-ANON-1', '予測', '購入').value, '判定不能');
+  assert.equal(cell('#10-ANON-1', '予測', '使用回数').value, '24');
+  assert.equal(cell('#10-ANON-1', '確定・実績', '使用終了').value, '2026-08-20');
+  assert.match(cell('#10-ANON-1', '根拠', '計算式').value, /交換候補は、昼の停止/);
+  assert.equal(cell('#10-ANON-1', '予測', '確認済み交換候補').value.includes('2027-04-02'), false);
+  assert.equal(cell('#16-ANON-3', '警告', '表示').value, '予備0本');
+  assert.equal(cell('#16-ANON-3', '予測', '確認済み交換候補').value, '作業枠未確認');
+  const tsv = context.anonymousManagementSheetTsv(sheet);
+  assert.match(tsv, /手入力予定\t#10\t#10-ANON-1\t使用終了\t2027-02-15/);
+  assert.equal(tsv.includes('googleapis'), false);
+  assert.equal(tsv.includes('不足なし。'), false);
+});
+
 test('a night-only stop is not an exchange date, and a checked daytime stop can be', () => {
   const fixture = context.anonymousDashboardFixture();
   const night = fixture.rolls[0];

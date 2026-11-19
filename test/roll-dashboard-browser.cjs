@@ -116,6 +116,28 @@ async function main() {
     assert.ok(wideOverflow < 24, `wide overflow ${wideOverflow}`);
     assert.ok(narrowOverflow < 24, `narrow overflow ${narrowOverflow}`);
     assert.match(await summaryText(), /作業枠未確認/);
+    await page.setViewportSize({ width: 400, height: 800 });
+    await page.locator('button[data-basis="#10-ANON-1"]').click();
+    const narrowBasis = await page.locator('.basis:not([hidden])').innerText();
+    assert.match(narrowBasis, /交換候補にはしません/);
+    await page.screenshot({ path: path.join(evidenceDir, 'screen-400.png'), fullPage: true });
+    const splitOverflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    assert.ok(splitOverflow < 8, `400px overflow ${splitOverflow}`);
+    await page.goto('http://roll-app.test/roll-management-sheet.html');
+    await page.waitForSelector('#sheet-rows tr');
+    const sheetText = await page.locator('#sheet-rows').innerText();
+    assert.match(sheetText, /手入力予定/);
+    assert.match(sheetText, /予測/);
+    assert.match(sheetText, /確定・実績/);
+    assert.match(sheetText, /根拠/);
+    assert.match(sheetText, /2027-02-15/);
+    assert.match(sheetText, /作業枠未確認/);
+    const exchangeCell = await page.locator('tr[data-roll="#10-ANON-1"][data-item="確認済み交換候補"]').innerText();
+    assert.match(exchangeCell, /作業枠未確認/);
+    assert.equal(exchangeCell.includes('2027-04-02'), false);
+    await page.screenshot({ path: path.join(evidenceDir, 'sheet-400.png'), fullPage: true });
+    const sheetOverflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    assert.ok(sheetOverflow < 8, `sheet overflow ${sheetOverflow}`);
     fs.writeFileSync(path.join(evidenceDir, 'evidence.json'), JSON.stringify({
       page: 'roll-dashboard.html',
       data: 'anonymous',

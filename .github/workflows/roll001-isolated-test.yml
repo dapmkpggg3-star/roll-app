@@ -30,6 +30,7 @@ on:
       - 'test/operating-plan-browser.cjs'
       - 'js/roll-dashboard.js'
       - 'roll-dashboard.html'
+      - 'roll-management-sheet.html'
       - 'test/roll-dashboard.test.cjs'
       - 'test/roll-dashboard-browser.cjs'
       - 'test/forecast-master-adapter.test.cjs'

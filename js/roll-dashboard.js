@@ -364,6 +364,51 @@ function freezeDashboardSnapshot(model) {
     };
 }
 
+function buildAnonymousManagementSheet(model) {
+    const headers = ['区分', 'スタンド', 'ロール', '項目', '値'];
+    const rows = [];
+    (model && model.rows || []).forEach(row => {
+        const add = (kind, item, value) => rows.push({
+            kind,
+            standKey: row.standKey,
+            rollId: row.rollId,
+            item,
+            value: value === null || value === undefined || value === '' ? 'なし' : String(value)
+        });
+        add('手入力予定', '次の予定', row.manualSummary);
+        add('手入力予定', '使用終了', row.manual.useEnd);
+        add('手入力予定', '改削', row.manual.rework);
+        add('予測', '確認済み交換候補', row.auto.exchange);
+        add('予測', '使用終了', row.auto.useEnd);
+        add('予測', '購入', row.auto.purchase);
+        add('予測', '使用回数', row.auto.totalUseCount);
+        add('予測', '上限到達', row.auto.limitText);
+        add('確定・実績', '使用終了', row.confirmed.useEnd);
+        add('根拠', '計算式', row.basis.formula);
+        add('根拠', '出典', row.basis.source);
+        add('根拠', '途中', (row.basis.steps || []).join(' / '));
+        add('警告', '表示', row.warningLabel || '警告なし');
+        add('警告', '内容', row.warning || '警告なし');
+    });
+    return {
+        title: '匿名ロール管理表',
+        note: '日常の確認用です。年間提出のA3様式ではありません。手入力予定、予測、確定・実績、根拠、警告は別の行です。空欄は「なし」と書き、未入力を確定とは扱いません。同じ予測の数値を区分して並べた匿名の表で、Google SheetsやExcelへ貼れます。実台帳には接続していません。',
+        headers,
+        rows
+    };
+}
+
+function anonymousManagementSheetTsv(sheet) {
+    const source = sheet || { headers: [], rows: [] };
+    const lines = [source.headers.join('\t')];
+    source.rows.forEach(row => {
+        lines.push([row.kind, '#' + row.standKey, row.rollId, row.item, row.value]
+            .map(cell => String(cell ?? '').replace(/[\t\r\n]/g, ' '))
+            .join('\t'));
+    });
+    return lines.join('\n');
+}
+
 function filterDashboardRows(rows, query) {
     const stand = String(query && query.stand || '').replace(/^#/, '').trim();
     const roll = String(query && query.roll || '').trim();

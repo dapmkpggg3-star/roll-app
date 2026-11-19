@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>匿名ロール管理表</title>
+    <style>
+        body { margin: 0; font-family: "Segoe UI", sans-serif; color: #1f2937; background: #f8fafc; }
+        header, main { width: min(1180px, calc(100% - 16px)); margin: 0 auto; }
+        header { padding: 16px 0 8px; }
+        h1 { margin: 0 0 8px; font-size: 1.4rem; }
+        p { line-height: 1.5; }
+        .note { color: #475569; }
+        table { width: 100%; border-collapse: collapse; background: #fff; }
+        th, td { border: 1px solid #cbd5e1; padding: 8px; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+        th { background: #e2e8f0; }
+        tr[data-kind="手入力予定"] td:first-child { color: #b91c1c; font-weight: 700; }
+        tr[data-kind="予測"] td:first-child { color: #1f4e78; font-weight: 700; }
+        tr[data-kind="確定・実績"] td:first-child { color: #166534; font-weight: 700; }
+        tr[data-kind="根拠"] td:first-child { color: #475569; font-weight: 700; }
+        tr[data-kind="警告"] td:first-child { color: #9a3412; font-weight: 700; }
+        @media (max-width: 480px) {
+            table, thead, tbody, tr, th, td { display: block; }
+            thead { position: absolute; left: -9999px; }
+            tr { margin: 0 0 12px; border: 1px solid #cbd5e1; background: #fff; }
+            td { border: 0; }
+            td[data-label]::before { content: attr(data-label); display: block; color: #475569; font-size: 0.75rem; }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <p><a href="roll-dashboard.html">ダッシュボードへ戻る</a></p>
+        <h1 id="sheet-title">匿名ロール管理表</h1>
+        <p id="sheet-note" class="note"></p>
+    </header>
+    <main>
+        <table>
+            <thead>
+                <tr id="sheet-head"></tr>
+            </thead>
+            <tbody id="sheet-rows"></tbody>
+        </table>
+    </main>
+    <script src="js/planning-rules.js"></script>
+    <script src="js/planning-schedule.js"></script>
+    <script src="js/planning-calibers.js"></script>
+    <script src="js/operating-plan.js"></script>
+    <script src="js/roll-dashboard.js"></script>
+    <script>
+        function escapeHtml(value) {
+            return String(value ?? '').replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[character]));
+        }
+        const model = buildRollDashboard(anonymousDashboardFixture('2026-11-19T06:00:00.000Z'));
+        const sheet = buildAnonymousManagementSheet(model);
+        document.getElementById('sheet-title').textContent = sheet.title;
+        document.getElementById('sheet-note').textContent = sheet.note;
+        document.getElementById('sheet-head').innerHTML = sheet.headers.map(header => `<th>${escapeHtml(header)}</th>`).join('');
+        document.getElementById('sheet-rows').innerHTML = sheet.rows.map(row => `
+            <tr data-kind="${escapeHtml(row.kind)}" data-roll="${escapeHtml(row.rollId)}" data-item="${escapeHtml(row.item)}">
+                <td data-label="区分">${escapeHtml(row.kind)}</td>
+                <td data-label="スタンド">#${escapeHtml(row.standKey)}</td>
+                <td data-label="ロール">${escapeHtml(row.rollId)}</td>
+                <td data-label="項目">${escapeHtml(row.item)}</td>
+                <td data-label="値">${escapeHtml(row.value)}</td>
+            </tr>
+        `).join('');
+    </script>
+</body>
+</html>
