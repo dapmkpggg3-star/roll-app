@@ -117,12 +117,50 @@ function dashboardLeadText(leadTime) {
     return `購入までの期間は暫定${months}か月です。購入日にも不足なしにもしません。`;
 }
 
+function dashboardNightOnly(row) {
+    const dayTeam = String(row && row.shift1Team || '').trim();
+    const nightTeam = String(row && row.shift3Team || '').trim();
+    return Boolean(nightTeam) && !dayTeam;
+}
+
+function dashboardLimitText(projected) {
+    if (!projected || (!projected.exceedsOnDate && !projected.exchangeDate)) {
+        return projected && projected.reason
+            ? `上限到達の見込み: ${projected.reason}`
+            : '上限到達の見込みは判定不能です。交換できる日にはしません。';
+    }
+    const limit = projected.exceedsOnDate
+        ? `${projected.exceedsOnDate}は上限到達の見込みです。交換できる日ではありません。`
+        : '上限を超える日は確定していません。';
+    const stop = projected.exchangeDate
+        ? `計算上の停止日${projected.exchangeDate}は、昼の作業ができる確認ではありません。`
+        : '';
+    return `${limit}${stop}`;
+}
+
+function dashboardConfirmedExchange(roll, referenceAt, projected) {
+    const reach = projected && (projected.exceedsOnDate || projected.exchangeDate);
+    if (!reach || typeof confirmedWorkCandidate !== 'function' || !roll.workConfirmation) {
+        return { date: null, note: '昼の作業時間、人数、組替、3セットは未確認です。' };
+    }
+    const assessed = confirmedWorkCandidate(reach, roll.standKey, roll.workConfirmation, roll.days, referenceAt);
+    if (!assessed || !assessed.date) {
+        return { date: null, note: assessed && assessed.note ? assessed.note : '昼の作業枠は確認できていません。' };
+    }
+    const row = (roll.days || []).find(item => String(item && item.date || '').slice(0, 10) === assessed.date);
+    if (!row || dashboardNightOnly(row) || !(row.shift1Team || row.dayMaintenanceAvailable === true) || Number(row.productionAmount) > 0) {
+        return { date: null, note: 'その日は昼の停止ではありません。夜勤のみや操業中は交換候補にしません。' };
+    }
+    return { date: assessed.date, note: assessed.note || '' };
+}
+
 function dashboardExchange(roll, referenceAt) {
     if (!Array.isArray(roll.days) || roll.days.length === 0 || typeof projectCaliberReplacement !== 'function') {
         return {
             date: null,
-            text: '判定不能',
-            reason: '交換候補に使う日別の操業予定がこの行にはありません。無い予定を作業日にはしません。'
+            text: '作業枠未確認',
+            limitText: '日別の操業予定がないので、上限到達の見込みも交換候補も出しません。',
+            reason: '交換候補は作業枠未確認です。無い予定を作業日にはしません。'
         };
     }
     const projected = projectCaliberReplacement({
@@ -133,17 +171,37 @@ function dashboardExchange(roll, referenceAt) {
         size: roll.size,
         days: roll.days
     });
+    const limitText = dashboardLimitText(projected);
+    const confirmed = dashboardConfirmedExchange(roll, referenceAt, projected);
+    if (!confirmed.date) {
+        return {
+            date: null,
+            text: '作業枠未確認',
+            limitText,
+            reason: `交換候補は作業枠未確認です。${confirmed.note}${limitText}交換候補にはしません。`
+        };
+    }
     return {
-        date: projected && projected.exchangeDate ? projected.exchangeDate : null,
-        text: projected && projected.exchangeDate ? projected.exchangeDate : '判定不能',
-        reason: projected && projected.reason ? projected.reason : '交換候補は判定不能です。'
+        date: confirmed.date,
+        text: confirmed.date,
+        limitText,
+        reason: `作業枠を確認した交換候補は${confirmed.date}です。${confirmed.note}${limitText}`
     };
 }
 
-function dashboardDateGap(leftLabel, left, rightLabel, right) {
+function dashboardSameKindGap(kind, left, right) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(left || '')) || !/^\d{4}-\d{2}-\d{2}$/.test(String(right || ''))) return '';
     const days = dashboardDayDiff(left, right);
     if (days === null) return '';
-    return `${leftLabel}（${String(left).slice(0, 10)}）は${rightLabel}（${String(right).slice(0, 10)}）と${Math.abs(days)}日違います。`;
+    return `${kind}は同じ種類の日付で${Math.abs(days)}日違います。`;
+}
+
+function dashboardNextManual(manual) {
+    const plans = [];
+    if (manual.rework) plans.push({ kind: '改削', date: manual.rework });
+    if (manual.useEnd) plans.push({ kind: '使用終了', date: manual.useEnd });
+    plans.sort((left, right) => left.date.localeCompare(right.date));
+    return plans[0] ? `${plans[0].kind} ${plans[0].date}` : 'なし';
 }
 
 function dashboardPlanChange(revision, previous, standKey) {
@@ -198,15 +256,15 @@ function buildDashboardRow(roll, revision, referenceAt, previousRevision) {
         reason: String(roll.manual && roll.manual.reason || '')
     };
     const confirmedUseEnd = String(roll.confirmed && roll.confirmed.useEnd || '');
-    const confirmedDiff = dashboardDayDiff(manual.useEnd, confirmedUseEnd);
     const planChange = dashboardPlanChange(revision, previousRevision, roll.standKey);
-    const autoParts = [];
-    const useGap = dashboardDateGap('手入力の使用終了', manual.useEnd, '自動の交換候補', exchange.date);
-    if (useGap) autoParts.push(`${useGap}自動予測では手入力予定を上書きしません。`);
-    else if (manual.useEnd) autoParts.push('使用終了の自動予測は判定不能です。手入力予定は残しています。');
-    else if (exchange.date) autoParts.push(`自動の交換候補は${exchange.date}です。手入力の使用終了はないので、交換候補を使用終了予定には書きません。`);
-    else autoParts.push('使用終了の手入力も自動の交換候補も、比べる日付がありません。');
-    if (manual.rework) autoParts.push(`手入力の改削予定${manual.rework}は残しています。自動の改削日は判定不能です。`);
+    const sameUse = dashboardSameKindGap('使用終了', manual.useEnd, confirmedUseEnd);
+    const sameExchange = dashboardSameKindGap('交換', manual.exchange, exchange.date);
+    const comparison = [
+        '使用終了予定と交換候補は種類が違うので、日数差は出しません。',
+        '手入力予定は残しています。',
+        sameUse ? `${sameUse}確定・実績へは上げていません。` : '使用終了の日付が揃っていないので、使用終了の日数差は出しません。',
+        sameExchange ? `${sameExchange}手入力の交換予定は上書きしていません。` : ''
+    ].filter(Boolean).join('');
     const purchase = forecast.purchase === 'unknown' || forecast.purchase === null || forecast.purchase === undefined
         ? '判定不能'
         : String(forecast.purchase);
@@ -220,11 +278,13 @@ function buildDashboardRow(roll, revision, referenceAt, previousRevision) {
         spareText: spare,
         planMonths: planChange.months,
         manual,
+        manualSummary: dashboardNextManual(manual),
         confirmed: { useEnd: confirmedUseEnd },
         auto: {
             useEnd: '判定不能',
             exchange: exchange.text,
             exchangeDate: exchange.date,
+            limitText: exchange.limitText,
             rework,
             purchase,
             lead,
@@ -233,16 +293,20 @@ function buildDashboardRow(roll, revision, referenceAt, previousRevision) {
             reason: forecast.reason
         },
         diff: {
-            manualVersusAuto: autoParts.join(''),
-            manualVersusConfirmed: confirmedDiff === null ? '確定・実績と比べる日付が揃っていません。' : `手入力の使用終了は確定・実績と${Math.abs(confirmedDiff)}日違います。確定・実績へは上げていません。`,
+            manualVersusAuto: comparison,
+            manualVersusConfirmed: sameUse ? `${sameUse}確定・実績へは上げていません。` : '使用終了の日付が揃っていないので、日数差は出しません。',
             planRevision: planChange.text
         },
         warning,
+        warningLabel: warning ? '予備0本' : '',
         basis: {
             source: `${roll.rollId} / スタンド#${roll.standKey} / ${roll.status} / 現在径${roll.currentDiameter === '' ? '未確認' : roll.currentDiameter} / 廃却径${roll.scrapDiameter === '' ? '未確認' : roll.scrapDiameter} / カリバ${roll.currentCaliber || '未確認'} / 開始直数${Number.isInteger(roll.openingUsedRuns) ? roll.openingUsedRuns : '未確認'}`,
-            formula: '使用回数は計画版の各月で、実績があれば実績、無ければ計画を足します。交換候補は確定した最大直数と日別予定があるときだけ出します。改削残回数は（現在径−廃却径）÷切込みです。購入日にはしません。',
+            formula: '使用回数は計画版の各月で、実績があれば実績、無ければ計画を足します。上限到達の見込みは交換候補にしません。交換候補は、昼の停止で作業時間・人数・組替・3セットが確認できた日だけです。改削残回数は（現在径−廃却径）÷切込みです。購入日にはしません。',
             steps: [
+                exchange.limitText,
                 exchange.reason,
+                `手入力: 使用終了 ${manual.useEnd || 'なし'} / 改削 ${manual.rework || 'なし'} / ${manual.enteredAt || '入力日時なし'} / ${manual.operator || '担当なし'}`,
+                comparison,
                 rework,
                 forecast.reason,
                 lead,
@@ -308,7 +372,7 @@ function filterDashboardRows(rows, query) {
         if (stand && row.standKey !== stand && !row.rollId.includes('#' + stand)) return false;
         if (roll && !row.rollId.includes(roll)) return false;
         if (month) {
-            const dates = [row.manual.useEnd, row.manual.rework, row.confirmed.useEnd, row.auto.useEnd, row.auto.exchange].concat(row.planMonths || []).join(' ');
+            const dates = [row.manual.useEnd, row.manual.rework, row.confirmed.useEnd, row.auto.useEnd, row.auto.exchangeDate, row.auto.limitText].concat(row.planMonths || []).join(' ');
             if (!dates.includes(month)) return false;
         }
         return true;

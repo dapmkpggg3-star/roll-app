@@ -16,14 +16,24 @@
         input, select, button { font: inherit; }
         input, select { padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 8px; background: #fff; }
         button { padding: 8px 12px; border: 0; border-radius: 8px; background: #1f4e78; color: #fff; cursor: pointer; }
+        .table-wrap { overflow-x: auto; }
         table { width: 100%; border-collapse: collapse; background: #fff; }
         th, td { border-bottom: 1px solid #e2e8f0; padding: 10px; text-align: left; vertical-align: top; }
-        th { background: #e2e8f0; }
-        .is-manual-plan, .is-forecast { color: #b91c1c; font-weight: 700; }
-        .kind { display: inline-block; margin-right: 6px; padding: 1px 6px; border-radius: 999px; background: #e2e8f0; color: #1f2937; font-weight: 700; font-size: 0.75rem; }
-        .is-warning { display: inline-block; margin-top: 4px; padding: 2px 6px; border: 1px solid #b45309; color: #9a3412; background: #fff7ed; font-weight: 700; }
+        th { background: #e2e8f0; white-space: nowrap; }
+        td { white-space: nowrap; }
+        .detail-row td { white-space: normal; }
+        .is-manual-plan { color: #b91c1c; font-weight: 700; }
+        .is-warning { display: inline-block; padding: 2px 6px; border: 1px solid #b45309; color: #9a3412; background: #fff7ed; font-weight: 700; }
         #result-count, #recalc-status { margin: 8px 0; }
-        .basis { margin-top: 8px; padding: 8px; background: #f8fafc; }
+        .basis { margin-top: 8px; padding: 8px; background: #f8fafc; line-height: 1.6; }
+        @media (max-width: 900px) {
+            table, thead, tbody, tr, th, td { display: block; width: auto; }
+            thead { position: absolute; left: -9999px; }
+            tr { margin-bottom: 12px; background: #fff; border: 1px solid #e2e8f0; }
+            td { border-bottom: 0; white-space: normal; }
+            td[data-label]::before { content: attr(data-label); display: block; color: #475569; font-size: 0.75rem; }
+            .detail-row { border: 0; }
+        }
         .snapshot { margin: 24px 0 40px; padding: 16px; background: #fff; border: 1px solid #cbd5e1; }
         .match { font-weight: 700; }
     </style>
@@ -50,20 +60,21 @@
         </div>
         <p id="result-count"></p>
         <p id="recalc-status" class="note">まだ再計算していません。表示中の値は読み取り専用です。</p>
+        <div class="table-wrap">
         <table>
             <thead>
                 <tr>
                     <th>スタンド</th>
                     <th>ロール</th>
-                    <th>手入力予定</th>
-                    <th>自動予測</th>
-                    <th>確定・実績</th>
-                    <th>差分・計画版</th>
+                    <th>状態</th>
+                    <th>次の手入力予定</th>
+                    <th>確認済み交換候補</th>
                     <th>警告</th>
                 </tr>
             </thead>
             <tbody id="dashboard-rows"></tbody>
         </table>
+        </div>
         <section class="snapshot" aria-label="提出時点の数値">
             <h2>提出時点の数値</h2>
             <p id="snapshot-status">まだ固定していません。</p>
@@ -89,10 +100,6 @@
             return String(value ?? '').replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[character]));
         }
 
-        function forecastDate(value) {
-            return /^\d{4}-\d{2}-\d{2}$/.test(value) ? `<span class="is-forecast">${escapeHtml(value)}</span>` : escapeHtml(value);
-        }
-
         function render() {
             const model = currentModel();
             document.getElementById('plan-label').textContent = `基準日時 ${model.referenceAt} / 計画 ${model.revision.label}（${model.revision.id}）`;
@@ -103,20 +110,24 @@
             };
             const rows = filterDashboardRows(model.rows, query);
             document.getElementById('result-count').textContent = `表示 ${rows.length}件。警告がある行を先に並べています。`;
-            document.getElementById('dashboard-rows').innerHTML = rows.map(row => `
+            document.getElementById('dashboard-rows').innerHTML = rows.map(row => {
+                const basisId = 'basis-' + String(row.rollId).replace(/[^a-zA-Z0-9]/g, '');
+                return `
                 <tr data-roll="${escapeHtml(row.rollId)}">
-                    <td>#${escapeHtml(row.standKey)}<br>${escapeHtml(row.spareText)}</td>
-                    <td>${escapeHtml(row.rollId)}<br>${escapeHtml(row.status)}</td>
-                    <td><span class="kind">手入力予定</span><span class="is-manual-plan">使用終了 ${escapeHtml(row.manual.useEnd || 'なし')} / 改削 ${escapeHtml(row.manual.rework || 'なし')}</span><br>入力 ${escapeHtml(row.manual.enteredAt || 'なし')} / ${escapeHtml(row.manual.operator || '担当なし')}</td>
-                    <td><span class="kind">予測</span>使用終了 ${forecastDate(row.auto.useEnd)}<br>交換 ${forecastDate(row.auto.exchange)}<br>改削 ${escapeHtml(row.auto.rework)}<br>購入 ${forecastDate(row.auto.purchase)}<br>${escapeHtml(row.auto.lead)}<br>${escapeHtml(row.auto.orderStatus)}<br>使用回数 ${escapeHtml(row.auto.totalUseCount === null || row.auto.totalUseCount === undefined ? '判定不能' : row.auto.totalUseCount)}
-                        <div><button type="button" data-basis="${escapeHtml(row.rollId)}">根拠を見る</button></div>
-                        <div class="basis" id="basis-${escapeHtml(row.rollId).replace(/[^a-zA-Z0-9]/g, '')}" hidden></div>
-                    </td>
-                    <td><span class="kind">確定・実績</span>${escapeHtml(row.confirmed.useEnd || 'なし')}</td>
-                    <td>${escapeHtml(row.diff.manualVersusAuto)}<br>${escapeHtml(row.diff.manualVersusConfirmed)}<br>${escapeHtml(row.diff.planRevision)}</td>
-                    <td>${row.warning ? `<span class="is-warning">${escapeHtml(row.warning)}</span>` : '警告なし'}</td>
+                    <td data-label="スタンド">#${escapeHtml(row.standKey)}</td>
+                    <td data-label="ロール">${escapeHtml(row.rollId)}</td>
+                    <td data-label="状態">${escapeHtml(row.status)}</td>
+                    <td data-label="次の手入力予定">${row.manualSummary === 'なし' ? 'なし' : `<span class="is-manual-plan">${escapeHtml(row.manualSummary)}</span>`}</td>
+                    <td data-label="確認済み交換候補" data-exchange="${escapeHtml(row.auto.exchange)}">${escapeHtml(row.auto.exchange)}</td>
+                    <td data-label="警告">${row.warningLabel ? `<span class="is-warning">${escapeHtml(row.warningLabel)}</span>` : '警告なし'}</td>
                 </tr>
-            `).join('');
+                <tr class="detail-row">
+                    <td colspan="6">
+                        <button type="button" data-basis="${escapeHtml(row.rollId)}">根拠を見る</button>
+                        <div class="basis" id="${basisId}" hidden></div>
+                    </td>
+                </tr>`;
+            }).join('');
             document.querySelectorAll('[data-basis]').forEach(button => {
                 button.addEventListener('click', () => {
                     const roll = model.rows.find(item => item.rollId === button.getAttribute('data-basis'));
