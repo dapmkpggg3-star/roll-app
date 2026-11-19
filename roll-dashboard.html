@@ -26,12 +26,15 @@
         .is-warning { display: inline-block; padding: 2px 6px; border: 1px solid #b45309; color: #9a3412; background: #fff7ed; font-weight: 700; }
         #result-count, #recalc-status { margin: 8px 0; }
         .basis { margin-top: 8px; padding: 8px; background: #f8fafc; line-height: 1.6; }
+        .basis dt { color: #475569; font-size: 0.75rem; }
+        .basis dd, .basis li { margin: 0 0 8px; overflow-wrap: anywhere; }
         @media (max-width: 900px) {
             table, thead, tbody, tr, th, td { display: block; width: auto; }
-            thead { position: absolute; left: -9999px; }
+            thead { display: none; }
             tr { margin-bottom: 12px; background: #fff; border: 1px solid #e2e8f0; }
-            td { border-bottom: 0; white-space: normal; }
+            td { border-bottom: 0; white-space: normal; overflow-wrap: anywhere; }
             td[data-label]::before { content: attr(data-label); display: block; color: #475569; font-size: 0.75rem; }
+            tr[data-roll] td[data-label="スタンド"], tr[data-roll] td[data-label="ロール"] { font-size: 1.05rem; font-weight: 700; }
             .detail-row { border: 0; }
         }
         .snapshot { margin: 24px 0 40px; padding: 16px; background: #fff; border: 1px solid #cbd5e1; }
@@ -42,7 +45,8 @@
             h1 { font-size: 1.25rem; }
             .filters, .actions { flex-direction: column; align-items: stretch; }
             label, input, select, button { width: 100%; max-width: 100%; box-sizing: border-box; }
-            .basis, td, p { overflow-wrap: anywhere; }
+            .basis, td, p, li { overflow-wrap: anywhere; }
+            .table-wrap { overflow-x: visible; }
             .snapshot { padding: 8px; }
         }
     </style>
@@ -142,7 +146,8 @@
                     const roll = model.rows.find(item => item.rollId === button.getAttribute('data-basis'));
                     const host = document.getElementById('basis-' + roll.rollId.replace(/[^a-zA-Z0-9]/g, ''));
                     host.hidden = !host.hidden;
-                    host.innerHTML = `<p>元データ: ${escapeHtml(roll.basis.source)}</p><p>計算式: ${escapeHtml(roll.basis.formula)}</p><p>途中: ${escapeHtml(roll.basis.steps.join(' / '))}</p><p>計画の版: ${escapeHtml(roll.basis.revision)}</p><p>基準日時: ${escapeHtml(roll.basis.referenceAt)}</p><p>未確認: ${escapeHtml(roll.basis.unverified)}</p>`;
+                    const steps = (roll.basis.steps || []).map(step => `<li>${escapeHtml(step)}</li>`).join('');
+                    host.innerHTML = `<dl><dt>元データ</dt><dd>${escapeHtml(roll.basis.source)}</dd><dt>計算式</dt><dd>${escapeHtml(roll.basis.formula)}</dd><dt>計画の版</dt><dd>${escapeHtml(roll.basis.revision)}</dd><dt>基準日時</dt><dd>${escapeHtml(roll.basis.referenceAt)}</dd><dt>未確認</dt><dd>${escapeHtml(roll.basis.unverified)}</dd></dl><p>途中</p><ul>${steps}</ul>`;
                 });
             });
             const same = snapshot && JSON.stringify(snapshot.numbers) === JSON.stringify(dashboardComparableNumbers(model));

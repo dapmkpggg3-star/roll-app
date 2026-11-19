@@ -164,6 +164,12 @@ test('the anonymous sheet repeats the dashboard values in separate kinds', () =>
   assert.equal(cell('#16-ANON-3', '予測', '確認済み交換候補').value, '作業枠未確認');
   const tsv = context.anonymousManagementSheetTsv(sheet);
   assert.match(tsv, /手入力予定\t#10\t#10-ANON-1\t使用終了\t2027-02-15/);
+  assert.match(tsv, /手入力予定\t#10\t#10-ANON-1\t改削\t2027-01-20/);
+  assert.match(tsv, /予測\t#10\t#10-ANON-1\t確認済み交換候補\t作業枠未確認/);
+  assert.match(tsv, /予測\t#10\t#10-ANON-1\t購入\t判定不能/);
+  assert.match(tsv, /確定・実績\t#10\t#10-ANON-1\t使用終了\t2026-08-20/);
+  assert.match(tsv, /警告\t#16\t#16-ANON-3\t表示\t予備0本/);
+  assert.match(tsv, /#11-ANON-2/);
   assert.equal(tsv.includes('googleapis'), false);
   assert.equal(tsv.includes('不足なし。'), false);
 });

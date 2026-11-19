@@ -11,20 +11,25 @@
         h1 { margin: 0 0 8px; font-size: 1.4rem; }
         p { line-height: 1.5; }
         .note { color: #475569; }
+        .roll-card { margin: 0 0 16px; background: #fff; border: 1px solid #cbd5e1; }
+        .roll-card h2 { margin: 0; padding: 10px 12px; font-size: 1.05rem; background: #e2e8f0; }
         table { width: 100%; border-collapse: collapse; background: #fff; }
-        th, td { border: 1px solid #cbd5e1; padding: 8px; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
-        th { background: #e2e8f0; }
-        tr[data-kind="手入力予定"] td:first-child { color: #b91c1c; font-weight: 700; }
-        tr[data-kind="予測"] td:first-child { color: #1f4e78; font-weight: 700; }
-        tr[data-kind="確定・実績"] td:first-child { color: #166534; font-weight: 700; }
-        tr[data-kind="根拠"] td:first-child { color: #475569; font-weight: 700; }
-        tr[data-kind="警告"] td:first-child { color: #9a3412; font-weight: 700; }
+        th, td { border-bottom: 1px solid #e2e8f0; padding: 8px 12px; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+        th { background: #f8fafc; color: #475569; font-size: 0.75rem; }
+        tr[data-kind="手入力予定"] td[data-label="区分"] { color: #b91c1c; font-weight: 700; }
+        tr[data-kind="予測"] td[data-label="区分"] { color: #1f4e78; font-weight: 700; }
+        tr[data-kind="確定・実績"] td[data-label="区分"] { color: #166534; font-weight: 700; }
+        tr[data-kind="根拠"] td[data-label="区分"] { color: #475569; font-weight: 700; }
+        tr[data-kind="警告"] td[data-label="区分"] { color: #9a3412; font-weight: 700; }
+        #sheet-tsv { width: 100%; min-height: 9rem; box-sizing: border-box; font: 0.8rem Consolas, monospace; }
+        button { margin: 8px 0; padding: 8px 12px; border: 0; border-radius: 8px; background: #1f4e78; color: #fff; font: inherit; }
         @media (max-width: 480px) {
             table, thead, tbody, tr, th, td { display: block; }
-            thead { position: absolute; left: -9999px; }
-            tr { margin: 0 0 12px; border: 1px solid #cbd5e1; background: #fff; }
-            td { border: 0; }
-            td[data-label]::before { content: attr(data-label); display: block; color: #475569; font-size: 0.75rem; }
+            thead { display: none; }
+            tr { margin: 0; border-top: 1px solid #e2e8f0; }
+            td { border: 0; padding: 6px 12px; }
+            td[data-label="区分"]::before, td[data-label="項目"]::before { content: attr(data-label); display: block; color: #475569; font-size: 0.75rem; font-weight: 400; }
+            button { width: 100%; }
         }
     </style>
 </head>
@@ -35,12 +40,9 @@
         <p id="sheet-note" class="note"></p>
     </header>
     <main>
-        <table>
-            <thead>
-                <tr id="sheet-head"></tr>
-            </thead>
-            <tbody id="sheet-rows"></tbody>
-        </table>
+        <div id="sheet-rows"></div>
+        <button type="button" id="select-sheet">貼り付け用の文字列を選ぶ</button>
+        <textarea id="sheet-tsv" readonly></textarea>
     </main>
     <script src="js/planning-rules.js"></script>
     <script src="js/planning-schedule.js"></script>
@@ -55,16 +57,38 @@
         const sheet = buildAnonymousManagementSheet(model);
         document.getElementById('sheet-title').textContent = sheet.title;
         document.getElementById('sheet-note').textContent = sheet.note;
-        document.getElementById('sheet-head').innerHTML = sheet.headers.map(header => `<th>${escapeHtml(header)}</th>`).join('');
-        document.getElementById('sheet-rows').innerHTML = sheet.rows.map(row => `
-            <tr data-kind="${escapeHtml(row.kind)}" data-roll="${escapeHtml(row.rollId)}" data-item="${escapeHtml(row.item)}">
-                <td data-label="区分">${escapeHtml(row.kind)}</td>
-                <td data-label="スタンド">#${escapeHtml(row.standKey)}</td>
-                <td data-label="ロール">${escapeHtml(row.rollId)}</td>
-                <td data-label="項目">${escapeHtml(row.item)}</td>
-                <td data-label="値">${escapeHtml(row.value)}</td>
-            </tr>
+        const groups = [];
+        sheet.rows.forEach(row => {
+            let group = groups.find(item => item.rollId === row.rollId);
+            if (!group) {
+                group = { standKey: row.standKey, rollId: row.rollId, rows: [] };
+                groups.push(group);
+            }
+            group.rows.push(row);
+        });
+        document.getElementById('sheet-rows').innerHTML = groups.map(group => `
+            <section class="roll-card">
+                <h2>#${escapeHtml(group.standKey)} ${escapeHtml(group.rollId)}</h2>
+                <table>
+                    <thead><tr><th>区分</th><th>項目</th><th>値</th></tr></thead>
+                    <tbody>
+                        ${group.rows.map(row => `
+                            <tr data-kind="${escapeHtml(row.kind)}" data-roll="${escapeHtml(row.rollId)}" data-item="${escapeHtml(row.item)}">
+                                <td data-label="区分">${escapeHtml(row.kind)}</td>
+                                <td data-label="項目">${escapeHtml(row.item)}</td>
+                                <td data-label="値">${escapeHtml(row.value)}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </section>
         `).join('');
+        const paste = document.getElementById('sheet-tsv');
+        paste.value = anonymousManagementSheetTsv(sheet);
+        document.getElementById('select-sheet').addEventListener('click', () => {
+            paste.focus();
+            paste.select();
+        });
     </script>
 </body>
 </html>
