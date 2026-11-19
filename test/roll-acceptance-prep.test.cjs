@@ -37,7 +37,8 @@ test('saved code separates the six open items and stops a forecast that lacks th
   assert.equal(context.knownWorkEffort('10', 'assembly'), null);
   assert.equal(context.knownWorkEffort('6', 'caliberChange').kind, '対象外');
   const oneHour = { date: '2027-04-02', period: 'day', workType: 'caliberChange', requiredHours: 1, reservedHours: 1, people: 3, continuous: 'no', changeover: 'yes', threeSet: 'yes' };
-  assert.equal(context.dashboardConfirmedEffort('10', oneHour).ok, true);
+  assert.equal(context.dashboardConfirmedEffort('10', oneHour).ok, false);
+  assert.match(context.dashboardConfirmedEffort('10', oneHour).note, /補助情報/);
   assert.equal(context.dashboardConfirmedEffort('10', Object.assign({}, oneHour, { workType: 'rollChange', requiredHours: 6, reservedHours: 6 })).ok, false);
   assert.equal(context.dashboardConfirmedEffort('10', Object.assign({}, oneHour, { requiredHours: 6, reservedHours: 6 })).ok, false);
   assert.equal(context.dashboardConfirmedEffort('10', Object.assign({}, oneHour, { workType: 'sizeChange' })).ok, false);
@@ -143,8 +144,14 @@ test('acceptance checks separate daytime work, continuous running, three-set, an
   day.days = day.days.map(item => item.date === '2027-04-02'
     ? Object.assign({}, item, { shift1Team: 'A', shift3Team: '', productionAmount: 0, operatingHours: 0 })
     : item);
+  const hoursReady = context.evaluateAcceptance(day, fixture.revisions[0], fixture.referenceAt);
+  assert.equal(hoursReady.checks.find(check => check.id === 'exchange-time').result, '未確認');
+  assert.equal(hoursReady.checks.find(check => check.id === 'day-slot').date, null);
+  day.replacementPlan = [{
+    standKey: '10', date: '2027-04-02', workType: 'caliberChange', kind: 'plan',
+    withinShift: 'yes', constraintsKnown: 'yes', setsWritten: 1
+  }];
   const ready = context.evaluateAcceptance(day, fixture.revisions[0], fixture.referenceAt);
-  assert.equal(ready.checks.find(check => check.id === 'exchange-time').result, '一致');
   assert.equal(ready.checks.find(check => check.id === 'day-slot').date, '2027-04-02');
   assert.equal(ready.checks.find(check => check.id === 'continuous').result, '連続操業ではない');
   assert.match(ready.checks.find(check => check.id === 'three-set').detail, /ロール本数ではありません/);

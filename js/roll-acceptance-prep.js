@@ -100,7 +100,7 @@ function acceptanceSourceFindings() {
             id: 'stand-10-hours',
             resolved: '10番と11番の3人・経過1時間はカリバ替だけです。同じスタンドのロール替は3人・経過6時間で、出典はどちらも2026-09-05のコード上の確認値です。サイズ替と組替にはこの時間の定義がありません。',
             unresolved: '2026-09-05の原本資料そのものはこのリポジトリにありません。',
-            impact: '交換候補はexpectedWorkTypeが返す種別だけを見ます。10番以降はカリバ替です。1時間をロール替・サイズ替・組替に使うと交換候補を止めます。'
+            impact: '3人・1時間はカリバ替の補助情報です。予定表の行が無い限り、交換可能日には使いません。ロール替の6時間、サイズ替、組替にも流用しません。'
         },
         {
             id: 'handwritten-plan',
@@ -154,7 +154,7 @@ function acceptanceExchangeTime(roll) {
         return { id: 'exchange-time', result: '未確認', detail: effort && effort.kind !== '確認' ? effort.text : '作業確認が無いので、確認済みの時間と照合できません。' };
     }
     const decision = dashboardConfirmedEffort(roll.standKey, roll.workConfirmation);
-    if (!decision.ok && /確認値ではない|未確認/.test(decision.note)) return { id: 'exchange-time', result: '未確認', detail: decision.note };
+    if (!decision.ok && /補助情報|確認値ではない|未確認/.test(decision.note)) return { id: 'exchange-time', result: '未確認', detail: decision.note };
     if (!decision.ok) return { id: 'exchange-time', result: '停止', detail: decision.note };
     return { id: 'exchange-time', result: '一致', detail: decision.note };
 }

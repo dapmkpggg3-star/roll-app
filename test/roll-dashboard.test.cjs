@@ -102,7 +102,7 @@ function checkedDayRoll(workPatch, dayPatch) {
 
 test('daytime work, continuous running, spare shortage, and missing conditions stay distinct', () => {
   const ready = checkedDayRoll();
-  assert.equal(ready.auto.exchangeDate, '2027-04-02');
+  assert.equal(ready.auto.exchangeDate, null);
   assert.equal(ready.manual.useEnd, '2027-02-15');
   assert.equal(ready.warningLabel, '');
   const blocked = [
@@ -134,14 +134,14 @@ test('daytime work, continuous running, spare shortage, and missing conditions s
     ? Object.assign({}, item, { shift1Team: 'A', shift3Team: '', productionAmount: 0, operatingHours: 0 })
     : item);
   const scarceRow = context.buildDashboardRow(scarce, fixture.revisions[0], fixture.referenceAt, null);
-  assert.equal(scarceRow.auto.exchangeDate, '2027-04-02');
+  assert.equal(scarceRow.auto.exchangeDate, null);
   assert.equal(scarceRow.warningLabel, '予備0本');
   assert.match(scarceRow.warning, /不足の確定にはしません/);
   const unverifiedSpare = context.buildRollDashboard();
   const stand16 = unverifiedSpare.rows.find(row => row.rollId === '#16-ANON-3');
   assert.equal(stand16.auto.exchangeDate, null);
   assert.equal(stand16.warningLabel, '予備0本');
-  assert.equal(short.auto.exchangeDate, '2027-04-02');
+  assert.equal(short.auto.exchangeDate, null);
 });
 
 test('the anonymous sheet repeats the dashboard values in separate kinds', () => {
@@ -158,7 +158,7 @@ test('the anonymous sheet repeats the dashboard values in separate kinds', () =>
   assert.equal(cell('#10-ANON-1', '予測', '購入').value, '判定不能');
   assert.equal(cell('#10-ANON-1', '予測', '使用回数').value, '24');
   assert.equal(cell('#10-ANON-1', '確定・実績', '使用終了').value, '2026-08-20');
-  assert.match(cell('#10-ANON-1', '根拠', '計算式').value, /交換候補は、昼の停止/);
+  assert.match(cell('#10-ANON-1', '根拠', '計算式').value, /ロールカリバ替予定表/);
   assert.equal(cell('#10-ANON-1', '予測', '確認済み交換候補').value.includes('2027-04-02'), false);
   assert.equal(cell('#16-ANON-3', '警告', '表示').value, '予備0本');
   assert.equal(cell('#16-ANON-3', '予測', '確認済み交換候補').value, '作業枠未確認');
@@ -190,10 +190,28 @@ test('a night-only stop is not an exchange date, and a checked daytime stop can 
       ? Object.assign({}, item, { shift1Team: 'A', shift3Team: '', productionAmount: 0, operatingHours: 0 })
       : item)
   });
-  const accepted = context.buildDashboardRow(day, fixture.revisions[0], fixture.referenceAt, null);
+  const hoursOnly = context.buildDashboardRow(day, fixture.revisions[0], fixture.referenceAt, null);
+  assert.equal(hoursOnly.auto.exchangeDate, null);
+  assert.match(hoursOnly.basis.steps.join('\n'), /所要時間は補助情報/);
+  const planned = Object.assign({}, day, {
+    replacementPlan: [{
+      standKey: '10', date: '2027-04-02', workType: 'caliberChange', kind: 'plan',
+      withinShift: 'yes', constraintsKnown: 'yes', setsWritten: 1
+    }]
+  });
+  const beforeManual = planned.manual.useEnd;
+  const accepted = context.buildDashboardRow(planned, fixture.revisions[0], fixture.referenceAt, null);
   assert.equal(accepted.auto.exchangeDate, '2027-04-02');
-  assert.match(accepted.basis.steps.join('\n'), /作業枠を確認した交換候補は2027-04-02/);
-  assert.equal(accepted.manual.useEnd, '2027-02-15');
+  assert.equal(accepted.manual.useEnd, beforeManual);
+  assert.equal(context.dashboardReplacementSets({ requiredHours: 2, frameHours: 8, packedFromHours: true }).sets, null);
+  const actual = Object.assign({}, day, {
+    replacementPlan: [{ standKey: '10', date: '2027-04-02', workType: 'caliberChange', kind: 'actual', withinShift: 'yes', constraintsKnown: 'yes', setsWritten: 1 }]
+  });
+  assert.equal(context.buildDashboardRow(actual, fixture.revisions[0], fixture.referenceAt, null).auto.exchangeDate, null);
+  const past = Object.assign({}, day, {
+    replacementPlan: [{ standKey: '10', date: '2026-04-02', workType: 'caliberChange', kind: 'plan', withinShift: 'yes', constraintsKnown: 'yes', setsWritten: 1 }]
+  });
+  assert.equal(context.buildDashboardRow(past, fixture.revisions[0], fixture.referenceAt, null).auto.exchangeDate, null);
   assert.equal(accepted.diff.manualVersusAuto.includes('使用終了予定と交換候補は種類が違う'), true);
 });
 

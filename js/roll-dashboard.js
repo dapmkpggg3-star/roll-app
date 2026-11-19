@@ -138,38 +138,85 @@ function dashboardLimitText(projected) {
     return `${limit}${stop}`;
 }
 
-function dashboardConfirmedEffort(stand, confirmation) {
+function dashboardConfirmedEffort(stand) {
     const expected = typeof expectedWorkType === 'function' ? expectedWorkType(stand) : '';
-    const source = confirmation || {};
-    if (!expected || source.workType !== expected) {
-        return { ok: false, note: 'このスタンドの交換作業種別と違う時間は使いません。' };
-    }
     const effort = typeof knownWorkEffort === 'function' ? knownWorkEffort(stand, expected) : null;
-    if (!effort || effort.kind !== '確認' || effort.people == null || effort.hours == null) {
-        return { ok: false, note: effort && effort.text ? `${effort.text}確認値ではないので交換候補にしません。` : 'このスタンドの交換時間は未確認です。' };
-    }
-    if (source.people !== effort.people || source.requiredHours !== effort.hours) {
-        return { ok: false, note: `${effort.text}今回の人数または時間と違うので交換候補にしません。` };
-    }
-    return { ok: true, note: effort.text };
+    const auxiliary = effort && effort.text ? effort.text : 'この作業の所要時間は未確認です。';
+    return { ok: false, auxiliary, note: `${auxiliary}所要時間は補助情報です。交換可能日の確定には使いません。` };
 }
 
-function dashboardConfirmedExchange(roll, referenceAt, projected) {
-    const reach = projected && (projected.exceedsOnDate || projected.exchangeDate);
-    if (!reach || typeof confirmedWorkCandidate !== 'function' || !roll.workConfirmation) {
-        return { date: null, note: '昼の作業時間、人数、組替、3セットは未確認です。' };
+function dashboardReplacementSets(entry) {
+    if (!entry || entry.packedFromHours === true) {
+        return { sets: null, note: '所要時間からセット数は作りません。8時間枠へは詰め込みません。' };
     }
-    const effort = dashboardConfirmedEffort(roll.standKey, roll.workConfirmation);
-    if (!effort.ok) return { date: null, note: effort.note };
-    const assessed = confirmedWorkCandidate(reach, roll.standKey, roll.workConfirmation, roll.days, referenceAt);
-    if (!assessed || !assessed.date) {
-        return { date: null, note: assessed && assessed.note ? assessed.note : '昼の作業枠は確認できていません。' };
+    if (entry.setsWritten === undefined || entry.setsWritten === null || entry.setsWritten === '') {
+        return { sets: null, note: '予定表に件数が無いので、追加可能量は確定しません。' };
     }
-    const row = (roll.days || []).find(item => String(item && item.date || '').slice(0, 10) === assessed.date);
-    if (!row || dashboardNightOnly(row) || !(row.shift1Team || row.dayMaintenanceAvailable === true) || Number(row.productionAmount) > 0) {
-        return { date: null, note: 'その日は昼の停止ではありません。夜勤のみや操業中は交換候補にしません。' };
+    const sets = Number(entry.setsWritten);
+    if (!Number.isInteger(sets) || sets < 0) return { sets: null, note: '予定表の件数を確認できないので、追加可能量は確定しません。' };
+    return { sets, note: '予定表に書かれた件数です。時間枠からの割増はしていません。' };
+}
+
+function dashboardReplacementCandidate(roll, referenceAt) {
+    const reference = String(referenceAt || '').slice(0, 10);
+    const expected = typeof expectedWorkType === 'function' ? expectedWorkType(roll.standKey) : '';
+    const rows = Array.isArray(roll.replacementPlan) ? roll.replacementPlan : [];
+    const hours = dashboardConfirmedEffort(roll.standKey);
+    if (!rows.length) {
+        return { date: null, sets: null, note: `${hours.note}ロールカリバ替予定表が無いので、交換可能日も追加可能量も確定しません。` };
     }
-    return { date: assessed.date, note: assessed.note || '' };
+    const notes = [hours.note];
+    let chosen = null;
+    rows.forEach(entry => {
+        const stand = String(entry && entry.standKey || '').replace(/^#/, '');
+        if (stand !== String(roll.standKey || '').replace(/^#/, '')) {
+            notes.push('別スタンドの予定は使いません。');
+            return;
+        }
+        if (!expected || entry.workType !== expected) {
+            notes.push('作業種別が違う予定は交換日にしません。');
+            return;
+        }
+        if (entry.kind === 'actual') {
+            notes.push('作業完了実績は将来の交換日にしません。');
+            return;
+        }
+        if (entry.kind !== 'plan') {
+            notes.push('予定か実績かが未確認なので、交換日にしません。');
+            return;
+        }
+        const date = String(entry.date || '').slice(0, 10);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date < reference) {
+            notes.push('過去の予定や日付未確認は、将来の交換日にしません。');
+            return;
+        }
+        if (entry.withinShift !== 'yes') {
+            notes.push('その直内で終える確認が無いので、交換日にしません。');
+            return;
+        }
+        if (entry.constraintsKnown !== 'yes') {
+            notes.push('休憩、暑熱、段取り、組み合わせが未確認なので、交換日にしません。');
+            return;
+        }
+        if (entry.continuous === 'yes' || (roll.workConfirmation && roll.workConfirmation.continuous === 'yes')) {
+            notes.push('連続操業では交換日にしません。');
+            return;
+        }
+        const day = (roll.days || []).find(item => String(item && item.date || '').slice(0, 10) === date);
+        if (day && (dashboardNightOnly(day) || Number(day.productionAmount) > 0)) {
+            notes.push('操業予定と重なる日は、予定表の行だけでは交換日にしません。');
+            return;
+        }
+        const capacity = dashboardReplacementSets(entry);
+        notes.push(capacity.note);
+        if (!chosen || date < chosen.date) chosen = { date, sets: capacity.sets };
+    });
+    if (!chosen) return { date: null, sets: null, note: notes.join('') };
+    return { date: chosen.date, sets: chosen.sets, note: `ロールカリバ替予定表の予定は${chosen.date}です。${notes.join('')}` };
+}
+
+function dashboardConfirmedExchange(roll, referenceAt) {
+    return dashboardReplacementCandidate(roll, referenceAt);
 }
 
 function dashboardExchange(roll, referenceAt) {
@@ -190,7 +237,7 @@ function dashboardExchange(roll, referenceAt) {
         days: roll.days
     });
     const limitText = dashboardLimitText(projected);
-    const confirmed = dashboardConfirmedExchange(roll, referenceAt, projected);
+    const confirmed = dashboardConfirmedExchange(roll, referenceAt);
     if (!confirmed.date) {
         return {
             date: null,
@@ -319,7 +366,7 @@ function buildDashboardRow(roll, revision, referenceAt, previousRevision) {
         warningLabel: warning ? '予備0本' : '',
         basis: {
             source: `${roll.rollId} / スタンド#${roll.standKey} / ${roll.status} / 現在径${roll.currentDiameter === '' ? '未確認' : roll.currentDiameter} / 廃却径${roll.scrapDiameter === '' ? '未確認' : roll.scrapDiameter} / カリバ${roll.currentCaliber || '未確認'} / 開始直数${Number.isInteger(roll.openingUsedRuns) ? roll.openingUsedRuns : '未確認'}`,
-            formula: '使用回数は計画版の各月で、実績があれば実績、無ければ計画を足します。上限到達の見込みは交換候補にしません。交換候補は、昼の停止で作業時間・人数・組替・3セットが確認できた日だけです。改削残回数は（現在径−廃却径）÷切込みです。購入日にはしません。',
+            formula: '使用回数は計画版の各月で、実績があれば実績、無ければ計画を足します。上限到達の見込みは交換候補にしません。交換候補はロールカリバ替予定表の予定行だけです。所要時間は補助情報で、時間枠へは詰め込みません。改削残回数は（現在径−廃却径）÷切込みです。購入日にはしません。',
             steps: [
                 exchange.limitText,
                 exchange.reason,
