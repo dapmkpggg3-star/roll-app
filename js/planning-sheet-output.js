@@ -119,7 +119,9 @@
             generatedAt,
             sourceSheets: Array.isArray(parsed.importedSheets) ? parsed.importedSheets.slice(0, 24) : [],
             calendarRows,
-            suggestions: buildSizeChangeSuggestions(planning.sizeChanges, period),
+            // Column mapping for work suggestions is not verified: E/H contain team data.
+            // Fail closed at the payload boundary until an approved cell contract exists.
+            suggestions: [],
             capabilities: {
                 sizeChangeConnected: true,
                 caliberConnected: Boolean(planning.caliberConnected)
