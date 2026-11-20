@@ -29,6 +29,16 @@ async function main() {
   const blocked = [];
   try {
     const context = await browser.newContext({ serviceWorkers: 'block', viewport: { width: 1280, height: 900 } });
+    await context.addInitScript(() => {
+      window.__storageCalls = { setItem: 0, removeItem: 0, clear: 0 };
+      ['setItem', 'removeItem', 'clear'].forEach(name => {
+        const original = Storage.prototype[name];
+        Storage.prototype[name] = function (...args) {
+          window.__storageCalls[name] += 1;
+          return original.apply(this, args);
+        };
+      });
+    });
     await context.route('**/*', route => {
       const url = new URL(route.request().url());
       if (url.protocol === 'blob:' || url.protocol === 'data:') return route.continue();
@@ -75,6 +85,9 @@ async function main() {
     assert.match(basis, /種類が違うので、日数差は出しません/);
     assert.match(basis, /入力:/);
     assert.match(basis, /判断:/);
+    assert.match(basis, /EとHが班/);
+    assert.match(basis, /Kが作業文言/);
+    assert.match(basis, /交換可能日にはしない/);
     assert.equal((basis.match(/手入力: 使用終了/g) || []).length, 1);
 
     await page.fill('#filter-stand', '');
@@ -132,6 +145,7 @@ async function main() {
     await page.screenshot({ path: path.join(evidenceDir, 'screen-400.png'), fullPage: true });
     const splitOverflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     assert.ok(splitOverflow < 8, `400px overflow ${splitOverflow}`);
+    assert.deepEqual(await page.evaluate(() => window.__storageCalls), { setItem: 0, removeItem: 0, clear: 0 });
     await page.goto('http://roll-app.test/roll-management-sheet.html');
     await page.waitForSelector('#sheet-rows tr[data-roll]');
     assert.equal(await page.locator('.roll-card').count(), 3);
@@ -163,6 +177,7 @@ async function main() {
     await page.screenshot({ path: path.join(evidenceDir, 'sheet-400.png'), fullPage: true });
     const sheetOverflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     assert.ok(sheetOverflow < 8, `sheet overflow ${sheetOverflow}`);
+    assert.deepEqual(await page.evaluate(() => window.__storageCalls), { setItem: 0, removeItem: 0, clear: 0 });
     await page.goto('http://roll-app.test/roll-acceptance-prep.html');
     await page.waitForSelector('#checks article');
     const prepText = await page.locator('main').innerText();
@@ -170,6 +185,8 @@ async function main() {
     assert.match(prepText, /useEndDateには入れない/);
     assert.match(prepText, /6月の同じセルは未確認/);
     assert.match(prepText, /作業文言はK/);
+    assert.match(prepText, /EとHは班/);
+    assert.match(prepText, /未確認のまま止め/);
     assert.match(prepText, /recordKind/);
     assert.match(prepText, /操業A/);
     assert.match(prepText, /過去の計画/);
@@ -186,6 +203,7 @@ async function main() {
       externalRequests: blocked,
       checks: ['search', 'basis', 'manual-plan-kept', 'snapshot-frozen', 'warning-separate']
     }, null, 2));
+    assert.deepEqual(await page.evaluate(() => window.__storageCalls), { setItem: 0, removeItem: 0, clear: 0 });
     assert.deepEqual(blocked, []);
   } finally {
     await browser.close();

@@ -106,8 +106,11 @@
             if (slot.type === SLOT_TYPES.DAY_MAINTENANCE) {
                 score += Number(settings.dayMaintenanceWeight || 0);
             }
-            if (slot.jointMaintenance === true && Number(slot.requiredCompanionWorkCount || 0) > 0) {
-                score += Number(settings.jointMaintenanceWeight || 0) * Number(slot.requiredCompanionWorkCount);
+            const companionCount = slot.requiredCompanionWorkCount;
+            if (companionCount === null) {
+                warnings.push('作業件数が未確認なので、0件としては扱いません');
+            } else if (slot.jointMaintenance === true && Number(companionCount) > 0) {
+                score += Number(settings.jointMaintenanceWeight || 0) * Number(companionCount);
             }
 
             const slotTeam = normalizeTeam(slot.team);

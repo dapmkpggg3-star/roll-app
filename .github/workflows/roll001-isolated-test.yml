@@ -4,6 +4,7 @@ on:
     branches:
       - fix/roll001-visibility-safe-20261110
       - fix/roll-data-adapter-20261114
+      - night/20261120-ehkn-column-guard
     paths:
       - '.github/workflows/roll001-isolated-test.yml'
       - 'index.html'
@@ -25,6 +26,9 @@ on:
       - 'test/roll005-print-browser.cjs'
       - 'js/planning-import.js'
       - 'test/planning-import.test.js'
+      - 'test/schedule-column-layout.test.js'
+      - 'js/planning-schedule.js'
+      - 'js/planning-rules.js'
       - 'js/operating-plan.js'
       - 'test/operating-plan-forecast.test.cjs'
       - 'test/operating-plan-browser.cjs'
@@ -56,7 +60,7 @@ jobs:
         with:
           node-version: '22'
       - name: Run real repository test with mock data only
-        run: node --test test/today-task-target-visibility.test.js test/roll001-spare-readiness.test.cjs test/roll001-procurement-risk-audit.test.cjs test/sync-revision-guard.test.js test/auth-boundary.test.js test/roll003-independent-originals.test.cjs test/roll003-offline-recovery.test.cjs test/roll004-hidden-status-filter.test.cjs test/roll005-print-contract.test.cjs test/planning-import.test.js test/operating-plan-forecast.test.cjs test/forecast-master-adapter.test.cjs test/rework-cycle-reset.test.cjs test/roll-dashboard.test.cjs test/roll-acceptance-prep.test.cjs
+        run: node --test test/today-task-target-visibility.test.js test/roll001-spare-readiness.test.cjs test/roll001-procurement-risk-audit.test.cjs test/sync-revision-guard.test.js test/auth-boundary.test.js test/roll003-independent-originals.test.cjs test/roll003-offline-recovery.test.cjs test/roll004-hidden-status-filter.test.cjs test/roll005-print-contract.test.cjs test/planning-import.test.js test/schedule-column-layout.test.js test/operating-plan-forecast.test.cjs test/forecast-master-adapter.test.cjs test/rework-cycle-reset.test.cjs test/roll-dashboard.test.cjs test/roll-acceptance-prep.test.cjs
 
   isolated-browser:
     runs-on: ubuntu-24.04

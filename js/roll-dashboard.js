@@ -465,7 +465,7 @@ function buildDashboardRow(roll, revision, referenceAt, previousRevision) {
                 exchange.limitText,
                 exchange.reason,
                 `判断: 予定表上の交換候補日は${exchange.listedText}。確認済み交換可能日は${exchange.text}。上限到達の見込みとは別です。`,
-                '列対応: 日付D、サイズG、Ⅰ勤H、Ⅲ勤I、日産J、操業AはL、操業BはN、圧延時間Pは9月・10月の保存記録と一致。6月のセル番地は未確認。作業文言の保存記録はK。コードはE・H・K・Nも読む。',
+                '列対応: 日付D、サイズG、Ⅰ勤H、Ⅲ勤I、日産J、操業AはL、操業BはN、圧延時間Pは9月・10月の保存記録と一致。6月のセル番地は未確認。ロールカリバ替予定の2026.10はEとHが班、Kが作業文言。Nと未確認の月は未確認のまま止め、交換可能日にはしない。',
                 `手入力: 使用終了 ${manual.useEnd || 'なし'} / 改削 ${manual.rework || 'なし'} / ${manual.enteredAt || '入力日時なし'} / ${manual.operator || '担当なし'}`,
                 comparison,
                 rework,

@@ -23,6 +23,7 @@
     }
 
     function countRequiredCompanionWork(row) {
+        if (row && (row.maintenanceLayoutState === 'unconfirmed' || row.maintenanceJudgement === 'held')) return null;
         return (Array.isArray(row && row.requiredWorks) ? row.requiredWorks : [])
             .filter(work => work && work.type !== 'sizeChange').length;
     }

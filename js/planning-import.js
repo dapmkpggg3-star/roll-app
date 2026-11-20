@@ -324,15 +324,94 @@
         return works;
     }
 
+    function confirmedMaintenanceLayouts() {
+        return {
+            '2026-10': {
+                id: 'roll-caliber-schedule-2026-10',
+                day: 'B',
+                team: ['E', 'H'],
+                workText: ['K'],
+                unknown: ['N']
+            }
+        };
+    }
+
+    function maintenanceLayoutKey(year, month) {
+        return `${year}-${String(month).padStart(2, '0')}`;
+    }
+
+    function confirmedMaintenanceLayout(year, month) {
+        return confirmedMaintenanceLayouts()[maintenanceLayoutKey(year, month)] || null;
+    }
+
+    function blankCell(value) {
+        return String(value == null ? '' : value).normalize('NFKC').trim() === '';
+    }
+
+    function heldMaintenanceRead(period) {
+        return {
+            date: null,
+            year: period.year,
+            month: period.month,
+            layoutId: null,
+            layoutState: 'unconfirmed',
+            teams: null,
+            workText: null,
+            scheduledWorks: null,
+            requiredWorks: null,
+            unknownValuePresent: null,
+            judgement: 'held',
+            exchangePossibleDate: null
+        };
+    }
+
+    function readConfirmedMaintenanceDay(item, period, layout) {
+        const teams = layout.team.map(column => ({
+            role: 'team',
+            value: normalizeTeam(item.cells[column]) || null
+        }));
+        const workText = layout.workText
+            .map(column => String(item.cells[column] == null ? '' : item.cells[column]).trim())
+            .filter(text => text !== '')
+            .join('\n');
+        const scheduledWorks = layout.workText.flatMap(column => (
+            maintenanceWorkTypes(item.cells[column]).map(work => ({ type: work.type, role: 'workText' }))
+        ));
+        const unknownValuePresent = layout.unknown.some(column => !blankCell(item.cells[column]));
+        return {
+            date: isoDate(period.year, period.month, item.day),
+            year: period.year,
+            month: period.month,
+            layoutId: layout.id,
+            layoutState: 'confirmed',
+            teams,
+            workText,
+            scheduledWorks,
+            requiredWorks: scheduledWorks.map(work => ({ type: work.type })),
+            unknownValuePresent,
+            judgement: unknownValuePresent ? 'held' : 'scheduled',
+            exchangePossibleDate: null
+        };
+    }
+
+    function maintenanceExchangeDecision(row) {
+        const layoutState = row && (row.layoutState || row.maintenanceLayoutState) || '';
+        const judgement = row && (row.judgement || row.maintenanceJudgement) || '';
+        if (!row || layoutState !== 'confirmed' || judgement === 'held' || row.unknownValuePresent === true) {
+            return { date: null, state: 'held', exchangePossible: false };
+        }
+        return { date: null, state: 'scheduled-only', exchangePossible: false };
+    }
+
     function parseMaintenanceWorksheet(xml, sharedStrings, sheetName) {
         const period = parseMaintenanceYearMonth(sheetName);
         if (!period) return [];
+        const layout = confirmedMaintenanceLayout(period.year, period.month);
+        if (!layout) return [heldMaintenanceRead(period)];
         const rows = parseWorksheetCells(xml, sharedStrings);
-        const dayRows = findDaySequence(rows, period.year, period.month, 'B');
-        return dayRows.map(item => ({
-            date: isoDate(period.year, period.month, item.day),
-            requiredWorks: ['E', 'H', 'K', 'N'].flatMap(column => maintenanceWorkTypes(item.cells[column]))
-        }));
+        const dayRows = findDaySequence(rows, period.year, period.month, layout.day);
+        if (!dayRows.length) return [heldMaintenanceRead(period)];
+        return dayRows.map(item => readConfirmedMaintenanceDay(item, period, layout));
     }
 
     async function parseXlsxArrayBuffer(arrayBuffer) {
@@ -351,6 +430,7 @@
             return `${period.year}-${period.month}`;
         }));
         const maintenanceByDate = new Map();
+        const heldMaintenanceMonths = new Set();
         const maintenanceSheets = [];
         for (const sheet of sheets.filter(item => parseMaintenanceYearMonth(item.name))) {
             const period = parseMaintenanceYearMonth(sheet.name);
@@ -360,7 +440,14 @@
             const rows = parseMaintenanceWorksheet(xml, sharedStrings, sheet.name);
             if (!rows.length) continue;
             maintenanceSheets.push(sheet.name);
-            rows.forEach(row => maintenanceByDate.set(row.date, row.requiredWorks));
+            const monthKey = maintenanceLayoutKey(period.year, period.month);
+            if (rows.some(row => row.layoutState !== 'confirmed')) {
+                heldMaintenanceMonths.add(monthKey);
+                continue;
+            }
+            rows.forEach(row => {
+                if (row.date) maintenanceByDate.set(row.date, row);
+            });
         }
 
         const schedule = [];
@@ -371,10 +458,31 @@
             const rows = parseProductionWorksheet(xml, sharedStrings, sheet.name);
             if (!rows.length) continue;
             importedSheets.push(sheet.name);
-            schedule.push(...rows.map(row => ({
-                ...row,
-                requiredWorks: maintenanceByDate.get(row.date) || []
-            })));
+            schedule.push(...rows.map(row => {
+                const monthKey = String(row.date || '').slice(0, 7);
+                const maintenance = maintenanceByDate.get(row.date);
+                if (heldMaintenanceMonths.has(monthKey)) {
+                    return {
+                        ...row,
+                        requiredWorks: null,
+                        maintenanceTeams: null,
+                        maintenanceWorkText: null,
+                        maintenanceLayoutState: 'unconfirmed',
+                        maintenanceJudgement: 'held',
+                        exchangePossibleDate: null
+                    };
+                }
+                if (!maintenance) return { ...row, requiredWorks: [] };
+                return {
+                    ...row,
+                    requiredWorks: maintenance.requiredWorks,
+                    maintenanceTeams: maintenance.teams,
+                    maintenanceWorkText: maintenance.workText,
+                    maintenanceLayoutState: maintenance.layoutState,
+                    maintenanceJudgement: maintenance.judgement,
+                    exchangePossibleDate: null
+                };
+            }));
         }
         if (!schedule.length) {
             throw new Error('生産予定の日付行を確認できませんでした。対象のExcelか確認してください。');
@@ -581,6 +689,8 @@
         findDaySequence,
         presentNumber,
         parseProductionWorksheet,
+        confirmedMaintenanceLayout,
+        maintenanceExchangeDecision,
         parseMaintenanceWorksheet,
         parseXlsxArrayBuffer,
         createPlanningResults,
