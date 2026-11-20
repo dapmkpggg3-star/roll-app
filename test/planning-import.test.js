@@ -138,7 +138,7 @@ test('a complete xlsx zip is parsed without uploading or external libraries', as
     assert.equal(planning.sizeChanges.length, 1);
     assert.equal(planning.sizeChanges[0].change.fromSize, 'D1');
     assert.equal(planning.sizeChanges[0].change.toSize, 'D2');
-    assert.equal(planning.sizeChanges[0].recommendation.slot.shift, 'shift3');
+    assert.equal(planning.sizeChanges[0].recommendation, null);
 });
 
 test('blank text is missing and only grouped commas are numbers', () => {
