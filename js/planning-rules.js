@@ -108,7 +108,8 @@
             }
             const companionCount = slot.requiredCompanionWorkCount;
             if (companionCount === null) {
-                warnings.push('作業件数が未確認なので、0件としては扱いません');
+                // Unknown work commitments cannot be treated as a free slot.
+                return { eligible: false, score: Number.NEGATIVE_INFINITY, warnings: ['作業件数・予定表の様式が未確認なので、作業候補を選びません'] };
             } else if (slot.jointMaintenance === true && Number(companionCount) > 0) {
                 score += Number(settings.jointMaintenanceWeight || 0) * Number(companionCount);
             }
