@@ -81,13 +81,15 @@
             if (!samePeriod(change.toDate, period)) return [];
             const recommendation = entry && entry.recommendation;
             const slot = recommendation && recommendation.slot;
-            const date = slot && samePeriod(slot.date, period) ? slot.date : change.toDate;
+            // Without a verified scheduling slot there is no column-safe proposal.
+            // Do not fabricate a K-column review entry from the size-change date.
+            if (!slot || !samePeriod(slot.date, period)) return [];
             return [{
                 kind: 'sizeChange',
-                date,
-                column: slot ? suggestionColumn(slot) : 'K',
+                date: slot.date,
+                column: suggestionColumn(slot),
                 text: 'サイズ替（自動案）',
-                status: slot ? 'candidate' : 'review',
+                status: 'candidate',
                 fromSize: displaySize(change.fromSize),
                 toSize: displaySize(change.toSize)
             }];
