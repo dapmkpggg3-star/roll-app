@@ -5,6 +5,7 @@ on:
       - fix/roll001-visibility-safe-20261110
       - fix/roll-data-adapter-20261114
       - night/20261120-ehkn-column-guard
+      - audit/20261120-null-production-guard
     paths:
       - '.github/workflows/roll001-isolated-test.yml'
       - 'index.html'
