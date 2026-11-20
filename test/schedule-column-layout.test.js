@@ -228,3 +228,35 @@ test('an unconfirmed layout stays held on the schedule and a confirmed K work st
     assert.equal(importer.maintenanceExchangeDecision(listedOnly).state, 'scheduled-only');
     assert.equal(importer.maintenanceExchangeDecision(listedOnly).date, null);
 });
+
+
+test('a missing team amount never becomes a stopped-shift slot', () => {
+    const missingValues = [null, undefined, '', ' ', '0', NaN, -1];
+    for (const amount of missingValues) {
+        const row = {
+            date: '2026-10-08',
+            shift1Team: 'A',
+            shift3Team: 'B',
+            productionByTeam: { A: amount, B: 10 },
+            requiredWorks: []
+        };
+        assert.equal(scheduleApi.productionForTeam(row, 'A'), null, String(amount));
+        assert.equal(scheduleApi.buildAvailableSlots(row, rules.SLOT_TYPES).length, 0, String(amount));
+    }
+    const absent = { date: '2026-10-08', shift1Team: 'A', shift3Team: '', productionByTeam: {} };
+    assert.equal(scheduleApi.productionForTeam(absent, 'A'), null);
+    assert.deepEqual(scheduleApi.buildAvailableSlots(absent, rules.SLOT_TYPES), []);
+
+    const confirmedZero = {
+        date: '2026-10-08', shift1Team: 'A', shift3Team: 'B',
+        productionByTeam: { A: 0, B: 10 }, requiredWorks: []
+    };
+    assert.equal(scheduleApi.productionForTeam(confirmedZero, 'A'), 0);
+    assert.deepEqual(
+        scheduleApi.buildAvailableSlots(confirmedZero, rules.SLOT_TYPES).map(slot => slot.id),
+        ['2026-10-08|shift1|A']
+    );
+
+    const unconfirmedPlan = { ...confirmedZero, maintenanceLayoutState: 'unconfirmed', requiredWorks: null };
+    assert.equal(scheduleApi.countRequiredCompanionWork(unconfirmedPlan), null);
+});
