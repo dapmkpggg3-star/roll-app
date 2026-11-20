@@ -8,6 +8,7 @@ on:
       - audit/20261120-null-production-guard
       - audit/20261120-maintenance-missing-guard
       - audit/20261120-unconfirmed-slot-guard
+      - audit/20261120-disable-unsafe-export
     paths:
       - '.github/workflows/roll001-isolated-test.yml'
       - 'index.html'
