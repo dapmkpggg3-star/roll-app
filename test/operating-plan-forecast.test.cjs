@@ -157,8 +157,10 @@ test('past production tons do not become a future rework or purchase date', () =
     standKey: '10', referenceDate: '2026-11-13', currentCaliber: 'anon-1', openingUsedRuns: 6, size: 'D1',
     days: [day('2027-04-01', 8, 'A', 10), day('2027-04-02', 0, 'B', 0), day('2027-04-03', 8, 'A', 10), day('2027-04-04', 5, 'A', 10)]
   });
-  assert.equal(replacement.exchangeDate, '2027-04-02');
+  assert.equal(replacement.exchangeDate, null);
   assert.equal(replacement.exceedsOnDate, '2027-04-04');
+  assert.match(replacement.reason, /交換候補日は出しません/);
+  assert.equal(replacement.reason.includes('交換候補は2027-04-02'), false);
   assert.equal(replacement.reworkTiming, 'unknown');
   assert.equal(replacement.statusChanged, false);
   const short = context.projectCaliberReplacement({
@@ -236,9 +238,11 @@ test('past production tons do not become a future rework or purchase date', () =
       { ...day('2027-04-03', 8, 'A', 10), size: 'D13' }
     ]
   });
-  assert.equal(confirmedMax.exchangeDate, '2027-04-02');
+  assert.equal(confirmedMax.exchangeDate, null);
   assert.equal(confirmedMax.exceedsOnDate, '2027-04-03');
-  assert.match(confirmedMax.reason, /最大12直を超えます/);
+  assert.match(confirmedMax.reason, /交換候補日は出しません/);
+  assert.match(confirmedMax.reason, /2027-04-03/);
+  assert.equal(confirmedMax.reason.includes('交換候補は2027-04-02'), false);
   const maximumTons = context.projectCaliberReplacement({
     standKey: '6', referenceDate: '2026-11-13', openingUsedTons: 1000,
     days: [day('2027-04-01', 8, 'A', 10000)]
@@ -311,8 +315,9 @@ test('past production tons do not become a future rework or purchase date', () =
     workConfirmation: work(), days: schedule
   });
   assert.equal(confirmed.shiftReachDate, '2027-04-03');
-  assert.match(confirmed.reason, /規定到達の参考候補は2027-04-02/);
-  assert.match(confirmed.reason, /トン数到達の参考候補は2027-04-02/);
+  assert.match(confirmed.reason, /規定35直への到達見込みは2027-04-03/);
+  assert.match(confirmed.reason, /夜勤のみの停止は、昼の交換候補にしません/);
+  assert.equal(confirmed.reason.includes('参考候補は2027-04-02'), false);
   const missingStop = context.projectCaliberReplacement({
     standKey: '2', referenceDate: '2026-11-13', standPass: 'pass', openingUsedRuns: 33, openingUsedTons: 12000,
     workConfirmation: work(),
@@ -325,7 +330,12 @@ test('past production tons do not become a future rework or purchase date', () =
   const openSlot = context.confirmedWorkCandidate('2027-04-03', '2', work(), [day('2027-04-02', 0, 'B', null)], '2026-11-13');
   assert.equal(openSlot.date, null);
   assert.match(openSlot.note, /0tとはみなさず/);
-  const zeroSlot = context.confirmedWorkCandidate('2027-04-03', '2', work(), [day('2027-04-02', 0, 'B', 0)], '2026-11-13');
+  const nightStop = { ...day('2027-04-02', 0, 'B', 0) };
+  const nightSlot = context.confirmedWorkCandidate('2027-04-03', '2', work(), [nightStop], '2026-11-13');
+  assert.equal(nightSlot.date, null);
+  assert.match(nightSlot.note, /夜勤のみ/);
+  const dayStop = { ...nightStop, shift1Team: 'B', shift3Team: '' };
+  const zeroSlot = context.confirmedWorkCandidate('2027-04-03', '2', work(), [dayStop], '2026-11-13');
   assert.equal(zeroSlot.date, '2027-04-02');
   const nightOnly = context.projectCaliberReplacement({
     standKey: '2', referenceDate: '2026-11-13', standPass: 'pass', openingUsedRuns: 33, openingUsedTons: 12000,
@@ -365,8 +375,9 @@ test('past production tons do not become a future rework or purchase date', () =
   assert.equal(current.tonReachDate, null);
   assert.match(current.reason, /現行使用直数は15直/);
   assert.match(current.reason, /旧参照/);
-  assert.match(current.reason, /現行到達の参考候補は2027-04-02/);
-  assert.match(current.reason, /6番から9番へ広げません/);
+  assert.match(current.reason, /夜勤のみの停止は、昼の交換候補にしません/);
+  assert.equal(current.reason.includes('参考候補は2027-04-02'), false);
+  assert.match(context.knownWorkEffort('6', 'caliberChange').text, /6番から9番へ広げません/);
   const conflict = context.projectCaliberReplacement({
     standKey: '2', referenceDate: '2026-11-13', standPass: 'pass', openingUsedRuns: 33,
     workConfirmation: work({ date: '2027-04-01' }), days: schedule

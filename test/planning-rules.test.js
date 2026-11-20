@@ -46,9 +46,9 @@ test('joint maintenance can accept a larger bundle', () => {
 
 test('stopped shift with the next production team ranks first', () => {
     const chosen = rules.chooseSizeChangeSlot([
-        { id: 'day', type: SLOT_TYPES.DAY_MAINTENANCE, team: 'A', productionActive: false },
-        { id: 'other', type: SLOT_TYPES.STOPPED_SHIFT, team: 'B', productionActive: false },
-        { id: 'same', type: SLOT_TYPES.STOPPED_SHIFT, team: 'A', productionActive: false }
+        { id: 'day', type: SLOT_TYPES.DAY_MAINTENANCE, team: 'A', productionActive: false, requiredCompanionWorkCount: 0 },
+        { id: 'other', type: SLOT_TYPES.STOPPED_SHIFT, team: 'B', productionActive: false, requiredCompanionWorkCount: 0 },
+        { id: 'same', type: SLOT_TYPES.STOPPED_SHIFT, team: 'A', productionActive: false, requiredCompanionWorkCount: 0 }
     ], 'A');
     assert.equal(chosen.slot.id, 'same');
 });
@@ -57,7 +57,8 @@ test('a different team remains eligible with a warning', () => {
     const result = rules.scoreSizeChangeSlot({
         type: SLOT_TYPES.STOPPED_SHIFT,
         team: 'B',
-        productionActive: false
+        productionActive: false,
+        requiredCompanionWorkCount: 0
     }, 'A');
     assert.equal(result.eligible, true);
     assert.match(result.warnings.join(' '), /再確認/);

@@ -1369,6 +1369,9 @@ function confirmedWorkCandidate(reachDate, stand, confirmation, days, referenceD
     }
     const producing = row.productionAmount > 0;
     if (producing) return { date: null, note: '作業日が操業と重なるので、参考候補は保留します。' };
+    if (row.shift3Team && !row.shift1Team) {
+        return { date: null, note: '夜勤のみの停止は、昼の交換候補にしません。' };
+    }
     const workType = expected === 'rollChange' ? rules.WORK_TYPES.ROLL_CHANGE : rules.WORK_TYPES.CALIBER_CHANGE;
     const allowed = rules.createPlanningRules({ afterProductionAllowedWorkTypes: [] }).validateWorkForSlot({
         type: workType,

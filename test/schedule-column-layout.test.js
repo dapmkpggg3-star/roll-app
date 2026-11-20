@@ -261,6 +261,48 @@ test('a missing team amount never becomes a stopped-shift slot', () => {
     assert.equal(scheduleApi.countRequiredCompanionWork(unconfirmedPlan), null);
 });
 
+test('a night-only stop is not a size-change candidate and a missing amount stays unknown', () => {
+    const missingNight = {
+        date: '2026-10-02',
+        size: 'STOP',
+        productionAmount: null,
+        shift1Team: '',
+        shift3Team: 'B',
+        productionByTeam: { B: null },
+        requiredWorks: []
+    };
+    assert.equal(scheduleApi.isNightOnlyRow(missingNight), true);
+    assert.equal(scheduleApi.productionForTeam(missingNight, 'B'), null);
+    assert.deepEqual(scheduleApi.buildAvailableSlots(missingNight, rules.SLOT_TYPES), []);
+
+    const engine = rules.createPlanningRules({
+        preferStoppedShift: true,
+        preferSameTeam: true,
+        stoppedShiftWeight: 1,
+        sameTeamWeight: 2
+    });
+    const reviewed = scheduleApi.recommendSizeChanges([
+        {
+            date: '2026-10-01', size: 'D1', productionAmount: 10,
+            shift1Team: 'A', shift3Team: '', productionByTeam: { A: 10 },
+            requiredWorks: [], maintenanceJudgement: 'scheduled'
+        },
+        {
+            date: '2026-10-02', size: 'STOP', productionAmount: 0,
+            shift1Team: '', shift3Team: 'B', productionByTeam: { B: 0 },
+            requiredWorks: [], maintenanceJudgement: 'scheduled'
+        },
+        {
+            date: '2026-10-03', size: 'D2', productionAmount: 10,
+            shift1Team: 'A', shift3Team: '', productionByTeam: { A: 10 },
+            requiredWorks: [], maintenanceJudgement: 'scheduled'
+        }
+    ], engine, rules.SLOT_TYPES);
+    assert.equal(reviewed.length, 1);
+    assert.equal(reviewed[0].recommendation, null);
+    assert.equal(reviewed[0].candidateSlots.some(slot => slot.shift === 'shift3'), false);
+});
+
 test('unknown companion-work count makes a slot ineligible, not merely warned', () => {
     const engine = rules.createPlanningRules({ preferStoppedShift: true });
     const unknownSlot = {

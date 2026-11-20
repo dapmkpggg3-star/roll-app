@@ -107,10 +107,13 @@
             stands: Array.isArray(state && state.stands) ? state.stands : []
         };
 
-        const candidates = rows.flatMap((row, rowIndex) => (
-            scheduleApi.buildAvailableSlots(row, slotTypes, { includeAfterProduction: true })
-                .map(slot => ({ ...slot, rowIndex }))
-        )).filter(slot => {
+        const candidates = rows.flatMap((row, rowIndex) => {
+            const built = scheduleApi.buildAvailableSlots(row, slotTypes, { includeAfterProduction: true });
+            const usable = scheduleApi.isNightOnlyRow(row)
+                ? built.filter(slot => slot.shift !== 'shift3')
+                : built;
+            return usable.map(slot => ({ ...slot, rowIndex }));
+        }).filter(slot => {
             if (!firstOverLimitRun || !isBefore(slot, firstOverLimitRun)) return false;
             return ruleEngine.validateWorkForSlot(work, slot).allowed;
         });
