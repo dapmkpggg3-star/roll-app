@@ -458,11 +458,14 @@ function buildDashboardRow(roll, revision, referenceAt, previousRevision) {
         warning,
         warningLabel: warning ? '予備0本' : '',
         basis: {
-            source: `${roll.rollId} / スタンド#${roll.standKey} / ${roll.status} / 現在径${roll.currentDiameter === '' ? '未確認' : roll.currentDiameter} / 廃却径${roll.scrapDiameter === '' ? '未確認' : roll.scrapDiameter} / カリバ${roll.currentCaliber || '未確認'} / 開始直数${Number.isInteger(roll.openingUsedRuns) ? roll.openingUsedRuns : '未確認'}`,
+            source: `${roll.rollId} / スタンド#${roll.standKey} / ${roll.status} / 現在径${roll.currentDiameter === '' ? '未確認' : roll.currentDiameter} / 廃却径${roll.scrapDiameter === '' ? '未確認' : roll.scrapDiameter} / カリバ${roll.currentCaliber || '未確認'} / 開始直数${Number.isInteger(roll.openingUsedRuns) ? roll.openingUsedRuns : '未確認'} / recordKindの保存列は未確認 / productionByTeamは生産予定のセルLとN。見出しは未確認`,
             formula: '使用回数は計画版の各月で、実績があれば実績、無ければ計画を足します。上限到達の見込みは交換日にしません。予定表上の交換候補日はロールカリバ替予定表の現在の計画です。確認済み交換可能日は、正の予定件数、昼間の停止枠、作業人数、必要時間と確保時間、組替準備、固定3セットが成立した日だけです。欠損した生産量は0tにしません。所要時間から件数は増やしません。改削残回数は（現在径−廃却径）÷切込みです。購入日にはしません。',
             steps: [
+                `入力: ${(roll.days || []).map(dashboardDayTrace).join(' / ') || '日別の操業予定はない'}`,
                 exchange.limitText,
                 exchange.reason,
+                `判断: 予定表上の交換候補日は${exchange.listedText}。確認済み交換可能日は${exchange.text}。上限到達の見込みとは別です。`,
+                `手入力: 使用終了 ${manual.useEnd || 'なし'} / 改削 ${manual.rework || 'なし'} / ${manual.enteredAt || '入力日時なし'} / ${manual.operator || '担当なし'}`,
                 `手入力: 使用終了 ${manual.useEnd || 'なし'} / 改削 ${manual.rework || 'なし'} / ${manual.enteredAt || '入力日時なし'} / ${manual.operator || '担当なし'}`,
                 comparison,
                 rework,
@@ -481,6 +484,34 @@ function buildDashboardRow(roll, revision, referenceAt, previousRevision) {
                 : '購入リードタイムは暫定です。購入日も不足なしも確定しません。'
         }
     };
+}
+
+function dashboardDayTrace(day) {
+    const amount = day && typeof day.productionAmount === 'number' && Number.isFinite(day.productionAmount) ? String(day.productionAmount) : '欠損';
+    const hours = day && typeof day.operatingHours === 'number' && Number.isFinite(day.operatingHours) ? String(day.operatingHours) : '欠損';
+    const kind = typeof dayQuantityClass === 'function' ? dayQuantityClass(day) : '区分未確認';
+    const teams = day && day.productionByTeam ? `A:${day.productionByTeam.A === 0 || day.productionByTeam.A ? day.productionByTeam.A : '欠損'} B:${day.productionByTeam.B === 0 || day.productionByTeam.B ? day.productionByTeam.B : '欠損'}` : '勤務別は未確認';
+    return `${day && day.date || '日付未確認'} 生産量${amount} 時間${hours} 区分${kind} 勤務別${teams}`;
+}
+
+function compareDashboardForecasts(fixture) {
+    const source = fixture || anonymousDashboardFixture();
+    const revision = source.revisions[0];
+    const changed = source.revisions[1] || revision;
+    const roll = source.rolls[0];
+    const normal = buildDashboardRow(roll, revision, source.referenceAt, null);
+    const missingRoll = Object.assign({}, roll, {
+        days: (roll.days || []).map((day, index) => index === 0 ? Object.assign({}, day, { productionAmount: null }) : day)
+    });
+    const missing = buildDashboardRow(missingRoll, revision, source.referenceAt, null);
+    const revised = buildDashboardRow(roll, changed, source.referenceAt, revision);
+    const pack = row => ({
+        listed: row.auto.listedExchange,
+        confirmed: row.auto.exchange,
+        limit: row.auto.limitText,
+        useCount: row.auto.totalUseCount
+    });
+    return { normal: pack(normal), missing: pack(missing), revised: pack(revised) };
 }
 
 function buildRollDashboard(fixture) {

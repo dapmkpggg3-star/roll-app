@@ -65,6 +65,13 @@ test('saved code separates the six open items and stops a forecast that lacks th
 });
 
 test('the field map keeps handwritten plans, forecasts, and confirmed dates apart', () => {
+  const record = context.sourceColumnMap().find(item => item.item === 'recordKind');
+  const teams = context.sourceColumnMap().find(item => item.item === 'productionByTeam');
+  assert.equal(record.state, '未確認');
+  assert.match(record.column, /保存列は見当たりません/);
+  assert.match(teams.column, /セルL/);
+  assert.match(teams.column, /見出しの文言はコードにありません/);
+  assert.match(teams.read, /0にはしません/);
   assert.equal(item('手入力の使用終了').state, '未確認');
   assert.match(item('手入力の使用終了').roles, /useEndDateには入れない/);
   assert.equal(item('確定の使用終了').roles, 'useEndDate');

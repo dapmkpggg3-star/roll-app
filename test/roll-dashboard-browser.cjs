@@ -165,7 +165,8 @@ async function main() {
     const prepText = await page.locator('main').innerText();
     assert.match(prepText, /手入力の使用終了/);
     assert.match(prepText, /useEndDateには入れない/);
-    assert.match(prepText, /権限不足で停止します/);
+    assert.match(prepText, /見出しの文言はコードにありません/);
+    assert.match(prepText, /recordKind/);
     assert.match(prepText, /操業A/);
     assert.match(prepText, /過去の計画/);
     assert.match(prepText, /完了実績/);

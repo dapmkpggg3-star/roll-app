@@ -39,6 +39,8 @@
         <p id="connection"></p>
         <h2>資料とコードで分かれた項目</h2>
         <div id="findings"></div>
+        <h2>匿名の項目対応</h2>
+        <table id="source-columns"></table>
         <h2>匿名の予定表テンプレート</h2>
         <p id="template-note"></p>
         <table id="replacement-template"></table>
@@ -83,6 +85,10 @@
                 <p>予測への影響: ${escapeHtml(item.impact)}</p>
             </article>
         `).join('');
+        const columns = sourceColumnMap();
+        document.getElementById('source-columns').innerHTML = '<thead><tr><th>項目</th><th>入力元</th><th>保存列</th><th>読み方</th><th>状態</th></tr></thead><tbody>'
+            + columns.map(item => `<tr data-column="${escapeHtml(item.item)}"><td>${escapeHtml(item.item)}</td><td>${escapeHtml(item.source)}</td><td>${escapeHtml(item.column)}</td><td>${escapeHtml(item.read)}</td><td>${escapeHtml(item.state)}</td></tr>`).join('')
+            + '</tbody>';
         const template = anonymousReplacementTemplate();
         document.getElementById('template-note').textContent = template.note;
         document.getElementById('replacement-template').innerHTML = `<thead><tr>${template.columns.map(column => `<th>${escapeHtml(column)}</th>`).join('')}</tr></thead><tbody>`

@@ -1,4 +1,19 @@
 // Connection preparation for the anonymous dashboard. This file does not open a network connection.
+function sourceColumnMap() {
+    return [
+        { item: 'recordKind', source: '日別オブジェクトのrecordKindだけ', column: '生産予定にもロールカリバ替予定にも、この名前の保存列は見当たりません', read: '値が計画・実績、またはplan・actualのときだけその区分。無い日は区分未確認で、実績とは呼びません', state: '未確認' },
+        { item: '月次の計画使用回数', source: '操業計画の版のplannedUseCount', column: '生産予定の日別列ではありません', read: '実績が無い月は計画を使います。予定を実績にはしません', state: '対応あり' },
+        { item: '月次の実績使用回数', source: '操業計画の版のactualUseCount', column: '生産予定の日別列ではありません', read: '数値がある月だけ実績を優先します。空欄は0にしません', state: '対応あり' },
+        { item: 'productionByTeam', source: '生産予定シートの読み取り', column: 'AはセルL、BはセルN。見出しの文言はコードにありません', read: '空欄はnullのままです。0にはしません。合計はセルJ、無ければAとBが両方あるときだけ足します', state: '一部未確認' },
+        { item: '日別の日付', source: 'シート名の年月と、生産予定はセルD、ロールカリバ替予定はセルBの連続した日', column: '見出し「日付」はロールカリバ替予定で確認済み。生産予定の見出しは未確認', read: 'シート名に年月が無い生産予定は読みません', state: '一部未確認' },
+        { item: 'サイズ', source: '生産予定のセルG。ロールカリバ替予定の見出しはサイズ', column: 'Gの見出し文言は未確認', read: 'Dで始まる値をサイズにします。数値の0tは休止にします。生産量が欠損しても0tの休止にはしません', state: '一部未確認' },
+        { item: '操業A/B', source: '生産予定のセルHを1直、セルIを3直としてAまたはBだけ採用', column: 'ロールカリバ替予定の操業A/Bと、このH・Iが同じ列かは未確認', read: 'AとB以外は空欄のままです', state: '未確認' },
+        { item: '常昼', source: 'ロールカリバ替予定の見出しとして確認済み', column: '生産予定の保存列ではありません。テンプレートの記入例は確認済み停止枠にしません', read: '常昼の具体的な記入語は未確認です', state: '未確認' },
+        { item: '作業予定', source: 'ロールカリバ替予定の記入欄。読取コードはセルE、H、K、Nの文言からロール替とカリバ替を拾います', column: 'E・H・K・Nと、確認済み見出しの対応は未確認です', read: '予定件数と区分は資料の列名ではありません。件数不明を0件にはしません', state: '一部未確認' },
+        { item: '操業時間', source: '生産予定のセルP', column: '見出し文言は未確認', read: '空欄はnull。4時間以上だけ1直、2時間未満と2時間以上4時間未満は1直にしません', state: '一部未確認' }
+    ];
+}
+
 function acceptanceFieldMap() {
     return [
         { item: 'スタンド', roles: 'nameから読む想定。Rolesにスタンド列は無い', sheet: 'ロール管理表のスタンド', production: '生産予定のstandKey', caliber: 'カリバ使用計画のstandKey', state: '対応あり' },

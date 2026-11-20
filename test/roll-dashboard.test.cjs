@@ -334,6 +334,19 @@ test('a night-only stop is not an exchange date, and a checked daytime stop can 
   const fromTemplate = Object.assign({}, day, { replacementPlan: context.replacementJobsFromTemplate(template, '10') });
   assert.equal(context.buildDashboardRow(fromTemplate, fixture.revisions[0], fixture.referenceAt, null).auto.exchangeDate, null);
   assert.equal(accepted.diff.manualVersusAuto.includes('使用終了予定と交換候補は種類が違う'), true);
+  assert.match(accepted.basis.steps.join('\n'), /入力:/);
+  assert.match(accepted.basis.steps.join('\n'), /判断:/);
+  assert.match(accepted.basis.source, /セルLとN/);
+  const compared = context.compareDashboardForecasts(fixture);
+  assert.equal(compared.normal.confirmed, '作業枠未確認');
+  assert.equal(compared.normal.listed, 'なし');
+  assert.match(compared.normal.limit, /2027-04-04は上限到達の見込み/);
+  assert.equal(compared.missing.confirmed, '作業枠未確認');
+  assert.match(compared.missing.limit, /判定不能/);
+  assert.equal(compared.missing.limit.includes('2027-04-04は上限到達の見込み'), false);
+  assert.equal(compared.revised.confirmed, '作業枠未確認');
+  assert.notEqual(compared.revised.useCount, compared.normal.useCount);
+  assert.match(compared.revised.limit, /2027-04-04は上限到達の見込み/);
 });
 
 test('dashboard files are wired without a ledger write, and CI names the same tests', () => {
