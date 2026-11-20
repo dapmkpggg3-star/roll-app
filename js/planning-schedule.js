@@ -11,7 +11,11 @@
     function productionForTeam(row, team) {
         const key = normalizeTeam(team);
         const values = row && row.productionByTeam;
-        return key && values ? Number(values[key] || 0) : 0;
+        if (!key || !values || !Object.prototype.hasOwnProperty.call(values, key)) return null;
+        const amount = values[key];
+        // Only an explicitly supplied, finite, nonnegative number can prove a stopped shift.
+        // Missing values and blank text must not become 0t or an available work slot.
+        return typeof amount === 'number' && Number.isFinite(amount) && amount >= 0 ? amount : null;
     }
 
     function firstProductionTeam(row) {
