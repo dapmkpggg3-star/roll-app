@@ -41,3 +41,20 @@ test('empty input produces a stable empty model', () => {
     assert.equal(model.items.length, 0);
     assert.equal(model.summary.riskCount, 0);
 });
+
+test('caliber slotFound without recommendation is not a candidate', () => {
+    const model = view.buildPlanningViewModel({ caliberChanges: [{ status: 'slotFound', equipmentId: 'anonymous' }] });
+    assert.equal(model.items[0].statusLabel, '経過観察');
+    assert.equal(model.items[0].slotLabel, '候補枠なし');
+    assert.equal(model.summary.caliberChangeCount, 0);
+});
+
+test('unknown companion work cannot produce a visible candidate', () => {
+    const model = view.buildPlanningViewModel({
+        sizeChanges: [{ recommendation: { slot: { date: 'sample', shift: 'shift1', requiredCompanionWorkCount: null } } }],
+        caliberChanges: [{ status: 'slotFound', recommendation: { date: 'sample', shift: 'shift1', requiredCompanionWorkCount: null } }]
+    });
+    assert.equal(model.items[0].statusLabel, '要確認');
+    assert.equal(model.items[1].statusLabel, '経過観察');
+    assert.equal(model.summary.caliberChangeCount, 0);
+});
