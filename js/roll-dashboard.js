@@ -118,9 +118,13 @@ function dashboardLeadText(leadTime) {
 }
 
 function dashboardNightOnly(row) {
-    const dayTeam = String(row && row.shift1Team || '').trim();
-    const nightTeam = String(row && row.shift3Team || '').trim();
-    return Boolean(nightTeam) && !dayTeam;
+    const scheduleApi = globalThis.RollPlanningSchedule;
+    if (scheduleApi && typeof scheduleApi.isNightOnlyRow === 'function') return scheduleApi.isNightOnlyRow(row);
+    const token = value => {
+        const text = String(value || '').normalize('NFKC').trim().toUpperCase();
+        return text === 'A' || text === 'B' ? text : '';
+    };
+    return Boolean(token(row && row.shift3Team)) && !token(row && row.shift1Team);
 }
 
 function dashboardLimitText(projected) {

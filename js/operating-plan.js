@@ -1346,6 +1346,12 @@ function normalizeShiftTeam(value) {
     return token === 'A' || token === 'B' ? token : '';
 }
 
+function normalizedDayTeam(row) {
+    const scheduleApi = globalThis.RollPlanningSchedule;
+    if (scheduleApi && typeof scheduleApi.normalizeTeam === 'function') return scheduleApi.normalizeTeam(row && row.shift1Team);
+    return normalizeShiftTeam(row && row.shift1Team);
+}
+
 function scheduleNightOnly(row) {
     const scheduleApi = globalThis.RollPlanningSchedule;
     if (scheduleApi && typeof scheduleApi.isNightOnlyRow === 'function') return scheduleApi.isNightOnlyRow(row) === true;
@@ -1382,6 +1388,9 @@ function confirmedWorkCandidate(reachDate, stand, confirmation, days, referenceD
     if (producing) return { date: null, note: '作業日が操業と重なるので、参考候補は保留します。' };
     if (scheduleNightOnly(row)) {
         return { date: null, note: '夜勤のみの停止は、昼の交換候補にしません。' };
+    }
+    if (!normalizedDayTeam(row)) {
+        return { date: null, note: '昼の班が未確認なので、交換候補にはしません。' };
     }
     const workType = expected === 'rollChange' ? rules.WORK_TYPES.ROLL_CHANGE : rules.WORK_TYPES.CALIBER_CHANGE;
     const allowed = rules.createPlanningRules({ afterProductionAllowedWorkTypes: [] }).validateWorkForSlot({
@@ -1858,6 +1867,9 @@ function describeExchangeSlot(confirmation, row, expectedType) {
     if (scheduleNightOnly(row)) {
         return { ok: false, state: '不成立', note: '夜勤のみの日は確認済み交換可能日にしません。' };
     }
+    if (!normalizedDayTeam(row)) {
+        return { ok: false, state: '未確認', note: '昼の班が未確認なので、確認済み交換可能日にはしません。' };
+    }
     const required = source.requiredHours;
     const reserved = source.reservedHours;
     const people = source.people;
@@ -2066,7 +2078,7 @@ function simulateExchangeCycle(input) {
                 const assessed = assemblySlotReady(confirmation, row);
                 const overlap = events.some(event => event.date === date && ['サイズ替', 'ロール替', 'カリバ替', '組替完了'].includes(event.kind));
                 const futurePreparation = confirmation && confirmation.preparedOn > date;
-                if (confirmation && assessed.ok && row.shift1Team && !overlap && !futurePreparation) {
+                if (confirmation && assessed.ok && normalizeShiftTeam(row.shift1Team) && !overlap && !futurePreparation) {
                     finishAssembly(date, [item], confirmation);
                     completed = true;
                 } else {
@@ -2115,7 +2127,7 @@ function simulateExchangeCycle(input) {
             const confirmation = matching.length === 1 ? matching[0] : null;
             const slotRow = confirmation && days.slice(0, index + 1).filter(item => item.date === confirmation.date);
             const priorUse = days.slice(0, index).filter(item => item.productionAmount > 0).at(-1);
-            const slotReady = confirmation && nextSize && slotRow.length === 1 && Boolean(slotRow[0].shift1Team)
+            const slotReady = confirmation && nextSize && slotRow.length === 1 && Boolean(normalizeShiftTeam(slotRow[0].shift1Team))
                 && confirmation.date <= date && confirmation.date < operationDate && (!priorUse || confirmation.date > priorUse.date)
                 && (!source.referenceAt || confirmation.date >= source.referenceAt)
                 && !events.some(item => item.date === confirmation.date && ['ロール替', 'カリバ替', '組替完了'].includes(item.kind))
@@ -2171,7 +2183,7 @@ function simulateExchangeCycle(input) {
         if (stopped && state.pending && state.phase === 'operating') {
             const expected = state.pending === 'caliber' ? 'caliberChange' : 'rollChange';
             const overlap = sizeChanged && events.some(event => event.date === date && ['サイズ替', '組替完了', 'ロール替', 'カリバ替'].includes(event.kind));
-            if (!exchangeSlotReady(workConfirmation, row, expected) || sizeChanged && (!row.shift1Team || overlap)) {
+            if (!exchangeSlotReady(workConfirmation, row, expected) || sizeChanged && (!normalizeShiftTeam(row.shift1Team) || overlap)) {
                 push(date, '交換需要', '到達しています。0tや夜間、未確認の作業枠だけでは交換しません。');
                 if (sizeChanged) stopAt(date, 'サイズ切替後の対象・サイズ・基準日・作業日に一致する交換枠が未確認です。以後は計算済みにしません。');
                 else markConfirmed(date);

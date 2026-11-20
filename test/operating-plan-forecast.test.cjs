@@ -53,6 +53,11 @@ test('blank or invalid day teams do not become a daytime exchange candidate', ()
   }
   const daytime = context.confirmedWorkCandidate('2027-04-03', '2', work, [row('A', '')], '2026-11-13');
   assert.equal(daytime.date, '2027-04-02');
+  for (const shift1Team of ['不明', ' ', '　']) {
+    const invalid = context.confirmedWorkCandidate('2027-04-03', '2', work, [row(shift1Team, '')], '2026-11-13');
+    assert.equal(invalid.date, null, shift1Team);
+    assert.match(invalid.note, /昼の班が未確認/);
+  }
   const saved = context.RollPlanningSchedule;
   context.RollPlanningSchedule = undefined;
   try {

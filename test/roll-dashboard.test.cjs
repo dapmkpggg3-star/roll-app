@@ -352,6 +352,20 @@ test('a night-only stop is not an exchange date, and a checked daytime stop can 
   assert.match(compared.revised.limit, /2027-04-04は上限到達の見込み/);
 });
 
+test('dashboard night-only uses the same normalized team rule', () => {
+  const cases = [
+    [' ', 'B'],
+    ['　', 'Ｂ'],
+    ['不明', 'B'],
+    ['', 'B']
+  ];
+  cases.forEach(([shift1Team, shift3Team]) => {
+    assert.equal(context.dashboardNightOnly({ shift1Team, shift3Team, productionAmount: 0 }), true, shift1Team);
+  });
+  assert.equal(context.dashboardNightOnly({ shift1Team: 'A', shift3Team: 'B' }), false);
+  assert.equal(context.dashboardNightOnly({ shift1Team: '不明', shift3Team: '' }), false);
+});
+
 test('dashboard files are wired without a ledger write, and CI names the same tests', () => {
   const dashboard = fs.readFileSync(path.join(root, 'js/roll-dashboard.js'), 'utf8');
   const page = fs.readFileSync(path.join(root, 'roll-dashboard.html'), 'utf8');
