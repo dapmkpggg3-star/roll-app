@@ -129,13 +129,16 @@ test('a complete xlsx zip is parsed without uploading or external libraries', as
     assert.equal(parsed.importedSheets.length, 1);
     assert.equal(parsed.maintenanceSheets.length, 1);
     assert.equal(parsed.schedule.length, 30);
-    assert.deepEqual(parsed.schedule[1].requiredWorks, [{ type: 'rollChange' }]);
+    assert.equal(parsed.schedule[1].requiredWorks, null);
+    assert.equal(parsed.schedule[1].maintenanceLayoutState, 'unconfirmed');
+    assert.equal(parsed.schedule[1].maintenanceJudgement, 'held');
+    assert.equal(parsed.schedule[1].exchangePossibleDate, null);
     const planning = importer.createPlanningResults(parsed.schedule, { rules, schedule: scheduleApi });
     assert.equal(planning.caliberConnected, false);
     assert.equal(planning.sizeChanges.length, 1);
     assert.equal(planning.sizeChanges[0].change.fromSize, 'D1');
     assert.equal(planning.sizeChanges[0].change.toSize, 'D2');
-    assert.equal(planning.sizeChanges[0].recommendation.slot.shift, 'shift1');
+    assert.equal(planning.sizeChanges[0].recommendation.slot.shift, 'shift3');
 });
 
 test('blank text is missing and only grouped commas are numbers', () => {

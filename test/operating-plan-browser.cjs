@@ -651,10 +651,21 @@ async function main() {
     const beforeIds = await page.evaluate(() => roles.map(item => item.id).join(','));
     const beforeSettings = await page.evaluate(() => localStorage.getItem('caliber_forecast_settings_v1'));
     await page.evaluate(() => {
+      window.__storageCalls = { setItem: 0, removeItem: 0, clear: 0 };
+      ['setItem', 'removeItem', 'clear'].forEach(name => {
+        const original = Storage.prototype[name];
+        Storage.prototype[name] = function (...args) {
+          window.__storageCalls[name] += 1;
+          return original.apply(this, args);
+        };
+      });
       window.__writes = [];
       window.__fetches = [];
-      const originalSet = localStorage.setItem.bind(localStorage);
-      localStorage.setItem = (key, value) => { window.__writes.push(key); return originalSet(key, value); };
+      const originalSet = Storage.prototype.setItem;
+      localStorage.setItem = function (key, value) {
+        window.__writes.push(key);
+        return originalSet.call(this, key, value);
+      };
       const originalFetch = window.fetch.bind(window);
       window.fetch = (...args) => { window.__fetches.push(String(args[0])); return originalFetch(...args); };
     });
@@ -671,6 +682,8 @@ async function main() {
     assert.equal(anonText.includes('既回答の径はローカル仕様から読みました'), false);
     assert.deepEqual(await page.evaluate(() => window.__writes), []);
     assert.deepEqual(await page.evaluate(() => window.__fetches), []);
+    assert.deepEqual(await page.evaluate(() => window.__storageCalls), { setItem: 0, removeItem: 0, clear: 0 });
+    assert.equal(outbound.length, 0);
     assert.equal(await page.evaluate(() => localStorage.getItem('roles')), '["real-ledger"]');
     assert.equal(await page.evaluate(() => localStorage.getItem('caliber_forecast_settings_v1')), beforeSettings);
     assert.equal(await page.evaluate(() => localStorage.getItem('caliber_forecast_settings_anon_v1')), null);
@@ -679,11 +692,15 @@ async function main() {
     await entry.addInitScript(() => {
       window.__pageWrites = [];
       window.__pageFetches = [];
-      const originalSet = Storage.prototype.setItem;
-      Storage.prototype.setItem = function (key, value) {
-        window.__pageWrites.push(`${location.pathname} ${key}`);
-        return originalSet.call(this, key, value);
-      };
+      window.__storageCalls = { setItem: 0, removeItem: 0, clear: 0 };
+      ['setItem', 'removeItem', 'clear'].forEach(name => {
+        const original = Storage.prototype[name];
+        Storage.prototype[name] = function (...args) {
+          window.__storageCalls[name] += 1;
+          window.__pageWrites.push(`${location.pathname} ${name} ${args[0] || ''}`);
+          return original.apply(this, args);
+        };
+      });
       const originalFetch = window.fetch.bind(window);
       window.fetch = (...args) => {
         window.__pageFetches.push(`${location.pathname} ${args[0]}`);
@@ -705,6 +722,14 @@ async function main() {
       localStorage.setItem('roles', '["real-ledger"]');
       window.__remote = 0;
       window.__pageFetches = [];
+      window.__storageCalls = { setItem: 0, removeItem: 0, clear: 0 };
+      ['setItem', 'removeItem', 'clear'].forEach(name => {
+        const original = Storage.prototype[name];
+        Storage.prototype[name] = function (...args) {
+          window.__storageCalls[name] += 1;
+          return original.apply(this, args);
+        };
+      });
       const originalFetch = window.fetch.bind(window);
       window.fetch = (...args) => {
         window.__pageFetches.push(String(args[0]));
@@ -720,10 +745,13 @@ async function main() {
     assert.equal(await direct.evaluate(() => localStorage.getItem('roles')), '["real-ledger"]');
     assert.equal(await direct.evaluate(() => typeof loadRemoteRoles), 'undefined');
     assert.equal(await direct.evaluate(() => window.__remote), 0);
+    assert.deepEqual(await direct.evaluate(() => window.__storageCalls), { setItem: 0, removeItem: 0, clear: 0 });
     const directFetches = await direct.evaluate(() => window.__pageFetches);
     assert.equal(directFetches.some(url => url.includes('stand-premises') || url.includes('google') || url.includes('script.google')), false);
     const entryWrites = await entry.evaluate(() => window.__pageWrites.filter(item => item.startsWith('/anonymous-check.html')));
     assert.equal(entryWrites.some(item => item.includes('roles') || item.includes('caliber_forecast_settings') || item.includes('operating_plan') || item.includes('stand_lead')), false);
+    assert.deepEqual(await entry.evaluate(() => window.__storageCalls), { setItem: 0, removeItem: 0, clear: 0 });
+    assert.deepEqual(await entry.evaluate(() => window.__pageFetches.filter(item => item.startsWith('/anonymous-check.html') && !item.includes('roll-app.test'))), []);
     console.log('OPERATING PLAN browser PASS');
   } finally {
     await browser.close();
