@@ -364,6 +364,17 @@ test('a missing work list is not a confirmed zero', () => {
     const explicit = scheduleApi.buildAvailableSlots({ ...bare, requiredWorks: [] }, rules.SLOT_TYPES)[0];
     assert.equal(explicit.requiredCompanionWorkCount, 0);
     assert.equal(engine.scoreSizeChangeSlot(explicit, 'A').eligible, true);
+    for (const requiredWorks of [[null], [''], [{}], [{ type: '' }], [{ type: '未確認' }], [{ type: 'rollChange' }, null]]) {
+        assert.equal(scheduleApi.countRequiredCompanionWork({ ...bare, requiredWorks }), null, JSON.stringify(requiredWorks));
+        const unknown = scheduleApi.buildAvailableSlots({ ...bare, requiredWorks }, rules.SLOT_TYPES)[0];
+        assert.equal(unknown.requiredCompanionWorkCount, null);
+        assert.equal(engine.scoreSizeChangeSlot(unknown, 'A').eligible, false);
+    }
+    assert.equal(scheduleApi.countRequiredCompanionWork({ ...bare, requiredWorks: [{ type: 'sizeChange' }] }), 0);
+    assert.equal(scheduleApi.countRequiredCompanionWork({
+        ...bare,
+        requiredWorks: [{ type: 'rollChange' }, { type: 'caliberChange' }]
+    }), 2);
 });
 
 test('unknown companion-work count makes a slot ineligible, not merely warned', () => {

@@ -30,10 +30,18 @@
         return '';
     }
 
+    const KNOWN_WORK_TYPES = new Set(['rollChange', 'caliberChange', 'sizeChange']);
+
     function countRequiredCompanionWork(row) {
         if (!row || row.maintenanceLayoutState === 'unconfirmed' || row.maintenanceJudgement === 'held') return null;
         if (!Array.isArray(row.requiredWorks)) return null;
-        return row.requiredWorks.filter(work => work && work.type !== 'sizeChange').length;
+        let count = 0;
+        for (const work of row.requiredWorks) {
+            const type = work && typeof work === 'object' ? work.type : '';
+            if (!KNOWN_WORK_TYPES.has(type)) return null;
+            if (type !== 'sizeChange') count += 1;
+        }
+        return count;
     }
 
     function buildAvailableSlots(row, slotTypes, options) {
