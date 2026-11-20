@@ -263,7 +263,7 @@ function replacementTemplateColumns() {
 function anonymousReplacementTemplate() {
     return {
         title: '匿名ロールカリバ替予定',
-        note: '実ブックは開いていません。2026年6月度で確認できた列は、日付、曜日、サイズ、操業A/B、常昼、各作業予定です。下の行は匿名の記入例で、6月の実値ではありません。予定件数と区分は、件数不明と過去・現在・実績を分けて残すための欄です。',
+        note: '実ブックは開いていません。2026年6月度の保存記録で確認できた見出し名は、日付、曜日、サイズ、操業A/B、常昼、各作業予定です。その月の列記号は未確認です。下の行は匿名の記入例で、6月の実値ではありません。予定件数と区分は、件数不明と過去・現在・実績を分けて残すための欄です。',
         columns: replacementTemplateColumns(),
         rows: [
             { 日付: '2026-04-02', 曜日: '木', サイズ: 'D1', 操業A: 'A', 操業B: '', 常昼: '記入あり', 作業予定: '#10 カリバ替', 予定件数: 1, 区分: '過去の計画' },
@@ -458,14 +458,14 @@ function buildDashboardRow(roll, revision, referenceAt, previousRevision) {
         warning,
         warningLabel: warning ? '予備0本' : '',
         basis: {
-            source: `${roll.rollId} / スタンド#${roll.standKey} / ${roll.status} / 現在径${roll.currentDiameter === '' ? '未確認' : roll.currentDiameter} / 廃却径${roll.scrapDiameter === '' ? '未確認' : roll.scrapDiameter} / カリバ${roll.currentCaliber || '未確認'} / 開始直数${Number.isInteger(roll.openingUsedRuns) ? roll.openingUsedRuns : '未確認'} / recordKindの保存列は未確認 / productionByTeamは生産予定のセルLとN。見出しは未確認`,
+            source: `${roll.rollId} / スタンド#${roll.standKey} / ${roll.status} / 現在径${roll.currentDiameter === '' ? '未確認' : roll.currentDiameter} / 廃却径${roll.scrapDiameter === '' ? '未確認' : roll.scrapDiameter} / カリバ${roll.currentCaliber || '未確認'} / 開始直数${Number.isInteger(roll.openingUsedRuns) ? roll.openingUsedRuns : '未確認'} / recordKindの保存列は未確認 / 保存記録の9月・10月ではLが操業A、Nが操業B。6月のセル番地は未確認`,
             formula: '使用回数は計画版の各月で、実績があれば実績、無ければ計画を足します。上限到達の見込みは交換日にしません。予定表上の交換候補日はロールカリバ替予定表の現在の計画です。確認済み交換可能日は、正の予定件数、昼間の停止枠、作業人数、必要時間と確保時間、組替準備、固定3セットが成立した日だけです。欠損した生産量は0tにしません。所要時間から件数は増やしません。改削残回数は（現在径−廃却径）÷切込みです。購入日にはしません。',
             steps: [
                 `入力: ${(roll.days || []).map(dashboardDayTrace).join(' / ') || '日別の操業予定はない'}`,
                 exchange.limitText,
                 exchange.reason,
                 `判断: 予定表上の交換候補日は${exchange.listedText}。確認済み交換可能日は${exchange.text}。上限到達の見込みとは別です。`,
-                `手入力: 使用終了 ${manual.useEnd || 'なし'} / 改削 ${manual.rework || 'なし'} / ${manual.enteredAt || '入力日時なし'} / ${manual.operator || '担当なし'}`,
+                '列対応: 日付D、サイズG、Ⅰ勤H、Ⅲ勤I、日産J、操業AはL、操業BはN、圧延時間Pは9月・10月の保存記録と一致。6月のセル番地は未確認。作業文言の保存記録はK。コードはE・H・K・Nも読む。',
                 `手入力: 使用終了 ${manual.useEnd || 'なし'} / 改削 ${manual.rework || 'なし'} / ${manual.enteredAt || '入力日時なし'} / ${manual.operator || '担当なし'}`,
                 comparison,
                 rework,

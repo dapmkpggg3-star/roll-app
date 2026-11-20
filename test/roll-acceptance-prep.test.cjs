@@ -69,9 +69,14 @@ test('the field map keeps handwritten plans, forecasts, and confirmed dates apar
   const teams = context.sourceColumnMap().find(item => item.item === 'productionByTeam');
   assert.equal(record.state, '未確認');
   assert.match(record.column, /保存列は見当たりません/);
-  assert.match(teams.column, /セルL/);
-  assert.match(teams.column, /見出しの文言はコードにありません/);
+  assert.match(teams.column, /L14が操業A/);
+  assert.match(teams.column, /6月の同じセルは未確認/);
   assert.match(teams.read, /0にはしません/);
+  const work = context.sourceColumnMap().find(item => item.item === '作業予定');
+  assert.match(work.column, /作業文言はK/);
+  assert.match(work.column, /EとHは班/);
+  assert.match(work.column, /Nは作業欄として確認できません/);
+  assert.match(work.column, /6月の作業欄の列記号は未確認/);
   assert.equal(item('手入力の使用終了').state, '未確認');
   assert.match(item('手入力の使用終了').roles, /useEndDateには入れない/);
   assert.equal(item('確定の使用終了').roles, 'useEndDate');

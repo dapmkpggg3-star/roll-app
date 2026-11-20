@@ -73,6 +73,9 @@ async function main() {
     assert.match(basis, /交換候補にはしません/);
     assert.match(basis, /2027-02-15/);
     assert.match(basis, /種類が違うので、日数差は出しません/);
+    assert.match(basis, /入力:/);
+    assert.match(basis, /判断:/);
+    assert.equal((basis.match(/手入力: 使用終了/g) || []).length, 1);
 
     await page.fill('#filter-stand', '');
     await page.fill('#filter-roll', 'ANON-2');
@@ -165,7 +168,8 @@ async function main() {
     const prepText = await page.locator('main').innerText();
     assert.match(prepText, /手入力の使用終了/);
     assert.match(prepText, /useEndDateには入れない/);
-    assert.match(prepText, /見出しの文言はコードにありません/);
+    assert.match(prepText, /6月の同じセルは未確認/);
+    assert.match(prepText, /作業文言はK/);
     assert.match(prepText, /recordKind/);
     assert.match(prepText, /操業A/);
     assert.match(prepText, /過去の計画/);

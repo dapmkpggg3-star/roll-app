@@ -334,9 +334,12 @@ test('a night-only stop is not an exchange date, and a checked daytime stop can 
   const fromTemplate = Object.assign({}, day, { replacementPlan: context.replacementJobsFromTemplate(template, '10') });
   assert.equal(context.buildDashboardRow(fromTemplate, fixture.revisions[0], fixture.referenceAt, null).auto.exchangeDate, null);
   assert.equal(accepted.diff.manualVersusAuto.includes('使用終了予定と交換候補は種類が違う'), true);
-  assert.match(accepted.basis.steps.join('\n'), /入力:/);
-  assert.match(accepted.basis.steps.join('\n'), /判断:/);
-  assert.match(accepted.basis.source, /セルLとN/);
+  const steps = accepted.basis.steps.join('\n');
+  assert.match(steps, /入力:/);
+  assert.match(steps, /判断:/);
+  assert.match(steps, /列対応:/);
+  assert.equal(accepted.basis.steps.filter(step => step.startsWith('手入力:')).length, 1);
+  assert.match(accepted.basis.source, /Lが操業A、Nが操業B/);
   const compared = context.compareDashboardForecasts(fixture);
   assert.equal(compared.normal.confirmed, '作業枠未確認');
   assert.equal(compared.normal.listed, 'なし');
