@@ -41,7 +41,7 @@
             const change = entry && entry.change ? entry.change : entry || {};
             const recommendation = entry && entry.recommendation;
             const proposedSlot = recommendation && recommendation.slot ? recommendation.slot : null;
-            const slot = proposedSlot && proposedSlot.date && proposedSlot.shift && proposedSlot.requiredCompanionWorkCount !== null ? proposedSlot : null;
+            const slot = proposedSlot && proposedSlot.date && proposedSlot.shift && Number.isInteger(proposedSlot.requiredCompanionWorkCount) && proposedSlot.requiredCompanionWorkCount >= 0 ? proposedSlot : null;
             items.push({
                 id: `size-${index}`,
                 kind: 'sizeChange',
@@ -59,7 +59,7 @@
             const slot = entry && entry.recommendation;
             const deadline = entry && entry.firstOverLimitRun;
             const hasRisk = status === 'noSafeSlot';
-            const confirmedSlot = status === 'slotFound' && slot && slot.date && slot.shift && slot.requiredCompanionWorkCount !== null;
+            const confirmedSlot = status === 'slotFound' && slot && slot.date && slot.shift && Number.isInteger(slot.requiredCompanionWorkCount) && slot.requiredCompanionWorkCount >= 0;
             const isDue = confirmedSlot || hasRisk;
             items.push({
                 id: `caliber-${index}`,
