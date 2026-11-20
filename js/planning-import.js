@@ -521,6 +521,12 @@
         };
     }
 
+    function planningWriteBackGate() {
+        // The published E/H team columns overlap with legacy size-change suggestions.
+        // Keep the live Sheet gateway unreachable until the column contract is approved.
+        return { allowed: false, reason: '作業予定表の書き戻し列（E・H班欄／K作業欄）の安全確認が未完了です。スプレッドシート出力を停止しています。' };
+    }
+
     function setStatus(message, state) {
         if (typeof document === 'undefined') return;
         const status = document.getElementById('auto-planning-import-status');
@@ -614,10 +620,10 @@
                 setSummary(result);
                 if (exportButton) {
                     exportButton.hidden = false;
-                    exportButton.disabled = false;
-                    exportButton.textContent = `${pendingExport.year}年${pendingExport.month}月をスプレッドシートへ出力`;
+                    exportButton.disabled = true;
+                    exportButton.textContent = '書き戻し安全確認待ち（出力停止）';
                 }
-                setStatus(`読み込み完了：${pendingExport.year}年${pendingExport.month}月／サイズ替候補 ${pendingExport.suggestions.length}件。内容はアプリ内ではなくスプレッドシートへ出力します。`, 'success');
+                setStatus(`読み込み完了：${pendingExport.year}年${pendingExport.month}月。ただし${planningWriteBackGate().reason}`, 'error');
             } catch (error) {
                 pendingExport = null;
                 if (exportButton) {
@@ -631,6 +637,12 @@
 
         async function exportToSheet() {
             if (!pendingExport || !exportButton) return;
+            const safety = planningWriteBackGate();
+            if (!safety.allowed) {
+                exportButton.disabled = true;
+                setStatus(safety.reason, 'error');
+                return;
+            }
             const gateway = globalThis.RollSheetGateway;
             if (!gateway || typeof gateway.exportPlanningDraft !== 'function') {
                 setStatus('スプレッドシート連携を読み込めませんでした。画面を再読み込みしてください。', 'error');
@@ -703,6 +715,7 @@
         parseXlsxArrayBuffer,
         createPlanningResults,
         importFile,
+        planningWriteBackGate,
         initialize
     };
 });

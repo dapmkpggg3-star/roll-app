@@ -240,3 +240,16 @@ test('a missing maintenance worksheet is unknown, never zero scheduled jobs', as
     assert.equal(review.caliberConnected, false);
     assert.equal(review.sizeChanges.length, 1);
 });
+
+
+test('write-back is disabled until its column roles are verified', () => {
+    const gate = importer.planningWriteBackGate();
+    assert.equal(gate.allowed, false);
+    assert.match(gate.reason, /E・H班欄/);
+    assert.match(gate.reason, /出力を停止/);
+    const source = require('node:fs').readFileSync(require('node:path').join(__dirname, '../js/planning-import.js'), 'utf8');
+    assert.match(source, /exportButton\.disabled = true;\s*exportButton\.textContent = '書き戻し安全確認待ち/);
+    const directExport = source.slice(source.indexOf('async function exportToSheet()'));
+    assert.ok(directExport.indexOf('if (!safety.allowed)') >= 0);
+    assert.ok(directExport.indexOf('if (!safety.allowed)') < directExport.indexOf('gateway.exportPlanningDraft(pendingExport)'));
+});
