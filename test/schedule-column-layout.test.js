@@ -208,7 +208,7 @@ test('an unconfirmed layout stays held on the schedule and a confirmed K work st
     });
     const junePlan = importer.createPlanningResults(juneParsed.schedule, { rules, schedule: scheduleApi });
     assert.equal(junePlan.sizeChanges.length, 1);
-    assert.notEqual(junePlan.sizeChanges[0].recommendation.slot.shift, 'shift1');
+    assert.equal(junePlan.sizeChanges[0].recommendation, null);
 
     const octoberBuffer = workbookBuffer('2026.10');
     const octoberParsed = await importer.parseXlsxArrayBuffer(octoberBuffer.buffer.slice(octoberBuffer.byteOffset, octoberBuffer.byteOffset + octoberBuffer.byteLength));
@@ -259,4 +259,22 @@ test('a missing team amount never becomes a stopped-shift slot', () => {
 
     const unconfirmedPlan = { ...confirmedZero, maintenanceLayoutState: 'unconfirmed', requiredWorks: null };
     assert.equal(scheduleApi.countRequiredCompanionWork(unconfirmedPlan), null);
+});
+
+test('unknown companion-work count makes a slot ineligible, not merely warned', () => {
+    const engine = rules.createPlanningRules({ preferStoppedShift: true });
+    const unknownSlot = {
+        date: '2026-10-08',
+        team: 'A',
+        type: rules.SLOT_TYPES.DAY_MAINTENANCE,
+        productionActive: false,
+        requiredCompanionWorkCount: null
+    };
+    const decision = engine.scoreSizeChangeSlot(unknownSlot, 'A');
+    assert.equal(decision.eligible, false);
+    assert.equal(decision.score, Number.NEGATIVE_INFINITY);
+    assert.match(decision.warnings.join(','), /作業候補を選びません/);
+    assert.equal(engine.chooseSizeChangeSlot([unknownSlot], 'A'), null);
+    const knownSlot = { ...unknownSlot, requiredCompanionWorkCount: 0 };
+    assert.equal(engine.scoreSizeChangeSlot(knownSlot, 'A').eligible, true);
 });
