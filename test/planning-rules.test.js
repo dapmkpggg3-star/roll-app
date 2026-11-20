@@ -64,6 +64,21 @@ test('a different team remains eligible with a warning', () => {
     assert.match(result.warnings.join(' '), /再確認/);
 });
 
+test('a missing production amount does not bridge a size change', () => {
+    const changes = rules.detectProductionSizeChanges([
+        { date: 'sample-1', size: 'D1', productionAmount: 10 },
+        { date: 'sample-2', size: 'D2', productionAmount: null },
+        { date: 'sample-3', size: 'D1', productionAmount: 10 }
+    ]);
+    assert.deepEqual(changes, []);
+    const blank = rules.detectProductionSizeChanges([
+        { date: 'sample-1', size: 'D1', productionAmount: 10 },
+        { date: 'sample-2', size: 'D2', productionAmount: ' ' },
+        { date: 'sample-3', size: 'D3', productionAmount: 10 }
+    ]);
+    assert.deepEqual(blank, []);
+});
+
 test('size changes are detected without exposing source production amounts', () => {
     const changes = rules.detectProductionSizeChanges([
         { date: 'sample-1', size: 'D1', productionAmount: 1 },
