@@ -188,6 +188,15 @@ test('a night-only stop is not an exchange date, and a checked daytime stop can 
   assert.equal(rejected.auto.exchangeDate, null);
   assert.equal(rejected.auto.exchange, '作業枠未確認');
   assert.match(rejected.auto.limitText, /2027-04-04は上限到達の見込み/);
+  assert.equal(rejected.auto.exchangeDate, null);
+  const missingProduction = Object.assign({}, night, {
+    days: night.days.map(item => item.date === '2027-04-01' ? Object.assign({}, item, { productionAmount: null }) : item)
+  });
+  const blockedLimit = context.buildDashboardRow(missingProduction, fixture.revisions[0], fixture.referenceAt, null);
+  assert.equal(blockedLimit.auto.exchangeDate, null);
+  assert.equal(blockedLimit.auto.exchange, '作業枠未確認');
+  assert.match(blockedLimit.auto.limitText, /判定不能/);
+  assert.equal(blockedLimit.auto.limitText.includes('2027-04-04は上限到達の見込み'), false);
   const day = Object.assign({}, night, {
     days: night.days.map(item => item.date === '2027-04-02'
       ? Object.assign({}, item, { shift1Team: 'A', shift3Team: '', productionAmount: 0, operatingHours: 0 })

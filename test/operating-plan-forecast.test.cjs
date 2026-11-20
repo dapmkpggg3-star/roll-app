@@ -169,6 +169,40 @@ test('past production tons do not become a future rework or purchase date', () =
   assert.equal(short.exceedsOnDate, null);
   assert.equal(short.reason.includes('超えません'), false);
   assert.match(short.reason, /確定しません/);
+  const missingAmount = context.projectCaliberReplacement({
+    standKey: '10', referenceDate: '2026-11-13', currentCaliber: 'anon-1', openingUsedRuns: 6, size: 'D1',
+    days: [day('2027-04-01', 8, 'A', null), day('2027-04-02', 0, 'B', 0), day('2027-04-04', 5, 'A', 10)]
+  });
+  assert.equal(missingAmount.exchangeDate, null);
+  assert.equal(missingAmount.exceedsOnDate, null);
+  assert.match(missingAmount.reason, /生産量未確認/);
+  assert.match(missingAmount.reason, /判定不能/);
+  assert.match(missingAmount.reason, /0tにもしない/);
+  const blankHours = context.projectCaliberReplacement({
+    standKey: '10', referenceDate: '2026-11-13', currentCaliber: 'anon-1', openingUsedRuns: 6, size: 'D1',
+    days: [day('2027-04-01', undefined, 'A', 10), day('2027-04-04', 8, 'A', 10)]
+  });
+  assert.equal(blankHours.exceedsOnDate, null);
+  assert.match(blankHours.reason, /時間未確認/);
+  const underTwo = context.projectCaliberReplacement({
+    standKey: '10', referenceDate: '2026-11-13', currentCaliber: 'anon-1', openingUsedRuns: 7, size: 'D1',
+    days: [day('2027-04-01', 1, 'A', 10)]
+  });
+  assert.equal(underTwo.exceedsOnDate, null);
+  assert.match(underTwo.reason, /2時間未満/);
+  const zeroIsKnown = context.projectCaliberReplacement({
+    standKey: '10', referenceDate: '2026-11-13', currentCaliber: 'anon-1', openingUsedRuns: 6, size: 'D1',
+    days: [day('2027-04-01', 8, 'A', 10), { ...day('2027-04-02', 0, 'B', 0), recordKind: 'plan' }, day('2027-04-03', 8, 'A', 10), day('2027-04-04', 5, 'A', 10)]
+  });
+  assert.equal(zeroIsKnown.exceedsOnDate, '2027-04-04');
+  assert.match(zeroIsKnown.reason, /計画値か実績値かが未確認/);
+  assert.equal(zeroIsKnown.reason.includes('数えた生産量は実績値です'), false);
+  const missingRuns = context.projectCaliberReplacement({
+    standKey: '10', referenceDate: '2026-11-13', currentCaliber: 'anon-1', size: 'D1',
+    days: [day('2027-04-01', 8, 'A', 10)]
+  });
+  assert.equal(missingRuns.exceedsOnDate, null);
+  assert.match(missingRuns.reason, /判定不能/);
   const noSlot = context.projectCaliberReplacement({
     standKey: '10', referenceDate: '2026-11-13', currentCaliber: 'anon-1', openingUsedRuns: 7, size: 'D1',
     days: [day('2027-04-01', 8, 'A', 10), day('2027-04-02', 8, 'A', 10)]
@@ -279,6 +313,20 @@ test('past production tons do not become a future rework or purchase date', () =
   assert.equal(confirmed.shiftReachDate, '2027-04-03');
   assert.match(confirmed.reason, /規定到達の参考候補は2027-04-02/);
   assert.match(confirmed.reason, /トン数到達の参考候補は2027-04-02/);
+  const missingStop = context.projectCaliberReplacement({
+    standKey: '2', referenceDate: '2026-11-13', standPass: 'pass', openingUsedRuns: 33, openingUsedTons: 12000,
+    workConfirmation: work(),
+    days: [day('2027-04-01', 8, 'A', 1000), day('2027-04-02', 0, 'B', null), day('2027-04-03', 8, 'A', 1000)]
+  });
+  assert.equal(missingStop.referenceCandidates.length, 0);
+  assert.match(missingStop.reason, /0tとはみなさず/);
+  assert.match(missingStop.reason, /判定不能/);
+  assert.equal(missingStop.reason.includes('参考候補は2027-04-02'), false);
+  const openSlot = context.confirmedWorkCandidate('2027-04-03', '2', work(), [day('2027-04-02', 0, 'B', null)], '2026-11-13');
+  assert.equal(openSlot.date, null);
+  assert.match(openSlot.note, /0tとはみなさず/);
+  const zeroSlot = context.confirmedWorkCandidate('2027-04-03', '2', work(), [day('2027-04-02', 0, 'B', 0)], '2026-11-13');
+  assert.equal(zeroSlot.date, '2027-04-02');
   const nightOnly = context.projectCaliberReplacement({
     standKey: '2', referenceDate: '2026-11-13', standPass: 'pass', openingUsedRuns: 33, openingUsedTons: 12000,
     workConfirmation: work({ period: 'night' }), days: schedule

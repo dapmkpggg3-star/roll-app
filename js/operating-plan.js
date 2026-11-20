@@ -1364,7 +1364,10 @@ function confirmedWorkCandidate(reachDate, stand, confirmation, days, referenceD
     }
     const row = (Array.isArray(days) ? days : []).find(item => item && String(item.date).slice(0, 10) === String(source.date).slice(0, 10));
     if (!row) return { date: null, note: '作業日が操業予定と照合できないので、参考候補は保留します。' };
-    const producing = Number(row.productionAmount) > 0;
+    if (typeof row.productionAmount !== 'number' || !Number.isFinite(row.productionAmount)) {
+        return { date: null, note: '作業日の生産量が欠損しているので、0tとはみなさず、参考候補は判定不能です。確認済み交換可能日にはしません。' };
+    }
+    const producing = row.productionAmount > 0;
     if (producing) return { date: null, note: '作業日が操業と重なるので、参考候補は保留します。' };
     const workType = expected === 'rollChange' ? rules.WORK_TYPES.ROLL_CHANGE : rules.WORK_TYPES.CALIBER_CHANGE;
     const allowed = rules.createPlanningRules({ afterProductionAllowedWorkTypes: [] }).validateWorkForSlot({
@@ -1401,18 +1404,21 @@ function forecastTonReach(source, basis, days) {
     let reach = null;
     let blocked = null;
     days.forEach(row => {
-        if (reach || blocked) return;
+        if (blocked) return;
         const amount = row.productionAmount;
         if (typeof amount !== 'number' || !Number.isFinite(amount)) {
-            blocked = row.date;
+            if (!reach || String(row.date).slice(0, 10) <= String(reach)) {
+                blocked = row.date;
+                reach = null;
+            }
             return;
         }
-        if (amount === 0) return;
+        if (reach || amount === 0) return;
         total += amount;
         if (total >= basis.tons) reach = row.date;
     });
     if (blocked && !reach) {
-        return { reach: null, candidate: null, reason: `${blocked}の生産量が未確認です。0tにしないため、トン数到達見込みは確定しません。` };
+        return { reach: null, candidate: null, reason: `${blocked}の生産量が未確認です。0tとはみなさず、トン数到達見込みは判定不能です。確定しません。` };
     }
     if (!reach) return { reach: null, candidate: null, reason: `この予定の範囲では基準${formatTons(basis.tons)}に達しません。` };
     const decision = describeWorkCandidate('トン数', reach, basis.stand, source, days);
@@ -1525,9 +1531,16 @@ function knownCaliberLimit(standKey, size) {
 
 function dayUseReview(row) {
     const amount = row ? row.productionAmount : undefined;
-    const teams = [row && row.shift1Team, row && row.shift3Team].filter(Boolean);
-    if (amount === null || amount === undefined) return '生産量未確認';
-    const produced = amount > 0 || teams.some(team => row.productionByTeam && Number(row.productionByTeam[team]) > 0);
+    const amountKnown = typeof amount === 'number' && Number.isFinite(amount) && amount >= 0;
+    if (!amountKnown) return '生産量未確認';
+    const teams = [row && row.shift1Team, row && row.shift3Team].map(team => String(team || '').trim()).filter(Boolean);
+    for (const team of teams) {
+        const values = row.productionByTeam;
+        const teamAmount = values && Object.prototype.hasOwnProperty.call(values, team) ? values[team] : undefined;
+        if (typeof teamAmount !== 'number' || !Number.isFinite(teamAmount) || teamAmount < 0) return '生産量未確認';
+    }
+    const produced = amount > 0 || teams.some(team => row.productionByTeam[team] > 0);
+    if (produced && teams.length === 0) return '生産量未確認';
     if (!produced) return '';
     const use = shiftUseFromHours(row.operatingHours);
     if (use === 'missing') return '時間未確認';
@@ -1535,6 +1548,13 @@ function dayUseReview(row) {
     if (use === 'short') return '2時間以上4時間未満';
     if (teams.length > 1) return '勤ごとの時間';
     return '';
+}
+
+function dayQuantityClass(row) {
+    const label = String(row && row.recordKind || '');
+    if (label === 'actual' || label === '実績') return '実績';
+    if (label === 'plan' || label === '計画') return '計画';
+    return '区分未確認';
 }
 
 function projectCaliberReplacement(input) {
@@ -1561,7 +1581,7 @@ function projectCaliberReplacement(input) {
         return { ...base, status: 'past', reason: `読み取った予定は過去の月です。これからの交換日には使いません。${source.standKey}番の${limit.kind}は${limit.runs}直、4時間以上は1直です。` };
     }
     if (!source.currentCaliber || typeof source.openingUsedRuns !== 'number' || !Number.isInteger(source.openingUsedRuns) || source.openingUsedRuns < 0) {
-        return { ...base, status: 'unknown', reason: `今のカリバと、開始時に何直使ったかが未確認です。${limit.kind}は${limit.runs}直、4時間以上は1直です。` };
+        return { ...base, status: 'unknown', reason: `今のカリバと、開始時に何直使ったかが未確認です。推測では埋めません。判定不能です。${limit.kind}は${limit.runs}直、4時間以上は1直です。` };
     }
     const beforeUnknown = [];
     let blocked = null;
@@ -1605,7 +1625,7 @@ function projectCaliberReplacement(input) {
     const lastAllowedDate = confirmedMaximum ? projectedLastAllowed : null;
     let reason;
     if (blocked && !unknownIsAfterDecision) {
-        reason = `${blocked.date}は${blocked.kind}です。未確認の使用量を0直にしないため、この先の交換日と超過日は確定しません。`;
+        reason = `${blocked.date}は${blocked.kind}です。未確認の使用量を0直にも0tにもしないため、この先の交換日と超過日は判定不能です。確定しません。`;
         if (blocked.kind === '2時間以上4時間未満') {
             reason += 'この時間を1直と数える案は提案のままです。確定した交換日には使わず、実際の時間は別に残します。';
         }
@@ -1624,6 +1644,14 @@ function projectCaliberReplacement(input) {
         reason += confirmedMaximum
             ? `${blocked.date}は${blocked.kind}ですが、確定済みの交換候補より後です。`
             : `${blocked.date}は${blocked.kind}ですが、通常目安の見込みより後です。`;
+    }
+    const classes = beforeUnknown.map(dayQuantityClass);
+    if (classes.length) {
+        reason += classes.every(item => item === '実績')
+            ? '数えた生産量は実績値です。'
+            : classes.every(item => item === '計画')
+                ? '数えた生産量は計画値です。実績にはしていません。'
+                : '計画値か実績値かが未確認の日があるので、この見込みは実績ではありません。';
     }
     return {
         exchangeDate,
@@ -1861,7 +1889,10 @@ function assemblySlotReady(confirmation, row) {
     if (!repeat && !source.date) return { ok: false, reason: '組替作業枠が未確認です。0tだけでは完了にしません。' };
     if (!repeat && String(source.date).slice(0, 10) !== date) return { ok: false, reason: 'この日の組替作業枠がありません。0tだけでは完了にしません。' };
     if (source.period !== 'day') return { ok: false, reason: '昼の組替枠が未確認です。夜だけでは完了にしません。' };
-    if (Number(row.productionAmount) !== 0) return { ok: false, reason: '操業中は組替を完了にしません。' };
+    if (typeof row.productionAmount !== 'number' || !Number.isFinite(row.productionAmount)) {
+        return { ok: false, reason: '日別生産量が欠損しているので、0tとはみなさず、組替は完了にしません。' };
+    }
+    if (row.productionAmount !== 0) return { ok: false, reason: '操業中は組替を完了にしません。' };
     if (row.shift3Team && !row.shift1Team) return { ok: false, reason: '夜勤だけでは組替を完了にしません。' };
     if (!row.shift1Team) return { ok: false, reason: '勤務が未確認です。0tだけでは組替を完了にしません。' };
     const required = source.requiredHours;
