@@ -431,16 +431,24 @@
         }));
         const maintenanceByDate = new Map();
         const heldMaintenanceMonths = new Set();
+        const presentMaintenanceMonths = new Set();
         const maintenanceSheets = [];
         for (const sheet of sheets.filter(item => parseMaintenanceYearMonth(item.name))) {
             const period = parseMaintenanceYearMonth(sheet.name);
             if (!productionPeriods.has(`${period.year}-${period.month}`)) continue;
-            const xml = entryText(entries, sheet.path, false);
-            if (!xml) continue;
-            const rows = parseMaintenanceWorksheet(xml, sharedStrings, sheet.name);
-            if (!rows.length) continue;
-            maintenanceSheets.push(sheet.name);
             const monthKey = maintenanceLayoutKey(period.year, period.month);
+            presentMaintenanceMonths.add(monthKey);
+            const xml = entryText(entries, sheet.path, false);
+            if (!xml) {
+                heldMaintenanceMonths.add(monthKey);
+                continue;
+            }
+            const rows = parseMaintenanceWorksheet(xml, sharedStrings, sheet.name);
+            if (!rows.length) {
+                heldMaintenanceMonths.add(monthKey);
+                continue;
+            }
+            maintenanceSheets.push(sheet.name);
             if (rows.some(row => row.layoutState !== 'confirmed')) {
                 heldMaintenanceMonths.add(monthKey);
                 continue;
@@ -461,7 +469,8 @@
             schedule.push(...rows.map(row => {
                 const monthKey = String(row.date || '').slice(0, 7);
                 const maintenance = maintenanceByDate.get(row.date);
-                if (heldMaintenanceMonths.has(monthKey)) {
+                // An absent sheet, unreadable sheet, or missing day is unknown, never 0 jobs.
+                if (!presentMaintenanceMonths.has(monthKey) || heldMaintenanceMonths.has(monthKey) || !maintenance) {
                     return {
                         ...row,
                         requiredWorks: null,
@@ -472,7 +481,6 @@
                         exchangePossibleDate: null
                     };
                 }
-                if (!maintenance) return { ...row, requiredWorks: [] };
                 return {
                     ...row,
                     requiredWorks: maintenance.requiredWorks,
