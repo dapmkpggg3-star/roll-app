@@ -1341,6 +1341,17 @@ function describeWorkCandidate(label, reach, stand, source, days) {
     return { candidate: assessed.date, slotText };
 }
 
+function normalizeShiftTeam(value) {
+    const token = String(value || '').normalize('NFKC').trim().toUpperCase();
+    return token === 'A' || token === 'B' ? token : '';
+}
+
+function scheduleNightOnly(row) {
+    const scheduleApi = globalThis.RollPlanningSchedule;
+    if (scheduleApi && typeof scheduleApi.isNightOnlyRow === 'function') return scheduleApi.isNightOnlyRow(row) === true;
+    return Boolean(normalizeShiftTeam(row && row.shift3Team)) && !normalizeShiftTeam(row && row.shift1Team);
+}
+
 function confirmedWorkCandidate(reachDate, stand, confirmation, days, referenceDate) {
     const rules = globalThis.RollPlanningRules;
     const source = confirmation || {};
@@ -1369,7 +1380,7 @@ function confirmedWorkCandidate(reachDate, stand, confirmation, days, referenceD
     }
     const producing = row.productionAmount > 0;
     if (producing) return { date: null, note: '作業日が操業と重なるので、参考候補は保留します。' };
-    if (row.shift3Team && !row.shift1Team) {
+    if (scheduleNightOnly(row)) {
         return { date: null, note: '夜勤のみの停止は、昼の交換候補にしません。' };
     }
     const workType = expected === 'rollChange' ? rules.WORK_TYPES.ROLL_CHANGE : rules.WORK_TYPES.CALIBER_CHANGE;
@@ -1844,7 +1855,9 @@ function describeExchangeSlot(confirmation, row, expectedType) {
         return { ok: false, state: '未確認', note: '日別生産量が欠損しているので、0tとはみなさず、確認済み交換可能日にはしません。' };
     }
     if (row.productionAmount !== 0) return { ok: false, state: '不成立', note: '生産中の日は確認済み交換可能日にしません。' };
-    if (row.shift3Team && !row.shift1Team) return { ok: false, state: '不成立', note: '夜勤のみの日は確認済み交換可能日にしません。' };
+    if (scheduleNightOnly(row)) {
+        return { ok: false, state: '不成立', note: '夜勤のみの日は確認済み交換可能日にしません。' };
+    }
     const required = source.requiredHours;
     const reserved = source.reservedHours;
     const people = source.people;
@@ -1896,8 +1909,12 @@ function assemblySlotReady(confirmation, row) {
         return { ok: false, reason: '日別生産量が欠損しているので、0tとはみなさず、組替は完了にしません。' };
     }
     if (row.productionAmount !== 0) return { ok: false, reason: '操業中は組替を完了にしません。' };
-    if (row.shift3Team && !row.shift1Team) return { ok: false, reason: '夜勤だけでは組替を完了にしません。' };
-    if (!row.shift1Team) return { ok: false, reason: '勤務が未確認です。0tだけでは組替を完了にしません。' };
+    if (scheduleNightOnly(row)) return { ok: false, reason: '夜勤だけでは組替を完了にしません。' };
+    const scheduleApi = globalThis.RollPlanningSchedule;
+    const dayTeam = scheduleApi && typeof scheduleApi.normalizeTeam === 'function'
+        ? scheduleApi.normalizeTeam(row.shift1Team)
+        : normalizeShiftTeam(row.shift1Team);
+    if (!dayTeam) return { ok: false, reason: '勤務が未確認です。0tだけでは組替を完了にしません。' };
     const required = source.requiredHours;
     const reserved = source.reservedHours;
     const people = source.people;
@@ -2068,7 +2085,7 @@ function simulateExchangeCycle(input) {
         push(date, '組替需要', `${waiting.map(item => item.id).join('、')}は組替前です。${slot.reason}`);
         return false;
     };
-    const nightOnly = row => Boolean(row.shift3Team) && !row.shift1Team;
+    const nightOnly = row => scheduleNightOnly(row);
     days.forEach((row, index) => {
         if (blocked) return;
         const date = String(row.date).slice(0, 10);

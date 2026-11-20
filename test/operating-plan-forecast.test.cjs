@@ -34,6 +34,38 @@ function revision(targetMonths, rows, updatedAt = '2026-11-13T00:00:00.000Z') {
   return created.revision;
 }
 
+test('blank or invalid day teams do not become a daytime exchange candidate', () => {
+  const work = {
+    date: '2027-04-02', period: 'day', reservedHours: 5, workType: 'rollChange', requiredHours: 5, people: 1,
+    continuous: 'no', changeover: 'yes', threeSet: 'yes'
+  };
+  const row = (shift1Team, shift3Team) => ({
+    date: '2027-04-02', productionAmount: 0, operatingHours: 0, shift1Team, shift3Team,
+    productionByTeam: { B: 0 }
+  });
+  for (const [shift1Team, shift3Team] of [[' ', 'B'], ['　', 'Ｂ'], ['不明', 'B'], ['', 'B']]) {
+    const candidate = context.confirmedWorkCandidate('2027-04-03', '2', work, [row(shift1Team, shift3Team)], '2026-11-13');
+    assert.equal(candidate.date, null, shift1Team);
+    assert.match(candidate.note, /夜勤のみ/);
+    const described = context.describeExchangeSlot(work, row(shift1Team, shift3Team), 'rollChange');
+    assert.equal(described.ok, false);
+    assert.match(described.note, /夜勤のみ/);
+  }
+  const daytime = context.confirmedWorkCandidate('2027-04-03', '2', work, [row('A', '')], '2026-11-13');
+  assert.equal(daytime.date, '2027-04-02');
+  const saved = context.RollPlanningSchedule;
+  context.RollPlanningSchedule = undefined;
+  try {
+    const fallback = context.confirmedWorkCandidate('2027-04-03', '2', work, [row(' ', 'B')], '2026-11-13');
+    assert.equal(fallback.date, null);
+    assert.match(fallback.note, /夜勤のみ/);
+    const dayFallback = context.confirmedWorkCandidate('2027-04-03', '2', work, [row('A', '')], '2026-11-13');
+    assert.equal(dayFallback.date, '2027-04-02');
+  } finally {
+    context.RollPlanningSchedule = saved;
+  }
+});
+
 test('a revised operating plan keeps the old version and does not change roll status', () => {
   const roles = [{ id: 'anon', status: 'オンライン' }];
   const before = revision(['2026-04'], [{ standKey: '10', month: '2026-04', plannedUseCount: 2, actualUseCount: null }]);

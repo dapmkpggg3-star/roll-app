@@ -1,5 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const importer = require('../js/planning-import');
 const rules = require('../js/planning-rules');
 const scheduleApi = require('../js/planning-schedule');
@@ -301,6 +303,52 @@ test('a night-only stop is not a size-change candidate and a missing amount stay
     assert.equal(reviewed.length, 1);
     assert.equal(reviewed[0].recommendation, null);
     assert.equal(reviewed[0].candidateSlots.some(slot => slot.shift === 'shift3'), false);
+});
+
+test('blank or invalid day-team text is still a night-only stop', () => {
+    const cases = [
+        { shift1Team: ' ', shift3Team: 'B' },
+        { shift1Team: '　', shift3Team: 'Ｂ' },
+        { shift1Team: '不明', shift3Team: 'B' },
+        { shift1Team: '', shift3Team: 'B' }
+    ];
+    for (const teams of cases) {
+        const row = {
+            date: '2026-10-02',
+            shift1Team: teams.shift1Team,
+            shift3Team: teams.shift3Team,
+            productionByTeam: { B: 0 },
+            productionAmount: 0,
+            requiredWorks: [],
+            maintenanceJudgement: 'scheduled'
+        };
+        assert.equal(scheduleApi.isNightOnlyRow(row), true, JSON.stringify(teams));
+        assert.deepEqual(
+            scheduleApi.buildAvailableSlots(row, rules.SLOT_TYPES).map(slot => slot.shift),
+            ['shift3']
+        );
+    }
+    assert.equal(scheduleApi.isNightOnlyRow({ shift1Team: 'A', shift3Team: 'B' }), false);
+    assert.equal(scheduleApi.isNightOnlyRow({ shift1Team: ' a ', shift3Team: '' }), false);
+
+    const engine = rules.createPlanningRules({ preferStoppedShift: true, preferSameTeam: true });
+    const reviewed = scheduleApi.recommendSizeChanges([
+        { date: '2026-10-01', size: 'D1', productionAmount: 10, shift1Team: 'A', shift3Team: '', productionByTeam: { A: 10 }, requiredWorks: [], maintenanceJudgement: 'scheduled' },
+        { date: '2026-10-02', size: 'STOP', productionAmount: 0, shift1Team: ' ', shift3Team: 'B', productionByTeam: { B: 0 }, requiredWorks: [], maintenanceJudgement: 'scheduled' },
+        { date: '2026-10-03', size: 'D2', productionAmount: 10, shift1Team: 'A', shift3Team: '', productionByTeam: { A: 10 }, requiredWorks: [], maintenanceJudgement: 'scheduled' }
+    ], engine, rules.SLOT_TYPES);
+    assert.equal(reviewed[0].recommendation, null);
+    assert.equal(reviewed[0].candidateSlots.some(slot => slot.shift === 'shift3'), false);
+
+    const jsDir = path.join(__dirname, '..', 'js');
+    const callers = fs.readdirSync(jsDir)
+        .filter(name => name.endsWith('.js'))
+        .filter(name => fs.readFileSync(path.join(jsDir, name), 'utf8').includes('buildAvailableSlots('))
+        .sort();
+    assert.deepEqual(callers, ['planning-calibers.js', 'planning-schedule.js']);
+    callers.forEach(name => {
+        assert.match(fs.readFileSync(path.join(jsDir, name), 'utf8'), /isNightOnlyRow/);
+    });
 });
 
 test('unknown companion-work count makes a slot ineligible, not merely warned', () => {
