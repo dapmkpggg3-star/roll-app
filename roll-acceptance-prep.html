@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>接続準備（匿名）</title>
+    <style>
+        body { margin: 0; font-family: "Segoe UI", sans-serif; color: #1f2937; background: #f8fafc; }
+        header, main { width: min(1180px, calc(100% - 16px)); margin: 0 auto; }
+        header { padding: 16px 0 8px; }
+        h1 { margin: 0 0 8px; font-size: 1.4rem; }
+        h2 { margin: 24px 0 8px; font-size: 1.1rem; }
+        p, li { line-height: 1.5; }
+        table { width: 100%; border-collapse: collapse; background: #fff; margin: 0 0 16px; }
+        th, td { border-bottom: 1px solid #e2e8f0; padding: 8px; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+        th { background: #e2e8f0; }
+        .stop { color: #9a3412; font-weight: 700; }
+        @media (max-width: 480px) {
+            table, thead, tbody, tr, th, td { display: block; }
+            thead { display: none; }
+            tr { margin: 0 0 12px; border: 1px solid #cbd5e1; background: #fff; }
+            td { border: 0; }
+            td[data-label]::before { content: attr(data-label); display: block; color: #475569; font-size: 0.75rem; }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <p><a href="roll-dashboard.html">ダッシュボードへ戻る</a></p>
+        <h1>接続準備</h1>
+        <p id="prep-note"></p>
+    </header>
+    <main>
+        <h2>項目対応</h2>
+        <table id="field-map"></table>
+        <h2>予測の追跡</h2>
+        <div id="traces"></div>
+        <h2>読取接続の停止条件</h2>
+        <p id="connection"></p>
+        <h2>資料とコードで分かれた項目</h2>
+        <div id="findings"></div>
+        <h2>匿名の項目対応</h2>
+        <table id="source-columns"></table>
+        <h2>匿名の予定表テンプレート</h2>
+        <p id="template-note"></p>
+        <table id="replacement-template"></table>
+        <h2>匿名の受入チェック</h2>
+        <div id="checks"></div>
+    </main>
+    <script src="js/planning-rules.js"></script>
+    <script src="js/planning-schedule.js"></script>
+    <script src="js/planning-calibers.js"></script>
+    <script src="js/operating-plan.js"></script>
+    <script src="js/roll-dashboard.js"></script>
+    <script src="js/roll-acceptance-prep.js"></script>
+    <script>
+        function escapeHtml(value) {
+            return String(value ?? '').replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[character]));
+        }
+        function cells(labels, values) {
+            return labels.map((label, index) => `<td data-label="${escapeHtml(label)}">${escapeHtml(values[index])}</td>`).join('');
+        }
+        const mapLabels = ['項目', 'Roles', 'ロール管理表', '生産予定', 'カリバ使用計画', '状態'];
+        document.getElementById('field-map').innerHTML = `<thead><tr>${mapLabels.map(label => `<th>${escapeHtml(label)}</th>`).join('')}</tr></thead><tbody>`
+            + acceptanceFieldMap().map(row => `<tr>${cells(mapLabels, [row.item, row.roles, row.sheet, row.production, row.caliber, row.state])}</tr>`).join('')
+            + '</tbody>';
+        document.getElementById('traces').innerHTML = acceptanceForecastTrace().map(trace => `
+            <article>
+                <h3>${escapeHtml(trace.value)}</h3>
+                <p>参照: ${escapeHtml(trace.sources.join(' / '))}</p>
+                <p>採用: ${escapeHtml(trace.adopted)}</p>
+                <p>計算式: ${escapeHtml(trace.formula)}</p>
+                <p>計画版: ${escapeHtml(trace.revision)}</p>
+                <p>未確認: ${escapeHtml(trace.unresolved.join(' / '))}</p>
+            </article>
+        `).join('');
+        const connection = assessReadOnlyConnection({});
+        document.getElementById('prep-note').textContent = connection.note;
+        document.getElementById('connection').innerHTML = `<span class="stop">liveConnected ${connection.liveConnected}</span>。ready ${connection.ready}。${connection.stops.map(stop => `<span class="stop">${escapeHtml(stop)}</span>`).join('<br>')}`;
+        document.getElementById('findings').innerHTML = acceptanceSourceFindings().map(item => `
+            <article data-finding="${escapeHtml(item.id)}">
+                <h3>${escapeHtml(item.id)}</h3>
+                <p>確認できたこと: ${escapeHtml(item.resolved)}</p>
+                <p>未確認: ${escapeHtml(item.unresolved)}</p>
+                <p>予測への影響: ${escapeHtml(item.impact)}</p>
+            </article>
+        `).join('');
+        const columns = sourceColumnMap();
+        document.getElementById('source-columns').innerHTML = '<thead><tr><th>項目</th><th>入力元</th><th>保存列</th><th>読み方</th><th>状態</th></tr></thead><tbody>'
+            + columns.map(item => `<tr data-column="${escapeHtml(item.item)}"><td>${escapeHtml(item.item)}</td><td>${escapeHtml(item.source)}</td><td>${escapeHtml(item.column)}</td><td>${escapeHtml(item.read)}</td><td>${escapeHtml(item.state)}</td></tr>`).join('')
+            + '</tbody>';
+        const template = anonymousReplacementTemplate();
+        document.getElementById('template-note').textContent = template.note;
+        document.getElementById('replacement-template').innerHTML = `<thead><tr>${template.columns.map(column => `<th>${escapeHtml(column)}</th>`).join('')}</tr></thead><tbody>`
+            + template.rows.map(row => `<tr>${template.columns.map(column => `<td data-label="${escapeHtml(column)}">${escapeHtml(row[column])}</td>`).join('')}</tr>`).join('')
+            + '</tbody>';
+        const fixture = anonymousDashboardFixture('2026-11-19T06:00:00.000Z');
+        document.getElementById('checks').innerHTML = fixture.rolls.map(roll => {
+            const result = evaluateAcceptance(roll, fixture.revisions[0], fixture.referenceAt);
+            return `<article data-roll="${escapeHtml(result.rollId)}"><h3>${escapeHtml(result.rollId)}</h3><ul>${result.checks.map(check => `<li>${escapeHtml(check.id)}: ${escapeHtml(check.result)}。${escapeHtml(check.detail || '')}</li>`).join('')}</ul></article>`;
+        }).join('');
+    </script>
+</body>
+</html>

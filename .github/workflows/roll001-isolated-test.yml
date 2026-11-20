@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - fix/roll001-visibility-safe-20261110
+      - fix/roll-data-adapter-20261114
     paths:
       - '.github/workflows/roll001-isolated-test.yml'
       - 'index.html'
@@ -13,17 +14,31 @@ on:
       - 'test/roll001-spare-readiness.test.cjs'
       - 'test/roll001-procurement-risk-audit.test.cjs'
       - 'test/sync-revision-guard.test.js'
+      - 'test/auth-boundary.test.js'
+      - 'google-apps-script.gs'
       - 'test/roll003-independent-originals.test.cjs'
       - 'test/roll004-hidden-status-filter.test.cjs'
       - 'test/roll005-print-contract.test.cjs'
       - 'test/roll003-offline-recovery.test.cjs'
       - 'test/roll003-offline-recovery-browser.cjs'
+      - 'test/roll002-sync-stop-browser.cjs'
       - 'test/roll005-print-browser.cjs'
       - 'js/planning-import.js'
       - 'test/planning-import.test.js'
       - 'js/operating-plan.js'
       - 'test/operating-plan-forecast.test.cjs'
       - 'test/operating-plan-browser.cjs'
+      - 'js/roll-dashboard.js'
+      - 'roll-dashboard.html'
+      - 'roll-management-sheet.html'
+      - 'test/roll-dashboard.test.cjs'
+      - 'test/roll-dashboard-browser.cjs'
+      - 'js/roll-acceptance-prep.js'
+      - 'roll-acceptance-prep.html'
+      - 'test/roll-acceptance-prep.test.cjs'
+      - 'test/forecast-master-adapter.test.cjs'
+      - 'test/forecast-master-browser.cjs'
+      - 'test/rework-cycle-reset.test.cjs'
       - 'test/today-task-browser.cjs'
       - 'test/roll001-real-filter-browser.cjs'
       - 'test/roll001-isolated-full-ui.cjs'
@@ -41,10 +56,10 @@ jobs:
         with:
           node-version: '22'
       - name: Run real repository test with mock data only
-        run: node --test test/today-task-target-visibility.test.js test/roll001-spare-readiness.test.cjs test/roll001-procurement-risk-audit.test.cjs test/sync-revision-guard.test.js test/roll003-independent-originals.test.cjs test/roll003-offline-recovery.test.cjs test/roll004-hidden-status-filter.test.cjs test/roll005-print-contract.test.cjs test/planning-import.test.js test/operating-plan-forecast.test.cjs
+        run: node --test test/today-task-target-visibility.test.js test/roll001-spare-readiness.test.cjs test/roll001-procurement-risk-audit.test.cjs test/sync-revision-guard.test.js test/auth-boundary.test.js test/roll003-independent-originals.test.cjs test/roll003-offline-recovery.test.cjs test/roll004-hidden-status-filter.test.cjs test/roll005-print-contract.test.cjs test/planning-import.test.js test/operating-plan-forecast.test.cjs test/forecast-master-adapter.test.cjs test/rework-cycle-reset.test.cjs test/roll-dashboard.test.cjs test/roll-acceptance-prep.test.cjs
 
   isolated-browser:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
@@ -69,7 +84,10 @@ jobs:
           node test/roll001-isolated-full-ui.cjs
           node test/roll005-print-browser.cjs
           node test/roll003-offline-recovery-browser.cjs
+          node test/roll002-sync-stop-browser.cjs
           node test/operating-plan-browser.cjs
+          node test/roll-dashboard-browser.cjs
+          node test/forecast-master-browser.cjs
       - name: Upload anonymous screenshot and assertion evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -80,4 +98,21 @@ jobs:
             artifacts/roll001-real-filter/
             artifacts/roll001-full-ui/
             artifacts/roll005-print/
+            artifacts/roll003-file-recovery/evidence.json
+            artifacts/roll-dashboard/
           if-no-files-found: warn
+      - name: Upload ROLL-003 anonymous recovery evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: roll003-recovery-evidence
+          path: artifacts/roll003-file-recovery/evidence.json
+          if-no-files-found: error
+      - name: Upload ROLL-002 anonymous sync-stop evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: roll002-sync-stop-evidence
+          path: artifacts/roll002-sync-stop/evidence.json
+          if-no-files-found: error
+

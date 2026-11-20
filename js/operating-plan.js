@@ -2,6 +2,986 @@
 // contact Sheets, or change a physical roll's status.
 const OPERATING_PLAN_MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
 const PROVISIONAL_LEAD_TIME_MONTHS = 6;
+const SHIFT_TONS_BASIS = 405;
+const PROVISIONAL_MONTH_TONS = 10000;
+
+function provisionalReworkCalendarDays(standKey) {
+    const stand = Number(String(standKey || '').replace(/^#/, ''));
+    if (stand >= 2 && stand <= 9) return 20;
+    if (stand >= 10 && stand <= 15) return 30;
+    if (stand >= 16 && stand <= 17) return 60;
+    return null;
+}
+
+function resolvedReworkDays(standKey, explicit) {
+    const given = finiteOrNull(explicit);
+    if (given !== null) return given;
+    const stand = String(standKey || '').replace(/^#/, '');
+    const override = reworkLeadOverrides.get(stand);
+    if (override && Number.isInteger(override.days) && override.days >= 0) return override.days;
+    return provisionalReworkCalendarDays(stand);
+}
+
+function fiscalYearMonths(referenceAt) {
+    const text = String(referenceAt || '').slice(0, 10);
+    const year = Number(text.slice(0, 4));
+    const month = Number(text.slice(5, 7));
+    if (!year || month < 1 || month > 12) return [];
+    const startYear = month >= 4 ? year : year - 1;
+    return Array.from({ length: 12 }, (_, index) => {
+        const cursor = startYear * 12 + 3 + index;
+        return `${Math.floor(cursor / 12)}-${String((cursor % 12) + 1).padStart(2, '0')}`;
+    });
+}
+
+function shiftBasis(tons) {
+    return {
+        shifts: Math.floor(tons / SHIFT_TONS_BASIS),
+        remainder: tons % SHIFT_TONS_BASIS
+    };
+}
+
+function recordedMonthConfirmed(recorded) {
+    return !!(recorded && typeof recorded.productionTons === 'number' && recorded.productionTons >= 0);
+}
+
+function buildFiscalOutlook(input) {
+    const source = input || {};
+    const months = fiscalYearMonths(source.referenceAt);
+    if (!months.length) return '基準日が無いので、年度4月〜翌3月の改削・購入計画は出しません。';
+    const recordedMonths = new Map((source.months || []).filter(item => item && item.month).map(item => [item.month, item]));
+    const provisional = shiftBasis(PROVISIONAL_MONTH_TONS);
+    const monthFacts = months.map(month => {
+        const recorded = recordedMonths.get(month);
+        const confirmed = recordedMonthConfirmed(recorded);
+        const tons = confirmed ? recorded.productionTons : PROVISIONAL_MONTH_TONS;
+        const after = shiftBasis(tons);
+        const singleSize = confirmed && recorded && Array.isArray(recorded.sizes) && recorded.sizes.length === 1 ? recorded.sizes[0] : '';
+        return { month, confirmed, tons, shifts: after.shifts, remainder: after.remainder, singleSize };
+    });
+    const monthLines = monthFacts.map(fact => {
+        const split = fact.confirmed && fact.singleSize
+            ? `${fact.singleSize} ${fact.tons}t（確定月の予定サイズ。暫定の35:65は使いません）`
+            : fact.confirmed
+                ? `D10 ${Math.round(fact.tons * 0.35)}t / D13 ${Math.round(fact.tons * 0.65)}t（比率35:65は暫定値です。確定トン数とは別であり、確定データではありません）`
+                : `D10 ${Math.round(PROVISIONAL_MONTH_TONS * 0.35)}t / D13 ${Math.round(PROVISIONAL_MONTH_TONS * 0.65)}t（未確定月の暫定値です。10000tも35:65も確定データではありません）`;
+        if (!fact.confirmed) {
+            return `${fact.month} 暫定 ${PROVISIONAL_MONTH_TONS}t。${split}。直数の計算根拠は1直${SHIFT_TONS_BASIS}tで${provisional.shifts}直、余り${provisional.remainder}t。この月は確定値で置換していません。操業日には換算しません。パスラインは未確認です。`;
+        }
+        return `${fact.month} 確定月 ${fact.tons}t。${split}。変更前の計算根拠は暫定${PROVISIONAL_MONTH_TONS}t、1直${SHIFT_TONS_BASIS}tで${provisional.shifts}直、余り${provisional.remainder}t。変更後の計算根拠は確定${fact.tons}t、1直${SHIFT_TONS_BASIS}tで${fact.shifts}直、余り${fact.remainder}t。この月だけを置換し、他の月の暫定値は残します。操業日には換算しません。パスラインは未確認です。`;
+    });
+    const confirmedMonths = monthFacts.filter(fact => fact.confirmed);
+    const beforeShifts = months.length * provisional.shifts;
+    const beforeRemainder = months.length * provisional.remainder;
+    const afterShifts = monthFacts.reduce((sum, fact) => sum + fact.shifts, 0);
+    const afterRemainder = monthFacts.reduce((sum, fact) => sum + fact.remainder, 0);
+    const propagation = confirmedMonths.length
+        ? `確定値で置換した月は${confirmedMonths.map(fact => fact.month).join('、')}だけです。後続月の直数は、それぞれの暫定${PROVISIONAL_MONTH_TONS}t、またはその月自身の確定値から計算し直しました。変更前の年間直数は暫定${PROVISIONAL_MONTH_TONS}t×${months.length}か月、1直${SHIFT_TONS_BASIS}tで${beforeShifts}直、余り${beforeRemainder}t。変更後の年間直数は${afterShifts}直、余り${afterRemainder}tです。確定月の直数を後続月へコピーしません。後続の改削需要は計算し直しましたが、直数の差を改削の本数と日付にはしません。後続の購入需要も計算し直しましたが、直数の差を購入本数と購入日にはしません。`
+        : `確定月が無いので、全月の直数は暫定${PROVISIONAL_MONTH_TONS}tのままです。変更前も変更後も年間直数は1直${SHIFT_TONS_BASIS}tで${beforeShifts}直、余り${beforeRemainder}tです。後続の改削需要と購入需要は、月間トン数から本数と日付を作りません。`;
+    const standLines = [];
+    for (let stand = 2; stand <= 17; stand += 1) {
+        const key = String(stand);
+        const override = source.reworkLeadDays && Number.isInteger(source.reworkLeadDays[key]) ? source.reworkLeadDays[key] : null;
+        const days = override === null ? provisionalReworkCalendarDays(key) : override;
+        standLines.push(`#${key} 改削LT ${days}暦日（${override === null ? '初期の暫定値' : '個別の暫定値'}、変更可、土日祝を含む）。搬出日が無いので搬入日は作りません。`);
+    }
+    return [
+        `年度は${months[0]}から${months[months.length - 1]}です。年間改削計画と年間ロール購入計画は月単位の見通しです。`,
+        '日別のロール・カリバ替日は、確定した月の生産予定があるときだけ別計算です。月間トン数からは作りません。',
+        `計算根拠: 直数は1直${SHIFT_TONS_BASIS}t。パスラインの確認が必要な値は未確認です。未確定月の${PROVISIONAL_MONTH_TONS}t・年120000t、D10 35%・D13 65%は暫定値です。確定データではありません。`,
+        monthLines.join('\n'),
+        propagation,
+        '年間改削計画',
+        standLines.join('\n'),
+        '年間ロール購入計画',
+        '購買データは未照合です。購入LTは暫定6か月で、確定の購入日ではありません。不足なしとは判定しません。発注済みの1本で他の不足を消しません。',
+        threeSetForecast(source)
+    ].join('\n');
+}
+
+function threeSetForecast(source) {
+    const spare = source.installedSpareCount;
+    const stand = String(source.standKey || '').replace(/^#/, '');
+    const override = source.reworkLeadDays && Number.isInteger(source.reworkLeadDays[stand]) ? source.reworkLeadDays[stand] : null;
+    const reworkDays = provisionalReworkCalendarDays(stand);
+    const days = override === null ? reworkDays : override;
+    const departure = String(source.reworkDepartureOn || '').slice(0, 10);
+    const orderedOn = String(source.purchaseOrderedOn || '').slice(0, 10);
+    const dated = value => /^\d{4}-\d{2}-\d{2}$/.test(value);
+    const lines = ['3セット運用枠の見通し: 3セットはロール3本のことではありません。'];
+    if (typeof spare !== 'number') {
+        lines.push('現在の組込済み予備は未確認です。');
+    } else if (spare === 0) {
+        lines.push('3セット運用枠の早期警告: 現在の組込済み予備は0です。これは早期警告であり、不足の確定日ではありません。');
+    } else {
+        lines.push(`現在の組込済み予備は${spare}です。この本数が将来の改削中も枠を埋めるかは未確認です。不足なしとは判定しません。`);
+    }
+    if (days === null) {
+        lines.push('対象スタンドの改削LTは未確認です。将来の戻り日は安全確定しません。');
+    } else if (!dated(departure)) {
+        lines.push(`#${stand}の改削LTは暫定${days}暦日です。搬出日が無いので、将来の戻り日は作らず未確認です。`);
+    } else {
+        lines.push(`#${stand}の搬出${departure}に暫定${days}暦日を足した戻り見込みは${addDays(departure, days)}です。確定の搬入日ではなく、組替完了でもありません。`);
+    }
+    if (!dated(orderedOn)) {
+        lines.push(`購入LTは暫定${PROVISIONAL_LEAD_TIME_MONTHS}か月です。発注日が無いので、将来の補充日は作らず未確認です。発注済みの1本で他の不足は消しません。`);
+    } else {
+        lines.push(`発注日${orderedOn}からの購入LTは暫定${PROVISIONAL_LEAD_TIME_MONTHS}か月です。補充の確定日にはしません。他のスタンドの不足は消しません。`);
+    }
+    lines.push('改削LTと購入LTを考慮しても、足りない情報は未確認のままです。不足なしとは判定しません。');
+    return lines.join('');
+}
+
+function copyProductionPlan(plan) {
+    return JSON.parse(JSON.stringify(plan));
+}
+
+function createMonthlyProductionDraft(fiscalYear, parent) {
+    const year = Number(fiscalYear);
+    const months = fiscalYearMonths(`${year}-04-01`);
+    if (!Number.isInteger(year) || months.length !== 12 || !months[0].endsWith('-04') || !months[11].endsWith('-03')) {
+        return { ok: false, reason: '年度は4月〜翌3月です。' };
+    }
+    const source = parent && parent.sealed ? copyProductionPlan(parent) : null;
+    const revision = source ? source.revision + 1 : 0;
+    return {
+        ok: true,
+        draft: {
+            id: `prod-${months[0]}-v${revision}`,
+            fiscalStart: months[0],
+            fiscalEnd: months[11],
+            parentId: source ? source.id : '',
+            revision,
+            sealed: false,
+            months: source ? source.months : months.map(month => ({ month, classification: 'provisional', productionTons: null, size: '' })),
+            shiftRows: source ? source.shiftRows : []
+        }
+    };
+}
+
+function updateMonthlyProductionMonth(draft, month, patch) {
+    if (!draft) return { ok: false, reason: '作業中の版がありません。' };
+    if (draft.sealed) return { ok: false, reason: '確定版は変更できません。改訂はコピーから作ってください。' };
+    const source = patch || {};
+    const classification = source.classification === 'confirmed' ? 'confirmed' : 'provisional';
+    if (!draft.months.some(item => item.month === month)) return { ok: false, reason: '対象月が年度4月〜翌3月の外です。' };
+    if (classification === 'confirmed' && (typeof source.productionTons !== 'number' || !Number.isFinite(source.productionTons) || source.productionTons < 0)) {
+        return { ok: false, reason: '確定月には0以上のトン数が必要です。空欄は確定値にしません。' };
+    }
+    const next = copyProductionPlan(draft);
+    next.months = next.months.map(item => item.month === month ? {
+        month,
+        classification,
+        productionTons: classification === 'confirmed' ? source.productionTons : null,
+        size: classification === 'confirmed' ? String(source.size || '').trim() : ''
+    } : item);
+    return { ok: true, draft: next };
+}
+
+function sealMonthlyProductionPlan(draft, sealedAt) {
+    if (!draft || draft.sealed) return { ok: false, reason: '確定済みの版は再度確定できません。' };
+    if (!sealedAt || Number.isNaN(Date.parse(sealedAt))) return { ok: false, reason: '確定日が不正です。' };
+    const plan = copyProductionPlan(draft);
+    plan.sealed = true;
+    plan.sealedAt = new Date(sealedAt).toISOString();
+    return { ok: true, plan };
+}
+
+function reviseMonthlyProductionPlan(plan) {
+    if (!plan || !plan.sealed) return { ok: false, reason: '改訂は確定版のコピーから作ります。' };
+    return createMonthlyProductionDraft(Number(plan.fiscalStart.slice(0, 4)), plan);
+}
+
+function addShiftBasisRow(draft, row) {
+    if (!draft) return { ok: false, reason: '作業中の版がありません。' };
+    if (draft.sealed) return { ok: false, reason: '確定版は変更できません。改訂はコピーから作ってください。' };
+    const source = row || {};
+    const standKey = String(source.standKey || '').replace(/^#/, '').trim();
+    const size = String(source.size || '').trim();
+    const caliberId = String(source.caliberId || '').trim();
+    const from = String(source.from || '').slice(0, 10);
+    const to = String(source.to || '').slice(0, 10);
+    const dated = value => /^\d{4}-\d{2}-\d{2}$/.test(value);
+    if (!standKey || !size || !caliberId || !dated(from) || !dated(to) || from > to) {
+        return { ok: false, reason: 'スタンド、サイズ、カリバ、使用期間を確認してください。' };
+    }
+    if (typeof source.tons !== 'number' || !Number.isFinite(source.tons) || source.tons < 0) {
+        return { ok: false, reason: '使用トン数が無いので直数は未確認です。推測で確定しません。' };
+    }
+    const shifts = Math.floor(source.tons / SHIFT_TONS_BASIS);
+    const remainder = source.tons % SHIFT_TONS_BASIS;
+    const prior = (draft.shiftRows || []).filter(item => item.standKey === standKey && item.size === size && item.caliberId === caliberId)
+        .reduce((sum, item) => sum + item.shifts, 0);
+    const passLine = String(source.passLine || '').trim();
+    const record = {
+        standKey, size, caliberId, from, to, tons: source.tons, shifts, remainder,
+        cumulativeShifts: prior + shifts,
+        passLine: '未確認',
+        process: `使用期間${from}から${to}。${source.tons}t ÷ 1直${SHIFT_TONS_BASIS}t = ${shifts}直、余り${remainder}t。同じスタンド・サイズ・カリバの累計は${prior}直にこの${shifts}直を足して${prior + shifts}直。パスラインは${passLine ? '記入がありますが根拠資料が無いので未確認' : '根拠が無いので未確認'}です。`
+    };
+    const next = copyProductionPlan(draft);
+    next.shiftRows = (next.shiftRows || []).concat(record);
+    return { ok: true, draft: next, row: record };
+}
+
+function outlookMonthsFromPlan(draft, scheduleMonths) {
+    const map = new Map();
+    (scheduleMonths || []).filter(recordedMonthConfirmed).forEach(item => map.set(item.month, item));
+    if (draft) draft.months.filter(item => item.classification === 'confirmed').forEach(item => {
+        map.set(item.month, { month: item.month, productionTons: item.productionTons, sizes: item.size ? [item.size] : [] });
+    });
+    return [...map.values()];
+}
+
+function describeMonthlyProductionPlans(sealed, draft) {
+    const lines = (sealed || []).map(plan => {
+        const months = plan.months.map(item => item.classification === 'confirmed' ? `${item.month} 確定 ${item.productionTons}t` : `${item.month} 暫定`).join('、');
+        return `確定版 ${plan.id} 元版${plan.parentId || 'なし'} 年度${plan.fiscalStart}から${plan.fiscalEnd}。変更できません。${months}`;
+    });
+    if (draft) lines.push(`作業中 ${draft.id} 元版${draft.parentId || 'なし'}。これは確定版ではありません。`);
+    return lines.length ? lines.join('\n') : '月次生産計画の版はまだありません。未確定月は暫定10000tのままです。';
+}
+
+function describeShiftBasis(plan) {
+    const rows = plan && plan.shiftRows || [];
+    if (!rows.length) return 'カリバ使用直数の確認表はまだありません。トン数の根拠が無い直数は未確認のままです。パスラインは推測で確定しません。';
+    return rows.map(row => `#${row.standKey} ${row.size} カリバ${row.caliberId} 使用期間${row.from}から${row.to} 累計${row.cumulativeShifts}直。${row.process}`).join('\n');
+}
+
+function annualColumnIndex(column) {
+    let index = 0;
+    for (const ch of String(column)) index = index * 26 + (ch.charCodeAt(0) - 64);
+    return index;
+}
+
+function annualColumnName(index) {
+    let name = '';
+    let current = index;
+    while (current > 0) {
+        const rest = (current - 1) % 26;
+        name = String.fromCharCode(65 + rest) + name;
+        current = Math.floor((current - 1) / 26);
+    }
+    return name;
+}
+
+function annualFormMonths() {
+    return [
+        ['4 月', 'D', 'E'], ['5 月', 'F', 'G'], ['6 月', 'H', 'I'], ['7 月', 'J', 'K'],
+        ['8 月', 'L', 'M'], ['9 月', 'N', 'O'], ['10 月', 'P', 'Q'], ['11 月', 'R', 'S'],
+        ['12 月', 'T', 'U'], ['1月', 'V', 'W'], ['2月', 'X', 'Y'], ['3月', 'Z', 'AA']
+    ];
+}
+
+function annualFormNoColumns() {
+    return annualFormMonths().map(item => item[1]);
+}
+
+function annualFormAmountColumns() {
+    return annualFormMonths().map(item => item[2]);
+}
+
+function annualFormSource() {
+    return {
+        fileName: 'ロール管理 必要エクセルまとめ.xlsx',
+        sheetName: '2025年度ロール(計画)',
+        printArea: 'A1:AC49',
+        paperSize: 8,
+        paperName: 'A3',
+        orientation: 'landscape',
+        scale: 72,
+        fitToPage: true,
+        fitToWidth: 1,
+        fitToHeight: 1,
+        showGridLines: false,
+        margins: {
+            left: 0.7874015748031497,
+            right: 0.19685039370078741,
+            top: 0.39370078740157483,
+            bottom: 0.19685039370078741,
+            header: 0.19685039370078741,
+            footer: 0.19685039370078741
+        }
+    };
+}
+
+function annualFormMerges() {
+    const pairs = [['B', 'C']].concat(annualFormMonths().map(item => [item[1], item[2]]), [['AB', 'AC']]);
+    const merges = ['B2:H2', 'B6:B7', 'B8:B23', 'B24:C24', 'B27:I27', 'B30:B39', 'B42:B48'];
+    [4, 5, 29].forEach(row => pairs.forEach(pair => merges.push(`${pair[0]}${row}:${pair[1]}${row}`)));
+    return merges;
+}
+
+function annualFormFormulas() {
+    const amount = annualFormAmountColumns();
+    const numbers = annualFormNoColumns();
+    const reversed = list => list.slice().reverse();
+    const countList = row => reversed(numbers).map(column => column + row).join(',');
+    const formulas = {
+        AB5: 'SUM(D5:AA5)',
+        AC7: `SUM(${amount.map(column => column + '7').join('+')})`,
+        AB8: `COUNTA(${countList(8)})*2`,
+        AC8: `SUM(${amount.map(column => column + '8').join('+')})`,
+        AC23: `SUM(${amount.map(column => column + '23').join('+')})`,
+        AB24: reversed(numbers).map(column => column + '24').join('+'),
+        AC24: reversed(amount).map(column => column + '24').join('+'),
+        N25: `SUM(${numbers.slice(0, 6).map(column => column + '24').join('+')})`,
+        O25: `SUM(${amount.slice(0, 6).map(column => column + '24').join('+')})`,
+        Z25: `SUM(${numbers.slice(6).map(column => column + '24').join('+')})`,
+        AA25: `SUM(${amount.slice(6).map(column => column + '24').join('+')})`,
+        AC25: 'AC24/AB5*1000',
+        N40: `COUNT(${amount.slice(0, 6).map(column => `${column}30:${column}39`).join(',')})*2`,
+        O40: `SUM(${amount.slice(0, 6).map(column => `${column}30:${column}39`).join(',')})`,
+        Z40: `COUNT(${amount.slice(6).map(column => `${column}30:${column}39`).join(',')})*2`,
+        AA40: `SUM(${amount.slice(6).map(column => `${column}30:${column}39`).join(',')})`,
+        AB40: 'SUM(AB30:AB39)',
+        AC40: 'SUM(AC30:AC39)',
+        N49: `COUNT(${amount.slice(0, 6).map(column => `${column}42:${column}48`).join(',')})*2`,
+        O49: `SUM(${amount.slice(0, 6).map(column => `${column}42:${column}48`).join(',')})`,
+        Z49: `COUNT(${amount.slice(6).map(column => `${column}42:${column}48`).join(',')})*2`,
+        AA49: `SUM(${amount.slice(6).map(column => `${column}42:${column}48`).join(',')})`,
+        AB49: 'SUM(AB42:AB48)',
+        AC49: 'SUM(AC42:AC48)'
+    };
+    numbers.forEach(column => {
+        formulas[column + '24'] = `COUNTA(${column}8:${column}23)*2`;
+        formulas[column + '29'] = `+${column}4`;
+    });
+    amount.forEach(column => {
+        formulas[column + '24'] = `SUM(${column}7:${column}23)`;
+    });
+    for (let row = 8; row <= 23; row += 1) formulas['AB' + row] = `COUNTA(${countList(row)})*2`;
+    for (let row = 8; row <= 22; row += 1) formulas['AC' + row] = `SUM(${amount.map(column => column + row).join('+')})`;
+    formulas.AC23 = `SUM(${amount.map(column => column + '23').join('+')})`;
+    for (let row = 30; row <= 36; row += 1) formulas['AC' + row] = `SUM(D${row}:AA${row})`;
+    for (let row = 31; row <= 38; row += 1) formulas['AB' + row] = `COUNTA(${countList(row)})*2`;
+    formulas.AB30 = `COUNTA(${countList(30)})*2`;
+    formulas.AB39 = `COUNTA(${countList(39)})*2`;
+    formulas.AC37 = 'SUM(D37:AA37)';
+    formulas.AC38 = 'SUM(D38:AA38)';
+    formulas.AC39 = 'SUM(D39:AA39)';
+    formulas.AB42 = `COUNTA(${countList(42)})*2`;
+    formulas.AC42 = 'SUM(D42:AA42)';
+    for (let row = 43; row <= 45; row += 1) formulas['AB' + row] = `COUNTA(${countList(row)})*2`;
+    for (let row = 43; row <= 46; row += 1) formulas['AC' + row] = `SUM(D${row}:AA${row})`;
+    [46, 47, 48].forEach(row => { formulas['AB' + row] = `COUNTA(${countList(row)})*2`; });
+    formulas.AC47 = 'SUM(D47:AA47)';
+    formulas.AC48 = 'SUM(D48:AA48)';
+    return formulas;
+}
+
+function annualFormLabels() {
+    const labels = {
+        B2: 'ロール改削計画（匿名見本）',
+        B5: '生産量(t)',
+        C7: '運賃',
+        B8: 'No.',
+        B24: '計',
+        M25: '上期計',
+        Y25: '下期計',
+        AB25: '原単価',
+        B27: 'ロール購入・払出計画（匿名見本）',
+        AB4: '年度計',
+        AB6: '本数',
+        AC6: '金額',
+        AB29: '年度計',
+        B30: '購入',
+        M40: '上期計',
+        Y40: '下期計',
+        B42: '払出',
+        M49: '上期計',
+        Y49: '上期計'
+    };
+    annualFormMonths().forEach(item => {
+        labels[item[1] + '4'] = item[0];
+        labels[item[1] + '6'] = 'No.';
+        labels[item[2] + '6'] = '金額（千円）';
+    });
+    for (let stand = 2; stand <= 17; stand += 1) labels['C' + (stand + 6)] = `#${stand}`;
+    const purchase = { 30: '#2', 31: '#3', 32: '#4', 33: '#5', 34: '#7', 35: '#', 36: '#', 37: '#11', 38: '#12', 39: '#17' };
+    const payout = { 42: '#5', 43: '#10', 44: '#12', 45: '#', 46: '#', 47: '#', 48: '#' };
+    Object.keys(purchase).forEach(row => { labels['C' + row] = purchase[row]; });
+    Object.keys(payout).forEach(row => { labels['C' + row] = payout[row]; });
+    return labels;
+}
+
+function annualFormAnonymousInputs() {
+    return { D5: 405, E7: 5, D8: 'anon-2a', E8: 12, X30: 'anon-buy', Y30: 20, D39: 'anon-17', E39: 30, N42: 'anon-out', O42: 7 };
+}
+
+function annualFormRange(ref) {
+    const match = /^([A-Z]+)(\d+):([A-Z]+)(\d+)$/.exec(ref);
+    if (!match) return [];
+    const cells = [];
+    for (let row = Number(match[2]); row <= Number(match[4]); row += 1) {
+        for (let column = annualColumnIndex(match[1]); column <= annualColumnIndex(match[3]); column += 1) {
+            cells.push(annualColumnName(column) + row);
+        }
+    }
+    return cells;
+}
+
+function annualFormSplitArgs(list) {
+    return String(list).split(',').map(item => item.trim()).filter(Boolean);
+}
+
+function annualFormEvaluate(formulas, inputs) {
+    const values = Object.assign({}, inputs);
+    const numeric = ref => {
+        const value = values[ref];
+        return typeof value === 'number' && Number.isFinite(value) ? value : null;
+    };
+    const present = ref => values[ref] !== undefined && values[ref] !== '';
+    const refsOf = token => token.includes(':') ? annualFormRange(token) : [token];
+    for (let pass = 0; pass < 8; pass += 1) {
+        Object.keys(formulas).forEach(ref => {
+            const formula = formulas[ref];
+            const plus = /^\+([A-Z]+\d+)$/.exec(formula);
+            const countA = /^COUNTA\((.*)\)\*2$/.exec(formula);
+            const count = /^COUNT\((.*)\)\*2$/.exec(formula);
+            const sumRange = /^SUM\(([A-Z]+\d+:[A-Z]+\d+)\)$/.exec(formula);
+            const sumPlus = /^SUM\(([A-Z]+\d+(?:\+[A-Z]+\d+)+)\)$/.exec(formula);
+            const added = /^([A-Z]+\d+(?:\+[A-Z]+\d+)+)$/.exec(formula);
+            const price = /^([A-Z]+\d+)\/([A-Z]+\d+)\*1000$/.exec(formula);
+            const sumList = /^SUM\(([A-Z]+\d+:[A-Z]+\d+(?:,[A-Z]+\d+:[A-Z]+\d+)+)\)$/.exec(formula);
+            if (plus) values[ref] = values[plus[1]];
+            else if (countA) values[ref] = annualFormSplitArgs(countA[1]).reduce((total, token) => total + refsOf(token).filter(present).length, 0) * 2;
+            else if (count) values[ref] = annualFormSplitArgs(count[1]).reduce((total, token) => total + refsOf(token).filter(item => numeric(item) !== null).length, 0) * 2;
+            else if (sumRange) values[ref] = annualFormRange(sumRange[1]).reduce((total, item) => total + (numeric(item) || 0), 0);
+            else if (sumPlus) values[ref] = sumPlus[1].split('+').reduce((total, item) => total + (numeric(item) || 0), 0);
+            else if (added) values[ref] = added[1].split('+').reduce((total, item) => total + (numeric(item) || 0), 0);
+            else if (sumList) values[ref] = annualFormSplitArgs(sumList[1]).reduce((total, token) => total + refsOf(token).reduce((sum, item) => sum + (numeric(item) || 0), 0), 0);
+            else if (price) {
+                const denominator = numeric(price[2]);
+                values[ref] = denominator ? (numeric(price[1]) || 0) / denominator * 1000 : null;
+            }
+        });
+    }
+    return values;
+}
+
+function buildAnnualFormSample(overrides) {
+    const formulas = annualFormFormulas();
+    const labels = annualFormLabels();
+    const inputs = Object.assign({}, annualFormAnonymousInputs(), overrides || {});
+    const blocked = ['120660', '16900', '2025.1.23', '#17-86', '#2-11', '10000'];
+    const illegal = Object.keys(inputs).filter(ref => formulas[ref] || labels[ref] || blocked.some(token => String(inputs[ref]) === token));
+    if (illegal.length) {
+        return { ok: false, reason: '見本の入力が数式・見出し、または2025年度原本の数値と重なっています。過去数値は発注実績や確定予測にしません。' };
+    }
+    const values = annualFormEvaluate(formulas, Object.assign({}, labels, inputs));
+    const source = annualFormSource();
+    return {
+        ok: true,
+        source,
+        sampleSheetName: '匿名見本ロール(計画)',
+        merges: annualFormMerges(),
+        formulas,
+        labels,
+        inputs,
+        values,
+        historicalValuesCopied: false
+    };
+}
+
+function describeAnnualFormBasis(sample) {
+    const built = sample && sample.ok ? sample : buildAnnualFormSample();
+    if (!built.ok) return built.reason;
+    const source = built.source;
+    const price = built.values.AC25;
+    return [
+        `原本は「${source.fileName}」のシート「${source.sheetName}」。印刷は${source.paperName}横、範囲${source.printArea}、倍率${source.scale}、ページに合わせる設定です。`,
+        '改削計画は2〜25行、購入は30〜40行、払出は42〜49行です。月はD列からAA列まで2列一組で、4月から翌3月です。AB列とAC列が年度計の本数と金額です。',
+        '見本の生産量は4月のD5だけ405tです。運賃E7は5、改削はD8がanon-2aでE8が12、購入はX30がanon-buyでY30が20、D39がanon-17でE39が30、払出はN42がanon-outでO42が7です。',
+        `年度の生産量AB5はSUM(D5:AA5)で${built.values.AB5}です。4月の本数D24はCOUNTA(D8:D23)*2で${built.values.D24}、4月の金額E24はSUM(E7:E23)で${built.values.E24}です。`,
+        `年度金額AC24は各月の金額計の和で${built.values.AC24}です。原単価AC25はAC24/AB5*1000で${price}です。金額の見出しは千円なので、この式は千円合計を1000倍して生産量tで割っています。`,
+        `購入の年度本数AB30はCOUNTA*2で${built.values.AB30}、金額AC30はSUM(D30:AA30)で${built.values.AC30}です。上期の購入本数N40は金額セルのCOUNT*2で${built.values.N40}、下期Z40は${built.values.Z40}です。`,
+        'COUNTAやCOUNTを2倍する式は原本の式です。印刷範囲のコメントは実績の記入先だけで、2倍の意味は書かれていないため、見本も同じ式を置いて意味は加えていません。',
+        '払出の49行右にある見出しY49は、原本でも「上期計」です。見本も同じ文字にしています。',
+        '原本の日付AC3と、2025年度のロール番号・金額・本数・生産量は見本へコピーしていません。2025年度の過去数値は現在の発注済みや確定予測にしません。',
+        '印刷はA3横の1枚です。原本はfitToPageだけで横1・縦1を省略しているので、見本はfitToWidth=1、fitToHeight=1を明示しています。倍率72も残しています。',
+        '原本の共有数式は行ごとに展開しています。改削の本数はAB8からAB23、金額はAC8からAC22、購入の金額はAC30からAC36、本数はAB31からAB38、払出の本数はAB43からAB45、金額はAC43からAC46です。',
+        '見本の罫線は細い実線です。原本の色番号と罫線の太さの違いは写していません。'
+    ].join('\n');
+}
+
+function annualFormXmlEscape(value) {
+    return String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function annualFormSheetXml(sample) {
+    const built = sample && sample.ok ? sample : buildAnnualFormSample();
+    const heights = { 1: 27.75, 2: 48, 3: 33.75, 4: 22.5, 5: 22.5, 6: 32.25, 7: 24, 26: 12.75, 27: 28.5, 28: 8.25, 40: 27, 41: 9, 42: 24, 49: 26.25 };
+    const rows = [];
+    for (let row = 1; row <= 49; row += 1) {
+        const cells = [];
+        for (let column = 1; column <= 29; column += 1) {
+            const ref = annualColumnName(column) + row;
+            const formula = built.formulas[ref];
+            const value = built.values[ref];
+            const style = row === 6 ? ' s="2"' : ' s="1"';
+            if (formula) {
+                const text = typeof value === 'string';
+                cells.push(`<c r="${ref}"${style}${text ? ' t="str"' : ''}><f>${annualFormXmlEscape(formula)}</f>${value === null || value === undefined ? '' : `<v>${annualFormXmlEscape(value)}</v>`}</c>`);
+            } else if (value !== undefined && value !== '') {
+                if (typeof value === 'number') cells.push(`<c r="${ref}"${style}><v>${value}</v></c>`);
+                else cells.push(`<c r="${ref}"${style} t="inlineStr"><is><t>${annualFormXmlEscape(value)}</t></is></c>`);
+            } else cells.push(`<c r="${ref}"${style}/>`);
+        }
+        const height = heights[row] || (row >= 8 && row <= 25 ? 24.75 : (row >= 29 && row <= 39 ? 24.75 : (row >= 43 && row <= 48 ? 24 : null)));
+        rows.push(`<row r="${row}"${height ? ` ht="${height}" customHeight="1"` : ''}>${cells.join('')}</row>`);
+    }
+    const cols = '<cols>'
+        + '<col min="1" max="1" width="1.875" customWidth="1"/>'
+        + '<col min="2" max="2" width="7.25" customWidth="1"/>'
+        + '<col min="3" max="27" width="9.25" customWidth="1"/>'
+        + '<col min="28" max="28" width="10.5" customWidth="1"/>'
+        + '<col min="29" max="29" width="18" customWidth="1"/>'
+        + '</cols>';
+    const margins = built.source.margins;
+    return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`
+        + '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+        + '<sheetPr><pageSetUpPr fitToPage="1"/></sheetPr><dimension ref="A1:AC49"/>'
+        + '<sheetViews><sheetView showGridLines="0" zoomScale="70" zoomScaleNormal="70" workbookViewId="0"/></sheetViews>'
+        + '<sheetFormatPr defaultRowHeight="15"/>'
+        + cols
+        + `<sheetData>${rows.join('')}</sheetData>`
+        + `<mergeCells count="${built.merges.length}">${built.merges.map(ref => `<mergeCell ref="${ref}"/>`).join('')}</mergeCells>`
+        + `<pageMargins left="${margins.left}" right="${margins.right}" top="${margins.top}" bottom="${margins.bottom}" header="${margins.header}" footer="${margins.footer}"/>`
+        + '<pageSetup paperSize="8" scale="72" fitToWidth="1" fitToHeight="1" orientation="landscape"/>'
+        + '<headerFooter alignWithMargins="0"/>'
+        + '</worksheet>';
+}
+
+function annualFormCrc32(bytes) {
+    let crc = ~0;
+    for (let index = 0; index < bytes.length; index += 1) {
+        crc ^= bytes[index];
+        for (let bit = 0; bit < 8; bit += 1) crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0);
+    }
+    return ~crc >>> 0;
+}
+
+function annualFormEncode(text) {
+    const bytes = [];
+    for (const ch of String(text)) {
+        const code = ch.codePointAt(0);
+        if (code < 0x80) bytes.push(code);
+        else if (code < 0x800) bytes.push(0xc0 | (code >> 6), 0x80 | (code & 63));
+        else if (code < 0x10000) bytes.push(0xe0 | (code >> 12), 0x80 | ((code >> 6) & 63), 0x80 | (code & 63));
+        else bytes.push(0xf0 | (code >> 18), 0x80 | ((code >> 12) & 63), 0x80 | ((code >> 6) & 63), 0x80 | (code & 63));
+    }
+    return Uint8Array.from(bytes);
+}
+
+function annualFormZip(files) {
+    const locals = [];
+    const centrals = [];
+    let offset = 0;
+    files.forEach(file => {
+        const name = annualFormEncode(file.name);
+        const data = annualFormEncode(file.data);
+        const crc = annualFormCrc32(data);
+        const local = new Uint8Array(30 + name.length + data.length);
+        const view = new DataView(local.buffer);
+        view.setUint32(0, 0x04034b50, true);
+        view.setUint16(4, 20, true);
+        view.setUint16(8, 0, true);
+        view.setUint32(14, crc, true);
+        view.setUint32(18, data.length, true);
+        view.setUint32(22, data.length, true);
+        view.setUint16(26, name.length, true);
+        local.set(name, 30);
+        local.set(data, 30 + name.length);
+        const central = new Uint8Array(46 + name.length);
+        const centralView = new DataView(central.buffer);
+        centralView.setUint32(0, 0x02014b50, true);
+        centralView.setUint16(4, 20, true);
+        centralView.setUint16(6, 20, true);
+        centralView.setUint32(16, crc, true);
+        centralView.setUint32(20, data.length, true);
+        centralView.setUint32(24, data.length, true);
+        centralView.setUint16(28, name.length, true);
+        centralView.setUint32(42, offset, true);
+        central.set(name, 46);
+        locals.push(local);
+        centrals.push(central);
+        offset += local.length;
+    });
+    const centralSize = centrals.reduce((total, item) => total + item.length, 0);
+    const end = new Uint8Array(22);
+    const endView = new DataView(end.buffer);
+    endView.setUint32(0, 0x06054b50, true);
+    endView.setUint16(8, files.length, true);
+    endView.setUint16(10, files.length, true);
+    endView.setUint32(12, centralSize, true);
+    endView.setUint32(16, offset, true);
+    const total = offset + centralSize + end.length;
+    const archive = new Uint8Array(total);
+    let cursor = 0;
+    locals.concat(centrals, [end]).forEach(part => {
+        archive.set(part, cursor);
+        cursor += part.length;
+    });
+    return archive;
+}
+
+function annualFormWorkbookFiles(sample) {
+    const built = sample && sample.ok ? sample : buildAnnualFormSample();
+    const sheetName = built.sampleSheetName;
+    const workbook = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`
+        + '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+        + `<sheets><sheet name="${sheetName}" sheetId="1" r:id="rId1"/></sheets>`
+        + `<definedNames><definedName name="_xlnm.Print_Area" localSheetId="0">'${sheetName}'!$A$1:$AC$49</definedName></definedNames>`
+        + '</workbook>';
+    return [
+        { name: '[Content_Types].xml', data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>' },
+        { name: '_rels/.rels', data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>' },
+        { name: 'xl/workbook.xml', data: workbook },
+        { name: 'xl/_rels/workbook.xml.rels', data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>' },
+        { name: 'xl/styles.xml', data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="1"><font><sz val="11"/><name val="Calibri"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="2"><border/><border><left style="thin"/><right style="thin"/><top style="thin"/><bottom style="thin"/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="3"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf></cellXfs></styleSheet>' },
+        { name: 'xl/worksheets/sheet1.xml', data: annualFormSheetXml(built) }
+    ];
+}
+
+function annualFormSampleWorkbook(sample) {
+    return annualFormZip(annualFormWorkbookFiles(sample));
+}
+
+function annualFormMergeMap(merges) {
+    const origin = {};
+    const covered = new Set();
+    merges.forEach(ref => {
+        const parts = ref.split(':');
+        const startColumn = parts[0].replace(/\d+/g, '');
+        const startRow = Number(parts[0].replace(/[A-Z]+/g, ''));
+        const endColumn = parts[1].replace(/\d+/g, '');
+        const endRow = Number(parts[1].replace(/[A-Z]+/g, ''));
+        origin[parts[0]] = {
+            colspan: annualColumnIndex(endColumn) - annualColumnIndex(startColumn) + 1,
+            rowspan: endRow - startRow + 1
+        };
+        for (let row = startRow; row <= endRow; row += 1) {
+            for (let column = annualColumnIndex(startColumn); column <= annualColumnIndex(endColumn); column += 1) {
+                const cell = annualColumnName(column) + row;
+                if (cell !== parts[0]) covered.add(cell);
+            }
+        }
+    });
+    return { origin, covered };
+}
+
+function renderAnnualFormTable(sample) {
+    const built = sample && sample.ok ? sample : buildAnnualFormSample();
+    const map = annualFormMergeMap(built.merges);
+    const rows = [];
+    for (let row = 1; row <= 49; row += 1) {
+        const cells = [];
+        for (let column = 1; column <= 29; column += 1) {
+            const ref = annualColumnName(column) + row;
+            if (map.covered.has(ref)) continue;
+            const formula = built.formulas[ref];
+            const value = built.values[ref];
+            const shown = value === null || value === undefined || value === '' ? '' : value;
+            const kind = formula ? 'formula' : (built.inputs[ref] !== undefined ? 'input' : 'label');
+            const span = map.origin[ref] || { colspan: 1, rowspan: 1 };
+            cells.push(`<td data-ref="${ref}" data-kind="${kind}" colspan="${span.colspan}" rowspan="${span.rowspan}"${formula ? ` title="${annualFormXmlEscape(formula)}"` : ''}>${annualFormXmlEscape(shown)}</td>`);
+        }
+        rows.push(`<tr>${cells.join('')}</tr>`);
+    }
+    return `<table id="annual-form-grid"><caption>匿名見本 A3横1枚 ${built.source.printArea}</caption><tbody>${rows.join('')}</tbody></table>`;
+}
+
+function buildConnectedAnnualForm(plan) {
+    const formulas = annualFormFormulas();
+    const labels = annualFormLabels();
+    labels.B2 = 'ロール改削計画（12か月見通し）';
+    labels.B27 = 'ロール購入・払出計画（12か月見通し）';
+    const inputs = {};
+    const notes = [];
+    const months = plan && Array.isArray(plan.months) ? plan.months : [];
+    const columns = annualFormNoColumns();
+    if (months.length !== 12) {
+        notes.push('12か月の生産計画が無いので、生産量は未確認です。帳票の生産量には入れていません。');
+    } else {
+        months.forEach((item, index) => {
+            const confirmed = item && item.classification === 'confirmed' && typeof item.productionTons === 'number' && item.productionTons >= 0;
+            if (confirmed) {
+                inputs[columns[index] + '5'] = item.productionTons;
+                notes.push(`${item.month}の確定生産量${item.productionTons}tを${columns[index]}5へ入れました。`);
+            } else {
+                notes.push(`${item && item.month ? item.month : '対象月'}の生産量は未確認です。暫定10000tは帳票へ入れていません。`);
+            }
+        });
+    }
+    notes.push('改削の本数と金額、購入と払出の本数と金額は、直数の差からは作りません。ロール番号と金額の実データが無いので未確認です。');
+    notes.push('3セットはロール3本のことではありません。組込済み予備、搬出日、発注日が無いので、戻り日と補充日は未確認です。購入LTは暫定6か月で、確定の購入日ではありません。不足なしとは判定しません。');
+    const values = annualFormEvaluate(formulas, Object.assign({}, labels, inputs));
+    return {
+        ok: true,
+        source: annualFormSource(),
+        sampleSheetName: '見通しロール(計画)',
+        merges: annualFormMerges(),
+        formulas,
+        labels,
+        inputs,
+        values,
+        notes,
+        historicalValuesCopied: false
+    };
+}
+
+function describeConnectedAnnualForm(connected) {
+    const built = connected && connected.ok ? connected : buildConnectedAnnualForm(null);
+    const price = built.values.AC25 === null || built.values.AC25 === undefined ? '未計算' : built.values.AC25;
+    return [
+        built.notes.join('\n'),
+        `見通しの年度生産量AB5は${built.values.AB5 || 0}です。確定月が無い、または0のときは原単価AC25は${price}です。`,
+        'スタンド別の改削LTは初期の暫定暦日のままです。搬出日が無いので搬入日は作りません。',
+        threeSetForecast({})
+    ].join('\n');
+}
+
+function downloadAnnualFormSample() {
+    const bytes = annualFormSampleWorkbook();
+    const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'annual-form-anonymous-sample.xlsx';
+    document.body.appendChild(link);
+    link.click();
+    setTimeout(() => {
+        URL.revokeObjectURL(url);
+        link.remove();
+    }, 1500);
+}
+
+function describeOutputFormSurvey() {
+    return [
+        '出力仕様案です。年間帳票の印刷範囲は原本で確認しました。月間予定と位置指示書のセル配置は未確定です。',
+        '年間改削・購入計画: 原本「ロール管理 必要エクセルまとめ.xlsx」のシート「2025年度ロール(計画)」を読みました。A3横、印刷範囲A1:AC49、倍率72です。同じシートの改削計画と購入・払出計画を一体の帳票として、結合・数式・印刷設定を匿名見本に再現しています。2025年度の過去数値は現在の発注済みや確定予測にしません。',
+        '月間ロール・カリバ替予定: ローカルの生産予定ファイルに「ロール・カリバ替予定2026.10」という過去月のシートがあり、見えた見出しは日付、曜日、サイズ、操業、常昼、ロール替とカリバ替の記入です。過去月の値は現在の計画にせず、この並びも出力様式としては確定しません。',
+        '#12〜#17の位置指示書: 11月5日のD10と11月14日のD13東列の印刷指示書写真は受領済みです。赤丸は今回使用するカリバ番号です。編集元のExcelとパスラインの数値は未取得なので、位置とずれ量は未確認です。手書きの使用管理表は予定の参考であり、実績としては入れません。',
+        '不足資料: 現行の月間予定表、#12〜#17位置指示書の原本。年間帳票の2025年度シートは読み取り済みです。'
+    ].join('\n');
+}
+
+const MONTHLY_PRODUCTION_HISTORY_KEY = 'monthly_production_plan_history_v1';
+
+function describeMonthlyProductionStore() {
+    return `保存先はこのブラウザの ${MONTHLY_PRODUCTION_HISTORY_KEY} だけです。別の端末や別のブラウザとは共有しません。実台帳、GAS、Sheets、通常の保存は変更していません。`;
+}
+
+function productionPlanRecordOk(plan, sealed) {
+    if (!plan || typeof plan.id !== 'string' || !plan.id || plan.sealed !== sealed) return false;
+    if (!Number.isInteger(plan.revision) || plan.revision < 0) return false;
+    if (typeof plan.parentId !== 'string') return false;
+    const expected = fiscalYearMonths(`${plan.fiscalStart}-01`);
+    if (expected.length !== 12 || plan.fiscalStart !== expected[0] || plan.fiscalEnd !== expected[11]) return false;
+    if (!Array.isArray(plan.months) || plan.months.length !== 12) return false;
+    const monthsOk = plan.months.every((item, index) => item && item.month === expected[index]
+        && ((item.classification === 'provisional' && item.productionTons === null)
+            || (item.classification === 'confirmed' && typeof item.productionTons === 'number' && Number.isFinite(item.productionTons) && item.productionTons >= 0))
+        && typeof item.size === 'string');
+    if (!monthsOk || !Array.isArray(plan.shiftRows)) return false;
+    if (sealed && (!plan.sealedAt || Number.isNaN(Date.parse(plan.sealedAt)))) return false;
+    return plan.shiftRows.every(row => row && typeof row.standKey === 'string' && typeof row.size === 'string'
+        && typeof row.caliberId === 'string' && typeof row.from === 'string' && typeof row.to === 'string'
+        && typeof row.tons === 'number' && Number.isFinite(row.tons) && row.tons >= 0
+        && row.shifts === Math.floor(row.tons / SHIFT_TONS_BASIS)
+        && row.passLine === '未確認' && typeof row.cumulativeShifts === 'number');
+}
+
+function readMonthlyProductionHistory(storage) {
+    let raw = null;
+    try {
+        raw = storage.getItem(MONTHLY_PRODUCTION_HISTORY_KEY);
+    } catch (error) {
+        return { ok: false, reason: '月次生産計画の保存データを読めません。読み込みません。' };
+    }
+    if (!raw) return { ok: true, empty: true, sealed: [], draft: null };
+    let parsed = null;
+    try {
+        parsed = JSON.parse(raw);
+    } catch (error) {
+        return { ok: false, reason: '月次生産計画の保存データが壊れています。読み込みません。' };
+    }
+    const broken = { ok: false, reason: '月次生産計画の保存データが壊れています。読み込みません。' };
+    if (!parsed || parsed.version !== 1 || parsed.scope !== 'browser-local' || !Array.isArray(parsed.sealed)) return broken;
+    if (!parsed.sealed.every(plan => productionPlanRecordOk(plan, true))) return broken;
+    if (parsed.draft != null && !productionPlanRecordOk(parsed.draft, false)) return broken;
+    const ids = parsed.sealed.map(plan => plan.id);
+    if (parsed.draft) ids.push(parsed.draft.id);
+    if (new Set(ids).size !== ids.length) return broken;
+    return { ok: true, empty: false, sealed: parsed.sealed, draft: parsed.draft || null };
+}
+
+function writeMonthlyProductionHistory(storage, sealed, draft) {
+    const payload = JSON.stringify({
+        version: 1,
+        scope: 'browser-local',
+        sealed: sealed || [],
+        draft: draft || null
+    });
+    try {
+        storage.setItem(MONTHLY_PRODUCTION_HISTORY_KEY, payload);
+    } catch (error) {
+        const quota = error && (error.name === 'QuotaExceededError' || error.code === 22);
+        return { ok: false, reason: quota ? 'このブラウザの保存容量が足りません。画面の記憶は残しますが、終了後の復元はできません。' : '月次生産計画の履歴を保存できません。画面の記憶は残します。' };
+    }
+    return { ok: true };
+}
+
+const MONTHLY_PRODUCTION_FILE_KIND = 'roll-app-monthly-production-history';
+const MONTHLY_PRODUCTION_IMPORT_ROLLBACK_KEY = 'monthly_production_plan_import_rollback_v1';
+
+function monthlyProductionChecksum(payload) {
+    const text = JSON.stringify(payload);
+    let hash = 0x811c9dc5;
+    for (let index = 0; index < text.length; index += 1) {
+        hash ^= text.charCodeAt(index);
+        hash = Math.imul(hash, 0x01000193);
+    }
+    return `fnv1a:${(hash >>> 0).toString(16).padStart(8, '0')}`;
+}
+
+function readMonthlyProductionText(raw) {
+    return readMonthlyProductionHistory({ getItem() { return raw; } });
+}
+
+function buildMonthlyProductionExport(sealed, draft, savedAt) {
+    const loaded = readMonthlyProductionText(JSON.stringify({ version: 1, scope: 'browser-local', sealed: sealed || [], draft: null }));
+    if (!loaded.ok) return { ok: false, reason: loaded.reason };
+    if (!loaded.sealed.length) return { ok: false, reason: '書き出す確定履歴がありません。ファイルは作っていません。' };
+    const file = {
+        kind: MONTHLY_PRODUCTION_FILE_KIND,
+        version: 1,
+        savedAt: String(savedAt || ''),
+        sourceKey: MONTHLY_PRODUCTION_HISTORY_KEY,
+        contains: 'monthly-production-plan-history-only',
+        history: { version: 1, scope: 'browser-local', sealed: loaded.sealed, draft: null }
+    };
+    file.checksum = monthlyProductionChecksum({
+        kind: file.kind,
+        version: file.version,
+        savedAt: file.savedAt,
+        sourceKey: file.sourceKey,
+        contains: file.contains,
+        history: file.history
+    });
+    return { ok: true, file };
+}
+
+function verifyMonthlyProductionFile(file) {
+    if (!file || file.kind !== MONTHLY_PRODUCTION_FILE_KIND || file.version !== 1) {
+        return { ok: false, reason: '月次生産計画の履歴ファイルではありません。ロールの復旧ファイルとは別なので、反映していません。' };
+    }
+    if (file.sourceKey !== MONTHLY_PRODUCTION_HISTORY_KEY || file.contains !== 'monthly-production-plan-history-only' || !file.history) {
+        return { ok: false, reason: '対象データが月次生産計画の履歴ではありません。反映していません。' };
+    }
+    const checksum = file.checksum;
+    const body = {
+        kind: file.kind,
+        version: file.version,
+        savedAt: file.savedAt,
+        sourceKey: file.sourceKey,
+        contains: file.contains,
+        history: file.history
+    };
+    if (checksum !== monthlyProductionChecksum(body)) {
+        return { ok: false, reason: '履歴ファイルの検証に失敗したので、反映していません。' };
+    }
+    const loaded = readMonthlyProductionText(JSON.stringify(file.history));
+    if (!loaded.ok) return { ok: false, reason: `${loaded.reason}反映していません。` };
+    return { ok: true, sealed: loaded.sealed };
+}
+
+function previewMonthlyProductionImport(file, current) {
+    const verified = verifyMonthlyProductionFile(file);
+    if (!verified.ok) return verified;
+    if (!current || current.ok === false || !Array.isArray(current.sealed)) {
+        return { ok: false, reason: '今の履歴を確認できないので、反映していません。' };
+    }
+    const additions = [];
+    const skipped = [];
+    for (const plan of verified.sealed) {
+        const existing = current.sealed.find(item => item.id === plan.id);
+        if (!existing) {
+            additions.push(plan);
+            continue;
+        }
+        if (JSON.stringify(existing) === JSON.stringify(plan)) {
+            skipped.push(plan.id);
+            continue;
+        }
+        return { ok: false, reason: `確定版${plan.id}は既にあり、内容が違うので上書きしません。反映していません。` };
+    }
+    const currentYears = new Set(current.sealed.map(plan => plan.fiscalStart));
+    const addedYears = [...new Set(additions.map(plan => plan.fiscalStart).filter(year => !currentYears.has(year)))];
+    const lines = [
+        `対象は ${MONTHLY_PRODUCTION_HISTORY_KEY} だけです。ロール台帳や通常の復旧ファイルは変更しません。`,
+        `追加する確定版は${additions.length}件です。`,
+        additions.map(plan => `${plan.id} 年度${plan.fiscalStart}から${plan.fiscalEnd}`).join('\n'),
+        addedYears.length ? `今の履歴に無い年度: ${addedYears.join('、')}` : '',
+        skipped.length ? `同じ内容の版は追加しません: ${skipped.join('、')}` : '',
+        '作業中の版はファイルで置き換えません。まだ反映していません。'
+    ].filter(Boolean);
+    return { ok: true, additions, skipped, addedYears, summary: lines.join('\n') };
+}
+
+function applyMonthlyProductionImport(storage, file, options) {
+    if (!options || options.confirmed !== true) return { ok: false, applied: false, reason: '確認前なので反映していません。' };
+    const current = readMonthlyProductionHistory(storage);
+    if (!current.ok) return { ok: false, applied: false, reason: `${current.reason}反映していません。` };
+    const preview = previewMonthlyProductionImport(file, current);
+    if (!preview.ok) return { ok: false, applied: false, reason: preview.reason };
+    const before = storage.getItem(MONTHLY_PRODUCTION_HISTORY_KEY);
+    try {
+        storage.setItem(MONTHLY_PRODUCTION_IMPORT_ROLLBACK_KEY, JSON.stringify({
+            version: 1,
+            scope: 'browser-local',
+            sealed: current.sealed,
+            draft: current.draft
+        }));
+    } catch (error) {
+        return { ok: false, applied: false, reason: '取り込み前の控えを保存できないので、反映していません。' };
+    }
+    const written = writeMonthlyProductionHistory(storage, current.sealed.concat(preview.additions), current.draft);
+    if (!written.ok) return { ok: false, applied: false, reason: `${written.reason}反映していません。` };
+    const after = readMonthlyProductionHistory(storage);
+    if (!after.ok || after.sealed.length !== current.sealed.length + preview.additions.length) {
+        try {
+            if (before === null) storage.removeItem(MONTHLY_PRODUCTION_HISTORY_KEY);
+            else storage.setItem(MONTHLY_PRODUCTION_HISTORY_KEY, before);
+        } catch (error) {
+            return { ok: false, applied: false, reason: '保存の確認に失敗し、元の履歴へ戻すことにも失敗しました。' };
+        }
+        return { ok: false, applied: false, reason: '保存の確認に失敗したので、元の履歴を維持します。反映していません。' };
+    }
+    return { ok: true, applied: true, added: preview.additions.length, skipped: preview.skipped };
+}
+
+function undoMonthlyProductionImport(storage, options) {
+    if (!options || options.confirmed !== true) return { ok: false, applied: false, reason: '確認前なので取り消していません。' };
+    let raw = null;
+    try {
+        raw = storage.getItem(MONTHLY_PRODUCTION_IMPORT_ROLLBACK_KEY);
+    } catch (error) {
+        return { ok: false, applied: false, reason: '取り消し用の控えを読めません。今の履歴は変更していません。' };
+    }
+    if (!raw) return { ok: false, applied: false, reason: '取り消す取り込みがありません。履歴は変更していません。' };
+    const loaded = readMonthlyProductionText(raw);
+    if (!loaded.ok) return { ok: false, applied: false, reason: '取り消し用の控えが壊れているので、今の履歴は変更していません。' };
+    const written = writeMonthlyProductionHistory(storage, loaded.sealed, loaded.draft);
+    if (!written.ok) return { ok: false, applied: false, reason: `${written.reason}取り消しは反映していません。` };
+    try {
+        storage.removeItem(MONTHLY_PRODUCTION_IMPORT_ROLLBACK_KEY);
+    } catch (error) {
+        return { ok: false, applied: true, reason: '履歴は戻しましたが、控えの削除に失敗しました。' };
+    }
+    return { ok: true, applied: true };
+}
 
 function planMonthKey(standKey, month) {
     return `${String(standKey)}|${String(month)}`;
@@ -384,7 +1364,10 @@ function confirmedWorkCandidate(reachDate, stand, confirmation, days, referenceD
     }
     const row = (Array.isArray(days) ? days : []).find(item => item && String(item.date).slice(0, 10) === String(source.date).slice(0, 10));
     if (!row) return { date: null, note: '作業日が操業予定と照合できないので、参考候補は保留します。' };
-    const producing = Number(row.productionAmount) > 0;
+    if (typeof row.productionAmount !== 'number' || !Number.isFinite(row.productionAmount)) {
+        return { date: null, note: '作業日の生産量が欠損しているので、0tとはみなさず、参考候補は判定不能です。確認済み交換可能日にはしません。' };
+    }
+    const producing = row.productionAmount > 0;
     if (producing) return { date: null, note: '作業日が操業と重なるので、参考候補は保留します。' };
     const workType = expected === 'rollChange' ? rules.WORK_TYPES.ROLL_CHANGE : rules.WORK_TYPES.CALIBER_CHANGE;
     const allowed = rules.createPlanningRules({ afterProductionAllowedWorkTypes: [] }).validateWorkForSlot({
@@ -421,18 +1404,21 @@ function forecastTonReach(source, basis, days) {
     let reach = null;
     let blocked = null;
     days.forEach(row => {
-        if (reach || blocked) return;
+        if (blocked) return;
         const amount = row.productionAmount;
         if (typeof amount !== 'number' || !Number.isFinite(amount)) {
-            blocked = row.date;
+            if (!reach || String(row.date).slice(0, 10) <= String(reach)) {
+                blocked = row.date;
+                reach = null;
+            }
             return;
         }
-        if (amount === 0) return;
+        if (reach || amount === 0) return;
         total += amount;
         if (total >= basis.tons) reach = row.date;
     });
     if (blocked && !reach) {
-        return { reach: null, candidate: null, reason: `${blocked}の生産量が未確認です。0tにしないため、トン数到達見込みは確定しません。` };
+        return { reach: null, candidate: null, reason: `${blocked}の生産量が未確認です。0tとはみなさず、トン数到達見込みは判定不能です。確定しません。` };
     }
     if (!reach) return { reach: null, candidate: null, reason: `この予定の範囲では基準${formatTons(basis.tons)}に達しません。` };
     const decision = describeWorkCandidate('トン数', reach, basis.stand, source, days);
@@ -545,9 +1531,16 @@ function knownCaliberLimit(standKey, size) {
 
 function dayUseReview(row) {
     const amount = row ? row.productionAmount : undefined;
-    const teams = [row && row.shift1Team, row && row.shift3Team].filter(Boolean);
-    if (amount === null || amount === undefined) return '生産量未確認';
-    const produced = amount > 0 || teams.some(team => row.productionByTeam && Number(row.productionByTeam[team]) > 0);
+    const amountKnown = typeof amount === 'number' && Number.isFinite(amount) && amount >= 0;
+    if (!amountKnown) return '生産量未確認';
+    const teams = [row && row.shift1Team, row && row.shift3Team].map(team => String(team || '').trim()).filter(Boolean);
+    for (const team of teams) {
+        const values = row.productionByTeam;
+        const teamAmount = values && Object.prototype.hasOwnProperty.call(values, team) ? values[team] : undefined;
+        if (typeof teamAmount !== 'number' || !Number.isFinite(teamAmount) || teamAmount < 0) return '生産量未確認';
+    }
+    const produced = amount > 0 || teams.some(team => row.productionByTeam[team] > 0);
+    if (produced && teams.length === 0) return '生産量未確認';
     if (!produced) return '';
     const use = shiftUseFromHours(row.operatingHours);
     if (use === 'missing') return '時間未確認';
@@ -555,6 +1548,13 @@ function dayUseReview(row) {
     if (use === 'short') return '2時間以上4時間未満';
     if (teams.length > 1) return '勤ごとの時間';
     return '';
+}
+
+function dayQuantityClass(row) {
+    const label = String(row && row.recordKind || '');
+    if (label === 'actual' || label === '実績') return '実績';
+    if (label === 'plan' || label === '計画') return '計画';
+    return '区分未確認';
 }
 
 function projectCaliberReplacement(input) {
@@ -581,7 +1581,7 @@ function projectCaliberReplacement(input) {
         return { ...base, status: 'past', reason: `読み取った予定は過去の月です。これからの交換日には使いません。${source.standKey}番の${limit.kind}は${limit.runs}直、4時間以上は1直です。` };
     }
     if (!source.currentCaliber || typeof source.openingUsedRuns !== 'number' || !Number.isInteger(source.openingUsedRuns) || source.openingUsedRuns < 0) {
-        return { ...base, status: 'unknown', reason: `今のカリバと、開始時に何直使ったかが未確認です。${limit.kind}は${limit.runs}直、4時間以上は1直です。` };
+        return { ...base, status: 'unknown', reason: `今のカリバと、開始時に何直使ったかが未確認です。推測では埋めません。判定不能です。${limit.kind}は${limit.runs}直、4時間以上は1直です。` };
     }
     const beforeUnknown = [];
     let blocked = null;
@@ -625,7 +1625,7 @@ function projectCaliberReplacement(input) {
     const lastAllowedDate = confirmedMaximum ? projectedLastAllowed : null;
     let reason;
     if (blocked && !unknownIsAfterDecision) {
-        reason = `${blocked.date}は${blocked.kind}です。未確認の使用量を0直にしないため、この先の交換日と超過日は確定しません。`;
+        reason = `${blocked.date}は${blocked.kind}です。未確認の使用量を0直にも0tにもしないため、この先の交換日と超過日は判定不能です。確定しません。`;
         if (blocked.kind === '2時間以上4時間未満') {
             reason += 'この時間を1直と数える案は提案のままです。確定した交換日には使わず、実際の時間は別に残します。';
         }
@@ -644,6 +1644,14 @@ function projectCaliberReplacement(input) {
         reason += confirmedMaximum
             ? `${blocked.date}は${blocked.kind}ですが、確定済みの交換候補より後です。`
             : `${blocked.date}は${blocked.kind}ですが、通常目安の見込みより後です。`;
+    }
+    const classes = beforeUnknown.map(dayQuantityClass);
+    if (classes.length) {
+        reason += classes.every(item => item === '実績')
+            ? '数えた生産量は実績値です。'
+            : classes.every(item => item === '計画')
+                ? '数えた生産量は計画値です。実績にはしていません。'
+                : '計画値か実績値かが未確認の日があるので、この見込みは実績ではありません。';
     }
     return {
         exchangeDate,
@@ -816,23 +1824,62 @@ function anonymousOperatingDays(start, dayCount) {
     return days;
 }
 
-function exchangeSlotReady(confirmation, row, expectedType) {
+function describeExchangeSlot(confirmation, row, expectedType) {
     const source = confirmation || {};
     const date = String(row && row.date || '').slice(0, 10);
     const repeat = source.repeatOnStops === true;
-    if (!repeat && String(source.date || '').slice(0, 10) !== date) return false;
+    if (!repeat && String(source.date || '').slice(0, 10) !== date) {
+        return { ok: false, state: '未確認', note: '作業確認の日付が予定日と違うので、作業枠未確認です。' };
+    }
     const types = Array.isArray(source.workTypes) ? source.workTypes : [source.workType];
-    if (!types.includes(expectedType)) return false;
-    if (source.period !== 'day') return false;
-    if (Number(row.productionAmount) !== 0) return false;
-    if (row.shift3Team && !row.shift1Team) return false;
+    if (!types.includes(expectedType)) {
+        return { ok: false, state: '不成立', note: '作業確認の種別が違うので、作業枠未確認です。' };
+    }
+    if (!source.period) return { ok: false, state: '未確認', note: '昼間の作業確認が明示されていないので、作業枠未確認です。' };
+    if (source.period !== 'day') return { ok: false, state: '不成立', note: '昼間の作業確認が成立していないので、作業枠未確認です。' };
+    if (!row || typeof row.productionAmount !== 'number' || !Number.isFinite(row.productionAmount)) {
+        return { ok: false, state: '未確認', note: '日別生産量が欠損しているので、0tとはみなさず、確認済み交換可能日にはしません。' };
+    }
+    if (row.productionAmount !== 0) return { ok: false, state: '不成立', note: '生産中の日は確認済み交換可能日にしません。' };
+    if (row.shift3Team && !row.shift1Team) return { ok: false, state: '不成立', note: '夜勤のみの日は確認済み交換可能日にしません。' };
     const required = source.requiredHours;
     const reserved = source.reservedHours;
     const people = source.people;
-    if (!(typeof required === 'number' && Number.isFinite(required) && required > 0)) return false;
-    if (!(typeof reserved === 'number' && Number.isFinite(reserved) && reserved >= required)) return false;
-    if (!(typeof people === 'number' && Number.isInteger(people) && people > 0)) return false;
-    return source.continuous === 'no' && source.changeover === 'yes' && source.threeSet === 'yes';
+    if (required === undefined || required === null || required === '') {
+        return { ok: false, state: '未確認', note: '必要時間が未確認なので、確認済み交換可能日にはしません。' };
+    }
+    if (!(typeof required === 'number' && Number.isFinite(required) && required > 0)) {
+        return { ok: false, state: '不成立', note: '必要時間が成立しないので、確認済み交換可能日にはしません。' };
+    }
+    if (reserved === undefined || reserved === null || reserved === '') {
+        return { ok: false, state: '未確認', note: '確保時間が未確認なので、確認済み交換可能日にはしません。' };
+    }
+    if (!(typeof reserved === 'number' && Number.isFinite(reserved) && reserved >= required)) {
+        return { ok: false, state: '不成立', note: '確保時間が必要時間に足りないので、確認済み交換可能日にはしません。' };
+    }
+    if (people === undefined || people === null || people === '') {
+        return { ok: false, state: '未確認', note: '作業人数が未確認なので、確認済み交換可能日にはしません。' };
+    }
+    if (!(typeof people === 'number' && Number.isInteger(people) && people > 0)) {
+        return { ok: false, state: '不成立', note: '作業人数が成立しないので、確認済み交換可能日にはしません。' };
+    }
+    if (source.continuous !== 'yes' && source.continuous !== 'no') {
+        return { ok: false, state: '未確認', note: '連続操業の確認が明示されていないので、作業枠未確認です。' };
+    }
+    if (source.continuous !== 'no') return { ok: false, state: '不成立', note: '連続操業では交換日にしません。' };
+    if (source.changeover !== 'yes' && source.changeover !== 'no') {
+        return { ok: false, state: '未確認', note: '組替準備が未確認なので、確認済み交換可能日にはしません。' };
+    }
+    if (source.changeover !== 'yes') return { ok: false, state: '不成立', note: '組替準備が成立していないので、確認済み交換可能日にはしません。' };
+    if (source.threeSet !== 'yes' && source.threeSet !== 'no') {
+        return { ok: false, state: '未確認', note: '固定3セットが未確認なので、確認済み交換可能日にはしません。' };
+    }
+    if (source.threeSet !== 'yes') return { ok: false, state: '不成立', note: '固定3セットが成立していないので、確認済み交換可能日にはしません。' };
+    return { ok: true, state: '成立', note: '作業人数、必要時間、確保時間、組替準備、固定3セットは成立しています。予定表の件数を超える追加はしません。' };
+}
+
+function exchangeSlotReady(confirmation, row, expectedType) {
+    return describeExchangeSlot(confirmation, row, expectedType).ok;
 }
 
 function assemblySlotReady(confirmation, row) {
@@ -842,7 +1889,10 @@ function assemblySlotReady(confirmation, row) {
     if (!repeat && !source.date) return { ok: false, reason: '組替作業枠が未確認です。0tだけでは完了にしません。' };
     if (!repeat && String(source.date).slice(0, 10) !== date) return { ok: false, reason: 'この日の組替作業枠がありません。0tだけでは完了にしません。' };
     if (source.period !== 'day') return { ok: false, reason: '昼の組替枠が未確認です。夜だけでは完了にしません。' };
-    if (Number(row.productionAmount) !== 0) return { ok: false, reason: '操業中は組替を完了にしません。' };
+    if (typeof row.productionAmount !== 'number' || !Number.isFinite(row.productionAmount)) {
+        return { ok: false, reason: '日別生産量が欠損しているので、0tとはみなさず、組替は完了にしません。' };
+    }
+    if (row.productionAmount !== 0) return { ok: false, reason: '操業中は組替を完了にしません。' };
     if (row.shift3Team && !row.shift1Team) return { ok: false, reason: '夜勤だけでは組替を完了にしません。' };
     if (!row.shift1Team) return { ok: false, reason: '勤務が未確認です。0tだけでは組替を完了にしません。' };
     const required = source.requiredHours;
@@ -865,7 +1915,7 @@ function simulateExchangeCycle(input) {
         .map(row => Object.assign({}, row))
         .sort((a, b) => String(a.date).localeCompare(String(b.date)));
     const resources = Array.isArray(source.resources) ? source.resources.map(item => Object.assign({}, item)) : null;
-    const spareCalibers = Array.isArray(source.spareCaliberIds) ? source.spareCaliberIds.slice() : null;
+    let spareCalibers = Array.isArray(source.spareCaliberIds) ? source.spareCaliberIds.slice() : null;
     const knownSpare = finiteOrNull(source.installedSpare);
     const spareRolls = Array.isArray(source.spareRollIds)
         ? source.spareRollIds.slice()
@@ -888,7 +1938,28 @@ function simulateExchangeCycle(input) {
         reworks: []
     };
     const events = [];
-    const maxRuns = finiteOrNull(source.maxRuns);
+    let maxRuns = finiteOrNull(source.maxRuns);
+    const initialSize = normalizeForecastSize(source.currentSize) || normalizeForecastSize((days.find(row => row.productionAmount > 0 && row.size) || {}).size);
+    let activeSize = initialSize;
+    let sizeChanged = false;
+    let workConfirmation = source.workConfirmation;
+    let assemblyConfirmation = source.assemblyConfirmation;
+    const sizeUsage = new Map();
+    const reworkedIds = new Set();
+    const reworkCounts = new Map();
+    const generationOpening = (rollId, size, generation) => {
+        const matches = (source.reworkOpenings || []).filter(item => item && item.generation === generation
+            && confirmationOwnerMatches(item, {
+                standKey: source.standKey, rollId, size, referenceAt: source.referenceAt
+            }, true));
+        return matches.length === 1 ? matches[0] : null;
+    };
+    const openingReady = (opening, limitRuns) => Boolean(opening)
+        && Boolean(String(opening.caliberId || '').trim())
+        && Number.isInteger(opening.runs) && opening.runs >= 0 && opening.runs < limitRuns;
+    for (const item of resources || []) {
+        if (initialSize && item.caliberId && typeof item.runs === 'number') sizeUsage.set(item.id + '|' + initialSize, { caliberId: item.caliberId, runs: item.runs });
+    }
     let blocked = false;
     let confirmedThrough = null;
     let stopRecord = null;
@@ -900,6 +1971,7 @@ function simulateExchangeCycle(input) {
         diameter: state.diameter,
         installedSpare: spareRolls ? spareRolls.length : null,
         onlineId: state.onlineId,
+        size: activeSize,
         phase: state.phase
     });
     if (state.caliberRuns === null || maxRuns === null || !state.caliberId) {
@@ -924,6 +1996,8 @@ function simulateExchangeCycle(input) {
         }
         const nextDiameter = Math.round((targetDiameter - state.cutMm) * 10) / 10;
         if (target) target.diameter = nextDiameter;
+        reworkedIds.add(item.id);
+        for (const key of sizeUsage.keys()) if (key.startsWith(item.id + '|')) sizeUsage.delete(key);
         if (!resources || target && target.frame === 'online') state.diameter = nextDiameter;
         item.status = 'awaitingAssembly';
         push(date, '改削完了', `再生対象は${item.id}です。径は${nextDiameter}です。改削日数の試算であり、搬入と組替の完了ではありません。`);
@@ -935,16 +2009,15 @@ function simulateExchangeCycle(input) {
             const missingLead = leadMonths === null ? '購入期間が未確認なので、手配目安は出しません。0か月にはしません。' : conditional;
             push(date, '廃却需要', `対象は${item.id}です。廃却径以下です。${missingLead}確定の購入日ではありません。`);
         }
+        if (item.status === 'awaitingAssembly') reworkCounts.set(item.id, (reworkCounts.get(item.id) || 0) + 1);
     };
     const finishDueReworks = date => {
         state.reworks.filter(item => item.status === 'rework' && date >= item.readyOn)
             .forEach(item => finishReworkItem(date, item));
     };
-    const finishAssembly = date => {
+    const finishAssembly = (date, waiting, preparation) => {
         if (!spareRolls) return;
-        const waiting = state.reworks.filter(item => item.status === 'awaitingAssembly');
         if (!waiting.length) return;
-        const preparation = source.assemblyConfirmation || {};
         const preparationLabel = preparation.prepared === 'newSide' ? '新品側の準備' : '改削済ロールの搬入';
         push(date, '組替可能', `${preparation.preparedOn || '日未確認'}に${preparation.preparedTarget || '対象未確認'}の${preparationLabel}を確認しました。これは組替完了そのものではなく、予測であり実ロールの状態は変えていません。`);
         waiting.forEach(item => {
@@ -962,25 +2035,109 @@ function simulateExchangeCycle(input) {
     const holdAssembly = (date, row) => {
         const waiting = state.reworks.filter(item => item.status === 'awaitingAssembly');
         if (!waiting.length) return false;
-        const slot = assemblySlotReady(source.assemblyConfirmation, row);
+        const scoped = scopedCycleSlots(source.assemblySlots, {
+            standKey: source.standKey, size: activeSize, referenceAt: source.referenceAt
+        }, date, false);
+        if (scoped.length || sizeChanged) {
+            let completed = false;
+            for (const item of waiting) {
+                const matches = scoped.filter(slot => slot.owner.rollId === item.id);
+                const confirmation = matches.length === 1 ? matches[0] : null;
+                const assessed = assemblySlotReady(confirmation, row);
+                const overlap = events.some(event => event.date === date && ['サイズ替', 'ロール替', 'カリバ替', '組替完了'].includes(event.kind));
+                const futurePreparation = confirmation && confirmation.preparedOn > date;
+                if (confirmation && assessed.ok && row.shift1Team && !overlap && !futurePreparation) {
+                    finishAssembly(date, [item], confirmation);
+                    completed = true;
+                } else {
+                    const reason = overlap ? '同じ日の別作業と重なるため、組替完了にしません。'
+                        : (futurePreparation ? '準備の確認日が組替日より後です。' : (assessed.reason || '対象に一致する昼の組替枠が未確認です。'));
+                    push(date, '組替需要', `${item.id}は組替前です。${reason}`);
+                }
+            }
+            return completed;
+        }
+        const slot = assemblySlotReady(assemblyConfirmation, row);
         if (slot.ok) {
-            finishAssembly(date);
+            finishAssembly(date, waiting, assemblyConfirmation || {});
             return true;
         }
         push(date, '組替需要', `${waiting.map(item => item.id).join('、')}は組替前です。${slot.reason}`);
         return false;
     };
     const nightOnly = row => Boolean(row.shift3Team) && !row.shift1Team;
-    days.forEach(row => {
+    days.forEach((row, index) => {
         if (blocked) return;
         const date = String(row.date).slice(0, 10);
         const amount = row.productionAmount;
-        if (typeof amount !== 'number' || !Number.isFinite(amount)) {
+        if (typeof amount !== 'number' || !Number.isFinite(amount) || amount < 0) {
             push(date, '保留', '生産量が未確認です。0tにはしません。');
             stopAt(date, '生産量が未確認です。0tにはしません。');
             return;
         }
         const stopped = amount === 0;
+        const workScope = () => ({ standKey: source.standKey, rollId: state.onlineId, size: activeSize, referenceAt: source.referenceAt });
+        const workForDay = () => {
+            const matches = scopedCycleSlots(source.workSlots, workScope(), date, true);
+            return matches.length ? (matches.length === 1 ? matches[0] : null) : (sizeChanged ? null : source.workConfirmation);
+        };
+        workConfirmation = workForDay();
+        assemblyConfirmation = sizeChanged ? null : source.assemblyConfirmation;
+        const nextSize = normalizeForecastSize(row.size);
+        if (activeSize && nextSize !== activeSize && (!stopped || /^D\d+$/.test(nextSize))) {
+            const boundary = { date, fromSize: activeSize, toSize: nextSize || '未確認' };
+            const nextOperation = days.slice(index).find(item => item.productionAmount > 0);
+            const operationDate = nextOperation && normalizeForecastSize(nextOperation.size) === nextSize ? nextOperation.date : null;
+            const target = { standKey: source.standKey, rollId: state.onlineId, size: activeSize, referenceAt: source.referenceAt };
+            const matching = (source.sizeChanges || []).filter(item => operationDate && item.operationDate === operationDate
+                && normalizeForecastSize(item.fromSize) === activeSize && normalizeForecastSize(item.toSize) === nextSize
+                && confirmationOwnerMatches(item, target, true));
+            const confirmation = matching.length === 1 ? matching[0] : null;
+            const slotRow = confirmation && days.slice(0, index + 1).filter(item => item.date === confirmation.date);
+            const priorUse = days.slice(0, index).filter(item => item.productionAmount > 0).at(-1);
+            const slotReady = confirmation && nextSize && slotRow.length === 1 && Boolean(slotRow[0].shift1Team)
+                && confirmation.date <= date && confirmation.date < operationDate && (!priorUse || confirmation.date > priorUse.date)
+                && (!source.referenceAt || confirmation.date >= source.referenceAt)
+                && !events.some(item => item.date === confirmation.date && ['ロール替', 'カリバ替', '組替完了'].includes(item.kind))
+                && !(state.pending && confirmation.date === date && exchangeSlotReady(workConfirmation, slotRow[0], state.pending === 'caliber' ? 'caliberChange' : 'rollChange'))
+                && exchangeSlotReady(confirmation, slotRow[0], 'sizeChange');
+            const nextLimit = knownCaliberLimit(source.standKey, nextSize);
+            const generation = reworkCounts.get(state.onlineId) || 0;
+            const cached = generation > 0 ? null : sizeUsage.get(state.onlineId + '|' + nextSize);
+            const openings = (source.sizeOpenings || []).filter(item => confirmationOwnerMatches(item, {
+                ...target, size: nextSize
+            }, true));
+            const opening = generation > 0
+                ? generationOpening(state.onlineId, nextSize, generation)
+                : (cached || (!reworkedIds.has(state.onlineId) && openings.length === 1 ? openings[0] : null));
+            const ready = slotReady && nextLimit && nextLimit.kind === '最大' && opening && String(opening.caliberId || '').trim()
+                && typeof opening.runs === 'number' && Number.isInteger(opening.runs) && opening.runs >= 0 && opening.runs < nextLimit.runs;
+            if (!ready) {
+                const reason = `サイズが${activeSize}から${boundary.toSize}へ変わるため、ここから未確認です。次サイズのカリバID・開始量・サイズ替作業枠の接続が未確認です。選択中の1サイズには丸めません。`
+                    + (!slotReady ? ' 対象と切替日に合う昼の停止枠・時間・人数・3セットの確認が必要です。' : '')
+                    + (!opening || !String(opening.caliberId || '').trim() || !Number.isInteger(opening.runs) || opening.runs < 0 ? ' このロールの次サイズの保存開始条件が未記録です。今のカリバは流用しません。' : '')
+                    + (!nextLimit || nextLimit.kind !== '最大' ? ' 次サイズの確定最大は未確認です。' : '')
+                    + (opening && nextLimit && opening.runs >= nextLimit.runs ? ' 次サイズは開始時点で最大に達しています。' : '')
+                    + (generation > 0 && !openingReady(opening, nextLimit && nextLimit.runs) ? ` 改削後${generation}世代の次サイズ開始は未記録です。0直にはしません。` : '')
+                    + (generation === 0 && reworkedIds.has(state.onlineId) && !cached ? ' 改削前の開始条件は再利用しません。' : '');
+                push(date, '保留', reason);
+                stopAt(date, reason);
+                Object.assign(stopRecord, { kind: 'sizeChange', ...boundary });
+                return;
+            }
+            sizeUsage.set(state.onlineId + '|' + activeSize, { caliberId: state.caliberId, runs: state.caliberRuns });
+            const previousSize = activeSize;
+            activeSize = nextSize;
+            sizeChanged = true;
+            maxRuns = nextLimit.runs;
+            state.caliberId = opening.caliberId;
+            state.caliberRuns = opening.runs;
+            state.pending = null;
+            workConfirmation = null;
+            assemblyConfirmation = null;
+            push(date, 'サイズ替', `${confirmation.date}の確認済み昼枠で${previousSize}から${activeSize}へ替えた予測です。${state.onlineId}自身のカリバと使用直数を使います。径は変えず、実状態も変更しません。`);
+        }
+        workConfirmation = workForDay();
         finishDueReworks(date);
         if (stopped && state.reworks.some(item => item.status === 'awaitingAssembly')) {
             if (nightOnly(row)) {
@@ -993,9 +2150,11 @@ function simulateExchangeCycle(input) {
         }
         if (stopped && state.pending && state.phase === 'operating') {
             const expected = state.pending === 'caliber' ? 'caliberChange' : 'rollChange';
-            if (!exchangeSlotReady(source.workConfirmation, row, expected)) {
+            const overlap = sizeChanged && events.some(event => event.date === date && ['サイズ替', '組替完了', 'ロール替', 'カリバ替'].includes(event.kind));
+            if (!exchangeSlotReady(workConfirmation, row, expected) || sizeChanged && (!row.shift1Team || overlap)) {
                 push(date, '交換需要', '到達しています。0tや夜間、未確認の作業枠だけでは交換しません。');
-                markConfirmed(date);
+                if (sizeChanged) stopAt(date, 'サイズ切替後の対象・サイズ・基準日・作業日に一致する交換枠が未確認です。以後は計算済みにしません。');
+                else markConfirmed(date);
                 return;
             }
             if (state.pending === 'caliber' && spareCalibers && spareCalibers.length) {
@@ -1013,18 +2172,71 @@ function simulateExchangeCycle(input) {
                     push(date, 'ロール替需要', unnamed
                         ? '予備の本数だけでは交換できるロールが分かりません。架空のIDは作りません。'
                         : '予備がないか、改削日数が未確認なので、ロール替は成立させていません。');
-                    markConfirmed(date);
+                    if (sizeChanged) stopAt(date, 'サイズ切替後の交換先の予備または改削日数が未確認です。以後は計算済みにしません。');
+                    else markConfirmed(date);
                     return;
                 }
                 const leavingId = state.onlineId;
                 const unfinished = state.reworks.filter(item => item.status === 'rework' || item.status === 'awaitingAssembly' || item.status === 'held');
                 if (unfinished.length && spareRolls.length <= 1) {
                     push(date, 'ロール替需要', `再生中の${unfinished.map(item => item.id).join('、')}が未完了です。${leavingId}を重ねると夜勤の使用可能な予備がなくなるので、交換は成立させません。`);
-                    markConfirmed(date);
+                    if (sizeChanged) stopAt(date, '未完了の再生と重なる交換では、夜勤の予備を維持できません。以後は計算済みにしません。');
+                    else markConfirmed(date);
                     return;
                 }
                 const enteringId = spareRolls[0];
                 const entering = resources && resources.find(item => item.id === enteringId);
+                const generation = reworkCounts.get(enteringId) || 0;
+                let forcedCaliber = null;
+                let forcedRuns = null;
+                if (generation > 0) {
+                    const completed = state.reworks.filter(item => item.id === enteringId && Array.isArray(item.definedCalibers) && item.status === 'done');
+                    const basis = completed[completed.length - 1];
+                    const defined = basis ? basis.definedCalibers : [];
+                    const marksFor = generationNumber => (source.unusableCalibers || []).filter(item => item
+                        && item.generation === generationNumber
+                        && confirmationOwnerMatches(item, {
+                            standKey: source.standKey, rollId: enteringId, size: activeSize, referenceAt: source.referenceAt
+                        }, true));
+                    const usable = [];
+                    const blocked = [];
+                    const pending = [];
+                    let conflict = false;
+                    defined.forEach(caliberId => {
+                        const current = marksFor(generation).filter(item => item.caliberId === caliberId);
+                        if (current.length > 1) conflict = true;
+                        else if (current.length === 1 && current[0].usable === false) blocked.push(caliberId);
+                        else if (current.length === 1 && current[0].usable === true) usable.push(caliberId);
+                        else if (generation > 1 && marksFor(generation - 1).some(item => item.caliberId === caliberId && item.usable === false)) pending.push(caliberId);
+                        else usable.push(caliberId);
+                    });
+                    if (!defined.length || conflict || !usable.length) {
+                        const reason = !defined.length
+                            ? `${enteringId}の改削後${generation}世代に定義済みのカリバIDがありません。番号は作らず、改削前の直数も引き継ぎません。`
+                            : (conflict
+                                ? `${enteringId}の改削後${generation}世代で同じカリバの使用可否が複数あります。`
+                                : `${enteringId}の改削後${generation}世代で使えるカリバがありません。使用不可${blocked.join('、') || 'なし'}。未確認${pending.join('、') || 'なし'}。使用不可を0直の新品にはせず、前世代の欠損は新世代の安全確定にしません。`);
+                        push(date, 'ロール替需要', reason);
+                        stopAt(date, `${reason}以後は計算済みにしません。`);
+                        stopRecord.id = enteringId;
+                        return;
+                    }
+                    forcedCaliber = usable[0];
+                    forcedRuns = 0;
+                    if (entering) {
+                        entering.caliberId = forcedCaliber;
+                        entering.runs = 0;
+                    }
+                    spareCalibers = usable.slice(1);
+                } else if (sizeChanged && entering) {
+                    const recorded = (source.sizeOpenings || []).filter(item => confirmationOwnerMatches(item, {
+                        standKey: source.standKey, rollId: enteringId, size: activeSize, referenceAt: source.referenceAt
+                    }, true));
+                    const opening = sizeUsage.get(enteringId + '|' + activeSize)
+                        || (!reworkedIds.has(enteringId) && recorded.length === 1 ? recorded[0] : null);
+                    entering.caliberId = opening && String(opening.caliberId || '').trim() || null;
+                    entering.runs = opening && Number.isInteger(opening.runs) && opening.runs >= 0 && opening.runs < maxRuns ? opening.runs : null;
+                }
                 if (resources && (!entering || !entering.caliberId)) {
                     push(date, 'ロール替需要', '交換先のカリバが未確認です。前のカリバは使いません。');
                     stopAt(date, '交換先のカリバが未確認です。前のカリバは使いません。');
@@ -1036,7 +2248,16 @@ function simulateExchangeCycle(input) {
                     stopAt(date, '交換先の開始直数が未確認です。0直にはしません。');
                     return;
                 }
-                const currentRework = { id: leavingId, readyOn: addDays(date, reworkDays), status: 'rework' };
+                const definedCalibers = [];
+                const rememberCaliber = caliberId => {
+                    const name = String(caliberId || '').trim();
+                    if (name && !definedCalibers.includes(name)) definedCalibers.push(name);
+                };
+                rememberCaliber(state.caliberId);
+                const leavingResource = resources && resources.find(item => item.id === leavingId);
+                if (leavingResource && Array.isArray(leavingResource.spareCaliberIds)) leavingResource.spareCaliberIds.forEach(rememberCaliber);
+                const currentRework = { id: leavingId, readyOn: addDays(date, reworkDays), status: 'rework', definedCalibers };
+                if (activeSize) sizeUsage.set(leavingId + '|' + activeSize, { caliberId: state.caliberId, runs: state.caliberRuns });
                 state.reworks.push(currentRework);
                 if (resources) {
                     const leaving = resources.find(item => item.id === leavingId);
@@ -1045,6 +2266,9 @@ function simulateExchangeCycle(input) {
                     state.diameter = finiteOrNull(entering.diameter);
                     state.caliberId = entering.caliberId;
                     state.caliberRuns = enteringRuns;
+                } else if (forcedRuns !== null) {
+                    state.caliberId = forcedCaliber;
+                    state.caliberRuns = forcedRuns;
                 } else {
                     state.caliberRuns = 0;
                 }
@@ -1091,7 +2315,8 @@ function simulateExchangeCycle(input) {
         if (state.caliberRuns + 1 > maxRuns) {
             state.pending = spareCalibers && spareCalibers.length ? 'caliber' : 'roll';
             push(date, '交換待ち', '連続操業の途中では交換しません。次の停止枠を待ちます。');
-            markConfirmed(date);
+            if (sizeChanged) stopAt(date, '最大直数を超える操業の前に交換が完了していません。以後は計算済みにしません。');
+            else markConfirmed(date);
             return;
         }
         state.caliberRuns += 1;
@@ -1132,14 +2357,40 @@ function standNumberFromName(name) {
     return match ? String(Number(match[1])) : '';
 }
 
+function rollingColumnRule(standKey, size) {
+    const stand = String(standKey || '').replace(/^#/, '').trim();
+    const sizeKey = String(size || '').normalize('NFKC').toUpperCase().replace(/\s+/g, '');
+    if (stand !== '16' && stand !== '17') return null;
+    if (sizeKey === 'D10') {
+        return {
+            columns: 2,
+            stands: ['16', '17'],
+            text: '#16と#17の2列圧延はD10のときだけです。対象スタンドは16と17です。カリバ配置と使用直数は各スタンドのD10の値だけを使い、D13へはコピーしません。'
+        };
+    }
+    if (sizeKey === 'D13') {
+        return {
+            columns: 1,
+            stands: [stand],
+            text: `D13では#${stand}を単独にします。D10の2列圧延は適用しません。相手スタンドの台帳、カリバ配置、使用直数は混ぜません。`
+        };
+    }
+    return {
+        columns: null,
+        stands: [stand],
+        text: 'サイズがD10と確認できないので、#16と#17は2列圧延にしません。'
+    };
+}
+
 function pairedStandKeys(standKey, size) {
     const stand = String(standKey || '').replace(/^#/, '').trim();
     if (!stand) return [];
+    const columnRule = rollingColumnRule(stand, size);
+    if (columnRule) return columnRule.stands.slice();
     const sizeKey = String(size || '').normalize('NFKC').toUpperCase().replace(/\s+/g, '');
     const partner = { '6': '7', '7': '6', '8': '9', '9': '8', '10': '11', '11': '10', '14': '15', '15': '14' }[stand];
     if (partner) return [stand, partner];
     if ((stand === '12' || stand === '13') && sizeKey === 'D13') return ['12', '13'];
-    if ((stand === '16' || stand === '17') && sizeKey === 'D10') return ['16', '17'];
     return [stand];
 }
 
@@ -1237,7 +2488,7 @@ function renderExchangeCycle() {
     const generation = ++exchangeCycleRenderGeneration;
     const target = document.getElementById('cycle-result');
     if (!target || typeof simulateExchangeCycle !== 'function' || typeof readCaliberInputs !== 'function') return;
-    const form = readCaliberInputs();
+    const form = resolvedLifePremises(readCaliberInputs());
     const schedule = latestMonthlySummary && latestMonthlySummary.ok !== false ? latestMonthlySummary : null;
     const days = schedule && Array.isArray(schedule.days) ? schedule.days : [];
     const ledgerKeys = pairedStandKeys(form.standKey, form.size);
@@ -1262,7 +2513,15 @@ function renderExchangeCycle() {
     const openingSource = form.openingUsedRuns === undefined
         ? (online && typeof online.runs === 'number' ? '保存した開始直数' : '未確認')
         : '画面の入力';
+    const columnRule = rollingColumnRule(form.standKey, form.size);
+    const ownLimit = knownCaliberLimit(form.standKey, form.size);
+    const comparedSize = String(form.size || '').normalize('NFKC').toUpperCase().replace(/\s+/g, '') === 'D10' ? 'D13' : 'D10';
+    const otherLimit = columnRule && ownLimit ? knownCaliberLimit(form.standKey, comparedSize) : null;
+    const columnText = columnRule
+        ? `${columnRule.text}${ownLimit ? `使用直数は${String(form.size || '').trim()}の${ownLimit.kind}${ownLimit.runs}直です。` : ''}${otherLimit ? `${comparedSize}の${otherLimit.runs}直は使いません。` : ''}`
+        : '';
     const ledgerText = [
+        columnText,
         !form.standKey
             ? 'スタンドが未選択なので、台帳の対象は混ぜません。'
             : `対象スタンドは${ledgerKeys.join('・')}です。${ledger.length
@@ -1271,7 +2530,7 @@ function renderExchangeCycle() {
         describeRemainingCalibers(form.standKey, form.size, openingRuns),
         `開始直数の出どころは${openingSource}です。未使用のカリバ本数ではありません。`,
         `予測設定は${forecastSettingKey({ rollId: form.forecastRoll || (online && online.id), standKey: form.standKey, size: form.size, referenceAt })}です。別のスタンド・サイズ・ロール・基準時点へは流用しません。予備の本数からはカリバIDを作りません。`
-    ].join('\n');
+    ].filter(Boolean).join('\n');
     const limit = knownCaliberLimit(form.standKey, form.size);
     const line = item => `${item.date} ${item.kind} ${item.note}`;
     let scheduleText = '生産予定が無いので、架空の操業では予測しません。';
@@ -1290,13 +2549,22 @@ function renderExchangeCycle() {
         scheduleText = '選んだロールはこのスタンドのオンラインではないので、状態は変えず交換もしません。';
     } else if (countedDays.length) {
         const result = simulateExchangeCycle({
+            currentSize: form.size,
+            standKey: selectedStand,
+            referenceAt,
+            sizeOpenings: forecastSizeOpenings(cycleResources, selectedStand, countedDays, referenceAt),
+            sizeChanges: applicableSizeChanges(schedule),
+            workSlots: applicableCycleSlots(schedule, 'work'),
+            assemblySlots: applicableCycleSlots(schedule, 'assembly'),
+            reworkOpenings: applicableReworkOpenings(schedule),
             maxRuns: limit && limit.kind === '最大' ? limit.runs : undefined,
             openingRuns,
             currentCaliberId: form.currentCaliber || (online && online.caliberId) || null,
             spareCaliberIds: null,
             scrapDiameter: form.scrapDiameter,
             adoptedCutMm: form.cutMm,
-            reworkDays: form.reworkDays,
+            reworkDays: resolvedReworkDays(selectedStand, form.reworkDays),
+            unusableCalibers: applicableUnusableCalibers(schedule),
             leadMonths: forecastLead(form.standKey).months,
             leadStatus: forecastLead(form.standKey).status,
             workConfirmation: workUse.slot,
@@ -1323,7 +2591,7 @@ function renderExchangeCycle() {
     const banner = anonymousForecastCheck
         ? '匿名の確認です。値は試験用です。実台帳は読んでいません。端末へは保存しません。実設備の径は読みません。予測は実ロールの状態を変えません。仮の13か月は購入不足の判定ではありません。'
         : '';
-    target.textContent = [banner, referenceLine, skippedLine, describeCheckFocus(cycleResources, scheduleResult), scheduleText, workUse.note, assemblyUse.note, ledgerText, describeAnonymousHorizon(form, online, cycleResources, limit)].filter(Boolean).join('\n');
+    target.textContent = [banner, form.masterSourceNote, referenceLine, skippedLine, describeCheckFocus(cycleResources, scheduleResult), scheduleText, workUse.note, assemblyUse.note, ledgerText, describeAnonymousHorizon(form, online, cycleResources, limit)].filter(Boolean).join('\n');
     loadStandPremisesNote(target, form.standKey, generation);
 }
 
@@ -1365,7 +2633,7 @@ function describeAnonymousHorizon(form, online, resources, limit) {
         spareCaliberIds: null,
         scrapDiameter: form.scrapDiameter,
         adoptedCutMm: form.cutMm,
-        reworkDays: form.reworkDays,
+        reworkDays: resolvedReworkDays(form.standKey, form.reworkDays),
         leadMonths: forecastLead(form.standKey).months,
         leadStatus: forecastLead(form.standKey).status,
         workConfirmation: confirmed ? Object.assign({}, work, { repeatOnStops: true, workTypes: ['caliberChange', 'rollChange'] }) : work,
@@ -1385,14 +2653,14 @@ function describeAnonymousHorizon(form, online, resources, limit) {
 }
 
 function describeCycleTimeline(result) {
-    const wanted = ['交換待ち', 'ロール替', 'カリバ替', '改削完了', '組替需要', '組替可能', '搬入', '組替完了', '使用可能予備', '夜勤予備不足', 'ロール替需要', '交換需要', '改削保留', '廃却需要', '保留'];
+    const wanted = ['サイズ替', '交換待ち', 'ロール替', 'カリバ替', '改削完了', '組替需要', '組替可能', '搬入', '組替完了', '使用可能予備', '夜勤予備不足', 'ロール替需要', '交換需要', '改削保留', '廃却需要', '保留'];
     const events = result.events || [];
     const picked = [];
     let showUse = false;
     for (const item of events) {
         if (wanted.includes(item.kind)) {
             picked.push(item);
-            showUse = item.kind === 'ロール替';
+            if (item.kind === 'ロール替') showUse = true;
         } else if (showUse && item.kind === '操業') {
             picked.push(item);
             showUse = false;
@@ -1401,6 +2669,11 @@ function describeCycleTimeline(result) {
     }
     const firstHold = events.find(item => item.kind === '保留');
     if (firstHold && !picked.includes(firstHold)) picked.push(firstHold);
+    const holdIndex = firstHold ? events.indexOf(firstHold) : events.length;
+    const lastUse = events.slice(0, holdIndex).filter(item => item.kind === '操業'
+        && (!result.confirmedThrough || item.date <= result.confirmedThrough)).at(-1);
+    if (lastUse && !picked.includes(lastUse)) picked.push(lastUse);
+    picked.sort((a, b) => events.indexOf(a) - events.indexOf(b));
     const lines = picked.map(item => `${item.date} ${item.kind} ${item.note} カリバ${item.caliberId || '未確認'} 開始${item.caliberRuns === null || item.caliberRuns === undefined ? '未確認' : item.caliberRuns}`);
     const hidden = events.filter(item => !picked.includes(item));
     const countKind = kind => hidden.filter(item => item.kind === kind).length;
@@ -1413,8 +2686,9 @@ function describeCycleTimeline(result) {
     return [
         countLine,
         '暫定6か月を戻した時期は確定の購入日ではありません。',
+        lastUse ? `この予測で最後に計算できた操業は${lastUse.date}、対象${lastUse.onlineId || '未確認'}、カリバ${lastUse.caliberId || '未確認'}、${lastUse.caliberRuns}直です。` : 'この予測で計算できた操業はありません。',
         lines.join('\n') || '日付順の交換はまだ出ていません。',
-        hidden.length ? `表示は先頭${picked.length}件です。全体は${events.length}件。後続の保留${countKind('保留')}件、夜勤予備不足${countKind('夜勤予備不足')}件、ロール替需要${countKind('ロール替需要')}件。` : ''
+        hidden.length ? `表示は抜粋${picked.length}件です。全体は${events.length}件。未表示の保留${countKind('保留')}件、夜勤予備不足${countKind('夜勤予備不足')}件、ロール替需要${countKind('ロール替需要')}件。` : ''
     ].filter(Boolean).join('\n');
 }
 
@@ -1741,6 +3015,16 @@ let scheduleReadGeneration = 0;
 
 function beginScheduleRead() {
     scheduleReadGeneration += 1;
+    sizeChangeConfirmations = [];
+    cycleSlotConfirmations = [];
+    reworkOpeningConfirmations = [];
+    unusableCaliberConfirmations = [];
+    reworkLeadOverrides.clear();
+    renderSizeChangeRecords();
+    renderCycleSlotRecords();
+    renderReworkOpeningRecords();
+    renderUnusableCaliberRecords();
+    renderReworkLeadRecords();
     return scheduleReadGeneration;
 }
 
@@ -1760,6 +3044,18 @@ function finishScheduleRead(generation, summary) {
 }
 
 function renderMonthlyScheduleSummary(summary) {
+    if (summary !== latestMonthlySummary) {
+        sizeChangeConfirmations = [];
+        cycleSlotConfirmations = [];
+        reworkOpeningConfirmations = [];
+        unusableCaliberConfirmations = [];
+        reworkLeadOverrides.clear();
+        renderSizeChangeRecords();
+        renderCycleSlotRecords();
+        renderReworkOpeningRecords();
+        renderUnusableCaliberRecords();
+        renderReworkLeadRecords();
+    }
     if (summary && summary.ok !== false && Array.isArray(summary.months)) latestMonthlySummary = summary;
     if (summary && summary.ok === false) latestMonthlySummary = null;
     const target = document.getElementById('monthly-schedule-summary');
@@ -1792,7 +3088,11 @@ function renderMonthlyScheduleSummary(summary) {
 function renderConsumptionLink(summary) {
     const target = document.getElementById('consumption-link');
     if (!target) return;
-    const form = readCaliberInputs();
+    const form = resolvedLifePremises(readCaliberInputs());
+    const reference = activeForecastReference(form, summary);
+    const days = summary && Array.isArray(summary.days) ? summary.days.filter(row => !reference || String(row.date || '') >= reference).slice().sort((a, b) => String(a.date).localeCompare(String(b.date))) : [];
+    const boundary = productionSizeBoundary(days, form.size);
+    const prefixDays = boundary ? days.slice(0, boundary.index) : days;
     const linked = linkProductionToConsumption({ schedule: summary, standKey: form.standKey });
     const caliber = projectCaliberReplacement({
         standKey: form.standKey,
@@ -1807,7 +3107,7 @@ function renderConsumptionLink(summary) {
             size: form.size,
             referenceAt: activeForecastReference(form, summary)
         }, Boolean(form.forecastRoll)).slot,
-        days: summary && summary.days,
+        days: prefixDays,
         referenceDate: activeForecastReference(form) || (summary && summary.referenceDate)
     });
     const life = describeLifeChain({
@@ -1821,7 +3121,7 @@ function renderConsumptionLink(summary) {
         schedule: summary,
         caliber
     });
-    target.textContent = `${linked.reason}\n${caliber.reason}\n${life}`;
+    target.textContent = `${linked.reason}\n${caliber.reason}\n${life}${boundary ? '\nこの欄は最初のサイズまでの消耗です。' + boundary.date + '以後のサイズ切替を含む計算は「交換と再生」と「スタンド別の補充需要」に表示します。' : ''}`;
 }
 
 function readCaliberInputs() {
@@ -1917,7 +3217,67 @@ function knownUseBasisText(standKey) {
     return table[stand] || 'このスタンドの使用基準は既回答の表にありません。0直にはしません。';
 }
 
-function premisesFact(premises, standKey) {
+function loadedForecastMasters(standKey) {
+    if (anonymousForecastCheck) return {};
+    // Only inspect maps already populated by the existing application.
+    // Never initiate authentication, storage reads, or a remote fetch here.
+    return {
+        stand: typeof getStandMaster === 'function' ? getStandMaster(standKey) : null,
+        cutting: typeof getCuttingMaster === 'function' ? getCuttingMaster(standKey) : null
+    };
+}
+
+function resolvedLifePremises(form) {
+    if (anonymousForecastCheck) return form;
+    const fact = premisesFact(standPremisesCache, form.standKey, loadedForecastMasters(form.standKey));
+    return Object.assign({}, form, {
+        scrapDiameter: form.scrapDiameter === undefined ? (fact.scrapDiameter === null ? undefined : fact.scrapDiameter) : form.scrapDiameter,
+        cutMm: form.cutMm === undefined ? (fact.adoptedCutMm === null ? undefined : fact.adoptedCutMm) : form.cutMm,
+        masterSourceNote: `詳細の廃却径は${form.scrapDiameter === undefined ? fact.diameterSource : '画面入力の試算'}、採用改削量は${form.cutMm === undefined ? fact.cutSource : '画面入力の試算'}です。`
+    });
+}
+
+function refreshForecastFromLoadedMasters() {
+    renderStandDemandList();
+    renderExchangeCycle();
+    if (latestMonthlySummary) renderConsumptionLink(latestMonthlySummary);
+}
+
+function forecastMasterNumber(value) {
+    if (value === null || value === undefined || String(value).trim() === '') return null;
+    const number = Number(value);
+    return Number.isFinite(number) && number > 0 ? number : null;
+}
+
+function premisesFact(premises, standKey, masters) {
+    const fallback = localPremisesFact(premises, standKey);
+    const stand = String(standKey || '').replace(/^#/, '');
+    const loaded = masters || {};
+    const sameStand = row => row && standNumberFromName(row.standKey || row.stand) === stand;
+    const result = Object.assign({}, fallback, {
+        diameterSource: fallback.scrapDiameter === null ? '取得待ち' : '端末内の径仕様',
+        cutSource: fallback.adoptedCutMm === null ? '取得待ち' : '端末内の採用改削量'
+    });
+    if (loaded.stand) {
+        result.scrapDiameter = sameStand(loaded.stand) ? forecastMasterNumber(loaded.stand.scrapDiameter) : null;
+        result.diameterSource = '取得済みStandMaster';
+        result.diameterReason = !sameStand(loaded.stand)
+            ? '径マスタのスタンドが一致しないため、この値は使いません。'
+            : (result.scrapDiameter === null ? `${stand}番の廃却径は取得済みマスタで未記録です。` : '');
+    }
+    if (loaded.cutting) {
+        const active = loaded.cutting.active !== false && String(loaded.cutting.active).toLowerCase() !== 'false';
+        result.adoptedCutMm = sameStand(loaded.cutting) && active ? forecastMasterNumber(loaded.cutting.calculationCutMm) : null;
+        result.cutSource = '取得済み改削マスタの計算用改削量';
+        result.cutReason = !sameStand(loaded.cutting)
+            ? '改削マスタのスタンドが一致しないため、この値は使いません。'
+            : (!active ? `${stand}番の改削マスタは無効です。採用改削量は使いません。`
+                : (result.adoptedCutMm === null ? `${stand}番の計算用改削量は取得済みマスタで未記録です。標準値や実績平均では埋めません。` : ''));
+    }
+    return result;
+}
+
+function localPremisesFact(premises, standKey) {
     const stand = String(standKey || '').replace(/^#/, '');
     if (!premises || premises.status !== 'loaded' || !premises.data) {
         return {
@@ -1936,11 +3296,11 @@ function premisesFact(premises, standKey) {
             cutReason: `${stand}番の採用改削量はローカル仕様に記録がありません。未記録です。`
         };
     }
-    const cut = finiteOrNull(row.adoptedCutMm);
+    const cut = forecastMasterNumber(row.adoptedCutMm);
     return {
-        scrapDiameter: finiteOrNull(row.scrapDiameter),
+        scrapDiameter: forecastMasterNumber(row.scrapDiameter),
         adoptedCutMm: cut,
-        diameterReason: row.scrapDiameter === undefined ? `${stand}番の廃却径は未記録です。` : '',
+        diameterReason: forecastMasterNumber(row.scrapDiameter) === null ? `${stand}番の廃却径は未記録です。` : '',
         cutReason: cut === null ? `${stand}番の採用改削量は手元の仕様に無いので取得待ちです。17番の2.5mmは使いません。` : ''
     };
 }
@@ -1955,6 +3315,1083 @@ function savedOpening(roll, standKey, size, referenceAt) {
         runs: hasRuns ? saved.openingRuns : roll.openingRuns,
         note: hasCaliber || hasRuns ? `保存した開始条件です。基準日${referenceAt}、サイズ${size}。台帳には書いていません。` : ''
     };
+}
+
+function forecastSizeOpenings(resources, standKey, days, referenceAt) {
+    const sizes = Array.from(new Set((days || []).filter(row => row.productionAmount > 0).map(row => normalizeForecastSize(row.size)).filter(Boolean)));
+    const result = [];
+    for (const item of resources || []) for (const size of sizes) {
+        const owner = { standKey: String(standKey), rollId: item.id, size, referenceAt };
+        const saved = recallForecastSetting(owner).value;
+        if (saved) result.push({ owner, caliberId: saved.caliberId, runs: saved.openingRuns });
+    }
+    return result;
+}
+
+let sizeChangeConfirmations = [];
+let cycleSlotConfirmations = [];
+let reworkOpeningConfirmations = [];
+let unusableCaliberConfirmations = [];
+const reworkLeadOverrides = new Map();
+let caliberLayoutNotes = [];
+let monthlyProductionDraft = null;
+let monthlyProductionSealed = [];
+let monthlyProductionRestored = false;
+let monthlyProductionPendingImport = null;
+
+function scopedCycleSlots(slots, target, date, matchRoll) {
+    return (Array.isArray(slots) ? slots : []).filter(slot => slot && slot.date === date
+        && confirmationOwnerMatches(slot, target, matchRoll));
+}
+
+function applicableCycleSlots(schedule, kind) {
+    if (!schedule || schedule.ok === false) return [];
+    return cycleSlotConfirmations.filter(item => item.schedule === schedule && item.kind === kind).map(item => item.value);
+}
+
+function applicableReworkOpenings(schedule) {
+    if (!schedule || schedule.ok === false) return [];
+    return reworkOpeningConfirmations.filter(item => item.schedule === schedule).map(item => item.value);
+}
+
+function applicableUnusableCalibers(schedule) {
+    if (!schedule || schedule.ok === false) return [];
+    return unusableCaliberConfirmations.filter(item => item.schedule === schedule).map(item => item.value);
+}
+
+function renderUnusableCaliberRecords() {
+    if (typeof document === 'undefined') return;
+    const list = document.getElementById('unusable-caliber-records');
+    if (!list) return;
+    const records = unusableCaliberConfirmations.filter(item => item.schedule === latestMonthlySummary);
+    list.textContent = records.length ? records.map(item => {
+        const slot = item.value;
+        return `改削後${slot.generation}世代 ${slot.owner.standKey}番 ${slot.owner.rollId}、${slot.owner.size}、基準日${slot.owner.referenceAt}、カリバ${slot.caliberId}、${slot.usable ? '使用可' : '使用不可'}`;
+    }).join('\n') : 'この予定の改削後カリバ使用可否は未登録です。未登録の定義済みカリバは0直から始めます。';
+}
+
+function registerUnusableCaliber() {
+    const owner = slotOwnerFromContext();
+    const schedule = latestMonthlySummary;
+    const message = document.getElementById('unusable-caliber-message');
+    const generation = Number(document.getElementById('unusable-generation').value);
+    const caliberId = String(document.getElementById('unusable-caliber').value || '').trim();
+    const usable = document.getElementById('unusable-choice').value === 'usable';
+    if (!schedule || schedule.ok === false || !owner.rollId || !owner.referenceAt || !owner.size
+        || !Number.isInteger(generation) || generation < 1 || !caliberId) {
+        message.textContent = '対象ロール・サイズ・基準日と、改削後の世代・既存カリバID・使用可否を確認してください。新しいカリバ番号は作りません。';
+        return;
+    }
+    const value = { owner: { ...owner }, generation, caliberId, usable };
+    unusableCaliberConfirmations = unusableCaliberConfirmations.filter(item => !(item.schedule === schedule
+        && item.value.generation === generation && item.value.caliberId === caliberId
+        && forecastSettingKey(item.value.owner) === forecastSettingKey(owner)));
+    unusableCaliberConfirmations.push({ schedule, value });
+    message.textContent = 'この予定の予測用に登録しました。使用不可は0直の新品にしません。実台帳や通常の保存には書いていません。';
+    renderUnusableCaliberRecords();
+    renderExchangeCycle();
+    renderStandDemandList();
+}
+
+function renderReworkLeadRecords() {
+    if (typeof document === 'undefined') return;
+    const list = document.getElementById('rework-lead-records');
+    if (!list) return;
+    const lines = [];
+    for (let stand = 2; stand <= 17; stand += 1) {
+        const key = String(stand);
+        const override = reworkLeadOverrides.get(key);
+        const days = override ? override.days : provisionalReworkCalendarDays(key);
+        lines.push(`#${key} ${days}暦日（${override ? '個別の暫定値' : '初期の暫定値'}）`);
+    }
+    list.textContent = lines.join('\n');
+}
+
+function registerReworkLead() {
+    const message = document.getElementById('rework-lead-message');
+    const stand = String(document.getElementById('caliber-stand').value || '').replace(/^#/, '').trim();
+    const days = Number(document.getElementById('rework-lead-days').value);
+    const initial = provisionalReworkCalendarDays(stand);
+    if (initial === null || !Number.isInteger(days) || days < 0) {
+        message.textContent = 'スタンド#2〜#17と、0以上の暦日を確認してください。購入LTの暫定6か月とは別です。';
+        return;
+    }
+    reworkLeadOverrides.set(stand, { days });
+    message.textContent = `#${stand}の暫定改削LTを${days}暦日にしました。初期値は${initial}暦日です。実台帳や通常の保存には書いていません。`;
+    renderReworkLeadRecords();
+    renderExchangeCycle();
+    renderStandDemandList();
+}
+
+function persistMonthlyProductionHistory() {
+    if (typeof localStorage === 'undefined') return { ok: false, reason: 'このブラウザには保存先がありません。' };
+    return writeMonthlyProductionHistory(localStorage, monthlyProductionSealed, monthlyProductionDraft);
+}
+
+function monthlyProductionStatus(base) {
+    const saved = persistMonthlyProductionHistory();
+    return `${base}${saved.ok ? '' : saved.reason}${describeMonthlyProductionStore()}`;
+}
+
+function restoreMonthlyProductionHistory() {
+    if (monthlyProductionRestored || typeof localStorage === 'undefined') return;
+    monthlyProductionRestored = true;
+    const loaded = readMonthlyProductionHistory(localStorage);
+    const message = typeof document !== 'undefined' ? document.getElementById('prod-plan-message') : null;
+    if (!loaded.ok) {
+        if (message) message.textContent = `${loaded.reason}${describeMonthlyProductionStore()}`;
+        return;
+    }
+    monthlyProductionSealed = loaded.sealed;
+    monthlyProductionDraft = loaded.draft;
+}
+
+function renderMonthlyProductionPlan() {
+    if (typeof document === 'undefined') return;
+    const history = document.getElementById('prod-plan-history');
+    const shifts = document.getElementById('shift-basis-table');
+    const forms = document.getElementById('output-form-gaps');
+    if (history) history.textContent = describeMonthlyProductionPlans(monthlyProductionSealed, monthlyProductionDraft);
+    if (shifts) shifts.textContent = describeShiftBasis(monthlyProductionDraft || monthlyProductionSealed[monthlyProductionSealed.length - 1]);
+    if (forms) forms.textContent = describeOutputFormSurvey();
+    const basis = document.getElementById('annual-form-basis');
+    const sheet = document.getElementById('annual-form-sheet');
+    if (basis) basis.textContent = describeAnnualFormBasis();
+    if (sheet) sheet.innerHTML = renderAnnualFormTable();
+    const link = document.getElementById('annual-form-link');
+    if (link) {
+        const plan = monthlyProductionDraft || monthlyProductionSealed[monthlyProductionSealed.length - 1] || null;
+        link.textContent = describeConnectedAnnualForm(buildConnectedAnnualForm(plan));
+    }
+    if (document.getElementById('line-board')) renderCaliberLineBoard();
+}
+
+function createProductionDraftFromForm() {
+    const message = document.getElementById('prod-plan-message');
+    const created = createMonthlyProductionDraft(document.getElementById('prod-fiscal-year').value);
+    if (!created.ok) {
+        message.textContent = created.reason;
+        return;
+    }
+    monthlyProductionDraft = created.draft;
+    message.textContent = monthlyProductionStatus('作業中の年度版を作りました。確定版ではなく、実台帳や通常の保存には書いていません。');
+    renderMonthlyProductionPlan();
+    renderStandDemandList();
+}
+
+function saveProductionMonthFromForm() {
+    const message = document.getElementById('prod-plan-message');
+    const updated = updateMonthlyProductionMonth(monthlyProductionDraft, document.getElementById('prod-month').value, {
+        classification: document.getElementById('prod-class').value,
+        productionTons: document.getElementById('prod-tons').value.trim() === '' ? null : Number(document.getElementById('prod-tons').value),
+        size: document.getElementById('prod-size').value
+    });
+    if (!updated.ok) {
+        message.textContent = updated.reason;
+        return;
+    }
+    monthlyProductionDraft = updated.draft;
+    message.textContent = monthlyProductionStatus('作業中の版の対象月だけを更新しました。他の月と確定済みの履歴は変えていません。');
+    renderMonthlyProductionPlan();
+    renderStandDemandList();
+}
+
+function sealProductionDraftFromForm() {
+    const message = document.getElementById('prod-plan-message');
+    const sealed = sealMonthlyProductionPlan(monthlyProductionDraft, document.getElementById('prod-sealed-on').value);
+    if (!sealed.ok) {
+        message.textContent = sealed.reason;
+        return;
+    }
+    monthlyProductionSealed = monthlyProductionSealed.concat(sealed.plan);
+    monthlyProductionDraft = null;
+    message.textContent = monthlyProductionStatus('確定版を履歴へ固定しました。この版は変更できません。実台帳や通常の保存には書いていません。');
+    renderMonthlyProductionPlan();
+    renderStandDemandList();
+}
+
+function reviseProductionPlanFromForm() {
+    const message = document.getElementById('prod-plan-message');
+    const revised = reviseMonthlyProductionPlan(monthlyProductionSealed[monthlyProductionSealed.length - 1]);
+    if (!revised.ok) {
+        message.textContent = revised.reason;
+        return;
+    }
+    monthlyProductionDraft = revised.draft;
+    message.textContent = monthlyProductionStatus('最新の確定版をコピーして作業中の改訂版を作りました。元の確定版は変更していません。');
+    renderMonthlyProductionPlan();
+    renderStandDemandList();
+}
+
+function addShiftBasisFromForm() {
+    const message = document.getElementById('prod-plan-message');
+    const tonsText = document.getElementById('shift-tons').value.trim();
+    const added = addShiftBasisRow(monthlyProductionDraft, {
+        standKey: document.getElementById('shift-stand').value,
+        size: document.getElementById('shift-size').value,
+        caliberId: document.getElementById('shift-caliber').value,
+        from: document.getElementById('shift-from').value,
+        to: document.getElementById('shift-to').value,
+        tons: tonsText === '' ? null : Number(tonsText),
+        passLine: document.getElementById('shift-pass').value
+    });
+    if (!added.ok) {
+        message.textContent = added.reason;
+        return;
+    }
+    monthlyProductionDraft = added.draft;
+    message.textContent = monthlyProductionStatus('直数の計算根拠を作業中の版へ追加しました。パスラインは未確認のままです。実台帳や通常の保存には書いていません。');
+    renderMonthlyProductionPlan();
+}
+
+function downloadMonthlyProductionHistory() {
+    const message = document.getElementById('prod-plan-message');
+    const built = buildMonthlyProductionExport(monthlyProductionSealed, monthlyProductionDraft, new Date().toISOString());
+    if (!built.ok) {
+        message.textContent = built.reason;
+        return;
+    }
+    const blob = new Blob([JSON.stringify(built.file, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'monthly-production-plan-history.json';
+    document.body.appendChild(link);
+    link.click();
+    setTimeout(() => {
+        link.remove();
+        URL.revokeObjectURL(url);
+    }, 1500);
+    message.textContent = `月次生産計画の確定履歴だけをファイルへ書き出しました。保存先はブラウザのダウンロードで、ファイル名は monthly-production-plan-history.json です。対象は ${MONTHLY_PRODUCTION_HISTORY_KEY} だけで、ロール台帳や通常の保存は含めていません。`;
+}
+
+function stageMonthlyProductionImport(event) {
+    const file = event.target.files && event.target.files[0];
+    event.target.value = '';
+    const message = document.getElementById('prod-plan-message');
+    const preview = document.getElementById('prod-import-preview');
+    monthlyProductionPendingImport = null;
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+        let parsed = null;
+        try {
+            parsed = JSON.parse(String(reader.result || ''));
+        } catch (error) {
+            if (preview) preview.textContent = '履歴ファイルを読めません。反映していません。';
+            message.textContent = '履歴ファイルが壊れているので、反映していません。';
+            return;
+        }
+        const result = previewMonthlyProductionImport(parsed, { ok: true, sealed: monthlyProductionSealed, draft: monthlyProductionDraft });
+        if (!result.ok) {
+            if (preview) preview.textContent = result.reason;
+            message.textContent = result.reason;
+            return;
+        }
+        monthlyProductionPendingImport = parsed;
+        if (preview) preview.textContent = result.summary;
+        message.textContent = '内容を確認しました。まだ反映していません。';
+    };
+    reader.readAsText(file, 'UTF-8');
+}
+
+function confirmMonthlyProductionImport() {
+    const message = document.getElementById('prod-plan-message');
+    if (!monthlyProductionPendingImport) {
+        message.textContent = '確認するファイルがありません。反映していません。';
+        return;
+    }
+    const result = applyMonthlyProductionImport(localStorage, monthlyProductionPendingImport, { confirmed: true });
+    if (!result.ok || !result.applied) {
+        message.textContent = result.reason;
+        return;
+    }
+    const loaded = readMonthlyProductionHistory(localStorage);
+    if (!loaded.ok) {
+        message.textContent = `${loaded.reason}反映した結果を画面へ戻していません。`;
+        return;
+    }
+    monthlyProductionSealed = loaded.sealed;
+    monthlyProductionDraft = loaded.draft;
+    monthlyProductionPendingImport = null;
+    message.textContent = result.added
+        ? `履歴ファイルから確定版を${result.added}件追加しました。既存の確定版は上書きしていません。${describeMonthlyProductionStore()}`
+        : `新しい確定版はないので追加していません。既存の確定版は変更していません。${describeMonthlyProductionStore()}`;
+    renderMonthlyProductionPlan();
+    renderStandDemandList();
+}
+
+function undoMonthlyProductionImportFromForm() {
+    const message = document.getElementById('prod-plan-message');
+    const result = undoMonthlyProductionImport(localStorage, { confirmed: true });
+    if (!result.applied) {
+        message.textContent = result.reason;
+        return;
+    }
+    const loaded = readMonthlyProductionHistory(localStorage);
+    if (!loaded.ok) {
+        message.textContent = '取り消し後の履歴を読めません。成功とは表示しません。';
+        return;
+    }
+    monthlyProductionSealed = loaded.sealed;
+    monthlyProductionDraft = loaded.draft;
+    message.textContent = `取り込み前の履歴へ戻しました。対象は ${MONTHLY_PRODUCTION_HISTORY_KEY} だけです。`;
+    renderMonthlyProductionPlan();
+    renderStandDemandList();
+}
+
+function recordCaliberLayoutNote(input) {
+    const source = input || {};
+    const stand = String(source.standKey || '').replace(/^#/, '').trim();
+    const size = String(source.size || '').normalize('NFKC').toUpperCase().replace(/\s+/g, '');
+    if (!['12', '13', '14', '15', '16', '17'].includes(stand)) {
+        return { ok: false, reason: 'この画面は#12〜#17だけです。反映していません。' };
+    }
+    if (size !== 'D10' && size !== 'D13') {
+        return { ok: false, reason: 'サイズはD10かD13だけを受け付けます。反映していません。' };
+    }
+    const columnRule = rollingColumnRule(stand, size);
+    if (columnRule && columnRule.columns !== 2 && String(source.columns || '') === '2') {
+        return { ok: false, reason: 'D13にD10の2列は入れません。反映していません。' };
+    }
+    if (columnRule && columnRule.columns === 2 && String(source.columns || '') === '1') {
+        return { ok: false, reason: 'D10の#16と#17は2列です。単独にはしません。反映していません。' };
+    }
+    if (!columnRule && String(source.columns || '') === '2') {
+        return { ok: false, reason: 'このスタンドの2列は確認できないので、入れません。反映していません。' };
+    }
+    const positionNumber = String(source.positionNumber || '').trim();
+    const plannedText = String(source.plannedShifts || '').trim();
+    if (!positionNumber || plannedText === '') {
+        return { ok: false, reason: 'カリバ番号と使用予定直数は別々に入れてください。空欄はもう一方で埋めません。' };
+    }
+    if (!/^\d+$/.test(plannedText)) {
+        return { ok: false, reason: '使用予定直数は0以上の整数です。カリバ番号としては扱いません。' };
+    }
+    const side = ['WS', 'DS'].includes(String(source.side || '').toUpperCase()) ? String(source.side).toUpperCase() : '未確認';
+    const lane = source.lane === '東列' || source.lane === '西列' ? source.lane : '未確認';
+    const eventKind = ['ロール替', 'カリバ替', 'サイズ替'].includes(source.eventKind) ? source.eventKind : '';
+    const period = source.period === '昼' || source.period === '夜' ? source.period : '未確認';
+    const eventDate = /^\d{4}-\d{2}-\d{2}$/.test(String(source.eventDate || '')) ? String(source.eventDate) : '';
+    const from = /^\d{4}-\d{2}-\d{2}$/.test(String(source.from || '')) ? String(source.from) : '未確認';
+    const to = /^\d{4}-\d{2}-\d{2}$/.test(String(source.to || '')) ? String(source.to) : '未確認';
+    if (eventKind && !eventDate) return { ok: false, reason: '交換の日付が無いので、イベントは作りません。反映していません。' };
+    if (eventKind && from !== '未確認' && (eventDate < from || eventDate > to)) {
+        return { ok: false, reason: '交換の日付が使用期間の外です。反映していません。' };
+    }
+    const passTo = String(source.passTo || '').replace(/^#/, '').trim();
+    const standOrder = ['12', '13', '14', '15', '16', '17'];
+    if (passTo && standOrder.indexOf(passTo) !== standOrder.indexOf(stand) + 1) {
+        return { ok: false, reason: '通過先は隣のスタンドだけです。途中を飛ばす線は反映しません。' };
+    }
+    const named = value => {
+        const text = String(value || '').trim();
+        return text && text !== '未確認' ? text : '';
+    };
+    const note = {
+        standKey: stand,
+        size,
+        rollId: String(source.rollId || '').trim() || '未確認',
+        side,
+        lane,
+        columns: columnRule ? columnRule.columns : null,
+        positionNumber,
+        plannedShifts: Number(plannedText),
+        from,
+        to,
+        eventKind,
+        period,
+        eventDate,
+        passTo,
+        passRollId: named(source.passRollId),
+        passCaliber: named(source.passCaliber),
+        acceptStand: String(source.acceptStand || '').replace(/^#/, '').trim(),
+        acceptRoll: named(source.acceptRoll),
+        acceptCaliber: named(source.acceptCaliber),
+        passLine: '未確認',
+        source: 'anonymous-entry'
+    };
+    caliberLayoutNotes = caliberLayoutNotes.concat(note);
+    return { ok: true, note, sameToken: positionNumber === plannedText };
+}
+
+function describeCaliberLayoutNotes() {
+    const intro = '写真は予定表であり、実績としては入れていません。赤丸のカリバ番号と、日付の下の丸数字（使用予定直数）は別項目です。11月5日のD10と11月14日のD13東列の印刷指示書写真は受領済みです。編集元のExcelとパスラインの数値は未取得なので、位置とずれ量は未確認です。実台帳には書いていません。';
+    if (!caliberLayoutNotes.length) return `${intro}\nカリバ配置の匿名メモはまだありません。`;
+    const lines = caliberLayoutNotes.map(note => {
+        const columns = note.columns === 2 ? '2列' : (note.columns === 1 ? '2列圧延は適用しない' : '列数未確認');
+        const event = note.eventKind ? ` ${note.eventDate} ${note.period} ${note.eventKind}` : '';
+        const pass = note.passTo ? ` 通過先入力#${note.passTo}` : ' 通過先未確認';
+        return `#${note.standKey} ${note.size} ロール${note.rollId} ${note.side} ${note.lane || '未確認'} ${columns} カリバ番号${note.positionNumber} 使用予定${note.plannedShifts}直 期間${note.from}から${note.to}${event}${pass} パスライン${note.passLine}`;
+    });
+    return `${intro}\n${lines.join('\n')}`;
+}
+
+function daysInMonth(yearMonth) {
+    const match = /^(\d{4})-(\d{2})$/.exec(String(yearMonth || ''));
+    if (!match) return null;
+    const month = Number(match[2]);
+    if (month < 1 || month > 12) return null;
+    return new Date(Date.UTC(Number(match[1]), month, 0)).getUTCDate();
+}
+
+function caliberLineDate(yearMonth, day) {
+    const count = daysInMonth(yearMonth);
+    const number = Number(day);
+    if (!count || !Number.isInteger(number) || number < 1 || number > count) return null;
+    return `${yearMonth}-${String(number).padStart(2, '0')}`;
+}
+
+function noteCoversDate(note, date) {
+    return Boolean(note && note.from && note.to && note.from !== '未確認' && note.to !== '未確認' && note.from <= date && date <= note.to);
+}
+
+function buildCaliberLineView(input) {
+    const source = input || {};
+    const plan = source.plan || null;
+    const planBefore = plan ? JSON.stringify(plan) : '';
+    const notes = Array.isArray(source.notes) ? source.notes : [];
+    const yearMonth = String(source.yearMonth || '');
+    const dayCount = daysInMonth(yearMonth);
+    const date = caliberLineDate(yearMonth, source.day);
+    if (!date) return { ok: false, reason: '対象年月と、その月にある日を選んでください。計画に無い日は作りません。', dayCount };
+    if (plan && !(Array.isArray(plan.months) && plan.months.some(item => item.month === yearMonth))) {
+        return { ok: false, reason: '選んだ版にこの月がありません。月は作りません。', dayCount };
+    }
+    const dayNumber = Number(source.day);
+    const previous = dayNumber > 1 ? caliberLineDate(yearMonth, dayNumber - 1) : null;
+    const activeOn = day => notes.filter(note => noteCoversDate(note, day));
+    const todayNotes = activeOn(date);
+    const yesterdayNotes = previous ? activeOn(previous) : [];
+    const signature = note => [note.standKey, note.size, note.rollId, note.side, note.lane || '未確認', note.positionNumber].join('|');
+    const stands = ['12', '13', '14', '15', '16', '17'];
+    const cards = stands.map(stand => {
+        const items = todayNotes.filter(note => note.standKey === stand);
+        const prior = yesterdayNotes.filter(note => note.standKey === stand).map(signature);
+        const current = items.map(signature);
+        const changed = previous && (current.some(item => !prior.includes(item)) || prior.some(item => !current.includes(item)));
+        return { standKey: stand, changed: Boolean(changed), notes: items };
+    });
+    const standOrder = ['12', '13', '14', '15', '16', '17'];
+    const segments = [];
+    const withheld = [];
+    todayNotes.forEach(note => {
+        const passTo = String(note.passTo || '').replace(/^#/, '').trim();
+        if (!passTo && !note.passRollId && !note.passCaliber) return;
+        const fromIndex = standOrder.indexOf(note.standKey);
+        const toIndex = standOrder.indexOf(passTo);
+        if (!passTo || fromIndex < 0 || toIndex !== fromIndex + 1) {
+            const between = toIndex > fromIndex ? standOrder.slice(fromIndex + 1, toIndex) : [];
+            withheld.push(between.length
+                ? `#${note.standKey}から#${passTo}は途中の${between.map(stand => `#${stand}`).join('、')}が未確認なので線を切ります。`
+                : `#${note.standKey || '未確認'}の通過先は確認できた隣接区間ではないので、線は引きません。`);
+            return;
+        }
+        if (!note.passRollId || !note.passCaliber || note.rollId === '未確認' || (note.period !== '昼' && note.period !== '夜') || (note.lane !== '東列' && note.lane !== '西列')) {
+            withheld.push(`#${note.standKey}の通過先入力だけでは接続確認済みにしません。ロール、カリバ、列、昼夜が未確認です。`);
+            return;
+        }
+        const samePlace = todayNotes.filter(item => item.standKey === passTo && item.size === note.size && item.lane === note.lane);
+        const periodMismatch = samePlace.filter(item => item.period !== note.period);
+        const matches = samePlace.filter(item => item.rollId === note.passRollId && item.positionNumber === note.passCaliber && item.period === note.period
+            && item.acceptStand === note.standKey && item.acceptRoll === note.rollId && item.acceptCaliber === note.positionNumber);
+        if (matches.length > 1) {
+            withheld.push(`#${note.standKey}から#${passTo}は候補が複数なので線は引きません。`);
+            return;
+        }
+        if (matches.length !== 1) {
+            withheld.push(periodMismatch.length
+                ? `#${note.standKey}から#${passTo}は時点が一致しないので線は引きません。`
+                : `#${note.standKey}から#${passTo}は接続先を一意に特定できないので線は引きません。`);
+            return;
+        }
+        const target = matches[0];
+        segments.push({
+            name: `${note.size} ${note.lane} ${note.period} #${note.standKey} ${note.rollId} カリバ${note.positionNumber}-#${passTo} ${target.rollId} カリバ${target.positionNumber}`,
+            size: note.size,
+            lane: note.lane,
+            period: note.period,
+            from: note.standKey,
+            to: passTo,
+            fromRoll: note.rollId,
+            toRoll: target.rollId,
+            fromCaliber: note.positionNumber,
+            toCaliber: target.positionNumber,
+            notes: [note, target],
+            connect: true
+        });
+    });
+    const lanes = segments;
+    const d10Pair = todayNotes.filter(note => note.size === 'D10' && (note.standKey === '16' || note.standKey === '17'));
+    const d10Unlabeled = d10Pair.filter(note => note.lane !== '東列' && note.lane !== '西列');
+    const d13Notes = todayNotes.filter(note => note.size === 'D13');
+    if (d10Unlabeled.length) withheld.push('#16と#17のD10は2列圧延です。東西の対応が未確認なので、線は引きません。');
+    if (d13Notes.some(note => note.lane !== '東列' && note.lane !== '西列')) withheld.push('D13にD10の2列圧延は適用しません。東西が未確認のカリバはつなぎません。');
+    const events = notes.filter(note => note.eventKind && note.eventDate === date).map(note => ({
+        standKey: note.standKey, kind: note.eventKind, period: note.period || '未確認', size: note.size, positionNumber: note.positionNumber
+    }));
+    const eventDays = [...new Set(notes.filter(note => note.eventKind && String(note.eventDate || '').startsWith(`${yearMonth}-`)).map(note => note.eventDate))].sort();
+    const shiftRows = ((plan && plan.shiftRows) || []).filter(row => row.from <= date && date <= row.to).map(row => {
+        const limit = knownCaliberLimit(row.standKey, row.size);
+        const remaining = limit && limit.kind === '最大' ? limit.runs - row.cumulativeShifts : null;
+        const unusable = Array.isArray(source.unusable) && source.unusable.some(item => item.standKey === row.standKey && item.size === row.size && item.caliberId === row.caliberId);
+        return {
+            standKey: row.standKey,
+            size: row.size,
+            caliberId: row.caliberId,
+            previousTotal: row.cumulativeShifts - row.shifts,
+            added: row.shifts,
+            cumulative: row.cumulativeShifts,
+            remaining: remaining === null ? '未確認' : (remaining < 0 ? '最大を超えています。0直にはしません' : String(remaining)),
+            unusable: unusable ? '使用不可' : '欠けは未確認',
+            process: row.process
+        };
+    });
+    const regrind = Array.isArray(source.regrindCalibers) ? source.regrindCalibers.map(item => item.unusable ? `${item.caliberId}は使用不可` : `${item.caliberId}は改削後0直`) : null;
+    if (plan && planBefore !== JSON.stringify(plan)) return { ok: false, reason: '閲覧で計画が変わりました。表示しません。' };
+    const changedStands = cards.filter(card => card.changed).map(card => `#${card.standKey}`);
+    return {
+        ok: true, date, dayCount, cards, lanes, segments, withheld, events, eventDays, shiftRows, readOnly: true,
+        regrindText: regrind ? regrind.join('、') : '改削後の開始は未確認です。未記録を0直にはしません。',
+        diffText: previous
+            ? (changedStands.length ? `前日と違うスタンドは${changedStands.join('、')}です。` : '前日と記録が同じです。')
+            : '前日はこの月の外なので、差は出しません。'
+    };
+}
+
+function describeCaliberLine(view) {
+    if (!view || !view.ok) return view && view.reason ? view.reason : 'ラインを表示できません。';
+    const cards = view.cards.map(card => {
+        const body = card.notes.length
+            ? card.notes.map(note => `${note.size} ロール${note.rollId} ${note.side} ${note.lane || '未確認'} 今回のカリバ${note.positionNumber}`).join(' / ')
+            : '未確認';
+        return `#${card.standKey} ${body}${card.changed ? ' 前日と違います' : ''}`;
+    });
+    const lanes = view.segments.length
+        ? view.segments.map(lane => `${lane.name}: ${lane.notes.map(note => `#${note.standKey} カリバ${note.positionNumber}`).join(' - ')}`).join('\n')
+        : '確認できた隣接の通過区間が無いので、線は引きません。同じ列や隣接だけではつなぎません。';
+    const withheld = (view.withheld || []).join('\n');
+    const events = view.events.length
+        ? view.events.map(item => `${item.period} #${item.standKey} ${item.kind} ${item.size} カリバ${item.positionNumber}`).join('\n')
+        : 'この日のロール替・カリバ替・サイズ替の記録はありません。';
+    const shifts = view.shiftRows.length
+        ? view.shiftRows.map(row => `#${row.standKey} ${row.size} カリバ${row.caliberId} 前回累計${row.previousTotal}直 今回加算${row.added}直 新しい累計${row.cumulative}直 残り${row.remaining} ${row.unusable}。${row.process}`).join('\n')
+        : 'この日を含む使用直数の記録はありません。直数は作りません。';
+    return [
+        `${view.date}の閲覧です。確定計画と実台帳は書き換えていません。`,
+        'パスラインずれの確認欄です。補正値と許容値は未確認です。数値と安全判定は作っていません。',
+        lanes,
+        withheld,
+        cards.join('\n'),
+        events,
+        view.diffText,
+        shifts,
+        view.regrindText
+    ].join('\n');
+}
+
+function saveCaliberLayoutFromForm() {
+    const message = document.getElementById('caliber-layout-message');
+    const result = recordCaliberLayoutNote({
+        standKey: document.getElementById('layout-stand').value,
+        size: document.getElementById('layout-size').value,
+        rollId: document.getElementById('layout-roll').value,
+        side: document.getElementById('layout-side').value,
+        lane: document.getElementById('layout-lane').value,
+        columns: document.getElementById('layout-columns').value,
+        eventKind: document.getElementById('layout-event').value,
+        period: document.getElementById('layout-period').value,
+        eventDate: document.getElementById('layout-event-date').value,
+        passTo: document.getElementById('layout-pass-to').value,
+        passRollId: document.getElementById('layout-pass-roll').value,
+        passCaliber: document.getElementById('layout-pass-caliber').value,
+        acceptStand: document.getElementById('layout-accept-stand').value,
+        acceptRoll: document.getElementById('layout-accept-roll').value,
+        acceptCaliber: document.getElementById('layout-accept-caliber').value,
+        positionNumber: document.getElementById('layout-position').value,
+        plannedShifts: document.getElementById('layout-shifts').value,
+        from: document.getElementById('layout-from').value,
+        to: document.getElementById('layout-to').value
+    });
+    message.textContent = result.ok
+        ? (result.sameToken
+            ? '同じ数字でも、カリバ番号と使用予定直数は別の項目のまま追加しました。写真や実台帳には書いていません。'
+            : '匿名の配置メモを追加しました。写真や実台帳には書いていません。')
+        : result.reason;
+    document.getElementById('caliber-layout-list').textContent = describeCaliberLayoutNotes();
+    renderCaliberLineBoard();
+}
+
+function linePlanChoices() {
+    const sealed = (monthlyProductionSealed || []).map(plan => ({ id: plan.id, plan, label: `確定版 ${plan.id}` }));
+    return monthlyProductionDraft ? sealed.concat({ id: monthlyProductionDraft.id, plan: monthlyProductionDraft, label: `作業中 ${monthlyProductionDraft.id}` }) : sealed;
+}
+
+function escapeLineText(value) {
+    return String(value ?? '').replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[character]));
+}
+
+function renderCaliberLineSvg(view) {
+    if (!view || !view.ok) return '';
+    const stands = ['12', '13', '14', '15', '16', '17'];
+    const widths = stands.map(stand => {
+        const count = view.cards.find(item => item.standKey === stand).notes.length;
+        return Math.max(108, count * 78);
+    });
+    const origin = {};
+    let cursor = 40;
+    stands.forEach((stand, index) => {
+        origin[stand] = cursor;
+        cursor += widths[index];
+    });
+    const boardWidth = cursor + 24;
+    const xOf = stand => origin[String(stand)] + widths[stands.indexOf(String(stand))] / 2;
+    const yOf = note => note.lane === '東列' ? 42 : (note.lane === '西列' ? 220 : 136);
+    const rolls = [];
+    const pointOf = new Map();
+    stands.forEach(stand => {
+        const card = view.cards.find(item => item.standKey === stand);
+        const notes = card.notes;
+        if (!notes.length) {
+            rolls.push({ stand, x: xOf(stand), y: 136, label: '未確認', caliber: '', changed: false, size: '', side: '', period: '' });
+            return;
+        }
+        notes.forEach((note, index) => {
+            const x = origin[stand] + 39 + index * 78;
+            const y = yOf(note);
+            pointOf.set(note, { x, y });
+            rolls.push({
+                stand, x, y, changed: card.changed,
+                label: note.rollId, caliber: note.positionNumber, size: note.size,
+                side: note.side || '未確認', lane: note.lane || '未確認', period: note.period || ''
+            });
+        });
+    });
+    const lines = (view.segments || []).map(segment => {
+        const points = segment.notes.map(note => {
+            const point = pointOf.get(note) || { x: xOf(note.standKey), y: yOf(note) };
+            return `${point.x},${point.y}`;
+        }).join(' ');
+        const color = segment.size === 'D13' ? '#b45309' : (segment.lane === '西列' ? '#15803d' : '#1d4ed8');
+        return `<polyline data-line="${escapeLineText(segment.size)}-${escapeLineText(segment.lane)}" data-from="${escapeLineText(segment.from)}" data-to="${escapeLineText(segment.to)}" data-from-roll="${escapeLineText(segment.fromRoll)}" data-to-roll="${escapeLineText(segment.toRoll)}" data-from-caliber="${escapeLineText(segment.fromCaliber)}" data-to-caliber="${escapeLineText(segment.toCaliber)}" data-period="${escapeLineText(segment.period)}" points="${points}" fill="none" stroke="${color}" stroke-width="4" stroke-linecap="round" />`;
+    }).join('');
+    const bodies = rolls.map(roll => {
+        const stroke = roll.changed ? '#c2410c' : '#334155';
+        return `<g data-stand="${roll.stand}">`
+            + `<rect x="${roll.x - 34}" y="${roll.y - 28}" width="68" height="56" rx="28" fill="#e2e8f0" stroke="${stroke}" stroke-width="${roll.changed ? 4 : 2}" />`
+            + `<ellipse cx="${roll.x - 20}" cy="${roll.y}" rx="14" ry="26" fill="#cbd5e1" stroke="${stroke}" />`
+            + `<circle cx="${roll.x + 8}" cy="${roll.y - 2}" r="13" fill="#dc2626" />`
+            + `<text x="${roll.x + 8}" y="${roll.y + 3}" text-anchor="middle" font-size="12" fill="#fff">${escapeLineText(roll.caliber || '未')}</text>`
+            + `<text x="${roll.x}" y="${roll.y + 46}" text-anchor="middle" font-size="11" fill="#0f172a">#${roll.stand} ${escapeLineText(roll.caliber ? roll.label : '')}</text>`
+            + `<text x="${roll.x}" y="${roll.y + 60}" text-anchor="middle" font-size="11" fill="#475569">${escapeLineText(roll.period || roll.side || '')} ${escapeLineText(roll.lane || '')}</text>`
+            + '</g>';
+    }).join('');
+    return `<svg id="caliber-line-svg" viewBox="0 0 ${boardWidth} 360" width="100%" role="img" aria-label="カリバ配置図">`
+        + `<rect x="8" y="8" width="${boardWidth - 16}" height="344" rx="8" fill="#f8fafc" stroke="#cbd5e1" />`
+        + lines
+        + bodies
+        + '<rect x="24" y="324" width="220" height="22" fill="none" stroke="#64748b" stroke-dasharray="4 3" />'
+        + '<text x="32" y="339" font-size="12" fill="#334155">パスラインずれ 未確認</text>'
+        + ((view.withheld || []).some(line => line.includes('線を切り') || line.includes('未確認'))
+            ? '<text x="260" y="339" font-size="12" fill="#b45309">未確認の区間は線を切っています</text>'
+            : '')
+        + '</svg>';
+}
+
+function renderCaliberLineBoard() {
+    const board = document.getElementById('line-board');
+    const planSelect = document.getElementById('line-plan');
+    const monthSelect = document.getElementById('line-month');
+    const dayInput = document.getElementById('line-day');
+    if (!board || !planSelect || !monthSelect || !dayInput) return;
+    const choices = linePlanChoices();
+    const selectedId = planSelect.value;
+    planSelect.replaceChildren();
+    choices.forEach(choice => {
+        const option = document.createElement('option');
+        option.value = choice.id;
+        option.textContent = choice.label;
+        planSelect.appendChild(option);
+    });
+    if (!choices.length) {
+        board.textContent = '確定版も作業中の版もありません。日付だけの配置は作りません。';
+        document.getElementById('line-shift-table').textContent = '使用直数の記録はありません。';
+        document.getElementById('line-diff').textContent = '';
+        document.getElementById('line-markers').textContent = '';
+        return;
+    }
+    if (choices.some(choice => choice.id === selectedId)) planSelect.value = selectedId;
+    const chosen = choices.find(choice => choice.id === planSelect.value) || choices[choices.length - 1];
+    const selectedMonth = monthSelect.value;
+    monthSelect.replaceChildren();
+    chosen.plan.months.forEach(item => {
+        const option = document.createElement('option');
+        option.value = item.month;
+        option.textContent = item.classification === 'confirmed' ? `${item.month} 確定` : `${item.month} 暫定`;
+        monthSelect.appendChild(option);
+    });
+    if (chosen.plan.months.some(item => item.month === selectedMonth)) monthSelect.value = selectedMonth;
+    const dayCount = daysInMonth(monthSelect.value);
+    dayInput.max = String(dayCount || 1);
+    if (Number(dayInput.value) > dayCount) dayInput.value = String(dayCount);
+    const unusable = unusableCaliberConfirmations.map(item => item.value).filter(item => item && item.usable === false && item.owner).map(item => ({
+        standKey: String(item.owner.standKey || '').replace(/^#/, ''),
+        size: item.owner.size,
+        caliberId: item.caliberId
+    }));
+    const openings = reworkOpeningConfirmations.map(item => item.value).filter(item => item && item.caliberId && item.runs === 0 && item.owner);
+    const view = buildCaliberLineView({
+        plan: chosen.plan,
+        notes: caliberLayoutNotes,
+        yearMonth: monthSelect.value,
+        day: Number(dayInput.value),
+        unusable,
+        regrindCalibers: openings.length ? openings.map(item => ({
+            caliberId: item.caliberId,
+            unusable: unusable.some(mark => mark.caliberId === item.caliberId && mark.standKey === String(item.owner.standKey || '').replace(/^#/, ''))
+        })) : null
+    });
+    document.getElementById('line-day-label').textContent = view.ok ? `${view.date} / ${view.dayCount}日まで` : (view.reason || '');
+    board.replaceChildren();
+    if (view.ok) board.insertAdjacentHTML('beforeend', renderCaliberLineSvg(view));
+    const summary = document.createElement('pre');
+    summary.id = 'line-summary';
+    summary.textContent = view.ok ? describeCaliberLine(view) : (view.reason || '');
+    board.appendChild(summary);
+    const markers = document.getElementById('line-markers');
+    markers.replaceChildren();
+    if (view.ok) {
+        view.eventDays.forEach(eventDate => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.textContent = eventDate.slice(-2).replace(/^0/, '');
+            button.addEventListener('click', () => {
+                dayInput.value = String(Number(eventDate.slice(-2)));
+                renderCaliberLineBoard();
+            });
+            markers.appendChild(button);
+        });
+    }
+    document.getElementById('line-diff').textContent = view.ok ? view.diffText : '';
+    document.getElementById('line-shift-table').textContent = view.ok ? [view.shiftRows.length
+        ? view.shiftRows.map(row => `#${row.standKey} ${row.size} カリバ${row.caliberId} 前回累計${row.previousTotal}直 今回加算${row.added}直 新しい累計${row.cumulative}直 残り${row.remaining} ${row.unusable}`).join('\n')
+        : 'この日を含む使用直数の記録はありません。直数は作りません。', view.regrindText].join('\n') : '';
+}
+
+function ensureCaliberLayoutPanel() {
+    if (typeof document === 'undefined' || document.getElementById('caliber-layout-panel')) return;
+    const host = document.getElementById('cycle-result');
+    if (!host) return;
+    host.insertAdjacentHTML('afterend', '<section id="caliber-layout-panel"><h3>#12〜#17のカリバ配置と月間ライン</h3>'
+        + '<p>手書き管理表は予定の参考です。写真からは入れません。赤丸は今回使用するカリバ番号、日付の下の丸数字は使用予定直数です。WS/DS、東列・西列、パスラインは別項目です。スライダーは閲覧だけで、確定計画と実台帳は書き換えません。自動再生はありません。</p>'
+        + '<style>#caliber-layout-panel label{display:block;margin:4px 0}#line-day,#caliber-line-svg{width:100%}#line-summary,#line-shift-table{white-space:pre-wrap}#line-board{overflow-x:auto}@media(max-width:720px){#caliber-layout-panel{font-size:15px}}</style>'
+        + '<label>スタンド <input id="layout-stand" type="text" value="16"></label>'
+        + '<label>サイズ <input id="layout-size" type="text" value="D10"></label>'
+        + '<label>ロール番号 <input id="layout-roll" type="text" value=""></label>'
+        + '<label>WS/DS <select id="layout-side"><option value="">未確認</option><option value="WS">WS</option><option value="DS">DS</option></select></label>'
+        + '<label>東列・西列 <select id="layout-lane"><option value="">未確認</option><option value="東列">東列</option><option value="西列">西列</option></select></label>'
+        + '<label>通過先スタンド <input id="layout-pass-to" type="text" value=""></label>'
+        + '<label>接続先ロール <input id="layout-pass-roll" type="text" value=""></label>'
+        + '<label>接続先カリバ <input id="layout-pass-caliber" type="text" value=""></label>'
+        + '<label>接続元スタンド <input id="layout-accept-stand" type="text" value=""></label>'
+        + '<label>接続元ロール <input id="layout-accept-roll" type="text" value=""></label>'
+        + '<label>接続元カリバ <input id="layout-accept-caliber" type="text" value=""></label>'
+        + '<label>列 <select id="layout-columns"><option value="">未確認</option><option value="2">2列</option><option value="1">単独</option></select></label>'
+        + '<label>今回のカリバ番号 <input id="layout-position" type="text" value=""></label>'
+        + '<label>使用予定直数 <input id="layout-shifts" type="number" min="0" step="1" value=""></label>'
+        + '<label>使用開始 <input id="layout-from" type="date" value=""></label>'
+        + '<label>使用終了 <input id="layout-to" type="date" value=""></label>'
+        + '<label>イベント <select id="layout-event"><option value="">なし</option><option value="ロール替">ロール替</option><option value="カリバ替">カリバ替</option><option value="サイズ替">サイズ替</option></select></label>'
+        + '<label>勤務帯 <select id="layout-period"><option value="">未確認</option><option value="昼">昼</option><option value="夜">夜</option></select></label>'
+        + '<label>イベント日 <input id="layout-event-date" type="date" value=""></label>'
+        + '<button id="caliber-layout-save" type="button">匿名の配置メモを追加</button>'
+        + '<p id="caliber-layout-message"></p><pre id="caliber-layout-list"></pre>'
+        + '<h3>月間のライン</h3><label>版 <select id="line-plan"></select></label><label>年月 <select id="line-month"></select></label>'
+        + '<label>日 <input id="line-day" type="range" min="1" max="31" value="1"></label><span id="line-day-label"></span>'
+        + '<div id="line-markers"></div><div id="line-board"></div><pre id="line-diff"></pre><pre id="line-shift-table"></pre></section>');
+    document.getElementById('caliber-layout-save').addEventListener('click', saveCaliberLayoutFromForm);
+    document.getElementById('line-plan').addEventListener('change', renderCaliberLineBoard);
+    document.getElementById('line-month').addEventListener('change', renderCaliberLineBoard);
+    document.getElementById('line-day').addEventListener('input', renderCaliberLineBoard);
+    document.getElementById('caliber-layout-list').textContent = describeCaliberLayoutNotes();
+    renderCaliberLineBoard();
+}
+
+function ensureFiscalPlanTarget() {
+    const list = document.getElementById('stand-demand-list');
+    if (!list || document.getElementById('fiscal-plan')) return;
+    list.insertAdjacentHTML('beforebegin', '<h3>年度の改削・購入見通し</h3><pre id="fiscal-plan"></pre>'
+        + '<h3>月次生産計画の版</h3><p id="prod-store-scope">年度は4月〜翌3月です。未確定月は暫定10000tで、確定月とは分けます。確定版は変更せず、改訂はコピーから新しい版IDを付けます。保存先はこのブラウザの monthly_production_plan_history_v1 だけです。別の端末や別のブラウザとは共有しません。実台帳、GAS、Sheets、通常の保存は変更しません。</p>'
+        + '<label>年度の4月がある年 <input id="prod-fiscal-year" type="number" step="1"></label>'
+        + '<button id="prod-create" type="button">作業中の年度版を作る</button>'
+        + '<label>対象月 <input id="prod-month" type="month"></label>'
+        + '<label>トン数 <input id="prod-tons" type="number" min="0" step="1"></label>'
+        + '<label>区分 <select id="prod-class"><option value="provisional">暫定</option><option value="confirmed">確定</option></select></label>'
+        + '<label>サイズ <input id="prod-size" type="text"></label>'
+        + '<button id="prod-month-save" type="button">この月を作業中の版へ入れる</button>'
+        + '<label>確定日 <input id="prod-sealed-on" type="date"></label>'
+        + '<button id="prod-seal" type="button">作業中の版を確定して履歴へ固定</button>'
+        + '<button id="prod-revise" type="button">最新の確定版をコピーして改訂</button>'
+        + '<button id="prod-export" type="button">確定履歴だけをファイルへ書き出す</button>'
+        + '<label>履歴ファイル <input id="prod-import-file" type="file" accept="application/json,.json"></label>'
+        + '<button id="prod-import-apply" type="button">確認した履歴を反映</button>'
+        + '<button id="prod-import-undo" type="button">直前の履歴取り込みを取り消す</button>'
+        + '<pre id="prod-import-preview"></pre>'
+        + '<pre id="prod-plan-history"></pre>'
+        + '<h3>カリバ使用直数の確認表</h3><p>計算根拠は1直405tです。対象スタンド、サイズ、カリバ、使用期間、累計直数、計算過程を残します。パスラインは根拠が無いとき未確認です。</p>'
+        + '<label>スタンド <input id="shift-stand" type="text"></label>'
+        + '<label>サイズ <input id="shift-size" type="text"></label>'
+        + '<label>カリバ <input id="shift-caliber" type="text"></label>'
+        + '<label>使用開始 <input id="shift-from" type="date"></label>'
+        + '<label>使用終了 <input id="shift-to" type="date"></label>'
+        + '<label>使用トン数 <input id="shift-tons" type="number" min="0" step="1"></label>'
+        + '<label>パスライン <input id="shift-pass" type="text"></label>'
+        + '<button id="shift-add" type="button">直数の計算根拠を作業中の版へ追加</button>'
+        + '<pre id="shift-basis-table"></pre><p id="prod-plan-message" aria-live="polite"></p>'
+        + '<h3>帳票の出力仕様案</h3><pre id="output-form-gaps"></pre>'
+        + '<h3>年間改削・購入の匿名見本</h3><style>#annual-form-grid{border-collapse:collapse;font-size:12px}#annual-form-grid td{border:1px solid #cbd5e1;min-width:4.5rem;padding:2px 4px;white-space:nowrap}#annual-form-grid td[data-kind="formula"]{background:#eff6ff}#annual-form-grid td[data-kind="input"]{background:#fef3c7}</style><p>A3横の見本です。2025年度の数値は入っていません。青いセルは原本の数式、黄色いセルは匿名の入力です。</p>'
+        + '<button id="annual-form-download" type="button">匿名見本のA3帳票を書き出す</button>'
+        + '<pre id="annual-form-basis"></pre><div id="annual-form-sheet" style="overflow:auto;max-width:100%"></div>'
+        + '<h3>12か月見通しと帳票の接続</h3><p>確定した月の生産量だけを帳票へ入れます。暫定10000t、改削本数、購入本数は未確認のままです。</p><pre id="annual-form-link"></pre>');
+    document.getElementById('prod-create').addEventListener('click', createProductionDraftFromForm);
+    document.getElementById('prod-month-save').addEventListener('click', saveProductionMonthFromForm);
+    document.getElementById('prod-seal').addEventListener('click', sealProductionDraftFromForm);
+    document.getElementById('prod-revise').addEventListener('click', reviseProductionPlanFromForm);
+    document.getElementById('prod-export').addEventListener('click', downloadMonthlyProductionHistory);
+    document.getElementById('prod-import-file').addEventListener('change', stageMonthlyProductionImport);
+    document.getElementById('prod-import-apply').addEventListener('click', confirmMonthlyProductionImport);
+    document.getElementById('prod-import-undo').addEventListener('click', undoMonthlyProductionImportFromForm);
+    document.getElementById('shift-add').addEventListener('click', addShiftBasisFromForm);
+    document.getElementById('annual-form-download').addEventListener('click', downloadAnnualFormSample);
+    restoreMonthlyProductionHistory();
+    renderMonthlyProductionPlan();
+}
+
+function renderReworkOpeningRecords() {
+    if (typeof document === 'undefined') return;
+    const list = document.getElementById('rework-opening-records');
+    if (!list) return;
+    const records = reworkOpeningConfirmations.filter(item => item.schedule === latestMonthlySummary);
+    list.textContent = records.length ? records.map(item => {
+        const slot = item.value;
+        return `改削後${slot.generation}世代 ${slot.owner.standKey}番 ${slot.owner.rollId}、${slot.owner.size}、基準日${slot.owner.referenceAt}、カリバ${slot.caliberId}、開始${slot.runs}直`;
+    }).join('\n') : 'この予定の改削後開始は未登録です。未記録を0直にはしません。';
+}
+
+function registerReworkOpening() {
+    const owner = slotOwnerFromContext();
+    const schedule = latestMonthlySummary;
+    const message = document.getElementById('rework-opening-message');
+    const generation = Number(document.getElementById('rework-generation').value);
+    const runsText = String(document.getElementById('rework-runs').value);
+    const runs = runsText.trim() === '' ? null : Number(runsText);
+    const caliberId = String(document.getElementById('rework-caliber').value || '').trim();
+    if (!schedule || schedule.ok === false || !owner.rollId || !owner.referenceAt || !owner.size
+        || !Number.isInteger(generation) || generation < 1 || !caliberId
+        || !Number.isInteger(runs) || runs < 0) {
+        message.textContent = '対象ロール・サイズ・基準日と、改削後の世代・カリバID・開始直数を確認してください。空欄は0直にしません。';
+        return;
+    }
+    const value = { owner: { ...owner }, generation, caliberId, runs };
+    reworkOpeningConfirmations = reworkOpeningConfirmations.filter(item => !(item.schedule === schedule
+        && item.value.generation === generation && forecastSettingKey(item.value.owner) === forecastSettingKey(owner)));
+    reworkOpeningConfirmations.push({ schedule, value });
+    message.textContent = 'この予定の予測用に登録しました。改削前の開始量は使いません。実台帳や通常の保存には書いていません。';
+    renderReworkOpeningRecords();
+    renderExchangeCycle();
+    renderStandDemandList();
+}
+
+function renderCycleSlotRecords() {
+    if (typeof document === 'undefined') return;
+    const list = document.getElementById('cycle-slot-records');
+    if (!list) return;
+    const records = cycleSlotConfirmations.filter(item => item.schedule === latestMonthlySummary);
+    list.textContent = records.length ? records.map(item => {
+        const slot = item.value;
+        return `${item.kind === 'assembly' ? '組替' : '交換'} ${slot.date}: ${slot.owner.standKey}番 ${slot.owner.rollId}、${slot.owner.size}、基準日${slot.owner.referenceAt}、${slot.reservedHours}時間/${slot.people}人`;
+    }).join('\n') : 'この予定の交換・組替枠は未登録です。';
+}
+
+function registerCycleSlot(kind) {
+    const form = readCaliberInputs();
+    const owner = slotOwnerFromContext();
+    const assembly = kind === 'assembly';
+    const confirmation = assembly ? form.assemblyConfirmation : form.workConfirmation;
+    const stampedOwner = assembly ? assemblySlotOwner : workSlotOwner;
+    const slot = usableSlot(confirmation, stampedOwner, owner, true).slot;
+    const schedule = latestMonthlySummary;
+    const message = document.getElementById('cycle-slot-message');
+    if (!schedule || schedule.ok === false || !owner.rollId || !owner.referenceAt || !owner.size || !slot
+        || (!assembly && !['rollChange', 'caliberChange'].includes(slot.workType))) {
+        message.textContent = '対象ロール・サイズ・基準日と、その対象で確認した作業枠を確認してください。サイズ替は専用の登録を使います。';
+        return;
+    }
+    cycleSlotConfirmations = cycleSlotConfirmations.filter(item => !(item.schedule === schedule && item.kind === kind
+        && item.value.date === slot.date && forecastSettingKey(item.value.owner) === forecastSettingKey(owner)));
+    cycleSlotConfirmations.push({ schedule, kind, value: { ...slot, owner: { ...owner } } });
+    message.textContent = 'この予定の予測用に登録しました。不足・未確認なら作業は成立しません。実台帳や通常の保存には書いていません。';
+    renderCycleSlotRecords();
+    renderExchangeCycle();
+    renderStandDemandList();
+}
+
+function applicableSizeChanges(schedule) {
+    if (!schedule || schedule.ok === false) return [];
+    return sizeChangeConfirmations.filter(item => item.schedule === schedule).map(item => item.value);
+}
+
+function renderSizeChangeRecords() {
+    if (typeof document === 'undefined') return;
+    const list = document.getElementById('sizechange-records');
+    if (!list) return;
+    const records = applicableSizeChanges(latestMonthlySummary);
+    list.textContent = records.length ? records.map(item => `${item.owner.standKey}番 ${item.owner.rollId} 基準日${item.owner.referenceAt}: ${item.fromSize}→${item.toSize}、最初の操業${item.operationDate}、作業枠${item.date} ${item.reservedHours}時間/${item.people}人`).join('\n') : 'この予定のサイズ替枠は未登録です。';
+}
+
+function registerSizeChange() {
+    const form = readCaliberInputs();
+    const owner = slotOwnerFromContext();
+    const message = document.getElementById('sizechange-message');
+    const toSize = normalizeForecastSize(document.getElementById('sizechange-to').value);
+    const operationDate = document.getElementById('sizechange-operation').value;
+    const schedule = latestMonthlySummary;
+    const work = usableSlot(form.workConfirmation, workSlotOwner, owner, true).slot;
+    if (!schedule || schedule.ok === false || !owner.rollId || !owner.referenceAt || !owner.size || !toSize || !operationDate
+        || !work || work.workType !== 'sizeChange') {
+        message.textContent = '対象・基準日・予定・次サイズ・最初の操業日と、この対象のサイズ替作業枠を確認してください。別の対象の枠は登録しません。';
+        return;
+    }
+    const value = { ...work, owner: { ...owner }, fromSize: normalizeForecastSize(owner.size), toSize, operationDate };
+    sizeChangeConfirmations = sizeChangeConfirmations.filter(item => !(item.schedule === schedule
+        && forecastSettingKey(item.value.owner) === forecastSettingKey(owner) && item.value.operationDate === operationDate));
+    sizeChangeConfirmations.push({ schedule, value });
+    message.textContent = '予測用の枠を登録しました。時間や開始条件が足りなければ計算は止まります。実状態と端末の保存は変更していません。';
+    renderSizeChangeRecords();
+    renderExchangeCycle();
+    renderStandDemandList();
+}
+
+function openAnonymousSizeExample() {
+    startAnonymousForecastCheck();
+    const referenceAt = '2027-04-01';
+    const owner = { rollId: 'anon-online', standKey: '10', size: 'D10', referenceAt };
+    rememberForecastSetting({ ...owner, caliberId: 'anon-cal-a', openingRuns: 6 });
+    rememberForecastSetting({ ...owner, size: 'D13', caliberId: 'anon-cal-d13', openingRuns: 2 });
+    setAnonymousField('caliber-opening', '6');
+    setAnonymousField('work-type', 'sizeChange');
+    setAnonymousField('work-reserved-hours', '6');
+    setAnonymousField('work-required-hours', '6');
+    setAnonymousField('work-people', '3');
+    setAnonymousField('sizechange-to', 'D13');
+    setAnonymousField('sizechange-operation', '2027-04-03');
+    rememberWorkSlotOwner();
+    const slot = readCaliberInputs().workConfirmation;
+    const day = (date, size, productionAmount) => ({ date, size, productionAmount, operatingHours: productionAmount ? 8 : 0, shift1Team: 'A', shift3Team: '' });
+    const schedule = { ...anonymousCheckSummary(), sourceName: '試験用のD10・D13切替予定', months: [{ month: '2027-04', classification: 'future', productionTons: null, operatingHours: null, sizes: ['D10', 'D13'], shifts: ['A'] }], days: [
+        day('2027-04-01', 'D10', 10), day('2027-04-02', 'D13', 0), day('2027-04-03', 'D13', 10),
+        day('2027-04-04', 'D13', 0), day('2027-04-05', 'D10', 10), day('2027-04-06', 'D10', 0),
+        day('2027-04-07', 'D10', 0), { ...day('2027-04-08', 'D10', 10), shift1Team: '', shift3Team: 'A' }
+    ] };
+    latestMonthlySummary = schedule;
+    sizeChangeConfirmations = [
+        { schedule, value: { ...slot, owner, fromSize: 'D10', toSize: 'D13', operationDate: '2027-04-03' } },
+        { schedule, value: { ...slot, owner: { ...owner, size: 'D13' }, fromSize: 'D13', toSize: 'D10', date: '2027-04-04', operationDate: '2027-04-05' } }
+    ];
+    cycleSlotConfirmations = [
+        { schedule, kind: 'work', value: { ...slot, owner: { ...owner }, date: '2027-04-06', workType: 'rollChange' } },
+        { schedule, kind: 'assembly', value: { owner: { ...owner }, date: '2027-04-07', period: 'day', requiredHours: 6, reservedHours: 6,
+            people: 3, prepared: 'reworkInbound', preparedTarget: 'anon-online', preparedOn: '2027-04-07' } }
+    ];
+    renderMonthlyScheduleSummary(schedule);
+    renderSizeChangeRecords();
+    renderCycleSlotRecords();
+    document.getElementById('sizechange-message').textContent = 'すべて試験値です。D13は2→3直、D10へ戻ると7→8直、6日ロール替、7日昼の組替、8日夜勤へ続きます。サイズ替枠の解除で4月2日の未確認へ戻ります。実台帳・端末の保存・実設備のマスタは使いません。';
+}
+
+function ensureSizeChangeControls() {
+    const target = document.getElementById('cycle-result');
+    if (!target || typeof target.insertAdjacentHTML !== 'function' || document.getElementById('sizechange-to')) return;
+    const type = document.getElementById('work-type');
+    if (type) type.insertAdjacentHTML('beforeend', '<option value="sizeChange">サイズ替</option>');
+    target.insertAdjacentHTML('beforebegin', '<fieldset id="sizechange-panel"><legend>サイズ切替後の予測</legend>'
+        + '<p>次サイズの開始条件は、同じロール・スタンド・基準日で保存した値を使います。上のサイズを切り替えると入力・確認できます。今のカリバは流用しません。</p>'
+        + '<label>次サイズ <input id="sizechange-to" type="text"></label>'
+        + '<label>次サイズの最初の操業日 <input id="sizechange-operation" type="date"></label>'
+        + '<p>上の交換作業枠で「サイズ替」を選び、作業日・昼の時間・人数・連続操業・組替・3セットを確認して登録します。0tだけでは成立しません。</p>'
+        + '<button id="sizechange-register" type="button">サイズ替枠を予測へ登録</button>'
+        + '<button id="sizechange-clear" type="button">サイズ替の登録をすべて解除</button>'
+        + '<button id="sizechange-example" type="button">匿名のサイズ切替例を見る</button>'
+        + '<p>登録済みの枠は下に残ります。同じ対象・最初の操業日で再登録すると更新します。ファイルの差替え・解除・失敗・再読込では消えます。実台帳には保存しません。</p>'
+        + '<pre id="sizechange-records"></pre><p id="sizechange-message" aria-live="polite"></p>'
+        + '<h4>切替後の交換・組替枠</h4><p>交換は外すロール、組替は戻すロールを上で選び、そのサイズ・基準日で確認した枠を登録します。組替の準備を確認した対象とは別です。旧サイズの枠は流用しません。</p>'
+        + '<button id="cycle-work-register" type="button">選択ロールの交換枠を登録</button>'
+        + '<button id="cycle-assembly-register" type="button">選択ロールの組替枠を登録</button>'
+        + '<button id="cycle-slots-clear" type="button">交換・組替の登録をすべて解除</button>'
+        + '<pre id="cycle-slot-records"></pre><p id="cycle-slot-message" aria-live="polite"></p>'
+        + '<h4>改削後の開始</h4><p>定義済みのカリバは改削後0直から始めます。改削前の直数はコピーしません。未定義のカリバ番号と直数は作りません。実台帳には保存しません。</p>'
+        + '<label>世代 <input id="rework-generation" type="number" min="1" step="1"></label>'
+        + '<label>改削後カリバ <input id="rework-caliber" type="text"></label>'
+        + '<label>開始直数 <input id="rework-runs" type="number" min="0" step="1"></label>'
+        + '<button id="rework-opening-register" type="button">選択ロールの改削後開始を登録</button>'
+        + '<button id="rework-opening-clear" type="button">改削後開始の登録をすべて解除</button>'
+        + '<pre id="rework-opening-records"></pre><p id="rework-opening-message" aria-live="polite"></p>'
+        + '<h4>改削後カリバの使用可否</h4><p>定義済みのカリバは改削後0直から始めます。欠けたカリバだけを使用不可にします。新しい番号は作りません。前の世代の使用不可は、新しい世代で確認するまで安全確定にしません。</p>'
+        + '<label>世代 <input id="unusable-generation" type="number" min="1" step="1"></label>'
+        + '<label>既存カリバ <input id="unusable-caliber" type="text"></label>'
+        + '<label>使用可否 <select id="unusable-choice"><option value="unusable">使用不可</option><option value="usable">使用可</option></select></label>'
+        + '<button id="unusable-register" type="button">選択カリバの使用可否を登録</button>'
+        + '<button id="unusable-clear" type="button">使用可否の登録をすべて解除</button>'
+        + '<pre id="unusable-caliber-records"></pre><p id="unusable-caliber-message" aria-live="polite"></p>'
+        + '<h4>スタンド別の暫定改削LT</h4><p>初期値は#2〜#9が20暦日、#10〜#15が30暦日、#16〜#17が60暦日です。土日祝を含み、購入LTの暫定6か月とは別です。変更はこの予測の記憶だけで、実台帳や通常の保存には書きません。</p>'
+        + '<label>暦日 <input id="rework-lead-days" type="number" min="0" step="1"></label>'
+        + '<button id="rework-lead-register" type="button">選択スタンドの暫定改削LTを登録</button>'
+        + '<button id="rework-lead-clear" type="button">暫定改削LTの変更をすべて解除</button>'
+        + '<pre id="rework-lead-records"></pre><p id="rework-lead-message" aria-live="polite"></p></fieldset>');
+    document.getElementById('sizechange-register').addEventListener('click', registerSizeChange);
+    document.getElementById('sizechange-example').addEventListener('click', openAnonymousSizeExample);
+    document.getElementById('cycle-work-register').addEventListener('click', () => registerCycleSlot('work'));
+    document.getElementById('cycle-assembly-register').addEventListener('click', () => registerCycleSlot('assembly'));
+    document.getElementById('cycle-slots-clear').addEventListener('click', () => {
+        cycleSlotConfirmations = [];
+        renderCycleSlotRecords();
+        renderExchangeCycle();
+        renderStandDemandList();
+    });
+    document.getElementById('rework-opening-register').addEventListener('click', registerReworkOpening);
+    document.getElementById('rework-opening-clear').addEventListener('click', () => {
+        reworkOpeningConfirmations = [];
+        renderReworkOpeningRecords();
+        renderExchangeCycle();
+        renderStandDemandList();
+    });
+    document.getElementById('unusable-register').addEventListener('click', registerUnusableCaliber);
+    document.getElementById('unusable-clear').addEventListener('click', () => {
+        unusableCaliberConfirmations = [];
+        renderUnusableCaliberRecords();
+        renderExchangeCycle();
+        renderStandDemandList();
+    });
+    document.getElementById('rework-lead-register').addEventListener('click', registerReworkLead);
+    document.getElementById('rework-lead-clear').addEventListener('click', () => {
+        reworkLeadOverrides.clear();
+        const message = document.getElementById('rework-lead-message');
+        if (message) message.textContent = '暫定改削LTを初期値へ戻しました。実台帳や通常の保存は変更していません。';
+        renderReworkLeadRecords();
+        renderExchangeCycle();
+        renderStandDemandList();
+    });
+    document.getElementById('sizechange-clear').addEventListener('click', () => {
+        sizeChangeConfirmations = [];
+        renderSizeChangeRecords();
+        renderExchangeCycle();
+        renderStandDemandList();
+    });
+    renderSizeChangeRecords();
+    renderCycleSlotRecords();
+    renderReworkOpeningRecords();
+    renderUnusableCaliberRecords();
+    renderReworkLeadRecords();
 }
 
 let workSlotOwner = null;
@@ -2020,11 +4457,38 @@ function confirmationForStand(confirmation, standKey, standSize, referenceAt, ro
 }
 
 function sizeForStand(standKey, source, planDays) {
+    const sizes = Array.from(new Set((planDays || []).filter(row => row && row.productionAmount !== 0).map(row => row.size).filter(Boolean)));
     const selected = String(source.standKey || '').replace(/^#/, '') === String(standKey);
     if (selected && source.size) return source.size;
-    const sizes = Array.from(new Set((planDays || []).map(row => row && row.size).filter(Boolean)));
-    if (sizes.length === 1) return sizes[0];
+    if (sizes.length) return sizes[0];
     return '';
+}
+
+function hasMixedProductionSizes(days) {
+    return new Set((days || []).filter(row => row && row.productionAmount !== 0).map(row => row.size).filter(Boolean)).size > 1;
+}
+
+function normalizeForecastSize(value) {
+    return String(value || '').normalize('NFKC').toUpperCase().replace(/\s+/g, '');
+}
+
+function productionSizeBoundary(days, currentSize) {
+    const normalize = normalizeForecastSize;
+    let activeSize = normalize(currentSize);
+    for (let index = 0; index < (days || []).length; index += 1) {
+        const row = days[index];
+        if (!row || typeof row.productionAmount !== 'number' || row.productionAmount < 0) continue;
+        const nextSize = normalize(row.size);
+        if (row.productionAmount === 0 && !/^D\d+$/.test(nextSize)) continue;
+        if (!activeSize && nextSize && row.productionAmount > 0) activeSize = nextSize;
+        if (activeSize && (!nextSize || nextSize !== activeSize)) {
+            return {
+                index, date: String(row.date || '').slice(0, 10), fromSize: activeSize, toSize: nextSize || '未確認',
+                reason: `サイズが${activeSize}から${nextSize || '未確認'}へ変わるため、ここから未確認です。次サイズのカリバID・開始量・サイズ替作業枠の接続が未確認です。選択中の1サイズには丸めません。`
+            };
+        }
+    }
+    return null;
 }
 
 function buildStandDemandList(input) {
@@ -2046,6 +4510,7 @@ function buildStandDemandList(input) {
     const countedDays = referenceAt
         ? planDays.filter(row => String(row.date || '').slice(0, 10) >= referenceAt)
         : planDays.slice();
+    countedDays.sort((a, b) => String(a.date).localeCompare(String(b.date)));
     const ignored = days.length - planDays.length;
     const beforeReference = planDays.length - countedDays.length;
     const standKeys = Array.from(new Set([
@@ -2060,8 +4525,8 @@ function buildStandDemandList(input) {
         countedDays.length ? `日付の予定は${countedDays.length}日あります。無い日は作っていません。` : '月別の本数だけなので、操業日は作っていません。'
     ].filter(Boolean);
     const blocks = standKeys.map(standKey => {
-        const fact = premisesFact(premises, standKey);
-        const standSize = sizeForStand(standKey, source, planDays);
+        const fact = premisesFact(premises, standKey, source.mastersByStand && source.mastersByStand[standKey]);
+        const standSize = sizeForStand(standKey, source, countedDays);
         const standRolls = rolls.filter(item => standNumberFromName(item.name || item.id) === standKey).map(item => {
             const saved = savedOpening(item, standKey, standSize, referenceAt);
             return Object.assign({}, item, { currentCaliber: saved.caliber, openingRuns: saved.runs, openingNote: saved.note });
@@ -2082,6 +4547,7 @@ function buildStandDemandList(input) {
         let scrap = '日付の予定が無いので、廃却と補充の日は出していません。';
         let night = '日付の予定が無いので、夜勤の予備不足は出していません。';
         let order = `廃却日が無いので、手配目安は出していません。${leadText}`;
+        let timeline = '';
         const blocked = [fact.diameterReason, fact.cutReason].filter(Boolean);
         const standDays = countedDays;
         const onlinePreview = standRolls.find(item => item.status === 'オンライン');
@@ -2104,18 +4570,30 @@ function buildStandDemandList(input) {
             scrap = '足していない日からは、廃却日も手配目安も出していません。';
             order = '足していない日からは、手配目安は出していません。';
         } else if (planDays.length && standRolls.length && standDays.length) {
-            const resources = readLedgerResources(standRolls, { standKey, size: source.size || '' });
+            const resources = readLedgerResources(standRolls, { standKey, size: standSize });
             const online = resources.find(item => item.frame === 'online');
             if (!online || !online.caliberId || online.runs === null) {
                 blocked.push('現在のカリバまたは開始直数が未記録なので、このスタンドの日付計算はしていません。');
+            } else if (!standSize) {
+                period = 'サイズが切り替わる予定は、サイズ別の開始条件と切替工程が未確認のため日付計算を止めています。選択中の1サイズには丸めません。';
+                blocked.push('サイズ別の開始条件と切替工程は未確認です。');
             } else if (!limit || limit.kind !== '最大') {
                 blocked.push('最大直数が記録されていないので、日付の交換計算はしていません。使用基準のトン数からは日を作りません。');
             } else {
                 const result = simulateExchangeCycle({
+                    currentSize: standSize,
+                    standKey,
+                    referenceAt,
+                    sizeOpenings: source.sizeOpenings || forecastSizeOpenings(resources, standKey, standDays, referenceAt),
+                    sizeChanges: source.sizeChanges,
+                    workSlots: source.workSlots,
+                    assemblySlots: source.assemblySlots,
+                    reworkOpenings: source.reworkOpenings,
                     maxRuns: limit.runs,
                     scrapDiameter: fact.scrapDiameter,
                     adoptedCutMm: fact.adoptedCutMm,
-                    reworkDays: String(source.standKey || '').replace(/^#/, '') === String(standKey) ? source.reworkDays : null,
+                    reworkDays: resolvedReworkDays(standKey, String(source.standKey || '').replace(/^#/, '') === String(standKey) ? source.reworkDays : null),
+                    unusableCalibers: source.unusableCalibers,
                     leadMonths: lead.months,
                     leadStatus: lead.status,
                     workConfirmation: work,
@@ -2124,6 +4602,8 @@ function buildStandDemandList(input) {
                     days: standDays
                 });
                 period = result.reason;
+                timeline = describeCycleTimeline(result);
+                if (result.stopRecord) blocked.push(`${result.stopRecord.date} 対象${result.stopRecord.id}: ${result.stopRecord.reason}`);
                 const scraps = result.events.filter(item => item.kind === '廃却需要');
                 const nights = result.events.filter(item => item.kind === '夜勤予備不足');
                 scrap = scraps.length ? scraps.map(item => `${item.date} ${item.note}`).join(' / ') : '計算できた範囲に廃却はありません。0本にはしません。';
@@ -2134,12 +4614,14 @@ function buildStandDemandList(input) {
         return [
             `#${standKey} ${knownUseBasisText(standKey)}`,
             rollLines.join('\n'),
+            `計算の参照元: 廃却径は${fact.diameterSource}（${fact.scrapDiameter === null ? '未確認' : fact.scrapDiameter + 'mm'}）、採用改削量は${fact.cutSource}（${fact.adoptedCutMm === null ? '未確認' : fact.adoptedCutMm + 'mm'}）です。新品時の径は現在径に使いません。`,
             `計算できた期間: ${period}`,
             `廃却と補充: ${scrap}`,
             `夜勤の予備不足: ${night}`,
             `手配目安: ${order}`,
-            `計算できない項目: ${blocked.filter(Boolean).join(' ') || 'このスタンドで止まった項目はありません。他のスタンドは続けます。'}`
-        ].join('\n');
+            `計算できない項目: ${blocked.filter(Boolean).join(' ') || 'このスタンドで止まった項目はありません。他のスタンドは続けます。'}`,
+            timeline
+        ].filter(Boolean).join('\n');
     });
     return header.concat(blocks).join('\n\n');
 }
@@ -2147,17 +4629,21 @@ function buildStandDemandList(input) {
 let standPremisesCache = { status: 'waiting' };
 
 function renderStandDemandList() {
+    if (typeof document !== 'undefined') ensureFiscalPlanTarget();
     const target = typeof document !== 'undefined' ? document.getElementById('stand-demand-list') : null;
     if (!target) return;
     const plan = anonymousForecastCheck ? null : (readOperatingPlanState().slice(-1)[0] || null);
     const schedule = latestMonthlySummary && latestMonthlySummary.ok !== false ? latestMonthlySummary : null;
     const form = typeof readCaliberInputs === 'function' ? readCaliberInputs() : {};
     const ledger = anonymousForecastCheck ? anonymousCheckLedger() : (typeof roles === 'undefined' ? [] : roles);
+    const masterKeys = Array.from(new Set(ledger.map(item => standNumberFromName(item.name || item.id)).filter(Boolean)));
+    const mastersByStand = anonymousForecastCheck ? {} : Object.fromEntries(masterKeys.map(key => [key, loadedForecastMasters(key)]));
     target.textContent = buildStandDemandList({
         plan,
         rolls: ledger,
         days: schedule && Array.isArray(schedule.days) ? schedule.days : [],
         premises: anonymousForecastCheck ? { status: 'waiting' } : standPremisesCache,
+        mastersByStand,
         scheduleName: schedule && schedule.sourceName || '',
         referenceAt: activeForecastReference(form, schedule),
         scheduleReference: schedule && schedule.referenceDate || '',
@@ -2166,8 +4652,26 @@ function renderStandDemandList() {
         reworkDays: form.reworkDays,
         workConfirmation: Object.assign({}, form.workConfirmation || {}, { owner: workSlotOwner }),
         assemblyConfirmation: Object.assign({}, form.assemblyConfirmation || {}, { owner: assemblySlotOwner }),
+        sizeChanges: applicableSizeChanges(schedule),
+        workSlots: applicableCycleSlots(schedule, 'work'),
+        assemblySlots: applicableCycleSlots(schedule, 'assembly'),
+        reworkOpenings: applicableReworkOpenings(schedule),
+        unusableCalibers: applicableUnusableCalibers(schedule),
         leadTimes: anonymousForecastCheck ? {} : readStandLeadTimes()
     });
+    const fiscal = document.getElementById('fiscal-plan');
+    if (fiscal) {
+        const spareCount = ledger.filter(item => standNumberFromName(item.name || item.id) === String(form.standKey || '').replace(/^#/, '') && /組込完了|installedSpare/.test(String(item.status || item.frame || ''))).length;
+        const leadDays = {};
+        reworkLeadOverrides.forEach((value, stand) => { leadDays[stand] = value.days; });
+        fiscal.textContent = buildFiscalOutlook({
+            referenceAt: activeForecastReference(form, schedule),
+            months: outlookMonthsFromPlan(monthlyProductionDraft, schedule && schedule.months),
+            reworkLeadDays: leadDays,
+            standKey: form.standKey,
+            installedSpareCount: ledger.length ? spareCount : null
+        });
+    }
     if (!anonymousForecastCheck && standPremisesCache.status === 'waiting' && typeof fetch === 'function') {
         standPremisesCache = { status: 'reading' };
         fetch('local/stand-premises.json').then(response => {
@@ -2280,6 +4784,7 @@ function bindMonthlyScheduleFileInput() {
     if (!root) return;
     if (root.dataset.forecastBound === 'true') return;
     root.dataset.forecastBound = 'true';
+    ensureSizeChangeControls();
     const dedicated = typeof location !== 'undefined' && /anonymous-check\.html$/.test(String(location.pathname || ''));
     const queryEntry = typeof location !== 'undefined' && /(?:\?|&)anonymous=1(?:&|$)/.test(String(location.search || ''));
     if (queryEntry && !dedicated && typeof location.replace === 'function') {
@@ -2363,6 +4868,18 @@ function bindMonthlyScheduleFileInput() {
 }
 
 if (typeof document !== 'undefined') {
-    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bindMonthlyScheduleFileInput);
-    else bindMonthlyScheduleFileInput();
+    const bindIsolatedProductionHistory = () => {
+        ensureCaliberLayoutPanel();
+        if (!document.getElementById('stand-demand-list')) return;
+        ensureFiscalPlanTarget();
+        renderStandDemandList();
+    };
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', bindMonthlyScheduleFileInput);
+        document.addEventListener('DOMContentLoaded', bindIsolatedProductionHistory);
+    } else {
+        bindMonthlyScheduleFileInput();
+        bindIsolatedProductionHistory();
+    }
 }
+

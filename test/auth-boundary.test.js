@@ -1,5 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const crypto = require('node:crypto');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
@@ -66,6 +67,101 @@ test('allowlist and server-side role enforce access independently of UI flags', 
     assert.equal(h.post('save').success, true); assert.equal(h.writes(), 1);
     assert.equal(h.post('debug-sort-roles').success, false);
 });
+function anonymousLedger(role, sheets) {
+    const h = gasHarness();
+    h.props.ROLL_AUTH_USERS = JSON.stringify({ 'fixture-user': role });
+    h.props.ROLL_MANAGEMENT_SPREADSHEET_ID = 'anon-spreadsheet';
+    const inserts = [];
+    const mutations = [];
+    const book = {
+        getName: () => 'anon-book',
+        getSheetByName: name => sheets[name] || null,
+        insertSheet: name => {
+            inserts.push(name);
+            const created = { getDataRange: () => ({ getValues: () => [] }), setValues: () => mutations.push(name) };
+            sheets[name] = created;
+            return created;
+        }
+    };
+    h.c.SpreadsheetApp = { openById: id => { assert.equal(id, 'anon-spreadsheet'); return book; } };
+    h.c.Utilities.DigestAlgorithm = { SHA_256: 'sha256' };
+    h.c.Utilities.Charset = { UTF_8: 'utf8' };
+    h.c.Utilities.computeDigest = (algorithm, value) => [...crypto.createHash(algorithm).update(value).digest()];
+    h.c.Utilities.base64EncodeWebSafe = bytes => Buffer.from(bytes).toString('base64url');
+    return { h, inserts, mutations };
+}
+
+function rolesSheet(rows) {
+    return { getDataRange: () => ({ getValues: () => rows }) };
+}
+
+test('a missing Roles sheet stops an authenticated POST fetch without creating it', async () => {
+    const { h, inserts, mutations } = anonymousLedger('reader', {});
+    const calls = [];
+    const client = createRollApiClient({
+        endpoint: 'https://roll-app.test/fake-gas',
+        getToken: async () => h.token(),
+        fetchImpl: async (url, options) => {
+            calls.push({ url, options });
+            const result = h.c.doPost({ postData: { contents: options.body } });
+            return new Response(JSON.stringify(result), { status: 200 });
+        }
+    });
+    await assert.rejects(client('https://roll-app.test/fake-gas?action=fetch&t=1'), /読み取りでは作成しません/);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].options.method, 'POST');
+    assert.equal(new URL(calls[0].url).search, '');
+    assert.equal(JSON.parse(calls[0].options.body).action, 'fetch');
+    assert.equal(inserts.length, 0);
+    assert.equal(mutations.length, 0);
+    assert.equal(h.writes(), 0);
+});
+
+test('an existing Roles sheet is read and a reader still cannot save', async () => {
+    const rows = [['ID', 'スタンド番号', 'ステータス', 'メモ'], ['1', '#99-1', 'オンライン', 'anon']];
+    const { h, inserts, mutations } = anonymousLedger('reader', { Roles: rolesSheet(rows) });
+    const client = createRollApiClient({
+        endpoint: 'https://roll-app.test/fake-gas',
+        getToken: async () => h.token(),
+        fetchImpl: async (url, options) => {
+            const result = h.c.doPost({ postData: { contents: options.body } });
+            return new Response(JSON.stringify(result), { status: 200 });
+        }
+    });
+    const response = await client('https://roll-app.test/fake-gas?action=fetch');
+    const body = await response.json();
+    assert.equal(body.success, true);
+    assert.equal(body.roles.length, 1);
+    assert.equal(body.roles[0].name, '#99-1');
+    assert.equal(typeof body.revision, 'string');
+    assert.equal(h.post('save').success, false);
+    assert.equal(inserts.length, 0);
+    assert.equal(mutations.length, 0);
+    assert.equal(h.writes(), 0);
+});
+
+test('stand and cutting reads do not create missing sheets', () => {
+    const stand = anonymousLedger('reader', {});
+    assert.equal(stand.h.post('fetchStandMaster').success, false);
+    assert.equal(stand.inserts.length, 0);
+    const cutting = anonymousLedger('reader', {});
+    assert.equal(cutting.h.post('fetchCuttingMaster').success, false);
+    assert.equal(cutting.inserts.length, 0);
+    const present = anonymousLedger('reader', {
+        StandMaster: rolesSheet([['スタンド', '新径', '廃却径', '購入リードタイム月'], ['#2', 450, 400, 6]]),
+        '改削マスタ': rolesSheet([['スタンド']])
+    });
+    assert.equal(present.h.post('fetchStandMaster').success, true);
+    assert.equal(present.h.post('fetchCuttingMaster').success, true);
+    assert.equal(present.inserts.length, 0);
+});
+
+test('the save helper still creates a missing Roles sheet', () => {
+    const save = anonymousLedger('editor', {});
+    save.h.c.getSheet();
+    assert.deepEqual(save.inserts, ['Roles']);
+});
+
 test('one user cannot poll another users save result', () => {
     assert.equal(gasHarness().post('fetchSaveStatus').success, false);
 });

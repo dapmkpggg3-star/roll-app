@@ -86,7 +86,7 @@ function futureScheduleFile() {
   fs.writeFileSync(file, storedZip({
     'xl/workbook.xml': '<?xml version="1.0"?><workbook xmlns:r="r"><sheets><sheet name="27.04 生産予定" sheetId="1" r:id="rId1"/></sheets></workbook>',
     'xl/_rels/workbook.xml.rels': '<?xml version="1.0"?><Relationships><Relationship Id="rId1" Target="worksheets/sheet1.xml"/></Relationships>',
-    'xl/sharedStrings.xml': '<sst><si><t>D1</t></si><si><t> </t></si><si><t>A</t></si><si><t>B</t></si></sst>',
+    'xl/sharedStrings.xml': '<sst><si><t>D10</t></si><si><t> </t></si><si><t>A</t></si><si><t>B</t></si></sst>',
     'xl/worksheets/sheet1.xml': `<?xml version="1.0"?><worksheet><sheetData>${rows.join('')}</sheetData></worksheet>`
   }));
   return file;
@@ -313,7 +313,7 @@ async function main() {
     assert.match(consumption, /8直/);
     assert.match(consumption, /4時間以上/);
     await page.locator('#caliber-stand').fill('10');
-    await page.locator('#caliber-size').fill('D1');
+    await page.locator('#caliber-size').fill('D10');
     await page.locator('#caliber-current').fill('anon-1');
     await page.locator('#caliber-opening').fill('6');
     await page.locator('#monthly-schedule-file').setInputFiles(futureScheduleFile());
@@ -730,3 +730,4 @@ async function main() {
   }
 }
 main().catch(error => { console.error(error); process.exit(1); });
+

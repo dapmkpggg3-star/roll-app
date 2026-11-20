@@ -798,10 +798,6 @@ function normalizeRole(role) {
         ? role.history.filter(entry => entry && typeof entry === 'object')
         : [];
 
-    if (role && role.requestSent === true && !progress.vendorSentAt) {
-        progress.vendorSentAt = role.updatedAt || new Date().toISOString();
-    }
-
     if (typeof WORK_PROGRESS_STEPS !== 'undefined') {
         WORK_PROGRESS_STEPS.forEach(step => {
             progress[step.key] = progress[step.key] || '';
@@ -813,7 +809,7 @@ function normalizeRole(role) {
         ? normalizeRoleStatusValue(rawStatus)
         : (ALLOWED_STATUSES.includes(rawStatus) ? rawStatus : '中古予備（バラシ前）');
 
-    return {
+    const normalized = {
         ...role,
         updatedAt: role.updatedAt || new Date().toISOString(),
         memo: role.memo || '',
@@ -836,6 +832,23 @@ function normalizeRole(role) {
         history: history,
         requestSent: role.requestSent === true || Boolean(progress.vendorSentAt)
     };
+    return applyStoredReworkCycleGuard(normalized);
+}
+
+function applyStoredReworkCycleGuard(role) {
+    if (!role || typeof settleStoredReworkCycle !== 'function') {
+        return role;
+    }
+    const settled = settleStoredReworkCycle(role, role.updatedAt || new Date().toISOString());
+    if (typeof applySettledReworkCycle === 'function') {
+        return applySettledReworkCycle(role, settled);
+    }
+    role.workProgress = settled.progress;
+    role.workProgressHistory = settled.history;
+    role.requestSent = settled.requestSent;
+    role.dispatchDate = settled.progress.dispatchDate || '';
+    role.arrivalDate = settled.progress.arrivalDate || '';
+    return role;
 }
 
 function mergeRoleHistory(aHistory, bHistory) {
@@ -909,6 +922,11 @@ function mergeRoleVersions(remoteRole, localRole) {
     mergedRole.history = mergeRoleHistory(remoteRole && remoteRole.history, localRole && localRole.history);
     mergedRole.requestSent = mergedRole.requestSent === true
         || Boolean(mergedRole.workProgress && mergedRole.workProgress.vendorSentAt);
+    if (typeof guardMergedReworkProgress === 'function') {
+        guardMergedReworkProgress(mergedRole, remoteRole, localRole);
+    } else {
+        applyStoredReworkCycleGuard(mergedRole);
+    }
 
     return {
         role: mergedRole,
@@ -1495,7 +1513,11 @@ async function syncRoles() {
         }
     } catch (error) {
         console.error('syncRoles error:', error);
-        setSyncMessage((error.message || 'スプレッドシート同期に失敗しました。') + ' ブラウザ内のデータは残っています。', true);
+        const raw = String(error && error.message || '');
+        const reason = !raw || /failed to fetch|networkerror|load failed/i.test(raw)
+            ? '送信できませんでした。保存できたかは未確定です。'
+            : raw;
+        setSyncMessage(reason + ' ブラウザ内のデータは残っています。', true);
         return false;
     } finally {
         isSyncing = false;
