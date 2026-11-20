@@ -216,3 +216,27 @@ test('xml entities and rich shared strings are decoded', () => {
         ['D1']
     );
 });
+
+
+test('a missing maintenance worksheet is unknown, never zero scheduled jobs', async () => {
+    const strings = ['休止', 'D1', 'D2', 'A', 'B'];
+    const workbook = storedZip({
+        'xl/workbook.xml': '<?xml version="1.0"?><workbook xmlns:r="r"><sheets><sheet name="31.04 生産予定" sheetId="1" r:id="rId1"/></sheets></workbook>',
+        'xl/_rels/workbook.xml.rels': '<?xml version="1.0"?><Relationships><Relationship Id="rId1" Target="worksheets/sheet1.xml"/></Relationships>',
+        'xl/sharedStrings.xml': '<?xml version="1.0"?><sst>' + strings.map(value => '<si><t>' + value + '</t></si>').join('') + '</sst>',
+        'xl/worksheets/sheet1.xml': sampleWorksheet()
+    });
+    const bytes = workbook.buffer.slice(workbook.byteOffset, workbook.byteOffset + workbook.byteLength);
+    const parsed = await importer.parseXlsxArrayBuffer(bytes);
+    assert.equal(parsed.maintenanceSheets.length, 0);
+    assert.equal(parsed.schedule.length, 30);
+    for (const row of parsed.schedule) {
+        assert.equal(row.requiredWorks, null);
+        assert.equal(row.maintenanceLayoutState, 'unconfirmed');
+        assert.equal(row.maintenanceJudgement, 'held');
+        assert.equal(row.exchangePossibleDate, null);
+    }
+    const review = importer.createPlanningResults(parsed.schedule, { rules, schedule: scheduleApi });
+    assert.equal(review.caliberConnected, false);
+    assert.equal(review.sizeChanges.length, 1);
+});
