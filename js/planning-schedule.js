@@ -31,9 +31,9 @@
     }
 
     function countRequiredCompanionWork(row) {
-        if (row && (row.maintenanceLayoutState === 'unconfirmed' || row.maintenanceJudgement === 'held')) return null;
-        return (Array.isArray(row && row.requiredWorks) ? row.requiredWorks : [])
-            .filter(work => work && work.type !== 'sizeChange').length;
+        if (!row || row.maintenanceLayoutState === 'unconfirmed' || row.maintenanceJudgement === 'held') return null;
+        if (!Array.isArray(row.requiredWorks)) return null;
+        return row.requiredWorks.filter(work => work && work.type !== 'sizeChange').length;
     }
 
     function buildAvailableSlots(row, slotTypes, options) {

@@ -351,6 +351,21 @@ test('blank or invalid day-team text is still a night-only stop', () => {
     });
 });
 
+test('a missing work list is not a confirmed zero', () => {
+    const bare = { date: '2026-10-02', shift1Team: 'A', productionByTeam: { A: 0 } };
+    assert.equal(scheduleApi.countRequiredCompanionWork(bare), null);
+    assert.equal(scheduleApi.countRequiredCompanionWork({ ...bare, requiredWorks: null }), null);
+    assert.equal(scheduleApi.countRequiredCompanionWork({ ...bare, requiredWorks: '0' }), null);
+    assert.equal(scheduleApi.countRequiredCompanionWork({ ...bare, requiredWorks: [] }), 0);
+    const engine = rules.createPlanningRules({ preferStoppedShift: true });
+    const slot = scheduleApi.buildAvailableSlots(bare, rules.SLOT_TYPES)[0];
+    assert.equal(slot.requiredCompanionWorkCount, null);
+    assert.equal(engine.scoreSizeChangeSlot(slot, 'A').eligible, false);
+    const explicit = scheduleApi.buildAvailableSlots({ ...bare, requiredWorks: [] }, rules.SLOT_TYPES)[0];
+    assert.equal(explicit.requiredCompanionWorkCount, 0);
+    assert.equal(engine.scoreSizeChangeSlot(explicit, 'A').eligible, true);
+});
+
 test('unknown companion-work count makes a slot ineligible, not merely warned', () => {
     const engine = rules.createPlanningRules({ preferStoppedShift: true });
     const unknownSlot = {

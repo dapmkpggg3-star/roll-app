@@ -127,14 +127,14 @@
             const rows = Array.isArray(schedule) ? schedule : [];
             const segments = [[]];
             rows.forEach((row, index) => {
-                const size = normalizeSize(row && row.size);
-                if (!size || size === 'STOP') return;
                 const amount = row && row.productionAmount;
                 const known = typeof amount === 'number' && Number.isFinite(amount);
                 if (!known) {
                     segments.push([]);
                     return;
                 }
+                const size = normalizeSize(row && row.size);
+                if (!size || size === 'STOP') return;
                 if (amount > 0) segments[segments.length - 1].push({ row, index, size });
             });
             const changes = [];
