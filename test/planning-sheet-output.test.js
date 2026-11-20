@@ -67,3 +67,14 @@ test('export payload targets one idempotent monthly sheet', () => {
     assert.equal(payload.suggestions.length, 1);
     assert.deepEqual(payload.capabilities, { sizeChangeConnected: true, caliberConnected: false });
 });
+
+
+test('missing or out-of-month work slots never create a K-column review suggestion', () => {
+    const change = { fromDate: '2031-09-30', toDate: '2031-10-02', fromSize: 'D10', toSize: 'D13' };
+    const period = { year: 2031, month: 10 };
+    assert.deepEqual(output.buildSizeChangeSuggestions([{ change, recommendation: null }], period), []);
+    assert.deepEqual(output.buildSizeChangeSuggestions([{ change, recommendation: { slot: null } }], period), []);
+    assert.deepEqual(output.buildSizeChangeSuggestions([{
+        change, recommendation: { slot: { date: '2031-11-02', team: 'A', shift: 'shift1' } }
+    }], period), []);
+});
