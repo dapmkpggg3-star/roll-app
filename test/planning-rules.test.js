@@ -73,3 +73,12 @@ test('size changes are detected without exposing source production amounts', () 
     assert.equal(changes[0].fromSize, 'D1');
     assert.equal(changes[0].toSize, 'D2');
 });
+
+
+test('unconfirmed companion work counts cannot become eligible slots', () => {
+    for (const count of [undefined, null, -1, 0.5, '0', NaN]) {
+        const result = rules.scoreSizeChangeSlot({ type: SLOT_TYPES.DAY_MAINTENANCE, requiredCompanionWorkCount: count }, 'A');
+        assert.equal(result.eligible, false, `count=${String(count)}`);
+    }
+    assert.equal(rules.scoreSizeChangeSlot({ type: SLOT_TYPES.DAY_MAINTENANCE, requiredCompanionWorkCount: 0 }, 'A').eligible, true);
+});
