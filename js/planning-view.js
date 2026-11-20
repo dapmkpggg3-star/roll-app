@@ -40,7 +40,8 @@
         sizeChanges.forEach((entry, index) => {
             const change = entry && entry.change ? entry.change : entry || {};
             const recommendation = entry && entry.recommendation;
-            const slot = recommendation && recommendation.slot ? recommendation.slot : null;
+            const proposedSlot = recommendation && recommendation.slot ? recommendation.slot : null;
+            const slot = proposedSlot && proposedSlot.date && proposedSlot.shift && Number.isInteger(proposedSlot.requiredCompanionWorkCount) && proposedSlot.requiredCompanionWorkCount >= 0 ? proposedSlot : null;
             items.push({
                 id: `size-${index}`,
                 kind: 'sizeChange',
@@ -58,7 +59,8 @@
             const slot = entry && entry.recommendation;
             const deadline = entry && entry.firstOverLimitRun;
             const hasRisk = status === 'noSafeSlot';
-            const isDue = status === 'slotFound' || hasRisk;
+            const confirmedSlot = status === 'slotFound' && slot && slot.date && slot.shift && Number.isInteger(slot.requiredCompanionWorkCount) && slot.requiredCompanionWorkCount >= 0;
+            const isDue = confirmedSlot || hasRisk;
             items.push({
                 id: `caliber-${index}`,
                 kind: 'caliberChange',
@@ -66,7 +68,7 @@
                 title: [displayValue(entry && entry.equipmentId, '設備未設定'), displayValue(entry && entry.size, '')]
                     .filter(Boolean).join(' '),
                 dueDate: deadline ? displayValue(deadline.date, '日付未設定') : '計画期間内は上限未到達',
-                slotLabel: displaySlot(slot),
+                slotLabel: displaySlot(confirmedSlot ? slot : null),
                 status: hasRisk ? 'danger' : isDue ? 'candidate' : 'normal',
                 statusLabel: hasRisk ? '安全枠なし' : isDue ? '候補あり' : '経過観察'
             });
@@ -79,7 +81,7 @@
             },
             summary: {
                 sizeChangeCount: sizeChanges.length,
-                caliberChangeCount: caliberChanges.filter(item => item && item.status === 'slotFound').length,
+                caliberChangeCount: items.filter(item => item.kind === 'caliberChange' && item.status === 'candidate').length,
                 riskCount: items.filter(item => item.status === 'danger' || item.status === 'warning').length
             },
             items

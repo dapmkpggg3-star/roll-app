@@ -37,15 +37,12 @@ test('calendar output contains no production amounts', () => {
     assert.equal(JSON.stringify(rows).includes('productionByTeam'), false);
 });
 
-test('size-change suggestions are routed to the assigned operation column', () => {
-    const suggestions = output.buildSizeChangeSuggestions([{
-        change: { fromDate: '2031-09-30', toDate: '2031-10-02', fromSize: 'D10', toSize: 'D13' },
-        recommendation: { slot: { date: '2031-10-01', team: 'B', shift: 'shift1' } }
-    }], { year: 2031, month: 10 });
-    assert.deepEqual(suggestions[0], {
-        kind: 'sizeChange', date: '2031-10-01', column: 'H',
-        text: 'サイズ替（自動案）', status: 'candidate', fromSize: 'D10', toSize: 'D13'
-    });
+test('direct suggestion builder never emits unapproved E/H/K column writes', () => {
+    const change = { fromDate: '2031-09-30', toDate: '2031-10-02', fromSize: 'D10', toSize: 'D13' };
+    for (const team of ['A', 'B', undefined]) {
+        const input = [{ change, recommendation: { slot: { date: '2031-10-01', team, shift: 'shift1' } } }];
+        assert.deepEqual(output.buildSizeChangeSuggestions(input, { year: 2031, month: 10 }), []);
+    }
 });
 
 test('export payload targets one idempotent monthly sheet', () => {
@@ -64,7 +61,7 @@ test('export payload targets one idempotent monthly sheet', () => {
     assert.equal(payload.sheetName, '2031.10 ロールカリバ替予定');
     assert.equal(payload.requestId, 'planning-1234-000000');
     assert.equal(payload.calendarRows.length, 2);
-    assert.equal(payload.suggestions.length, 1);
+    assert.deepEqual(payload.suggestions, []);
     assert.deepEqual(payload.capabilities, { sizeChangeConnected: true, caliberConnected: false });
 });
 
@@ -77,4 +74,15 @@ test('missing or out-of-month work slots never create a K-column review suggesti
     assert.deepEqual(output.buildSizeChangeSuggestions([{
         change, recommendation: { slot: { date: '2031-11-02', team: 'A', shift: 'shift1' } }
     }], period), []);
+});
+
+
+test('export payload never proposes writes to E/H team or K work cells', () => {
+    for (const team of ['A', 'B', undefined]) {
+        const payload = output.buildExportPayload({ schedule, planning: {
+            sizeChanges: [{ change: { toDate: '2031-10-02', fromSize: 'D10', toSize: 'D13' },
+                recommendation: { slot: { date: '2031-10-01', shift: 'shift1', team, requiredCompanionWorkCount: 0 } } }]
+        } }, { now: 1234, random: 0 });
+        assert.deepEqual(payload.suggestions, []);
+    }
 });

@@ -68,32 +68,9 @@
             .sort((left, right) => left.day - right.day);
     }
 
-    function suggestionColumn(slot) {
-        const team = normalizeTeam(slot && slot.team);
-        if (team === 'A') return 'E';
-        if (team === 'B') return 'H';
-        return 'K';
-    }
-
-    function buildSizeChangeSuggestions(sizeChanges, period) {
-        return (Array.isArray(sizeChanges) ? sizeChanges : []).flatMap(entry => {
-            const change = entry && entry.change ? entry.change : entry || {};
-            if (!samePeriod(change.toDate, period)) return [];
-            const recommendation = entry && entry.recommendation;
-            const slot = recommendation && recommendation.slot;
-            // Without a verified scheduling slot there is no column-safe proposal.
-            // Do not fabricate a K-column review entry from the size-change date.
-            if (!slot || !samePeriod(slot.date, period)) return [];
-            return [{
-                kind: 'sizeChange',
-                date: slot.date,
-                column: suggestionColumn(slot),
-                text: 'サイズ替（自動案）',
-                status: 'candidate',
-                fromSize: displaySize(change.fromSize),
-                toSize: displaySize(change.toSize)
-            }];
-        });
+    // Work-column mapping is not approved. Never emit an E/H/K proposal.
+    function buildSizeChangeSuggestions() {
+        return [];
     }
 
     function requestId(now, random) {
@@ -119,7 +96,9 @@
             generatedAt,
             sourceSheets: Array.isArray(parsed.importedSheets) ? parsed.importedSheets.slice(0, 24) : [],
             calendarRows,
-            suggestions: buildSizeChangeSuggestions(planning.sizeChanges, period),
+            // Column mapping for work suggestions is not verified: E/H contain team data.
+            // Fail closed at the payload boundary until an approved cell contract exists.
+            suggestions: [],
             capabilities: {
                 sizeChangeConnected: true,
                 caliberConnected: Boolean(planning.caliberConnected)
