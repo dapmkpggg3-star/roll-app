@@ -26,9 +26,13 @@
         if (!period || !Number.isInteger(period.year) || !Number.isInteger(period.month)) return true;
         return (Array.isArray(schedule) ? schedule : []).some(row => {
             const parts = dateParts(row && row.date);
-            if (!parts) return false;
-            const later = parts.year > period.year || (parts.year === period.year && parts.month > period.month);
-            return later && productionAmountState(row && row.productionAmount) === 'unknown';
+            const raw = row && row.date;
+            // Malformed future-month rows must not conceal unknown production.
+            const prefix = typeof raw === 'string' ? raw.match(/^(\d{4})-(\d{1,2})-/) : null;
+            const year = parts ? parts.year : prefix ? Number(prefix[1]) : null;
+            const month = parts ? parts.month : prefix ? Number(prefix[2]) : null;
+            const later = year !== null && (year > period.year || (year === period.year && month > period.month));
+            return later && (!parts || productionAmountState(row && row.productionAmount) === 'unknown');
         });
     }
 
