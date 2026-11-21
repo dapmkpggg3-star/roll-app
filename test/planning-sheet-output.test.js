@@ -195,3 +195,14 @@ test('unparseable later dates with unknown amounts fail closed instead of bypass
         assert.throws(() => output.buildExportPayload({ schedule: [current, later] }, { period }), /後の月の生産量が未確認/);
     }
 });
+
+
+test('only exact confirmed stop tokens are exported as shutdown days', () => {
+    for (const token of ['STOP', '休止', '休み']) {
+        assert.equal(output.displaySize(token), '休止', token);
+    }
+    for (const token of ['DSTOP', '休止日', '前日休止', '休み予定']) {
+        assert.equal(output.displaySize(token), '', token);
+    }
+    assert.equal(output.displaySize('D13'), 'D13');
+});
