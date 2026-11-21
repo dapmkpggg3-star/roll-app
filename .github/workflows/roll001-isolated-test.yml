@@ -13,6 +13,7 @@ on:
       - audit/20261121-planning-view-failclosed
       - cursor/night-only-and-clear-guard-4222
       - audit/20261121-dashboard-exchange-guard
+      - audit/20261121-dashboard-date-validation
     paths:
       - '.github/workflows/roll001-isolated-test.yml'
       - 'index.html'
