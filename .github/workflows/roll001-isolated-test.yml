@@ -40,6 +40,7 @@ on:
       - 'js/planning-view.js'
       - 'test/planning-view.test.js'
       - 'js/planning-import.js'
+      - 'scripts/check-export-inputs.cjs'
       - 'js/planning-sheet-output.js'
       - 'test/planning-sheet-output.test.js'
       - 'test/planning-import.test.js'
@@ -80,7 +81,17 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Probe export fields and verify supported repairs in a disposable copy
+        run: node scripts/check-export-inputs.cjs
+      - name: Keep unresolved input evidence and verified candidate patch
+        if: failure() && hashFiles('artifacts/export-check/results.json') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: export-input-evidence
+          path: artifacts/export-check/
+          retention-days: 3
       - name: Check manual cells and carry-forward on a mock sheet
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: node --test test/schedule-clear-guard.test.js
       - name: Check calendar export with malformed inputs
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
