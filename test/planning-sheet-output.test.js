@@ -27,6 +27,25 @@ test('a blank future placeholder month does not replace the latest active produc
     }])), { year: 2031, month: 10 });
 });
 
+test('an explicit output month still stops when a later amount is unknown or negative', () => {
+    const laterNull = schedule.concat([{ date: '2031-11-01', size: '', productionAmount: null }]);
+    const laterNegative = schedule.concat([{ date: '2031-11-01', size: 'D1', productionAmount: -1 }]);
+    assert.equal(output.latestPeriod(laterNegative), null);
+    assert.equal(output.laterAmountUnconfirmed(laterNull, { year: 2031, month: 10 }), true);
+    assert.throws(() => output.buildExportPayload({ schedule: laterNull }, {
+        period: { year: 2031, month: 10 }, now: 1, random: 0
+    }), /後の月の生産量が未確認/);
+    assert.throws(() => output.buildExportPayload({ schedule: laterNegative }, {
+        period: { year: 2031, month: 10 }, now: 1, random: 0
+    }), /後の月の生産量が未確認/);
+    const payload = output.buildExportPayload({ schedule: schedule.concat([{
+        date: '2031-11-01', size: 'STOP', productionAmount: 0
+    }]) }, { period: { year: 2031, month: 10 }, now: 1, random: 0 });
+    assert.equal(payload.year, 2031);
+    assert.equal(payload.month, 10);
+    assert.deepEqual(payload.suggestions, []);
+});
+
 test('an unknown amount in a later month does not keep the earlier month as confirmed output', () => {
     assert.equal(output.latestPeriod(schedule.concat([{
         date: '2031-11-01', size: '', productionAmount: null

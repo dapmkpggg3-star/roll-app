@@ -16,6 +16,21 @@
         return { year, month, day, date };
     }
 
+    function productionAmountState(amount) {
+        if (typeof amount === 'number' && Number.isFinite(amount) && amount >= 0) return amount > 0 ? 'positive' : 'zero';
+        return 'unknown';
+    }
+
+    function laterAmountUnconfirmed(schedule, period) {
+        if (!period || !Number.isInteger(period.year) || !Number.isInteger(period.month)) return true;
+        return (Array.isArray(schedule) ? schedule : []).some(row => {
+            const parts = dateParts(row && row.date);
+            if (!parts) return false;
+            const later = parts.year > period.year || (parts.year === period.year && parts.month > period.month);
+            return later && productionAmountState(row && row.productionAmount) === 'unknown';
+        });
+    }
+
     function latestPeriod(schedule) {
         const rows = (Array.isArray(schedule) ? schedule : [])
             .map(row => ({ row, parts: dateParts(row && row.date) }))
@@ -24,15 +39,14 @@
         let lastPositive = null;
         let unknownLaterMonth = false;
         rows.forEach(item => {
-            const amount = item.row.productionAmount;
-            const known = typeof amount === 'number' && Number.isFinite(amount);
-            if (!known) {
+            const state = productionAmountState(item.row.productionAmount);
+            if (state === 'unknown') {
                 if (lastPositive && (item.parts.year !== lastPositive.year || item.parts.month !== lastPositive.month)) {
                     unknownLaterMonth = true;
                 }
                 return;
             }
-            if (amount > 0 && displaySize(item.row.size) !== '休止') {
+            if (state === 'positive' && displaySize(item.row.size) !== '休止') {
                 lastPositive = item.parts;
                 unknownLaterMonth = false;
             }
@@ -98,6 +112,9 @@
         const schedule = Array.isArray(parsed && parsed.schedule) ? parsed.schedule : [];
         const period = options && options.period ? options.period : latestPeriod(schedule);
         if (!period) throw new Error('出力する生産予定の年月を確認できませんでした。');
+        if (laterAmountUnconfirmed(schedule, period)) {
+            throw new Error('後の月の生産量が未確認なので、出力する年月を確定できません。');
+        }
         const planning = parsed && parsed.planning ? parsed.planning : {};
         const calendarRows = buildCalendarRows(schedule, period);
         if (!calendarRows.length) throw new Error('出力対象月の生産予定がありません。');
@@ -123,6 +140,7 @@
     return {
         dateParts,
         latestPeriod,
+        laterAmountUnconfirmed,
         displaySize,
         buildCalendarRows,
         buildSizeChangeSuggestions,
