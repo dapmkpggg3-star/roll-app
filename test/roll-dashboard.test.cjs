@@ -476,3 +476,31 @@ test('dashboard files are wired without a ledger write, and CI names the same te
   assert.match(workflow, /test\/roll-dashboard-browser\.cjs/);
   assert.equal(fs.existsSync(path.join(root, 'test/roll-dashboard-browser.cjs')), true);
 });
+
+test('confirmed exchanges require intact dates in each supporting record', () => {
+  const fixture = context.anonymousDashboardFixture();
+  const roll = fixture.rolls[0];
+  const date = '2027-04-02';
+  const day = { date, shift1Team: 'A', daytimeStop: 'yes', productionAmount: 0, operatingHours: 0 };
+  const plan = { date, standKey: '10', workType: 'caliberChange', kind: 'plan',
+    withinShift: 'yes', constraintsKnown: 'yes', setsWritten: 1 };
+  const confirmation = { date, period: 'day', workType: 'caliberChange', requiredHours: 1,
+    reservedHours: 1, people: 3, continuous: 'no', changeover: 'yes', threeSet: 'yes' };
+  const result = () => rowOf(context.buildRollDashboard(fixture), roll.rollId).auto;
+  for (const input of [date, date + 'T00:30:00+09:00', date + 'T00:30:00.000Z',
+    date + 'INVALID', date + 'T99:99', date + 'T23:60', '2027-02-30', [date]]) {
+    const valid = typeof input === 'string' && [date, date + 'T00:30:00+09:00', date + 'T00:30:00.000Z'].includes(input);
+    for (const record of ['day', 'plan', 'confirmation']) {
+      roll.days = [{ ...day, date: record === 'day' ? input : date }];
+      roll.replacementPlan = [{ ...plan, date: record === 'plan' ? input : date }];
+      roll.workConfirmation = { ...confirmation, date: record === 'confirmation' ? input : date };
+      const auto = result();
+      assert.equal(auto.exchangeDate, valid ? date : null, record + ' ' + JSON.stringify(input));
+      assert.equal(auto.listedExchange, record === 'plan' && !valid ? 'なし' : date);
+    }
+  }
+  roll.days = [day, { ...day, date: date + 'INVALID', productionAmount: 10 }];
+  roll.replacementPlan = [plan];
+  roll.workConfirmation = confirmation;
+  assert.equal(result().exchangeDate, null);
+});
