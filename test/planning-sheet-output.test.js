@@ -159,3 +159,19 @@ test('export payload never proposes writes to E/H team or K work cells', () => {
         assert.deepEqual(payload.suggestions, []);
     }
 });
+
+
+test('a nested date value cannot be exported as a calendar date', () => {
+    const invalid = schedule.map(row => ({ ...row, date: [row.date] }));
+    assert.equal(output.dateParts(invalid[0].date), null);
+    assert.throws(() => output.buildExportPayload({ schedule: invalid }, {
+        period: { year: 2031, month: 10 }
+    }), /日付を確認できない/);
+});
+
+test('an array is not a confirmed shift team even when it contains a single team name', () => {
+    const row = { ...schedule[2], shift3Team: '' };
+    const payload = input => output.buildExportPayload({ schedule: [{ ...row, shift1Team: input }] });
+    assert.throws(() => payload(['A']), /班が未確認/);
+    assert.equal(payload('Ａ').calendarRows[0].operationAShift, 'Ⅰ');
+});

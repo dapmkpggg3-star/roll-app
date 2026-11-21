@@ -6,7 +6,8 @@
     const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'];
 
     function dateParts(value) {
-        const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if (typeof value !== 'string') return null;
+        const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
         if (!match) return null;
         const year = Number(match[1]);
         const month = Number(match[2]);
@@ -61,7 +62,8 @@
     }
 
     function normalizeTeam(value) {
-        const token = String(value || '').normalize('NFKC').trim().toUpperCase();
+        if (typeof value !== 'string') return '';
+        const token = value.normalize('NFKC').trim().toUpperCase();
         return token === 'A' || token === 'B' ? token : '';
     }
 
@@ -74,6 +76,7 @@
     }
 
     function displaySize(value) {
+        if (typeof value !== 'string') return '';
         const token = String(value || '').normalize('NFKC').trim().toUpperCase();
         if (token === 'STOP' || /休止|休み/.test(token)) return '休止';
         return /^D\d+$/.test(token) ? token : '';
@@ -193,3 +196,4 @@
         buildExportPayload
     };
 });
+

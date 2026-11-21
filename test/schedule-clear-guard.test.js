@@ -67,3 +67,43 @@ test('the write-back gate does not clear team or work cells', () => {
     assert.equal(sheet.K42, 'ロール替');
     assert.equal(sheet.D5, '1');
 });
+
+
+test('real draft builder on a copied mock sheet exposes the destructive range and carry-forward behavior', () => {
+    const fs = require('node:fs');
+    const path = require('node:path');
+    const vm = require('node:vm');
+    const context = vm.createContext({});
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '../google-apps-script.gs'), 'utf8'), context);
+    const original = anonymousSheet();
+    original.K38 = '持越し';
+    const draft = { ...original };
+    const ranges = [];
+    const copy = {
+        setName() {},
+        getRange(ref) {
+            return {
+                getNote: () => '',
+                setValue: value => { draft[ref] = value; },
+                clearContent() {
+                    ranges.push(ref);
+                    for (const cell of expandRange(ref)) delete draft[cell];
+                }
+            };
+        }
+    };
+    const template = {
+        getName: () => '匿名ひな形',
+        copyTo: () => copy,
+        getRange: ref => ({ getValues: () => expandRange(ref).map(cell => [original[cell] ?? '']) })
+    };
+    context.findPlanningTemplateSheet_ = () => ({ sheet: template, period: { year: 2031, month: 10 } });
+    context.createPlanningDraftSheet_({}, { year: 2031, month: 11 });
+    assert.deepEqual(ranges, DRAFT_CLEAR_RANGES);
+    assert.equal(original.K5, 'カリバ替');
+    assert.equal(draft.K5, '持越し');
+    assert.equal(draft.H5, undefined);
+    assert.equal(draft.D5, undefined);
+    // This characterizes the blocked server path. Revisit this test when the mapping is approved.
+    assert.equal(importer.planningWriteBackGate().allowed, false);
+});
