@@ -84,7 +84,7 @@
     function displaySize(value) {
         if (typeof value !== 'string') return '';
         const token = String(value || '').normalize('NFKC').trim().toUpperCase();
-        if (token === 'STOP' || /休止|休み/.test(token)) return '休止';
+        if (token === 'STOP' || token === '休止' || token === '休み') return '休止';
         return /^D\d+$/.test(token) ? token : '';
     }
 
