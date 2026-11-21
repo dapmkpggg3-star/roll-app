@@ -169,18 +169,23 @@ function dashboardReplacementSets(entry) {
 }
 
 function dashboardWorkReady(roll, date, expected, day) {
-    const described = typeof describeExchangeSlot === 'function'
-        ? describeExchangeSlot(roll && roll.workConfirmation, day, expected)
-        : { ok: false, state: '未確認', note: '作業枠の判定を読み込めないので、確認済み交換可能日にはしません。' };
-    if (String(date || '').slice(0, 10) !== String(day && day.date || '').slice(0, 10)) {
+    const confirmation = roll && roll.workConfirmation;
+    if (!date || dashboardCalendarDate(day && day.date) !== date ||
+        (confirmation && confirmation.repeatOnStops !== true && dashboardCalendarDate(confirmation.date) !== date)) {
         return { ok: false, state: '未確認', note: '作業確認の日付が予定日と違うので、作業枠未確認です。' };
     }
-    return described;
+    return typeof describeExchangeSlot === 'function'
+        ? describeExchangeSlot(confirmation, day, expected)
+        : { ok: false, state: '未確認', note: '作業枠の判定を読み込めないので、確認済み交換可能日にはしません。' };
 }
 
 function dashboardCalendarDate(value) {
-    const date = String(value || '').slice(0, 10);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return '';
+    if (typeof value !== 'string') return '';
+    // Keep the written calendar day even when a timestamp carries a UTC offset.
+    const calendar = /^(\d{4}-\d{2}-\d{2})(?:T(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)?)?$/;
+    const match = calendar.exec(value);
+    if (!match) return '';
+    const date = match[1];
     const timestamp = Date.parse(date + 'T00:00:00Z');
     return Number.isFinite(timestamp) && new Date(timestamp).toISOString().slice(0, 10) === date ? date : '';
 }
@@ -242,6 +247,8 @@ function dashboardReplacementCandidate(roll, referenceAt) {
             notes.push('連続操業では交換日にしません。');
             return;
         }
+        // Include malformed rows with the same date prefix when checking for conflicting evidence.
+        // dashboardWorkReady validates the complete date before confirming the single remaining row.
         const matchingDays = dailyPlan.filter(item => String(item && item.date || '').slice(0, 10) === date);
         if (!matchingDays.length) {
             notes.push('日別操業予定が無いので、確認済み交換可能日は確定しません。');
