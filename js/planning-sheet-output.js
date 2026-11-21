@@ -6,7 +6,8 @@
     const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'];
 
     function dateParts(value) {
-        const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if (typeof value !== 'string') return null;
+        const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
         if (!match) return null;
         const year = Number(match[1]);
         const month = Number(match[2]);
@@ -193,3 +194,4 @@
         buildExportPayload
     };
 });
+
