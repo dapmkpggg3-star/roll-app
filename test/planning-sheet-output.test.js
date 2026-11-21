@@ -219,3 +219,16 @@ test('malformed same-month date rows must not silently disappear from the export
     const otherMonth = output.buildExportPayload({ schedule: [day('2032-01-02'), day('2031/12/03')] }, options);
     assert.deepEqual(otherMonth.calendarRows.map(row => row.date), ['2032-01-02']);
 });
+
+
+test('Japanese, space and underscore same-month dates must fail closed', () => {
+    const day = date => ({ date, size: 'D13', productionAmount: 400, shift1Team: 'A' });
+    const options = { period: { year: 2032, month: 1 }, now: 1, random: 0 };
+    for (const malformed of ['2032年01月03日', '2032 01 03', '2032_01_03']) {
+        assert.throws(() => output.buildExportPayload({ schedule: [day('2032-01-02'), day(malformed)] }, options), /日付を確認できない/, malformed);
+    }
+    const normal = output.buildExportPayload({ schedule: [day('2032-01-02'), day('2032-01-03')] }, options);
+    assert.equal(normal.calendarRows.length, 2);
+    const previous = output.buildExportPayload({ schedule: [day('2032-01-02'), day('2031年12月03日')] }, options);
+    assert.equal(previous.calendarRows.length, 1);
+});
