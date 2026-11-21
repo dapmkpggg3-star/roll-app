@@ -383,6 +383,14 @@ function formatSyncDiagnosticCount(count) {
     return Number.isFinite(count) ? String(count) : '未取得';
 }
 
+function parseGasDiagnosticCount(value) {
+    if (typeof value !== 'number' && (typeof value !== 'string' || !/^\d+$/.test(value.trim()))) {
+        return null;
+    }
+    const count = Number(value);
+    return Number.isSafeInteger(count) && count >= 0 ? count : null;
+}
+
 function normalizeGasSaveDebug(debug) {
     if (!debug || typeof debug !== 'object') {
         return null;
@@ -390,8 +398,8 @@ function normalizeGasSaveDebug(debug) {
 
     return {
         source: debug.source || '',
-        receivedRoleCount: Number.isFinite(Number(debug.receivedRoleCount)) ? Number(debug.receivedRoleCount) : null,
-        writtenRoleCount: Number.isFinite(Number(debug.writtenRoleCount)) ? Number(debug.writtenRoleCount) : null,
+        receivedRoleCount: parseGasDiagnosticCount(debug.receivedRoleCount),
+        writtenRoleCount: parseGasDiagnosticCount(debug.writtenRoleCount),
         savedAt: debug.savedAt || ''
     };
 }
