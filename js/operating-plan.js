@@ -1099,7 +1099,12 @@ function summarizeMonthlyProductionSchedule(schedule, referenceDate) {
         let operatingHours = 0;
         let hoursKnown = true;
         const shifts = new Set();
+        const seenDates = new Set();
+        let duplicateDate = false;
         items.forEach(item => {
+            const date = String(item && item.date || '').slice(0, 10);
+            if (seenDates.has(date)) duplicateDate = true;
+            seenDates.add(date);
             if (typeof item.productionAmount !== 'number' || !Number.isFinite(item.productionAmount) || item.productionAmount < 0) tonsKnown = false;
             else productionTons += item.productionAmount;
             if (typeof item.operatingHours !== 'number' || !Number.isFinite(item.operatingHours)) hoursKnown = false;
@@ -1107,6 +1112,10 @@ function summarizeMonthlyProductionSchedule(schedule, referenceDate) {
             if (item.shift1Team) shifts.add(`1直${item.shift1Team}`);
             if (item.shift3Team) shifts.add(`3直${item.shift3Team}`);
         });
+        if (duplicateDate) {
+            tonsKnown = false;
+            hoursKnown = false;
+        }
         return {
             month,
             sizes,

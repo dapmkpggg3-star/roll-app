@@ -148,6 +148,14 @@ test('a past monthly schedule stays in tons and is not an annual plan or actual 
   assert.equal(negativeTons.months[0].productionTons, null);
   assert.equal(negativeTons.usableForShortage, false);
   assert.equal(negativeTons.acceptedAsActual, false);
+  const duplicated = context.summarizeMonthlyProductionSchedule([
+    { date: '2027-04-01', size: 'D10', productionAmount: 100, shift1Team: 'A', shift3Team: 'B', operatingHours: 8 },
+    { date: '2027-04-01', size: 'D10', productionAmount: 40, shift1Team: 'A', shift3Team: 'B', operatingHours: 8 }
+  ], '2026-11-13');
+  assert.equal(duplicated.months[0].productionTons, null);
+  assert.equal(duplicated.months[0].operatingHours, null);
+  assert.equal(duplicated.usableForShortage, false);
+  assert.equal(duplicated.acceptedAsActual, false);
 });
 
 test('rolling hours stay hours and are not added when a day is missing', () => {
