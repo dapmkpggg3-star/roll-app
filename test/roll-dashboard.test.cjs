@@ -352,6 +352,50 @@ test('a night-only stop is not an exchange date, and a checked daytime stop can 
   assert.match(compared.revised.limit, /2027-04-04は上限到達の見込み/);
 });
 
+test('conflicting daily rows never confirm an exchange date, regardless of order', () => {
+  const fixture = context.anonymousDashboardFixture();
+  const roll = fixture.rolls[0];
+  const date = '2027-04-02';
+  const stopped = { date, shift1Team: 'A', daytimeStop: 'yes', productionAmount: 0, operatingHours: 0 };
+  const producing = { date, shift1Team: 'A', productionAmount: 10, operatingHours: 8 };
+  roll.replacementPlan = [{
+    standKey: '10', date, workType: 'caliberChange', kind: 'plan',
+    withinShift: 'yes', constraintsKnown: 'yes', setsWritten: 1
+  }];
+  roll.workConfirmation = {
+    date, period: 'day', workType: 'caliberChange', requiredHours: 1, reservedHours: 1, people: 3,
+    continuous: 'no', changeover: 'yes', threeSet: 'yes'
+  };
+
+  for (const days of [[stopped, producing], [producing, stopped]]) {
+    roll.days = days;
+    const model = context.buildRollDashboard(fixture);
+    const row = rowOf(model, roll.rollId);
+    assert.equal(row.auto.listedExchange, date);
+    assert.equal(row.auto.exchangeDate, null);
+    assert.equal(row.auto.exchange, '作業枠未確認');
+    assert.equal(context.dashboardReplacementCandidate(roll, fixture.referenceAt).sets, null);
+    assert.match(row.basis.steps.join('\n'), /同じ日付の日別操業予定が重複/);
+    const tsv = context.anonymousManagementSheetTsv(context.buildAnonymousManagementSheet(model));
+    assert.ok(tsv.includes('予測\t#10\t#10-ANON-1\t確認済み交換可能日\t作業枠未確認'));
+  }
+
+  roll.days = [stopped];
+  const accepted = context.dashboardReplacementCandidate(roll, fixture.referenceAt);
+  assert.equal(accepted.date, date);
+  assert.equal(accepted.sets, 1);
+});
+
+test('only explicit numeric replacement counts qualify', () => {
+  for (const setsWritten of [true, false, [1], [], ' ', '　']) {
+    const result = context.dashboardReplacementSets({ setsWritten });
+    assert.equal(result.countState, '件数不明', JSON.stringify(setsWritten));
+    assert.equal(result.sets, null);
+  }
+  assert.equal(context.dashboardReplacementSets({ setsWritten: 0 }).countState, '0件');
+  assert.equal(context.dashboardReplacementSets({ setsWritten: ' 1 ' }).sets, 1);
+});
+
 test('dashboard night-only uses the same normalized team rule', () => {
   const cases = [
     [' ', 'B'],

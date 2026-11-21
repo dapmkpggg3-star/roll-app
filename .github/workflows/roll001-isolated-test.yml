@@ -12,6 +12,7 @@ on:
       - audit/20261120-no-slot-no-proposal
       - audit/20261121-planning-view-failclosed
       - cursor/night-only-and-clear-guard-4222
+      - audit/20261121-dashboard-exchange-guard
     paths:
       - '.github/workflows/roll001-isolated-test.yml'
       - 'index.html'

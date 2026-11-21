@@ -153,10 +153,12 @@ function dashboardReplacementSets(entry) {
     if (!entry || entry.packedFromHours === true) {
         return { sets: null, countState: '時間から作成', note: '所要時間からセット数は作りません。8時間枠へは詰め込みません。' };
     }
-    if (entry.setsWritten === undefined || entry.setsWritten === null || entry.setsWritten === '') {
+    const written = entry.setsWritten;
+    const isNumericInput = typeof written === 'number' || (typeof written === 'string' && written.trim() !== '');
+    if (!isNumericInput) {
         return { sets: null, countState: '件数不明', note: '予定件数が不明なので、確認済み交換可能日にも作業量にもしません。' };
     }
-    const sets = Number(entry.setsWritten);
+    const sets = Number(written);
     if (!Number.isInteger(sets) || sets < 0) {
         return { sets: null, countState: '件数不明', note: '予定表の件数を確認できないので、確認済み交換可能日にも作業量にもしません。' };
     }
@@ -180,6 +182,7 @@ function dashboardReplacementCandidate(roll, referenceAt) {
     const reference = String(referenceAt || '').slice(0, 10);
     const expected = typeof expectedWorkType === 'function' ? expectedWorkType(roll.standKey) : '';
     const rows = Array.isArray(roll.replacementPlan) ? roll.replacementPlan : [];
+    const dailyPlan = Array.isArray(roll.days) ? roll.days : [];
     const hours = dashboardConfirmedEffort(roll.standKey);
     if (!rows.length) {
         return { date: null, sets: null, listedDate: null, countState: '予定なし', note: `${hours.note}ロールカリバ替予定表が無いので、交換可能日も追加可能量も確定しません。` };
@@ -232,11 +235,16 @@ function dashboardReplacementCandidate(roll, referenceAt) {
             notes.push('連続操業では交換日にしません。');
             return;
         }
-        const day = (roll.days || []).find(item => String(item && item.date || '').slice(0, 10) === date);
-        if (!day) {
+        const matchingDays = dailyPlan.filter(item => String(item && item.date || '').slice(0, 10) === date);
+        if (!matchingDays.length) {
             notes.push('日別操業予定が無いので、確認済み交換可能日は確定しません。');
             return;
         }
+        if (matchingDays.length > 1) {
+            notes.push('同じ日付の日別操業予定が重複しているので、確認済み交換可能日は確定しません。');
+            return;
+        }
+        const [day] = matchingDays;
         if (day.daytimeStop !== 'yes') {
             notes.push('日別操業予定があるだけでは作業可能にしません。昼間の停止枠が明示されていないので、作業枠未確認です。');
             return;
