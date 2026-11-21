@@ -185,3 +185,13 @@ test('malformed future-month dates cannot hide unconfirmed production', () => {
         assert.throws(() => output.buildExportPayload({ schedule: [current, later] }, { period }), /後の月の生産量が未確認/);
     }
 });
+
+
+test('unparseable later dates with unknown amounts fail closed instead of bypassing month guard', () => {
+    const current = { date: '2031-11-01', size: 'D10', shift1Team: 'A', productionAmount: 400 };
+    const period = { year: 2031, month: 11 };
+    for (const date of ['2032/01/02', '2032-01', '2032.01.02']) {
+        const later = { date, size: 'D13', shift1Team: 'B', productionAmount: null };
+        assert.throws(() => output.buildExportPayload({ schedule: [current, later] }, { period }), /後の月の生産量が未確認/);
+    }
+});
