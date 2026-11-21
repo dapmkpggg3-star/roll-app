@@ -64,6 +64,22 @@ test('a different team remains eligible with a warning', () => {
     assert.match(result.warnings.join(' '), /再確認/);
 });
 
+test('a token that only contains the stop word is not a confirmed stop', () => {
+    assert.equal(api.normalizeSize('DSTOP'), '');
+    assert.equal(api.normalizeSize('STOP'), 'STOP');
+    assert.equal(api.normalizeSize('休止'), 'STOP');
+    assert.equal(api.normalizeSize('休み'), 'STOP');
+    assert.equal(api.normalizeSize(' 休 止 '), 'STOP');
+    assert.equal(api.normalizeSize('D13'), 'D13');
+    assert.equal(api.normalizeSize('XYZ'), '');
+    const bridged = rules.detectProductionSizeChanges([
+        { date: 'a', size: 'D1', productionAmount: 10 },
+        { date: 'b', size: 'DSTOP', productionAmount: 10 },
+        { date: 'c', size: 'D2', productionAmount: 10 }
+    ]);
+    assert.deepEqual(bridged, []);
+});
+
 test('a missing production amount does not bridge a size change', () => {
     const changes = rules.detectProductionSizeChanges([
         { date: 'sample-1', size: 'D1', productionAmount: 10 },

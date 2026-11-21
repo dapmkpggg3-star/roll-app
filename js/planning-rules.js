@@ -27,7 +27,7 @@
     function normalizeSize(value) {
         const token = normalizeToken(value).replace(/\s+/g, '');
         if (/^D\d+$/.test(token)) return token;
-        if (/STOP|休止|休み/.test(token)) return 'STOP';
+        if (token === 'STOP' || token === '休止' || token === '休み') return 'STOP';
         return '';
     }
 
@@ -134,7 +134,11 @@
                     return;
                 }
                 const size = normalizeSize(row && row.size);
-                if (!size || size === 'STOP') return;
+                if (!size) {
+                    if (amount > 0) segments.push([]);
+                    return;
+                }
+                if (size === 'STOP') return;
                 if (amount > 0) segments[segments.length - 1].push({ row, index, size });
             });
             const changes = [];
