@@ -1100,7 +1100,7 @@ function summarizeMonthlyProductionSchedule(schedule, referenceDate) {
         let hoursKnown = true;
         const shifts = new Set();
         items.forEach(item => {
-            if (typeof item.productionAmount !== 'number' || !Number.isFinite(item.productionAmount)) tonsKnown = false;
+            if (typeof item.productionAmount !== 'number' || !Number.isFinite(item.productionAmount) || item.productionAmount < 0) tonsKnown = false;
             else productionTons += item.productionAmount;
             if (typeof item.operatingHours !== 'number' || !Number.isFinite(item.operatingHours)) hoursKnown = false;
             else operatingHours += item.operatingHours;
@@ -1381,7 +1381,7 @@ function confirmedWorkCandidate(reachDate, stand, confirmation, days, referenceD
     }
     const row = (Array.isArray(days) ? days : []).find(item => item && String(item.date).slice(0, 10) === String(source.date).slice(0, 10));
     if (!row) return { date: null, note: '作業日が操業予定と照合できないので、参考候補は保留します。' };
-    if (typeof row.productionAmount !== 'number' || !Number.isFinite(row.productionAmount)) {
+    if (typeof row.productionAmount !== 'number' || !Number.isFinite(row.productionAmount) || row.productionAmount < 0) {
         return { date: null, note: '作業日の生産量が欠損しているので、0tとはみなさず、参考候補は判定不能です。確認済み交換可能日にはしません。' };
     }
     const producing = row.productionAmount > 0;
@@ -1429,7 +1429,7 @@ function forecastTonReach(source, basis, days) {
     days.forEach(row => {
         if (blocked) return;
         const amount = row.productionAmount;
-        if (typeof amount !== 'number' || !Number.isFinite(amount)) {
+        if (typeof amount !== 'number' || !Number.isFinite(amount) || amount < 0) {
             if (!reach || String(row.date).slice(0, 10) <= String(reach)) {
                 blocked = row.date;
                 reach = null;

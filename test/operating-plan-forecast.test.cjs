@@ -141,6 +141,13 @@ test('a past monthly schedule stays in tons and is not an annual plan or actual 
     rows: [{ standKey: '10', month: '2026-04', plannedUseCount: 1, actualUseCount: null, productionTons: 200 }]
   });
   assert.equal(rejected.ok, false);
+  const negativeTons = context.summarizeMonthlyProductionSchedule([
+    { date: '2027-04-01', size: 'D10', productionAmount: 100, shift1Team: 'A', shift3Team: 'B', operatingHours: 8 },
+    { date: '2027-04-02', size: 'D10', productionAmount: -1, shift1Team: 'A', shift3Team: 'B', operatingHours: 8 }
+  ], '2026-11-13');
+  assert.equal(negativeTons.months[0].productionTons, null);
+  assert.equal(negativeTons.usableForShortage, false);
+  assert.equal(negativeTons.acceptedAsActual, false);
 });
 
 test('rolling hours stay hours and are not added when a day is missing', () => {
@@ -374,6 +381,18 @@ test('past production tons do not become a future rework or purchase date', () =
   const dayStop = { ...nightStop, shift1Team: 'B', shift3Team: '' };
   const zeroSlot = context.confirmedWorkCandidate('2027-04-03', '2', work(), [dayStop], '2026-11-13');
   assert.equal(zeroSlot.date, '2027-04-02');
+  const negativeStop = { ...dayStop, productionAmount: -1 };
+  const negativeSlot = context.confirmedWorkCandidate('2027-04-03', '2', work(), [negativeStop], '2026-11-13');
+  assert.equal(negativeSlot.date, null);
+  assert.match(negativeSlot.note, /0tとはみなさず/);
+  const negativeReach = context.projectCaliberReplacement({
+    standKey: '2', referenceDate: '2026-11-13', standPass: 'pass', openingUsedRuns: 0, openingUsedTons: 13900,
+    days: [day('2027-04-01', 8, 'A', -500), day('2027-04-02', 8, 'A', 200)]
+  });
+  assert.equal(negativeReach.tonReachDate, null);
+  assert.equal(negativeReach.exchangeDate, null);
+  assert.match(negativeReach.reason, /判定不能|生産量未確認/);
+  assert.equal(negativeReach.reason.includes('達しません'), false);
   const nightOnly = context.projectCaliberReplacement({
     standKey: '2', referenceDate: '2026-11-13', standPass: 'pass', openingUsedRuns: 33, openingUsedTons: 12000,
     workConfirmation: work({ period: 'night' }), days: schedule

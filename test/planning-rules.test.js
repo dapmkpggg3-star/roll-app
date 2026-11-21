@@ -91,6 +91,12 @@ test('a missing production amount does not bridge a size change', () => {
     assert.equal(stopped.length, 1);
     assert.equal(stopped[0].fromSize, 'D1');
     assert.equal(stopped[0].toSize, 'D2');
+    const negative = rules.detectProductionSizeChanges([
+        { date: 'a', size: 'D1', productionAmount: 10 },
+        { date: 'b', size: 'D9', productionAmount: -1 },
+        { date: 'c', size: 'D2', productionAmount: 10 }
+    ]);
+    assert.deepEqual(negative, []);
 });
 
 test('size changes are detected without exposing source production amounts', () => {

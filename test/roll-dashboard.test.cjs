@@ -366,6 +366,22 @@ test('dashboard night-only uses the same normalized team rule', () => {
   assert.equal(context.dashboardNightOnly({ shift1Team: '不明', shift3Team: '' }), false);
 });
 
+test('a negative production amount is shown as missing, not as a measured figure', () => {
+  const fixture = context.anonymousDashboardFixture('2026-11-19T06:00:00.000Z');
+  const roll = fixture.rolls[0];
+  roll.days[0] = {
+    date: '2027-04-01', size: 'D1', operatingHours: -2, productionAmount: -1,
+    shift1Team: '', shift3Team: 'A', productionByTeam: { A: -1, B: 0 }
+  };
+  const model = context.buildRollDashboard(fixture);
+  const steps = rowOf(model, roll.rollId).basis.steps.join('\n');
+  assert.match(steps, /2027-04-01 生産量欠損 時間欠損/);
+  assert.match(steps, /A:欠損 B:0/);
+  assert.equal(steps.includes('生産量-1'), false);
+  assert.equal(steps.includes('A:-1'), false);
+  assert.equal(steps.includes('時間-2'), false);
+});
+
 test('dashboard files are wired without a ledger write, and CI names the same tests', () => {
   const dashboard = fs.readFileSync(path.join(root, 'js/roll-dashboard.js'), 'utf8');
   const page = fs.readFileSync(path.join(root, 'roll-dashboard.html'), 'utf8');

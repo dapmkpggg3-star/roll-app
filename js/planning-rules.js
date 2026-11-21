@@ -128,7 +128,7 @@
             const segments = [[]];
             rows.forEach((row, index) => {
                 const amount = row && row.productionAmount;
-                const known = typeof amount === 'number' && Number.isFinite(amount);
+                const known = typeof amount === 'number' && Number.isFinite(amount) && amount >= 0;
                 if (!known) {
                     segments.push([]);
                     return;

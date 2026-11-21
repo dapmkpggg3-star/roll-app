@@ -79,6 +79,48 @@
         return /^D\d+$/.test(token) ? token : '';
     }
 
+    function invalidPeriodReason(period) {
+        if (!period || !Number.isInteger(period.year) || !Number.isInteger(period.month)) return '出力する年月の指定が不正です。';
+        if (period.month < 1 || period.month > 12) return '出力する年月の指定が不正です。';
+        return '';
+    }
+
+    function claimsPeriod(raw, period) {
+        const text = String(raw || '');
+        if (text.startsWith(`${period.year}-${String(period.month).padStart(2, '0')}`)) return true;
+        const match = text.match(/^(\d{4})-(\d{1,2})-/);
+        return Boolean(match && Number(match[1]) === period.year && Number(match[2]) === period.month);
+    }
+
+    function outputMonthReason(schedule, period) {
+        const rows = (Array.isArray(schedule) ? schedule : []).filter(row => claimsPeriod(row && row.date, period));
+        const seen = new Set();
+        const days = [];
+        for (const row of rows) {
+            const parts = dateParts(row && row.date);
+            if (!parts || parts.year !== period.year || parts.month !== period.month) {
+                return '出力対象月の日付を確認できない行があるので、出力する年月を確定できません。';
+            }
+            if (seen.has(parts.day)) return '同じ日付が重なっているので、出力する年月を確定できません。';
+            seen.add(parts.day);
+            days.push(parts.day);
+            if (productionAmountState(row.productionAmount) === 'unknown') {
+                return '出力対象月の生産量が未確認なので、出力する年月を確定できません。';
+            }
+            if (!displaySize(row.size)) return '出力対象月のサイズが未確認なので、出力する年月を確定できません。';
+            if (!normalizeTeam(row.shift1Team) && !normalizeTeam(row.shift3Team)) {
+                return '出力対象月の班が未確認なので、出力する年月を確定できません。';
+            }
+        }
+        days.sort((left, right) => left - right);
+        for (let index = 1; index < days.length; index += 1) {
+            if (days[index] !== days[index - 1] + 1) {
+                return '出力対象月の日付行が抜けているので、出力する年月を確定できません。';
+            }
+        }
+        return '';
+    }
+
     function buildCalendarRows(schedule, period) {
         return (Array.isArray(schedule) ? schedule : [])
             .filter(row => samePeriod(row && row.date, period))
@@ -112,9 +154,13 @@
         const schedule = Array.isArray(parsed && parsed.schedule) ? parsed.schedule : [];
         const period = options && options.period ? options.period : latestPeriod(schedule);
         if (!period) throw new Error('出力する生産予定の年月を確認できませんでした。');
+        const invalidPeriod = invalidPeriodReason(period);
+        if (invalidPeriod) throw new Error(invalidPeriod);
         if (laterAmountUnconfirmed(schedule, period)) {
             throw new Error('後の月の生産量が未確認なので、出力する年月を確定できません。');
         }
+        const monthReason = outputMonthReason(schedule, period);
+        if (monthReason) throw new Error(monthReason);
         const planning = parsed && parsed.planning ? parsed.planning : {};
         const calendarRows = buildCalendarRows(schedule, period);
         if (!calendarRows.length) throw new Error('出力対象月の生産予定がありません。');
