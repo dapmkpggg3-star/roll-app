@@ -97,7 +97,7 @@
     function claimsPeriod(raw, period) {
         const text = String(raw || '');
         if (text.startsWith(`${period.year}-${String(period.month).padStart(2, '0')}`)) return true;
-        const match = text.match(/^(\d{4})[-/.](\d{1,2})(?=[-/.]|$)/);
+        const match = text.match(/^(\d{4})(?:[-/._\s]|年)\s*(\d{1,2})(?=[-/._\s]|月|$)/);
         return Boolean(match && Number(match[1]) === period.year && Number(match[2]) === period.month);
     }
 
