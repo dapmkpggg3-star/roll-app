@@ -17,14 +17,28 @@
     }
 
     function latestPeriod(schedule) {
-        const rows = Array.isArray(schedule) ? schedule : [];
-        const activeRows = rows.filter(row => Number(row && row.productionAmount || 0) > 0 && displaySize(row && row.size) !== '休止');
-        const periods = (activeRows.length ? activeRows : rows)
-            .map(row => dateParts(row && row.date))
-            .filter(Boolean)
-            .sort((left, right) => left.date - right.date);
-        const latest = periods[periods.length - 1];
-        return latest ? { year: latest.year, month: latest.month } : null;
+        const rows = (Array.isArray(schedule) ? schedule : [])
+            .map(row => ({ row, parts: dateParts(row && row.date) }))
+            .filter(item => item.parts)
+            .sort((left, right) => left.parts.date - right.parts.date);
+        let lastPositive = null;
+        let unknownLaterMonth = false;
+        rows.forEach(item => {
+            const amount = item.row.productionAmount;
+            const known = typeof amount === 'number' && Number.isFinite(amount);
+            if (!known) {
+                if (lastPositive && (item.parts.year !== lastPositive.year || item.parts.month !== lastPositive.month)) {
+                    unknownLaterMonth = true;
+                }
+                return;
+            }
+            if (amount > 0 && displaySize(item.row.size) !== '休止') {
+                lastPositive = item.parts;
+                unknownLaterMonth = false;
+            }
+        });
+        if (!lastPositive || unknownLaterMonth) return null;
+        return { year: lastPositive.year, month: lastPositive.month };
     }
 
     function samePeriod(value, period) {

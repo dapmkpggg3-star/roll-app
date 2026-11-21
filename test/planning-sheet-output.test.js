@@ -27,6 +27,15 @@ test('a blank future placeholder month does not replace the latest active produc
     }])), { year: 2031, month: 10 });
 });
 
+test('an unknown amount in a later month does not keep the earlier month as confirmed output', () => {
+    assert.equal(output.latestPeriod(schedule.concat([{
+        date: '2031-11-01', size: '', productionAmount: null
+    }])), null);
+    assert.throws(() => output.buildExportPayload({
+        schedule: schedule.concat([{ date: '2031-11-01', size: 'D1', productionAmount: null }])
+    }, { now: 1, random: 0 }), /年月を確認できません/);
+});
+
 test('calendar output contains no production amounts', () => {
     const rows = output.buildCalendarRows(schedule, { year: 2031, month: 10 });
     assert.deepEqual(rows[0], {
