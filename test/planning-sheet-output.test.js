@@ -175,3 +175,13 @@ test('an array is not a confirmed shift team even when it contains a single team
     assert.throws(() => payload(['A']), /班が未確認/);
     assert.equal(payload('Ａ').calendarRows[0].operationAShift, 'Ⅰ');
 });
+
+
+test('malformed future-month dates cannot hide unconfirmed production', () => {
+    const current = { date: '2031-11-01', size: 'D10', shift1Team: 'A', productionAmount: 400 };
+    const period = { year: 2031, month: 11 };
+    for (const date of ['2031-12-02', '2031-12-02INVALID', '2031-12-02T99:99']) {
+        const later = { date, size: 'D13', shift1Team: 'B', productionAmount: null };
+        assert.throws(() => output.buildExportPayload({ schedule: [current, later] }, { period }), /後の月の生産量が未確認/);
+    }
+});
