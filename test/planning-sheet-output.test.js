@@ -168,3 +168,10 @@ test('a nested date value cannot be exported as a calendar date', () => {
         period: { year: 2031, month: 10 }
     }), /日付を確認できない/);
 });
+
+test('an array is not a confirmed shift team even when it contains a single team name', () => {
+    const row = { ...schedule[2], shift3Team: '' };
+    const payload = input => output.buildExportPayload({ schedule: [{ ...row, shift1Team: input }] });
+    assert.throws(() => payload(['A']), /班が未確認/);
+    assert.equal(payload('Ａ').calendarRows[0].operationAShift, 'Ⅰ');
+});
