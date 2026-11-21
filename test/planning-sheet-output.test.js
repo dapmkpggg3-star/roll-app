@@ -27,6 +27,79 @@ test('a blank future placeholder month does not replace the latest active produc
     }])), { year: 2031, month: 10 });
 });
 
+test('an explicit output month still stops when a later amount is unknown or negative', () => {
+    const laterNull = schedule.concat([{ date: '2031-11-01', size: '', productionAmount: null }]);
+    const laterNegative = schedule.concat([{ date: '2031-11-01', size: 'D1', productionAmount: -1 }]);
+    assert.equal(output.latestPeriod(laterNegative), null);
+    assert.equal(output.laterAmountUnconfirmed(laterNull, { year: 2031, month: 10 }), true);
+    assert.throws(() => output.buildExportPayload({ schedule: laterNull }, {
+        period: { year: 2031, month: 10 }, now: 1, random: 0
+    }), /後の月の生産量が未確認/);
+    assert.throws(() => output.buildExportPayload({ schedule: laterNegative }, {
+        period: { year: 2031, month: 10 }, now: 1, random: 0
+    }), /後の月の生産量が未確認/);
+    const payload = output.buildExportPayload({ schedule: schedule.concat([{
+        date: '2031-11-01', size: 'STOP', productionAmount: 0
+    }]) }, { period: { year: 2031, month: 10 }, now: 1, random: 0 });
+    assert.equal(payload.year, 2031);
+    assert.equal(payload.month, 10);
+    assert.deepEqual(payload.suggestions, []);
+});
+
+test('an unknown amount in a later month does not keep the earlier month as confirmed output', () => {
+    assert.equal(output.latestPeriod(schedule.concat([{
+        date: '2031-11-01', size: '', productionAmount: null
+    }])), null);
+    assert.throws(() => output.buildExportPayload({
+        schedule: schedule.concat([{ date: '2031-11-01', size: 'D1', productionAmount: null }])
+    }, { now: 1, random: 0 }), /年月を確認できません/);
+});
+
+test('an incomplete output month does not look like a finished plan', () => {
+    const day = (date, extra = {}) => ({
+        date, size: 'D13', shift1Team: 'B', shift3Team: 'A', productionAmount: 100, ...extra
+    });
+    const options = { period: { year: 2031, month: 10 }, now: 1, random: 0 };
+    assert.throws(() => output.buildExportPayload({
+        schedule: [day('2031-10-01'), day('2031-10-03')]
+    }, options), /日付行が抜けている/);
+    assert.throws(() => output.buildExportPayload({
+        schedule: [day('2031-10-01'), day('2031-10-01')]
+    }, options), /同じ日付が重なっている/);
+    assert.throws(() => output.buildExportPayload({
+        schedule: [day('2031-10-01'), day('2031-10-02', { date: '2031-10-02 ' })]
+    }, options), /日付を確認できない/);
+    for (const period of [{ year: 2031, month: 13 }, { year: 2031, month: 0 }, { year: '2031', month: '10' }, { year: 2031, month: 10.5 }]) {
+        assert.throws(() => output.buildExportPayload({ schedule: [day('2031-10-01'), day('2031-10-02')] }, {
+            period, now: 1, random: 0
+        }), /年月の指定が不正/);
+    }
+    for (const extra of [
+        { productionAmount: null },
+        { productionAmount: -1 },
+        { productionAmount: Number.NaN },
+        { productionAmount: '100' },
+        { size: '' },
+        { size: 'D' },
+        { shift1Team: '', shift3Team: '' },
+        { shift1Team: 'C', shift3Team: ' ' }
+    ]) {
+        assert.throws(() => output.buildExportPayload({
+            schedule: [day('2031-10-01'), day('2031-10-02', extra)]
+        }, options), /未確認/);
+    }
+    const nightOnly = output.buildExportPayload({
+        schedule: [day('2031-10-01', { shift1Team: '', shift3Team: 'A', productionAmount: 0, size: 'STOP' })]
+    }, options);
+    assert.equal(nightOnly.month, 10);
+    assert.equal(nightOnly.calendarRows[0].operationAShift, 'Ⅲ');
+    assert.deepEqual(nightOnly.suggestions, []);
+    const middle = output.buildExportPayload({
+        schedule: [day('2031-10-15', { size: 'STOP', productionAmount: 0 }), day('2031-10-16')]
+    }, options);
+    assert.equal(middle.calendarRows.length, 2);
+});
+
 test('calendar output contains no production amounts', () => {
     const rows = output.buildCalendarRows(schedule, { year: 2031, month: 10 });
     assert.deepEqual(rows[0], {

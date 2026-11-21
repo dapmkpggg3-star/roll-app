@@ -64,7 +64,8 @@ test('recommendation prefers the next production team when configured', () => {
         },
         {
             date: 'sample-2', size: 'STOP', productionAmount: 0,
-            shift1Team: 'B', shift3Team: '', productionByTeam: { A: 0, B: 0 }
+            shift1Team: 'B', shift3Team: '', productionByTeam: { A: 0, B: 0 },
+            requiredWorks: []
         },
         {
             date: 'sample-3', size: 'D2', productionAmount: 1,

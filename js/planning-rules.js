@@ -125,23 +125,33 @@
 
         function detectProductionSizeChanges(schedule) {
             const rows = Array.isArray(schedule) ? schedule : [];
-            const productionRows = rows
-                .map((row, index) => ({ row, index, size: normalizeSize(row && row.size) }))
-                .filter(item => item.size && item.size !== 'STOP' && Number(item.row.productionAmount || 0) > 0);
+            const segments = [[]];
+            rows.forEach((row, index) => {
+                const amount = row && row.productionAmount;
+                const known = typeof amount === 'number' && Number.isFinite(amount) && amount >= 0;
+                if (!known) {
+                    segments.push([]);
+                    return;
+                }
+                const size = normalizeSize(row && row.size);
+                if (!size || size === 'STOP') return;
+                if (amount > 0) segments[segments.length - 1].push({ row, index, size });
+            });
             const changes = [];
-
-            for (let i = 1; i < productionRows.length; i += 1) {
-                const previous = productionRows[i - 1];
-                const next = productionRows[i];
-                if (previous.size === next.size) continue;
-                changes.push({
-                    fromDate: previous.row.date,
-                    toDate: next.row.date,
-                    fromSize: previous.size,
-                    toSize: next.size,
-                    candidateRows: rows.slice(previous.index, next.index + 1)
-                });
-            }
+            segments.forEach(productionRows => {
+                for (let i = 1; i < productionRows.length; i += 1) {
+                    const previous = productionRows[i - 1];
+                    const next = productionRows[i];
+                    if (previous.size === next.size) continue;
+                    changes.push({
+                        fromDate: previous.row.date,
+                        toDate: next.row.date,
+                        fromSize: previous.size,
+                        toSize: next.size,
+                        candidateRows: rows.slice(previous.index, next.index + 1)
+                    });
+                }
+            });
             return changes;
         }
 

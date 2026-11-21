@@ -118,9 +118,13 @@ function dashboardLeadText(leadTime) {
 }
 
 function dashboardNightOnly(row) {
-    const dayTeam = String(row && row.shift1Team || '').trim();
-    const nightTeam = String(row && row.shift3Team || '').trim();
-    return Boolean(nightTeam) && !dayTeam;
+    const scheduleApi = globalThis.RollPlanningSchedule;
+    if (scheduleApi && typeof scheduleApi.isNightOnlyRow === 'function') return scheduleApi.isNightOnlyRow(row);
+    const token = value => {
+        const text = String(value || '').normalize('NFKC').trim().toUpperCase();
+        return text === 'A' || text === 'B' ? text : '';
+    };
+    return Boolean(token(row && row.shift3Team)) && !token(row && row.shift1Team);
 }
 
 function dashboardLimitText(projected) {
@@ -486,11 +490,17 @@ function buildDashboardRow(roll, revision, referenceAt, previousRevision) {
     };
 }
 
+function traceQuantity(value) {
+    return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? String(value) : '欠損';
+}
+
 function dashboardDayTrace(day) {
-    const amount = day && typeof day.productionAmount === 'number' && Number.isFinite(day.productionAmount) ? String(day.productionAmount) : '欠損';
-    const hours = day && typeof day.operatingHours === 'number' && Number.isFinite(day.operatingHours) ? String(day.operatingHours) : '欠損';
+    const amount = traceQuantity(day && day.productionAmount);
+    const hours = traceQuantity(day && day.operatingHours);
     const kind = typeof dayQuantityClass === 'function' ? dayQuantityClass(day) : '区分未確認';
-    const teams = day && day.productionByTeam ? `A:${day.productionByTeam.A === 0 || day.productionByTeam.A ? day.productionByTeam.A : '欠損'} B:${day.productionByTeam.B === 0 || day.productionByTeam.B ? day.productionByTeam.B : '欠損'}` : '勤務別は未確認';
+    const teams = day && day.productionByTeam
+        ? `A:${traceQuantity(day.productionByTeam.A)} B:${traceQuantity(day.productionByTeam.B)}`
+        : '勤務別は未確認';
     return `${day && day.date || '日付未確認'} 生産量${amount} 時間${hours} 区分${kind} 勤務別${teams}`;
 }
 

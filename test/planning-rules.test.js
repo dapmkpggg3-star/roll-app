@@ -46,9 +46,9 @@ test('joint maintenance can accept a larger bundle', () => {
 
 test('stopped shift with the next production team ranks first', () => {
     const chosen = rules.chooseSizeChangeSlot([
-        { id: 'day', type: SLOT_TYPES.DAY_MAINTENANCE, team: 'A', productionActive: false },
-        { id: 'other', type: SLOT_TYPES.STOPPED_SHIFT, team: 'B', productionActive: false },
-        { id: 'same', type: SLOT_TYPES.STOPPED_SHIFT, team: 'A', productionActive: false }
+        { id: 'day', type: SLOT_TYPES.DAY_MAINTENANCE, team: 'A', productionActive: false, requiredCompanionWorkCount: 0 },
+        { id: 'other', type: SLOT_TYPES.STOPPED_SHIFT, team: 'B', productionActive: false, requiredCompanionWorkCount: 0 },
+        { id: 'same', type: SLOT_TYPES.STOPPED_SHIFT, team: 'A', productionActive: false, requiredCompanionWorkCount: 0 }
     ], 'A');
     assert.equal(chosen.slot.id, 'same');
 });
@@ -57,10 +57,46 @@ test('a different team remains eligible with a warning', () => {
     const result = rules.scoreSizeChangeSlot({
         type: SLOT_TYPES.STOPPED_SHIFT,
         team: 'B',
-        productionActive: false
+        productionActive: false,
+        requiredCompanionWorkCount: 0
     }, 'A');
     assert.equal(result.eligible, true);
     assert.match(result.warnings.join(' '), /再確認/);
+});
+
+test('a missing production amount does not bridge a size change', () => {
+    const changes = rules.detectProductionSizeChanges([
+        { date: 'sample-1', size: 'D1', productionAmount: 10 },
+        { date: 'sample-2', size: 'D2', productionAmount: null },
+        { date: 'sample-3', size: 'D1', productionAmount: 10 }
+    ]);
+    assert.deepEqual(changes, []);
+    const blank = rules.detectProductionSizeChanges([
+        { date: 'sample-1', size: 'D1', productionAmount: 10 },
+        { date: 'sample-2', size: 'D2', productionAmount: ' ' },
+        { date: 'sample-3', size: 'D3', productionAmount: 10 }
+    ]);
+    assert.deepEqual(blank, []);
+    const unnamed = rules.detectProductionSizeChanges([
+        { date: 'a', size: 'D1', productionAmount: 10 },
+        { date: 'b', size: '', productionAmount: null },
+        { date: 'c', size: 'D2', productionAmount: 10 }
+    ]);
+    assert.deepEqual(unnamed, []);
+    const stopped = rules.detectProductionSizeChanges([
+        { date: 'a', size: 'D1', productionAmount: 10 },
+        { date: 'b', size: 'STOP', productionAmount: 0 },
+        { date: 'c', size: 'D2', productionAmount: 10 }
+    ]);
+    assert.equal(stopped.length, 1);
+    assert.equal(stopped[0].fromSize, 'D1');
+    assert.equal(stopped[0].toSize, 'D2');
+    const negative = rules.detectProductionSizeChanges([
+        { date: 'a', size: 'D1', productionAmount: 10 },
+        { date: 'b', size: 'D9', productionAmount: -1 },
+        { date: 'c', size: 'D2', productionAmount: 10 }
+    ]);
+    assert.deepEqual(negative, []);
 });
 
 test('size changes are detected without exposing source production amounts', () => {
