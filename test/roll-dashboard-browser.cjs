@@ -151,13 +151,15 @@ async function main() {
     const mutationCases = [
       { duplicated: false, setsWritten: 1, expected: '2027-04-02' },
       { duplicated: true, setsWritten: 1, expected: '作業枠未確認' },
-      { duplicated: false, setsWritten: true, expected: '作業枠未確認' }
+      { duplicated: false, setsWritten: true, expected: '作業枠未確認' },
+      { dailyDate: '2027-04-02INVALID', setsWritten: 1, expected: '作業枠未確認' },
+      { dailyDate: '2027-04-02T99:99', setsWritten: 1, expected: '作業枠未確認' }
     ];
     for (const { expected, ...scenario } of mutationCases) {
-      await page.evaluate(({ duplicated, setsWritten }) => {
+      await page.evaluate(({ dailyDate, duplicated, setsWritten }) => {
         const roll = fixture.rolls[0];
         const date = '2027-04-02';
-        const stopped = { date, shift1Team: 'A', daytimeStop: 'yes', productionAmount: 0, operatingHours: 0 };
+        const stopped = { date: dailyDate || date, shift1Team: 'A', daytimeStop: 'yes', productionAmount: 0, operatingHours: 0 };
         roll.days = [stopped];
         if (duplicated) roll.days.push({ date, shift1Team: 'A', productionAmount: 10, operatingHours: 8 });
         roll.replacementPlan = [{
