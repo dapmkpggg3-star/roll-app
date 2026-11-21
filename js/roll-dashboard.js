@@ -153,10 +153,12 @@ function dashboardReplacementSets(entry) {
     if (!entry || entry.packedFromHours === true) {
         return { sets: null, countState: '時間から作成', note: '所要時間からセット数は作りません。8時間枠へは詰め込みません。' };
     }
-    if (entry.setsWritten === undefined || entry.setsWritten === null || entry.setsWritten === '') {
+    const written = entry.setsWritten;
+    const isNumericInput = typeof written === 'number' || (typeof written === 'string' && written.trim() !== '');
+    if (!isNumericInput) {
         return { sets: null, countState: '件数不明', note: '予定件数が不明なので、確認済み交換可能日にも作業量にもしません。' };
     }
-    const sets = Number(entry.setsWritten);
+    const sets = Number(written);
     if (!Number.isInteger(sets) || sets < 0) {
         return { sets: null, countState: '件数不明', note: '予定表の件数を確認できないので、確認済み交換可能日にも作業量にもしません。' };
     }
@@ -176,10 +178,18 @@ function dashboardWorkReady(roll, date, expected, day) {
     return described;
 }
 
+function dashboardCalendarDate(value) {
+    const date = String(value || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return '';
+    const timestamp = Date.parse(date + 'T00:00:00Z');
+    return Number.isFinite(timestamp) && new Date(timestamp).toISOString().slice(0, 10) === date ? date : '';
+}
+
 function dashboardReplacementCandidate(roll, referenceAt) {
-    const reference = String(referenceAt || '').slice(0, 10);
+    const reference = dashboardCalendarDate(referenceAt);
     const expected = typeof expectedWorkType === 'function' ? expectedWorkType(roll.standKey) : '';
     const rows = Array.isArray(roll.replacementPlan) ? roll.replacementPlan : [];
+    const dailyPlan = Array.isArray(roll.days) ? roll.days : [];
     const hours = dashboardConfirmedEffort(roll.standKey);
     if (!rows.length) {
         return { date: null, sets: null, listedDate: null, countState: '予定なし', note: `${hours.note}ロールカリバ替予定表が無いので、交換可能日も追加可能量も確定しません。` };
@@ -206,8 +216,8 @@ function dashboardReplacementCandidate(roll, referenceAt) {
             notes.push('予定か実績かが未確認なので、交換日にしません。');
             return;
         }
-        const date = String(entry.date || '').slice(0, 10);
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date < reference) {
+        const date = dashboardCalendarDate(entry.date);
+        if (!date || !reference || date < reference) {
             notes.push('過去の予定や日付未確認は、将来の交換日にしません。');
             return;
         }
@@ -232,11 +242,16 @@ function dashboardReplacementCandidate(roll, referenceAt) {
             notes.push('連続操業では交換日にしません。');
             return;
         }
-        const day = (roll.days || []).find(item => String(item && item.date || '').slice(0, 10) === date);
-        if (!day) {
+        const matchingDays = dailyPlan.filter(item => String(item && item.date || '').slice(0, 10) === date);
+        if (!matchingDays.length) {
             notes.push('日別操業予定が無いので、確認済み交換可能日は確定しません。');
             return;
         }
+        if (matchingDays.length > 1) {
+            notes.push('同じ日付の日別操業予定が重複しているので、確認済み交換可能日は確定しません。');
+            return;
+        }
+        const [day] = matchingDays;
         if (day.daytimeStop !== 'yes') {
             notes.push('日別操業予定があるだけでは作業可能にしません。昼間の停止枠が明示されていないので、作業枠未確認です。');
             return;
@@ -279,21 +294,26 @@ function anonymousReplacementTemplate() {
 
 function classifyReplacementTemplateRow(row, referenceAt) {
     const label = String(row && row.区分 || '');
-    const date = String(row && row.日付 || '').slice(0, 10);
-    const reference = String(referenceAt || '').slice(0, 10);
+    const date = dashboardCalendarDate(row && row.日付);
+    const reference = dashboardCalendarDate(referenceAt);
     if (label === '完了実績') return '完了実績';
     if (label === '過去の計画' || (date && reference && date < reference)) return '過去の計画';
-    if (label === '現在の計画' && date >= reference) return '現在の計画';
+    if (label === '現在の計画' && date && reference && date >= reference) return '現在の計画';
     return '未確認';
 }
 
-function replacementJobsFromTemplate(template, standKey) {
-    const stand = String(standKey || '').replace(/^#/, '');
-    return (template && template.rows || []).filter(row => String(row.作業予定 || '').includes('#' + stand)).map(row => ({
+function replacementJobsFromTemplate(template, standKey, referenceAt) {
+    const stand = String(standKey || '').normalize('NFKC').trim().replace(/^#/, '');
+    const rows = Array.isArray(template && template.rows) ? template.rows : [];
+    const kinds = { '完了実績': 'actual', '現在の計画': 'plan', '過去の計画': 'past' };
+    return rows.filter(row => {
+        const work = String(row && row.作業予定 || '').normalize('NFKC');
+        return Array.from(work.matchAll(/#(\d+)/g)).some(match => match[1] === stand);
+    }).map(row => ({
         standKey: stand,
         date: row.日付,
         workType: String(row.作業予定 || '').includes('カリバ替') ? 'caliberChange' : '',
-        kind: row.区分 === '完了実績' ? 'actual' : 'plan',
+        kind: kinds[classifyReplacementTemplateRow(row, referenceAt)] || 'unconfirmed',
         withinShift: '',
         constraintsKnown: '',
         setsWritten: row.予定件数,

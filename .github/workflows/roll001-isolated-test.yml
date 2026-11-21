@@ -12,6 +12,7 @@ on:
       - audit/20261120-no-slot-no-proposal
       - audit/20261121-planning-view-failclosed
       - cursor/night-only-and-clear-guard-4222
+      - audit/20261121-dashboard-exchange-guard
     paths:
       - '.github/workflows/roll001-isolated-test.yml'
       - 'index.html'
@@ -22,6 +23,7 @@ on:
       - 'test/roll001-spare-readiness.test.cjs'
       - 'test/roll001-procurement-risk-audit.test.cjs'
       - 'test/sync-revision-guard.test.js'
+      - 'test/sync-display.test.js'
       - 'test/auth-boundary.test.js'
       - 'google-apps-script.gs'
       - 'test/roll003-independent-originals.test.cjs'
@@ -76,7 +78,7 @@ jobs:
         with:
           node-version: '22'
       - name: Run real repository test with mock data only
-        run: node --test test/today-task-target-visibility.test.js test/roll001-spare-readiness.test.cjs test/roll001-procurement-risk-audit.test.cjs test/sync-revision-guard.test.js test/auth-boundary.test.js test/roll003-independent-originals.test.cjs test/roll003-offline-recovery.test.cjs test/roll004-hidden-status-filter.test.cjs test/roll005-print-contract.test.cjs test/planning-rules.test.js test/planning-view.test.js test/planning-calibers.test.js test/planning-import.test.js test/planning-sheet-output.test.js test/schedule-column-layout.test.js test/schedule-clear-guard.test.js test/operating-plan-forecast.test.cjs test/forecast-master-adapter.test.cjs test/rework-cycle-reset.test.cjs test/roll-dashboard.test.cjs test/roll-acceptance-prep.test.cjs
+        run: node --test test/today-task-target-visibility.test.js test/roll001-spare-readiness.test.cjs test/roll001-procurement-risk-audit.test.cjs test/sync-revision-guard.test.js test/sync-display.test.js test/auth-boundary.test.js test/roll003-independent-originals.test.cjs test/roll003-offline-recovery.test.cjs test/roll004-hidden-status-filter.test.cjs test/roll005-print-contract.test.cjs test/planning-rules.test.js test/planning-view.test.js test/planning-calibers.test.js test/planning-import.test.js test/planning-sheet-output.test.js test/schedule-column-layout.test.js test/schedule-clear-guard.test.js test/operating-plan-forecast.test.cjs test/forecast-master-adapter.test.cjs test/rework-cycle-reset.test.cjs test/roll-dashboard.test.cjs test/roll-acceptance-prep.test.cjs
 
   isolated-browser:
     runs-on: ubuntu-24.04

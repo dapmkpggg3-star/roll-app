@@ -329,6 +329,20 @@ async function main() {
     await page.locator('#annual-form-basis').screenshot({ path: path.join(root, 'artifacts/roll001-dom/annual-form-basis.png') });
     await page.locator('#annual-form-sheet').screenshot({ path: path.join(root, 'artifacts/roll001-dom/annual-form-sample.png') });
     assert.match(await page.locator('#output-form-gaps').innerText(), /2025年度の過去数値は現在の発注済みや確定予測にしません/);
+    const [annualDownload] = await Promise.all([
+      page.waitForEvent('download'),
+      page.locator('#annual-form-download').click()
+    ]);
+    assert.equal(annualDownload.suggestedFilename(), 'annual-form-anonymous-sample.xlsx');
+    const annualExportPath = path.join(root, 'artifacts/roll001-dom', annualDownload.suggestedFilename());
+    await annualDownload.saveAs(annualExportPath);
+    const annualExport = fs.readFileSync(annualExportPath);
+    assert.equal(annualExport.readUInt32LE(0), 0x04034b50);
+    // The workbook writer uses stored ZIP entries, so the XML is visible in the downloaded bytes.
+    assert.ok(annualExport.includes(Buffer.from("'匿名見本ロール(計画)'!$A$1:$AC$49")));
+    assert.ok(annualExport.includes(Buffer.from('<pageSetup paperSize="8" scale="72" fitToWidth="1" fitToHeight="1" orientation="landscape"/>')));
+    assert.ok(annualExport.includes(Buffer.from('<f>AC24/AB5*1000</f>')));
+
     await page.evaluate(() => {
       document.getElementById('caliber-stand').value = '16';
       document.getElementById('caliber-size').value = 'D10';

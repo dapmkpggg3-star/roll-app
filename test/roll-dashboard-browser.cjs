@@ -146,6 +146,34 @@ async function main() {
     const splitOverflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     assert.ok(splitOverflow < 8, `400px overflow ${splitOverflow}`);
     assert.deepEqual(await page.evaluate(() => window.__storageCalls), { setItem: 0, removeItem: 0, clear: 0 });
+    const dashboardRow = page.locator('tr[data-roll="#10-ANON-1"]');
+    const exchangeDate = dashboardRow.locator('[data-label="確認済み交換可能日"]');
+    const mutationCases = [
+      { duplicated: false, setsWritten: 1, expected: '2027-04-02' },
+      { duplicated: true, setsWritten: 1, expected: '作業枠未確認' },
+      { duplicated: false, setsWritten: true, expected: '作業枠未確認' }
+    ];
+    for (const { expected, ...scenario } of mutationCases) {
+      await page.evaluate(({ duplicated, setsWritten }) => {
+        const roll = fixture.rolls[0];
+        const date = '2027-04-02';
+        const stopped = { date, shift1Team: 'A', daytimeStop: 'yes', productionAmount: 0, operatingHours: 0 };
+        roll.days = [stopped];
+        if (duplicated) roll.days.push({ date, shift1Team: 'A', productionAmount: 10, operatingHours: 8 });
+        roll.replacementPlan = [{
+          standKey: roll.standKey, date, workType: 'caliberChange', kind: 'plan',
+          withinShift: 'yes', constraintsKnown: 'yes', setsWritten
+        }];
+        roll.workConfirmation = {
+          date, period: 'day', workType: 'caliberChange', requiredHours: 1, reservedHours: 1, people: 3,
+          continuous: 'no', changeover: 'yes', threeSet: 'yes'
+        };
+        render();
+      }, scenario);
+      assert.equal(await exchangeDate.innerText(), expected);
+      assert.equal(await dashboardRow.locator('[data-label="予定表上の交換候補日"]').innerText(), '2027-04-02');
+    }
+    assert.deepEqual(await page.evaluate(() => window.__storageCalls), { setItem: 0, removeItem: 0, clear: 0 });
     await page.goto('http://roll-app.test/roll-management-sheet.html');
     await page.waitForSelector('#sheet-rows tr[data-roll]');
     assert.equal(await page.locator('.roll-card').count(), 3);
@@ -201,7 +229,7 @@ async function main() {
       page: 'roll-dashboard.html',
       data: 'anonymous',
       externalRequests: blocked,
-      checks: ['search', 'basis', 'manual-plan-kept', 'snapshot-frozen', 'warning-separate']
+      checks: ['search', 'basis', 'manual-plan-kept', 'snapshot-frozen', 'warning-separate', 'ambiguous-exchange-unconfirmed']
     }, null, 2));
     assert.deepEqual(await page.evaluate(() => window.__storageCalls), { setItem: 0, removeItem: 0, clear: 0 });
     assert.deepEqual(blocked, []);

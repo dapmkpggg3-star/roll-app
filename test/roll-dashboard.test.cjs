@@ -331,7 +331,7 @@ test('a night-only stop is not an exchange date, and a checked daytime stop can 
   assert.deepEqual(Array.from(template.columns), ['日付', '曜日', 'サイズ', '操業A', '操業B', '常昼', '作業予定', '予定件数', '区分']);
   const classes = template.rows.map(row => context.classifyReplacementTemplateRow(row, fixture.referenceAt));
   assert.equal(Array.from(classes).join(','), '過去の計画,現在の計画,完了実績');
-  const fromTemplate = Object.assign({}, day, { replacementPlan: context.replacementJobsFromTemplate(template, '10') });
+  const fromTemplate = Object.assign({}, day, { replacementPlan: context.replacementJobsFromTemplate(template, '10', fixture.referenceAt) });
   assert.equal(context.buildDashboardRow(fromTemplate, fixture.revisions[0], fixture.referenceAt, null).auto.exchangeDate, null);
   assert.equal(accepted.diff.manualVersusAuto.includes('使用終了予定と交換候補は種類が違う'), true);
   const steps = accepted.basis.steps.join('\n');
@@ -350,6 +350,84 @@ test('a night-only stop is not an exchange date, and a checked daytime stop can 
   assert.equal(compared.revised.confirmed, '作業枠未確認');
   assert.notEqual(compared.revised.useCount, compared.normal.useCount);
   assert.match(compared.revised.limit, /2027-04-04は上限到達の見込み/);
+});
+
+test('conflicting daily rows never confirm an exchange date, regardless of order', () => {
+  const fixture = context.anonymousDashboardFixture();
+  const roll = fixture.rolls[0];
+  const date = '2027-04-02';
+  const stopped = { date, shift1Team: 'A', daytimeStop: 'yes', productionAmount: 0, operatingHours: 0 };
+  const producing = { date, shift1Team: 'A', productionAmount: 10, operatingHours: 8 };
+  roll.replacementPlan = [{
+    standKey: '10', date, workType: 'caliberChange', kind: 'plan',
+    withinShift: 'yes', constraintsKnown: 'yes', setsWritten: 1
+  }];
+  roll.workConfirmation = {
+    date, period: 'day', workType: 'caliberChange', requiredHours: 1, reservedHours: 1, people: 3,
+    continuous: 'no', changeover: 'yes', threeSet: 'yes'
+  };
+
+  for (const days of [[stopped, producing], [producing, stopped]]) {
+    roll.days = days;
+    const model = context.buildRollDashboard(fixture);
+    const row = rowOf(model, roll.rollId);
+    assert.equal(row.auto.listedExchange, date);
+    assert.equal(row.auto.exchangeDate, null);
+    assert.equal(row.auto.exchange, '作業枠未確認');
+    assert.equal(context.dashboardReplacementCandidate(roll, fixture.referenceAt).sets, null);
+    assert.match(row.basis.steps.join('\n'), /同じ日付の日別操業予定が重複/);
+    const tsv = context.anonymousManagementSheetTsv(context.buildAnonymousManagementSheet(model));
+    assert.ok(tsv.includes('予測\t#10\t#10-ANON-1\t確認済み交換可能日\t作業枠未確認'));
+  }
+
+  roll.days = [stopped];
+  const accepted = context.dashboardReplacementCandidate(roll, fixture.referenceAt);
+  assert.equal(accepted.date, date);
+  assert.equal(accepted.sets, 1);
+});
+
+test('template jobs preserve record kind and match the whole stand number', () => {
+  const ref = '2026-11-19T06:00:00.000Z';
+  const inputs = [
+    ['#10 カリバ替', '2027-04-02', '現在の計画'],
+    ['＃１ カリバ替', '2027-04-03', '現在の計画'],
+    ['#1 カリバ替', '2027-04-04', '過去の計画'],
+    ['#1 カリバ替', '2027-04-05', '完了実績'],
+    ['#1 カリバ替', '2027-04-06', ''],
+    ['#1 カリバ替', '2026-11-18', '現在の計画'],
+    ['#1 カリバ替', '2027-02-30', '現在の計画']
+  ];
+  const template = { rows: inputs.map(([作業予定, 日付, 区分]) => ({ 作業予定, 日付, 区分, 予定件数: 1 })) };
+  const jobs = context.replacementJobsFromTemplate(template, '1', ref);
+  assert.deepEqual(Array.from(jobs, job => [job.date, job.kind]), [
+    ['2027-04-03', 'plan'],
+    ['2027-04-04', 'past'],
+    ['2027-04-05', 'actual'],
+    ['2027-04-06', 'unconfirmed'],
+    ['2026-11-18', 'past'],
+    ['2027-02-30', 'unconfirmed']
+  ]);
+});
+
+test('an impossible date never becomes a listed or confirmed replacement date', () => {
+  const fixture = context.anonymousDashboardFixture();
+  const roll = fixture.rolls[0];
+  roll.replacementPlan = [{
+    standKey: '10', date: '2027-02-30', kind: 'plan', workType: 'caliberChange', setsWritten: 1
+  }];
+  const candidate = context.dashboardReplacementCandidate(roll, fixture.referenceAt);
+  assert.equal(candidate.listedDate, null);
+  assert.equal(candidate.date, null);
+});
+
+test('only explicit numeric replacement counts qualify', () => {
+  for (const setsWritten of [true, false, [1], [], ' ', '　']) {
+    const result = context.dashboardReplacementSets({ setsWritten });
+    assert.equal(result.countState, '件数不明', JSON.stringify(setsWritten));
+    assert.equal(result.sets, null);
+  }
+  assert.equal(context.dashboardReplacementSets({ setsWritten: 0 }).countState, '0件');
+  assert.equal(context.dashboardReplacementSets({ setsWritten: ' 1 ' }).sets, 1);
 });
 
 test('dashboard night-only uses the same normalized team rule', () => {
