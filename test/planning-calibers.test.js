@@ -75,8 +75,23 @@ test('latest safe stopped slot is selected before the first over-limit run', () 
         currentCaliber: 'A', caliberSequence: ['A', 'B', 'C']
     }, dependencies);
     assert.equal(result.firstOverLimitRun.date, 'sample-4');
-    assert.equal(result.recommendation.id, 'sample-2|shift3|B');
+    assert.equal(result.recommendation, null);
+    assert.equal(result.status, 'noSafeSlot');
     assert.equal(result.nextCaliber, 'B');
+});
+
+test('a daytime stop remains a safe slot when the night-only stop does not', () => {
+    const schedule = [
+        { date: 'sample-1', shift1Team: 'A', shift3Team: '', productionByTeam: { A: 1, B: 0 } },
+        { date: 'sample-2', shift1Team: 'B', shift3Team: '', productionByTeam: { A: 0, B: 0 } },
+        { date: 'sample-3', shift1Team: 'A', shift3Team: '', productionByTeam: { A: 1, B: 0 } },
+        { date: 'sample-4', shift1Team: 'B', shift3Team: '', productionByTeam: { A: 0, B: 1 } }
+    ];
+    const result = caliberApi.projectCaliberChange(schedule, {
+        equipmentId: 'line-pair', stands: ['L4'], maxRuns: 3, usedRuns: 1,
+        currentCaliber: 'A', caliberSequence: ['A', 'B', 'C']
+    }, dependencies);
+    assert.equal(result.recommendation.id, 'sample-2|shift1|B');
     assert.equal(result.status, 'slotFound');
 });
 

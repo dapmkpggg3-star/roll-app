@@ -1099,14 +1099,23 @@ function summarizeMonthlyProductionSchedule(schedule, referenceDate) {
         let operatingHours = 0;
         let hoursKnown = true;
         const shifts = new Set();
+        const seenDates = new Set();
+        let duplicateDate = false;
         items.forEach(item => {
-            if (typeof item.productionAmount !== 'number' || !Number.isFinite(item.productionAmount)) tonsKnown = false;
+            const date = String(item && item.date || '').slice(0, 10);
+            if (seenDates.has(date)) duplicateDate = true;
+            seenDates.add(date);
+            if (typeof item.productionAmount !== 'number' || !Number.isFinite(item.productionAmount) || item.productionAmount < 0) tonsKnown = false;
             else productionTons += item.productionAmount;
             if (typeof item.operatingHours !== 'number' || !Number.isFinite(item.operatingHours)) hoursKnown = false;
             else operatingHours += item.operatingHours;
             if (item.shift1Team) shifts.add(`1直${item.shift1Team}`);
             if (item.shift3Team) shifts.add(`3直${item.shift3Team}`);
         });
+        if (duplicateDate) {
+            tonsKnown = false;
+            hoursKnown = false;
+        }
         return {
             month,
             sizes,
@@ -1341,6 +1350,23 @@ function describeWorkCandidate(label, reach, stand, source, days) {
     return { candidate: assessed.date, slotText };
 }
 
+function normalizeShiftTeam(value) {
+    const token = String(value || '').normalize('NFKC').trim().toUpperCase();
+    return token === 'A' || token === 'B' ? token : '';
+}
+
+function normalizedDayTeam(row) {
+    const scheduleApi = globalThis.RollPlanningSchedule;
+    if (scheduleApi && typeof scheduleApi.normalizeTeam === 'function') return scheduleApi.normalizeTeam(row && row.shift1Team);
+    return normalizeShiftTeam(row && row.shift1Team);
+}
+
+function scheduleNightOnly(row) {
+    const scheduleApi = globalThis.RollPlanningSchedule;
+    if (scheduleApi && typeof scheduleApi.isNightOnlyRow === 'function') return scheduleApi.isNightOnlyRow(row) === true;
+    return Boolean(normalizeShiftTeam(row && row.shift3Team)) && !normalizeShiftTeam(row && row.shift1Team);
+}
+
 function confirmedWorkCandidate(reachDate, stand, confirmation, days, referenceDate) {
     const rules = globalThis.RollPlanningRules;
     const source = confirmation || {};
@@ -1364,11 +1390,17 @@ function confirmedWorkCandidate(reachDate, stand, confirmation, days, referenceD
     }
     const row = (Array.isArray(days) ? days : []).find(item => item && String(item.date).slice(0, 10) === String(source.date).slice(0, 10));
     if (!row) return { date: null, note: '作業日が操業予定と照合できないので、参考候補は保留します。' };
-    if (typeof row.productionAmount !== 'number' || !Number.isFinite(row.productionAmount)) {
+    if (typeof row.productionAmount !== 'number' || !Number.isFinite(row.productionAmount) || row.productionAmount < 0) {
         return { date: null, note: '作業日の生産量が欠損しているので、0tとはみなさず、参考候補は判定不能です。確認済み交換可能日にはしません。' };
     }
     const producing = row.productionAmount > 0;
     if (producing) return { date: null, note: '作業日が操業と重なるので、参考候補は保留します。' };
+    if (scheduleNightOnly(row)) {
+        return { date: null, note: '夜勤のみの停止は、昼の交換候補にしません。' };
+    }
+    if (!normalizedDayTeam(row)) {
+        return { date: null, note: '昼の班が未確認なので、交換候補にはしません。' };
+    }
     const workType = expected === 'rollChange' ? rules.WORK_TYPES.ROLL_CHANGE : rules.WORK_TYPES.CALIBER_CHANGE;
     const allowed = rules.createPlanningRules({ afterProductionAllowedWorkTypes: [] }).validateWorkForSlot({
         type: workType,
@@ -1406,7 +1438,7 @@ function forecastTonReach(source, basis, days) {
     days.forEach(row => {
         if (blocked) return;
         const amount = row.productionAmount;
-        if (typeof amount !== 'number' || !Number.isFinite(amount)) {
+        if (typeof amount !== 'number' || !Number.isFinite(amount) || amount < 0) {
             if (!reach || String(row.date).slice(0, 10) <= String(reach)) {
                 blocked = row.date;
                 reach = null;
@@ -1841,7 +1873,12 @@ function describeExchangeSlot(confirmation, row, expectedType) {
         return { ok: false, state: '未確認', note: '日別生産量が欠損しているので、0tとはみなさず、確認済み交換可能日にはしません。' };
     }
     if (row.productionAmount !== 0) return { ok: false, state: '不成立', note: '生産中の日は確認済み交換可能日にしません。' };
-    if (row.shift3Team && !row.shift1Team) return { ok: false, state: '不成立', note: '夜勤のみの日は確認済み交換可能日にしません。' };
+    if (scheduleNightOnly(row)) {
+        return { ok: false, state: '不成立', note: '夜勤のみの日は確認済み交換可能日にしません。' };
+    }
+    if (!normalizedDayTeam(row)) {
+        return { ok: false, state: '未確認', note: '昼の班が未確認なので、確認済み交換可能日にはしません。' };
+    }
     const required = source.requiredHours;
     const reserved = source.reservedHours;
     const people = source.people;
@@ -1893,8 +1930,12 @@ function assemblySlotReady(confirmation, row) {
         return { ok: false, reason: '日別生産量が欠損しているので、0tとはみなさず、組替は完了にしません。' };
     }
     if (row.productionAmount !== 0) return { ok: false, reason: '操業中は組替を完了にしません。' };
-    if (row.shift3Team && !row.shift1Team) return { ok: false, reason: '夜勤だけでは組替を完了にしません。' };
-    if (!row.shift1Team) return { ok: false, reason: '勤務が未確認です。0tだけでは組替を完了にしません。' };
+    if (scheduleNightOnly(row)) return { ok: false, reason: '夜勤だけでは組替を完了にしません。' };
+    const scheduleApi = globalThis.RollPlanningSchedule;
+    const dayTeam = scheduleApi && typeof scheduleApi.normalizeTeam === 'function'
+        ? scheduleApi.normalizeTeam(row.shift1Team)
+        : normalizeShiftTeam(row.shift1Team);
+    if (!dayTeam) return { ok: false, reason: '勤務が未確認です。0tだけでは組替を完了にしません。' };
     const required = source.requiredHours;
     const reserved = source.reservedHours;
     const people = source.people;
@@ -2046,7 +2087,7 @@ function simulateExchangeCycle(input) {
                 const assessed = assemblySlotReady(confirmation, row);
                 const overlap = events.some(event => event.date === date && ['サイズ替', 'ロール替', 'カリバ替', '組替完了'].includes(event.kind));
                 const futurePreparation = confirmation && confirmation.preparedOn > date;
-                if (confirmation && assessed.ok && row.shift1Team && !overlap && !futurePreparation) {
+                if (confirmation && assessed.ok && normalizeShiftTeam(row.shift1Team) && !overlap && !futurePreparation) {
                     finishAssembly(date, [item], confirmation);
                     completed = true;
                 } else {
@@ -2065,7 +2106,7 @@ function simulateExchangeCycle(input) {
         push(date, '組替需要', `${waiting.map(item => item.id).join('、')}は組替前です。${slot.reason}`);
         return false;
     };
-    const nightOnly = row => Boolean(row.shift3Team) && !row.shift1Team;
+    const nightOnly = row => scheduleNightOnly(row);
     days.forEach((row, index) => {
         if (blocked) return;
         const date = String(row.date).slice(0, 10);
@@ -2095,7 +2136,7 @@ function simulateExchangeCycle(input) {
             const confirmation = matching.length === 1 ? matching[0] : null;
             const slotRow = confirmation && days.slice(0, index + 1).filter(item => item.date === confirmation.date);
             const priorUse = days.slice(0, index).filter(item => item.productionAmount > 0).at(-1);
-            const slotReady = confirmation && nextSize && slotRow.length === 1 && Boolean(slotRow[0].shift1Team)
+            const slotReady = confirmation && nextSize && slotRow.length === 1 && Boolean(normalizeShiftTeam(slotRow[0].shift1Team))
                 && confirmation.date <= date && confirmation.date < operationDate && (!priorUse || confirmation.date > priorUse.date)
                 && (!source.referenceAt || confirmation.date >= source.referenceAt)
                 && !events.some(item => item.date === confirmation.date && ['ロール替', 'カリバ替', '組替完了'].includes(item.kind))
@@ -2151,7 +2192,7 @@ function simulateExchangeCycle(input) {
         if (stopped && state.pending && state.phase === 'operating') {
             const expected = state.pending === 'caliber' ? 'caliberChange' : 'rollChange';
             const overlap = sizeChanged && events.some(event => event.date === date && ['サイズ替', '組替完了', 'ロール替', 'カリバ替'].includes(event.kind));
-            if (!exchangeSlotReady(workConfirmation, row, expected) || sizeChanged && (!row.shift1Team || overlap)) {
+            if (!exchangeSlotReady(workConfirmation, row, expected) || sizeChanged && (!normalizeShiftTeam(row.shift1Team) || overlap)) {
                 push(date, '交換需要', '到達しています。0tや夜間、未確認の作業枠だけでは交換しません。');
                 if (sizeChanged) stopAt(date, 'サイズ切替後の対象・サイズ・基準日・作業日に一致する交換枠が未確認です。以後は計算済みにしません。');
                 else markConfirmed(date);

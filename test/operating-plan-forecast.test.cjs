@@ -34,6 +34,43 @@ function revision(targetMonths, rows, updatedAt = '2026-11-13T00:00:00.000Z') {
   return created.revision;
 }
 
+test('blank or invalid day teams do not become a daytime exchange candidate', () => {
+  const work = {
+    date: '2027-04-02', period: 'day', reservedHours: 5, workType: 'rollChange', requiredHours: 5, people: 1,
+    continuous: 'no', changeover: 'yes', threeSet: 'yes'
+  };
+  const row = (shift1Team, shift3Team) => ({
+    date: '2027-04-02', productionAmount: 0, operatingHours: 0, shift1Team, shift3Team,
+    productionByTeam: { B: 0 }
+  });
+  for (const [shift1Team, shift3Team] of [[' ', 'B'], ['　', 'Ｂ'], ['不明', 'B'], ['', 'B']]) {
+    const candidate = context.confirmedWorkCandidate('2027-04-03', '2', work, [row(shift1Team, shift3Team)], '2026-11-13');
+    assert.equal(candidate.date, null, shift1Team);
+    assert.match(candidate.note, /夜勤のみ/);
+    const described = context.describeExchangeSlot(work, row(shift1Team, shift3Team), 'rollChange');
+    assert.equal(described.ok, false);
+    assert.match(described.note, /夜勤のみ/);
+  }
+  const daytime = context.confirmedWorkCandidate('2027-04-03', '2', work, [row('A', '')], '2026-11-13');
+  assert.equal(daytime.date, '2027-04-02');
+  for (const shift1Team of ['不明', ' ', '　']) {
+    const invalid = context.confirmedWorkCandidate('2027-04-03', '2', work, [row(shift1Team, '')], '2026-11-13');
+    assert.equal(invalid.date, null, shift1Team);
+    assert.match(invalid.note, /昼の班が未確認/);
+  }
+  const saved = context.RollPlanningSchedule;
+  context.RollPlanningSchedule = undefined;
+  try {
+    const fallback = context.confirmedWorkCandidate('2027-04-03', '2', work, [row(' ', 'B')], '2026-11-13');
+    assert.equal(fallback.date, null);
+    assert.match(fallback.note, /夜勤のみ/);
+    const dayFallback = context.confirmedWorkCandidate('2027-04-03', '2', work, [row('A', '')], '2026-11-13');
+    assert.equal(dayFallback.date, '2027-04-02');
+  } finally {
+    context.RollPlanningSchedule = saved;
+  }
+});
+
 test('a revised operating plan keeps the old version and does not change roll status', () => {
   const roles = [{ id: 'anon', status: 'オンライン' }];
   const before = revision(['2026-04'], [{ standKey: '10', month: '2026-04', plannedUseCount: 2, actualUseCount: null }]);
@@ -104,6 +141,21 @@ test('a past monthly schedule stays in tons and is not an annual plan or actual 
     rows: [{ standKey: '10', month: '2026-04', plannedUseCount: 1, actualUseCount: null, productionTons: 200 }]
   });
   assert.equal(rejected.ok, false);
+  const negativeTons = context.summarizeMonthlyProductionSchedule([
+    { date: '2027-04-01', size: 'D10', productionAmount: 100, shift1Team: 'A', shift3Team: 'B', operatingHours: 8 },
+    { date: '2027-04-02', size: 'D10', productionAmount: -1, shift1Team: 'A', shift3Team: 'B', operatingHours: 8 }
+  ], '2026-11-13');
+  assert.equal(negativeTons.months[0].productionTons, null);
+  assert.equal(negativeTons.usableForShortage, false);
+  assert.equal(negativeTons.acceptedAsActual, false);
+  const duplicated = context.summarizeMonthlyProductionSchedule([
+    { date: '2027-04-01', size: 'D10', productionAmount: 100, shift1Team: 'A', shift3Team: 'B', operatingHours: 8 },
+    { date: '2027-04-01', size: 'D10', productionAmount: 40, shift1Team: 'A', shift3Team: 'B', operatingHours: 8 }
+  ], '2026-11-13');
+  assert.equal(duplicated.months[0].productionTons, null);
+  assert.equal(duplicated.months[0].operatingHours, null);
+  assert.equal(duplicated.usableForShortage, false);
+  assert.equal(duplicated.acceptedAsActual, false);
 });
 
 test('rolling hours stay hours and are not added when a day is missing', () => {
@@ -157,8 +209,10 @@ test('past production tons do not become a future rework or purchase date', () =
     standKey: '10', referenceDate: '2026-11-13', currentCaliber: 'anon-1', openingUsedRuns: 6, size: 'D1',
     days: [day('2027-04-01', 8, 'A', 10), day('2027-04-02', 0, 'B', 0), day('2027-04-03', 8, 'A', 10), day('2027-04-04', 5, 'A', 10)]
   });
-  assert.equal(replacement.exchangeDate, '2027-04-02');
+  assert.equal(replacement.exchangeDate, null);
   assert.equal(replacement.exceedsOnDate, '2027-04-04');
+  assert.match(replacement.reason, /交換候補日は出しません/);
+  assert.equal(replacement.reason.includes('交換候補は2027-04-02'), false);
   assert.equal(replacement.reworkTiming, 'unknown');
   assert.equal(replacement.statusChanged, false);
   const short = context.projectCaliberReplacement({
@@ -236,9 +290,11 @@ test('past production tons do not become a future rework or purchase date', () =
       { ...day('2027-04-03', 8, 'A', 10), size: 'D13' }
     ]
   });
-  assert.equal(confirmedMax.exchangeDate, '2027-04-02');
+  assert.equal(confirmedMax.exchangeDate, null);
   assert.equal(confirmedMax.exceedsOnDate, '2027-04-03');
-  assert.match(confirmedMax.reason, /最大12直を超えます/);
+  assert.match(confirmedMax.reason, /交換候補日は出しません/);
+  assert.match(confirmedMax.reason, /2027-04-03/);
+  assert.equal(confirmedMax.reason.includes('交換候補は2027-04-02'), false);
   const maximumTons = context.projectCaliberReplacement({
     standKey: '6', referenceDate: '2026-11-13', openingUsedTons: 1000,
     days: [day('2027-04-01', 8, 'A', 10000)]
@@ -311,8 +367,9 @@ test('past production tons do not become a future rework or purchase date', () =
     workConfirmation: work(), days: schedule
   });
   assert.equal(confirmed.shiftReachDate, '2027-04-03');
-  assert.match(confirmed.reason, /規定到達の参考候補は2027-04-02/);
-  assert.match(confirmed.reason, /トン数到達の参考候補は2027-04-02/);
+  assert.match(confirmed.reason, /規定35直への到達見込みは2027-04-03/);
+  assert.match(confirmed.reason, /夜勤のみの停止は、昼の交換候補にしません/);
+  assert.equal(confirmed.reason.includes('参考候補は2027-04-02'), false);
   const missingStop = context.projectCaliberReplacement({
     standKey: '2', referenceDate: '2026-11-13', standPass: 'pass', openingUsedRuns: 33, openingUsedTons: 12000,
     workConfirmation: work(),
@@ -325,8 +382,25 @@ test('past production tons do not become a future rework or purchase date', () =
   const openSlot = context.confirmedWorkCandidate('2027-04-03', '2', work(), [day('2027-04-02', 0, 'B', null)], '2026-11-13');
   assert.equal(openSlot.date, null);
   assert.match(openSlot.note, /0tとはみなさず/);
-  const zeroSlot = context.confirmedWorkCandidate('2027-04-03', '2', work(), [day('2027-04-02', 0, 'B', 0)], '2026-11-13');
+  const nightStop = { ...day('2027-04-02', 0, 'B', 0) };
+  const nightSlot = context.confirmedWorkCandidate('2027-04-03', '2', work(), [nightStop], '2026-11-13');
+  assert.equal(nightSlot.date, null);
+  assert.match(nightSlot.note, /夜勤のみ/);
+  const dayStop = { ...nightStop, shift1Team: 'B', shift3Team: '' };
+  const zeroSlot = context.confirmedWorkCandidate('2027-04-03', '2', work(), [dayStop], '2026-11-13');
   assert.equal(zeroSlot.date, '2027-04-02');
+  const negativeStop = { ...dayStop, productionAmount: -1 };
+  const negativeSlot = context.confirmedWorkCandidate('2027-04-03', '2', work(), [negativeStop], '2026-11-13');
+  assert.equal(negativeSlot.date, null);
+  assert.match(negativeSlot.note, /0tとはみなさず/);
+  const negativeReach = context.projectCaliberReplacement({
+    standKey: '2', referenceDate: '2026-11-13', standPass: 'pass', openingUsedRuns: 0, openingUsedTons: 13900,
+    days: [day('2027-04-01', 8, 'A', -500), day('2027-04-02', 8, 'A', 200)]
+  });
+  assert.equal(negativeReach.tonReachDate, null);
+  assert.equal(negativeReach.exchangeDate, null);
+  assert.match(negativeReach.reason, /判定不能|生産量未確認/);
+  assert.equal(negativeReach.reason.includes('達しません'), false);
   const nightOnly = context.projectCaliberReplacement({
     standKey: '2', referenceDate: '2026-11-13', standPass: 'pass', openingUsedRuns: 33, openingUsedTons: 12000,
     workConfirmation: work({ period: 'night' }), days: schedule
@@ -365,8 +439,9 @@ test('past production tons do not become a future rework or purchase date', () =
   assert.equal(current.tonReachDate, null);
   assert.match(current.reason, /現行使用直数は15直/);
   assert.match(current.reason, /旧参照/);
-  assert.match(current.reason, /現行到達の参考候補は2027-04-02/);
-  assert.match(current.reason, /6番から9番へ広げません/);
+  assert.match(current.reason, /夜勤のみの停止は、昼の交換候補にしません/);
+  assert.equal(current.reason.includes('参考候補は2027-04-02'), false);
+  assert.match(context.knownWorkEffort('6', 'caliberChange').text, /6番から9番へ広げません/);
   const conflict = context.projectCaliberReplacement({
     standKey: '2', referenceDate: '2026-11-13', standPass: 'pass', openingUsedRuns: 33,
     workConfirmation: work({ date: '2027-04-01' }), days: schedule

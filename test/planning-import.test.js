@@ -104,6 +104,20 @@ test('year and month are read only from production-plan sheet names', () => {
     assert.deepEqual(importer.parseMaintenanceYearMonth('2031.4 ロールカリバ替予定'), { year: 2031, month: 4 });
 });
 
+test('a positive production day does not import a lookalike stop as a confirmed stop', () => {
+    for (const [token, expected] of [['DSTOP', ''], ['D13', 'D13'], ['STOP', 'STOP'], ['XYZ', '']]) {
+        const shared = ['休止', token, 'D2', 'A', 'B'];
+        const rows = importer.parseProductionWorksheet(sampleWorksheet(), shared, '31.04 生産予定');
+        assert.equal(rows[0].productionAmount, 100);
+        assert.equal(rows[0].size, expected, token);
+    }
+    const kept = importer.parseProductionWorksheet(sampleWorksheet(), ['休止', 'D1', 'D2', 'A', 'B'], '31.04 生産予定');
+    assert.equal(kept[0].size, 'D1');
+    assert.equal(kept[1].productionAmount, 0);
+    assert.equal(kept[1].size, 'STOP');
+    assert.equal(kept[2].size, 'D2');
+});
+
 test('production rows are extracted from the longest sequential day block', () => {
     const shared = ['休止', 'D1', 'D2', 'A', 'B'];
     const rows = importer.parseProductionWorksheet(sampleWorksheet(), shared, '31.04 生産予定');

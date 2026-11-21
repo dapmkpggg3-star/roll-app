@@ -18,6 +18,10 @@
         return typeof amount === 'number' && Number.isFinite(amount) && amount >= 0 ? amount : null;
     }
 
+    function isNightOnlyRow(row) {
+        return Boolean(normalizeTeam(row && row.shift3Team)) && !normalizeTeam(row && row.shift1Team);
+    }
+
     function firstProductionTeam(row) {
         const shift1Team = normalizeTeam(row && row.shift1Team);
         const shift3Team = normalizeTeam(row && row.shift3Team);
@@ -26,10 +30,18 @@
         return '';
     }
 
+    const KNOWN_WORK_TYPES = new Set(['rollChange', 'caliberChange', 'sizeChange']);
+
     function countRequiredCompanionWork(row) {
-        if (row && (row.maintenanceLayoutState === 'unconfirmed' || row.maintenanceJudgement === 'held')) return null;
-        return (Array.isArray(row && row.requiredWorks) ? row.requiredWorks : [])
-            .filter(work => work && work.type !== 'sizeChange').length;
+        if (!row || row.maintenanceLayoutState === 'unconfirmed' || row.maintenanceJudgement === 'held') return null;
+        if (!Array.isArray(row.requiredWorks)) return null;
+        let count = 0;
+        for (const work of row.requiredWorks) {
+            const type = work && typeof work === 'object' ? work.type : '';
+            if (!KNOWN_WORK_TYPES.has(type)) return null;
+            if (type !== 'sizeChange') count += 1;
+        }
+        return count;
     }
 
     function buildAvailableSlots(row, slotTypes, options) {
@@ -115,7 +127,11 @@
             const windowRows = fromIndex >= 0 && toIndex >= fromIndex
                 ? rows.slice(fromIndex, toIndex + 1)
                 : [];
-            const slots = windowRows.flatMap(row => buildAvailableSlots(row, slotTypes));
+            const slots = windowRows.flatMap(row => {
+                const built = buildAvailableSlots(row, slotTypes);
+                if (!isNightOnlyRow(row)) return built;
+                return built.filter(slot => slot.shift !== 'shift3');
+            });
             const nextTeam = toIndex >= 0 ? firstProductionTeam(rows[toIndex]) : '';
             return {
                 change,
@@ -128,6 +144,7 @@
 
     return {
         normalizeTeam,
+        isNightOnlyRow,
         productionForTeam,
         firstProductionTeam,
         countRequiredCompanionWork,
