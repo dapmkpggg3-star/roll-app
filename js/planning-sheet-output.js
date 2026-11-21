@@ -62,7 +62,8 @@
     }
 
     function normalizeTeam(value) {
-        const token = String(value || '').normalize('NFKC').trim().toUpperCase();
+        if (typeof value !== 'string') return '';
+        const token = value.normalize('NFKC').trim().toUpperCase();
         return token === 'A' || token === 'B' ? token : '';
     }
 
