@@ -26,6 +26,8 @@
         if (!period || !Number.isInteger(period.year) || !Number.isInteger(period.month)) return true;
         return (Array.isArray(schedule) ? schedule : []).some(row => {
             const parts = dateParts(row && row.date);
+            // An unparseable date cannot establish that unknown production belongs to a safe month.
+            if (!parts && productionAmountState(row && row.productionAmount) === 'unknown') return true;
             const raw = row && row.date;
             // Malformed future-month rows must not conceal unknown production.
             const prefix = typeof raw === 'string' ? raw.match(/^(\d{4})-(\d{1,2})-/) : null;
