@@ -80,6 +80,35 @@ async function main(){
   assert.equal(await page.evaluate(()=>roles.length),4,'synthetic roles mutated in navigation');
   checks.push('no mutation of role list by task navigation');
 
+  // ROLL-004: use the real select and renderer for both stored status spellings.
+  await page.evaluate(() => {
+    searchQuery = '';
+    roles.push({ ...roles.find(role => role.id === '10-D'), id: '10-LEGACY', name: '#10-LEGACY', status: '廃却待ち' });
+    renderRoles();
+  });
+  const verifyScrapRows = async count => {
+    for (const id of ['10-D', '10-LEGACY']) {
+      assert.equal(await page.locator('#role-' + id).count(), count, 'incorrect scrap visibility for ' + id);
+    }
+  };
+  const statusSelect = page.locator('#status-filter');
+  await verifyScrapRows(0);
+  const rolesBeforeFilter = await page.evaluate(() => JSON.stringify(roles));
+  await statusSelect.selectOption('廃却待ち（ラック保管）');
+  await verifyScrapRows(1);
+  assert.equal(await page.locator('#role-10-C').count(), 0);
+  await page.screenshot({ path: path.join(out, 'roll004-explicit-scrap.png'), fullPage: true });
+  await statusSelect.selectOption('all');
+  await verifyScrapRows(0);
+  assert.equal(await page.locator('#role-10-C').count(), 1);
+  assert.equal(await page.evaluate(() => JSON.stringify(roles)), rolesBeforeFilter);
+  await page.screenshot({ path: path.join(out, 'roll004-default-restored.png'), fullPage: true });
+  await page.evaluate(() => {
+    roles = roles.filter(role => role.id !== '10-LEGACY');
+    renderRoles();
+  });
+  checks.push('ROLL-004 real filter: current and legacy scrap statuses hide, show on explicit selection and hide again without mutating roles');
+
   // Procurement regression: inspect actual rendered dashboard, not just VM return values.
   // The three synthetic active rolls intentionally lack diameter/master data.
   await page.evaluate(input=>{

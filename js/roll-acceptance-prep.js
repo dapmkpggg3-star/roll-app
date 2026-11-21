@@ -107,7 +107,11 @@ function assessReadOnlyConnection(probe) {
     if (source.productionSchedule !== 'present') stops.push('生産予定が無いので停止します。0や他の予定では埋めません。');
     if (source.caliberPlan !== 'present') stops.push('カリバ使用計画が無いので停止します。直数は作りません。');
     if (source.revisionMatch !== true) stops.push('同期不一致で停止します。ローカルもリモートも上書きしません。');
-    if (Number(source.writeCount) > 0) stops.push('書込みを検知したので停止します。');
+    if (!Number.isInteger(source.writeCount) || source.writeCount < 0) {
+        stops.push('書込み件数が未確認なので、0件とはみなさず停止します。');
+    } else if (source.writeCount > 0) {
+        stops.push('書込みを検知したので停止します。');
+    }
     if (source.productionMeasure === 'tons') stops.push('生産予定がトン数なので、ロール本数としては読みません。');
     return {
         mode: 'read-only',

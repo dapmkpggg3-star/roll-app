@@ -140,6 +140,16 @@ test('a read-only probe stops on permission, missing sources, mismatch, and writ
   });
   assert.equal(ready.ready, true);
   assert.equal(ready.liveConnected, false);
+  const verifiedRead = {
+    permission: 'reader', rolesSheet: 'present', managementSheet: 'present',
+    productionSchedule: 'present', caliberPlan: 'present', revisionMatch: true, endpointConfigured: true
+  };
+  for (const writeCount of [undefined, null, '', '0', false, -1, NaN]) {
+    const result = context.assessReadOnlyConnection({ ...verifiedRead, writeCount });
+    assert.equal(result.ready, false);
+    assert.match(result.stops.join('\n'), /書込み.*未確認/);
+  }
+
 });
 
 test('acceptance checks separate daytime work, continuous running, three-set, and spare shortage', () => {
