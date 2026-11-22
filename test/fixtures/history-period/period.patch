@@ -1,0 +1,61 @@
+--- a/google-apps-script.gs
++++ b/google-apps-script.gs
+@@ -3563,6 +3563,14 @@
+   return String(left) === String(right);
+ }
+ 
++function findReversedActualPeriod_(rows) {
++  return rows.find(function(row) {
++    const start = row.fields.useStartDate;
++    const end = row.fields.useEndDate;
++    return start.value && end.value && !start.planned && !end.planned && end.value < start.value;
++  });
++}
++
+ function getRollHistoryOpenCycleRow(cycleRows) {
+   const rows = Array.isArray(cycleRows) ? cycleRows : [];
+   let lastCompletedIndex = -1;
+@@ -3902,6 +3910,12 @@
+       blockRange.getDisplayValues(),
+       blockRange.getFontColors()
+     );
++    const reversed = findReversedActualPeriod_(cycleRows);
++    if (reversed) {
++      result.conflicts.push({ roleName: definition.roleName, field: 'useEndDate',
++        rowNumber: reversed.rowNumber, reason: 'end-before-start' });
++      return;
++    }
+     const plan = planRollHistoryActualWrites(
+       cycleRows,
+       normalizeRollHistoryActualSnapshot(role),
+@@ -4326,6 +4340,7 @@
+   const updatedRoleNames = [];
+   const changedFields = [];
+   const sheetResults = [];
++  const conflicts = [];
+   const changedAt = new Date().toISOString();
+ 
+   const targetSheetNames = (Array.isArray(sheetNames) && sheetNames.length > 0)
+@@ -4358,6 +4373,12 @@
+         blockRange.getDisplayValues(),
+         blockRange.getFontColors()
+       );
++      const reversed = findReversedActualPeriod_(cycleRows);
++      if (reversed) {
++        conflicts.push({ sheetName: sheetName, roleName: definition.roleName,
++          rowNumber: reversed.rowNumber, reason: 'end-before-start' });
++        return;
++      }
+       const editableCycleRow = getRollHistoryCurrentEditableCycleRow(cycleRows);
+       if (!editableCycleRow) return;
+       const updates = {};
+@@ -4389,7 +4410,8 @@
+     refreshFieldRollManagementView();
+   }
+   return {
+-    success: true,
++    success: conflicts.length === 0,
++    conflicts: conflicts,
+     updatedRoleNames: Array.from(new Set(updatedRoleNames)),
+     changedFields: changedFields,
+     sheets: sheetResults
