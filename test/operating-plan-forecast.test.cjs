@@ -1288,3 +1288,68 @@ test('screen reference and slot owner follow the input events', () => {
   fire('caliber-size', 'D10');
   fire('caliber-stand', '10');
 });
+
+test('a revised fiscal schedule moves the stand shortage and keeps the order estimate in the target month', () => {
+  // Only the three days relevant to this stand are active in this anonymous fiscal year.
+  function outlook(year, productionDay, leadMonths = 6) {
+    const start = year + '-04-01';
+    const end = (year + 1) + '-04-01';
+    const exchangeDay = context.addDays(productionDay, 1);
+    const night = context.addDays(productionDay, 2);
+    const days = [];
+    for (let date = start; date < end; date = context.addDays(date, 1)) {
+      days.push({ date, size: 'D10', productionAmount: date === productionDay ? 10 : 0,
+        operatingHours: date === productionDay ? 8 : 0,
+        shift1Team: date === night ? '' : 'A', shift3Team: date === night ? 'B' : '' });
+    }
+    const result = context.simulateExchangeCycle({
+      standKey: '10', currentSize: 'D10', maxRuns: 8, reworkDays: 1, scrapDiameter: 77,
+      adoptedCutMm: 4, leadMonths, leadStatus: 'provisional',
+      resources: [
+        { id: 'roll-a', frame: 'online', caliberId: 'a', runs: 7, diameter: 81 },
+        { id: 'roll-b', frame: 'installedSpare', caliberId: 'b', runs: 2, diameter: 93 },
+        { id: 'roll-c', frame: 'usedSpare', caliberId: 'c', runs: 0, diameter: 74 }
+      ],
+      workConfirmation: { date: exchangeDay, period: 'day', workType: 'rollChange', requiredHours: 5,
+        reservedHours: 5, people: 1, continuous: 'no', changeover: 'yes', threeSet: 'yes' },
+      days
+    });
+    assert.deepEqual(Array.from(result.events.filter(e => e.kind === '夜勤予備不足'), e => e.date), [night]);
+    return context.describeReplenishment(result, '#10');
+  }
+
+  assert.match(outlook(2027, '2027-08-25'), /2027-08-27.*条件付きの手配目安は2027-02-27/);
+  assert.match(outlook(2027, '2027-08-29'), /2027-08-31.*条件付きの手配目安は2027-02-28/);
+  assert.match(outlook(2028, '2028-08-29'), /2028-08-31.*条件付きの手配目安は2028-02-29/);
+  assert.match(outlook(2027, '2027-08-29', null), /購入期間が未確認なので、手配目安は出しません/);
+});
+
+test('a roll awaiting daytime assembly does not cancel another assembled spare on a stopped night', () => {
+  function nightEvents(thirdFrame) {
+    const date = '2027-06-03';
+    const result = context.simulateExchangeCycle({
+      standKey: '10', currentSize: 'D10', maxRuns: 8, reworkDays: 1, scrapDiameter: 70, adoptedCutMm: 4,
+      resources: [
+        { id: 'online', frame: 'online', caliberId: 'a', runs: 7, diameter: 81 },
+        { id: 'next', frame: 'installedSpare', caliberId: 'b', runs: 0, diameter: 85 },
+        { id: 'reserve', frame: thirdFrame, caliberId: 'c', runs: 0, diameter: 85 }
+      ],
+      workConfirmation: { date: '2027-06-02', period: 'day', workType: 'rollChange', requiredHours: 5,
+        reservedHours: 5, people: 1, continuous: 'no', changeover: 'yes', threeSet: 'yes' },
+      days: [
+        { date: '2027-06-01', size: 'D10', productionAmount: 10, operatingHours: 8, shift1Team: 'A' },
+        { date: '2027-06-02', productionAmount: 0, operatingHours: 0, shift1Team: 'A' },
+        { date, productionAmount: 0, operatingHours: 0, shift3Team: 'B' }
+      ]
+    });
+    return result.events.filter(item => item.date === date);
+  }
+
+  for (const frame of ['usedSpare', 'installedSpare']) {
+    const events = nightEvents(frame);
+    assert.ok(events.some(e => e.kind === '改削完了'));
+    assert.equal(events.some(e => e.kind === '組替完了'), false);
+    assert.equal(events.some(e => e.kind === '夜勤予備不足'), frame === 'usedSpare');
+    assert.equal(events.find(e => e.kind === '改削完了').installedSpare, frame === 'usedSpare' ? 0 : 1);
+  }
+});

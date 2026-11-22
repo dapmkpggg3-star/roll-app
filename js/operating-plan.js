@@ -1837,7 +1837,9 @@ function addDays(date, days) {
 
 function addMonths(date, months) {
     const parts = String(date).slice(0, 10).split('-').map(Number);
-    const next = new Date(Date.UTC(parts[0], parts[1] - 1 + months, parts[2]));
+    const targetMonth = parts[1] - 1 + months;
+    const lastDay = new Date(Date.UTC(parts[0], targetMonth + 1, 0)).getUTCDate();
+    const next = new Date(Date.UTC(parts[0], targetMonth, Math.min(parts[2], lastDay)));
     return next.toISOString().slice(0, 10);
 }
 
@@ -2107,6 +2109,10 @@ function simulateExchangeCycle(input) {
         return false;
     };
     const nightOnly = row => scheduleNightOnly(row);
+    const recordNightAssemblyWait = (date, ids) => {
+        const kind = spareRolls && spareRolls.length === 0 ? '夜勤予備不足' : '組替需要';
+        push(date, kind, `${ids}の組替が夜勤までに終わっていません。このロールは使用可能な予備に数えません。`);
+    };
     days.forEach((row, index) => {
         if (blocked) return;
         const date = String(row.date).slice(0, 10);
@@ -2183,7 +2189,7 @@ function simulateExchangeCycle(input) {
         if (stopped && state.reworks.some(item => item.status === 'awaitingAssembly')) {
             if (nightOnly(row)) {
                 const ids = state.reworks.filter(item => item.status === 'awaitingAssembly').map(item => item.id).join('、');
-                push(date, '夜勤予備不足', `${ids}の組替が夜勤までに終わっていません。使用可能な予備にはしません。`);
+                recordNightAssemblyWait(date, ids);
                 markConfirmed(date);
                 return;
             }
@@ -2318,7 +2324,7 @@ function simulateExchangeCycle(input) {
                 push(date, 'ロール替', '組込済みの予備をオンラインへ移し、外した対象を再生へ入れました。この時点では径を変えません。');
                 if (date >= currentRework.readyOn) finishReworkItem(date, currentRework);
                 if (currentRework.status === 'awaitingAssembly' && nightOnly(row)) {
-                    push(date, '夜勤予備不足', `${currentRework.id}の組替が夜勤までに終わっていません。使用可能な予備にはしません。`);
+                    recordNightAssemblyWait(date, currentRework.id);
                 } else if (currentRework.status === 'awaitingAssembly') holdAssembly(date, row);
                 markConfirmed(date);
                 return;
