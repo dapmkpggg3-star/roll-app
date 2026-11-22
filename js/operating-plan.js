@@ -2130,8 +2130,7 @@ function simulateExchangeCycle(input) {
         const kind = spareRolls && spareRolls.length === 0 ? '夜勤予備不足' : '組替需要';
         push(date, kind, `${ids}の組替が夜勤までに終わっていません。このロールは使用可能な予備に数えません。`);
     };
-    days.forEach((row, index) => {
-        if (blocked) return;
+    const simulateDay = (row, index) => {
         const date = String(row.date).slice(0, 10);
         const amount = row.productionAmount;
         if (typeof amount !== 'number' || !Number.isFinite(amount) || amount < 0) {
@@ -2356,7 +2355,7 @@ function simulateExchangeCycle(input) {
             markConfirmed(date);
             return;
         }
-        if (row.shift3Team && spareRolls && spareRolls.length === 0) {
+        if (normalizeShiftTeam(row.shift3Team) && spareRolls && spareRolls.length === 0) {
             const reworkIds = state.reworks
                 .filter(item => item.status === 'rework' || item.status === 'awaitingAssembly' || item.status === 'held')
                 .map(item => item.id);
@@ -2387,6 +2386,15 @@ function simulateExchangeCycle(input) {
         push(date, '操業', `${state.caliberId}の使用は${state.caliberRuns}直です。`);
         if (state.caliberRuns >= maxRuns) state.pending = spareCalibers && spareCalibers.length ? 'caliber' : 'roll';
         markConfirmed(date);
+    };
+    days.forEach((row, index) => {
+        if (blocked) return;
+        simulateDay(row, index);
+        // On a stopped two-shift day the night inventory is the result of all daytime work.
+        if (!blocked && row.productionAmount === 0 && normalizeShiftTeam(row.shift1Team)
+            && normalizeShiftTeam(row.shift3Team) && spareRolls && spareRolls.length === 0) {
+            push(String(row.date).slice(0, 10), '夜勤予備不足', '昼の作業後、夜勤の開始時点で使用可能な予備がありません。');
+        }
     });
     const rollChangeCount = events.filter(item => item.kind === 'ロール替').length;
     const scrapCount = events.filter(item => item.kind === '廃却需要').length;

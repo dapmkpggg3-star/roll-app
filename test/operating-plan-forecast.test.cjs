@@ -1325,7 +1325,7 @@ test('a revised fiscal schedule moves the stand shortage and keeps the order est
 });
 
 test('a roll awaiting daytime assembly does not cancel another assembled spare on a stopped night', () => {
-  function nightEvents(thirdFrame) {
+  function nightEvents(thirdFrame, dayTeam, nightTeam = 'B', assembly = false, productionAmount = 0) {
     const date = '2027-06-03';
     const result = context.simulateExchangeCycle({
       standKey: '10', currentSize: 'D10', maxRuns: 8, reworkDays: 1, scrapDiameter: 70, adoptedCutMm: 4,
@@ -1334,12 +1334,14 @@ test('a roll awaiting daytime assembly does not cancel another assembled spare o
         { id: 'next', frame: 'installedSpare', caliberId: 'b', runs: 0, diameter: 85 },
         { id: 'reserve', frame: thirdFrame, caliberId: 'c', runs: 0, diameter: 85 }
       ],
+      assemblyConfirmation: assembly ? { date, period: 'day', requiredHours: 5, reservedHours: 5, people: 1,
+        prepared: 'reworkInbound', preparedTarget: 'online', preparedOn: date } : null,
       workConfirmation: { date: '2027-06-02', period: 'day', workType: 'rollChange', requiredHours: 5,
         reservedHours: 5, people: 1, continuous: 'no', changeover: 'yes', threeSet: 'yes' },
       days: [
         { date: '2027-06-01', size: 'D10', productionAmount: 10, operatingHours: 8, shift1Team: 'A' },
         { date: '2027-06-02', productionAmount: 0, operatingHours: 0, shift1Team: 'A' },
-        { date, productionAmount: 0, operatingHours: 0, shift3Team: 'B' }
+        { date, size: 'D10', productionAmount, operatingHours: productionAmount ? 8 : 0, shift1Team: dayTeam, shift3Team: nightTeam }
       ]
     });
     return result.events.filter(item => item.date === date);
@@ -1351,6 +1353,18 @@ test('a roll awaiting daytime assembly does not cancel another assembled spare o
     assert.equal(events.some(e => e.kind === '組替完了'), false);
     assert.equal(events.some(e => e.kind === '夜勤予備不足'), frame === 'usedSpare');
     assert.equal(events.find(e => e.kind === '改削完了').installedSpare, frame === 'usedSpare' ? 0 : 1);
+  }
+  for (const [frame, nightTeam, assembly, amount, expected] of [
+    ['usedSpare', 'B', false, 0, 1],
+    ['usedSpare', 'B', true, 0, 0],
+    ['installedSpare', 'B', false, 0, 0],
+    ['usedSpare', '', false, 0, 0],
+    ['usedSpare', 'B', false, 10, 1],
+    ['usedSpare', '未確認', false, 10, 0]
+  ]) {
+    const events = nightEvents(frame, 'A', nightTeam, assembly, amount);
+    assert.equal(events.filter(event => event.kind === '夜勤予備不足').length, expected);
+    assert.equal(events.some(event => event.kind === '組替完了'), assembly);
   }
 });
 
