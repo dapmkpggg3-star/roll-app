@@ -2492,16 +2492,14 @@ function readLedgerResources(list, selection) {
         if (!keys) return true;
         return keys.includes(standNumberFromName(item.name || item.id));
     }).map(item => {
-        const diameter = finiteOrNull(Number(item.currentDiameter));
-        const runs = finiteOrNull(Number(item.openingRuns));
         return {
             id: String(item.id),
             name: item.name,
             standKey: standNumberFromName(item.name || item.id),
             frame: ledgerFrame(item.status),
-            diameter: item.currentDiameter === undefined || item.currentDiameter === null || item.currentDiameter === '' ? null : diameter,
+            diameter: blankForecastAmount(item.currentDiameter),
             caliberId: item.currentCaliber || null,
-            runs: item.openingRuns === undefined || item.openingRuns === null || item.openingRuns === '' ? null : runs
+            runs: blankForecastAmount(item.openingRuns)
         };
     });
 }
@@ -3006,9 +3004,9 @@ function readForecastSettings() {
 }
 
 function blankForecastAmount(value) {
-    if (value === undefined || value === null || value === '') return null;
-    const number = Number(value);
-    return Number.isFinite(number) ? number : null;
+    if (typeof value === 'number') return finiteOrNull(value);
+    if (typeof value !== 'string' || !value.trim()) return null;
+    return finiteOrNull(Number(value));
 }
 
 function rememberForecastSetting(input) {
@@ -3028,7 +3026,8 @@ function rememberForecastSetting(input) {
 function recallForecastSetting(input) {
     const key = forecastSettingKey(input);
     const value = readForecastSettings()[key];
-    return { key, value: value || null };
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return { key, value: null };
+    return { key, value: { ...value, openingRuns: blankForecastAmount(value.openingRuns), openingTons: blankForecastAmount(value.openingTons) } };
 }
 
 function currentForecastContext() {

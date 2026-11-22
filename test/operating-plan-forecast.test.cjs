@@ -1414,3 +1414,25 @@ test('the same exchange and day slot leave only the stand ready before the night
     }
   }
 });
+
+test('an unknown ledger opening stays unknown through forecast and saved settings', () => {
+  const roll = { id: 'anonymous', name: '#16-X', status: 'オンライン', currentCaliber: 'C' };
+  const owner = { standKey: '16', size: 'D10', rollId: roll.id, referenceAt: '2031-10-01' };
+  for (const value of ['　 ', false, [], [0], null, undefined]) {
+    const resources = context.readLedgerResources([{ ...roll, currentDiameter: value, openingRuns: value }]);
+    assert.equal(resources[0].runs, null);
+    assert.equal(resources[0].diameter, null);
+    const result = context.simulateExchangeCycle({ resources, maxRuns: 8, days: [] });
+    assert.equal(result.rollChangeCount, null);
+    assert.equal(context.rememberForecastSetting({ ...owner, openingRuns: value }).value.openingRuns, null);
+  }
+  const storage = 'caliber_forecast_settings_v1';
+  memoryStore.set(storage, JSON.stringify({ [context.forecastSettingKey(owner)]: { caliberId: 'C', openingRuns: '　', openingTons: ' 0 ' } }));
+  const saved = context.recallForecastSetting(owner).value;
+  assert.equal(saved.openingRuns, null);
+  assert.equal(saved.openingTons, 0);
+  for (const value of [0, ' 0 ', 7, '7']) {
+    assert.equal(context.readLedgerResources([{ ...roll, openingRuns: value }])[0].runs, Number(value));
+  }
+  memoryStore.delete(storage);
+});
