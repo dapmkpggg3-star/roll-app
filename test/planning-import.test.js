@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const importer = require('../js/planning-import');
 const rules = require('../js/planning-rules');
 const scheduleApi = require('../js/planning-schedule');
+const sheetOutput = require('../js/planning-sheet-output');
 
 function uint16(value) {
     const buffer = Buffer.alloc(2);
@@ -86,8 +87,8 @@ function sampleMaintenanceWorksheet() {
     return `<?xml version="1.0"?><worksheet><sheetData>${rows.join('')}</sheetData></worksheet>`;
 }
 
-function sampleWorkbookBuffer() {
-    const sharedStrings = ['休止', 'D1', 'D2', 'A', 'B', 'ロール替'];
+function sampleWorkbookBuffer(firstSize = 'D1') {
+    const sharedStrings = ['休止', firstSize, 'D2', 'A', 'B', 'ロール替'];
     return storedZip({
         'xl/workbook.xml': '<?xml version="1.0"?><workbook xmlns:r="r"><sheets><sheet name="31.04 生産予定" sheetId="1" r:id="rId1"/><sheet name="2031.4 ロールカリバ替予定" sheetId="2" r:id="rId2"/></sheets></workbook>',
         'xl/_rels/workbook.xml.rels': '<?xml version="1.0"?><Relationships><Relationship Id="rId1" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Target="worksheets/sheet2.xml"/></Relationships>',
@@ -102,6 +103,33 @@ test('year and month are read only from production-plan sheet names', () => {
     assert.deepEqual(importer.parseYearMonth('2032年12月 生産予定'), { year: 2032, month: 12 });
     assert.equal(importer.parseYearMonth('2031.4 ロールカリバ替予定'), null);
     assert.deepEqual(importer.parseMaintenanceYearMonth('2031.4 ロールカリバ替予定'), { year: 2031, month: 4 });
+});
+
+
+test('imported size markers retain their meaning through monthly export', async () => {
+    const cases = [
+        ['DSTOP', '', ''], ['前日休止', '', ''], ['休み予定', '', ''],
+        ['D13', 'D13', 'D13'], ['ＳＴＯＰ', 'STOP', '休止'], ['休み', 'STOP', '休止']
+    ];
+    for (const [input, expectedSize, expectedDisplay] of cases) {
+        const bytes = sampleWorkbookBuffer(input);
+        const parsed = await importer.importFile({
+            name: 'sample.xlsx', size: bytes.length,
+            arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
+        }, { rules, schedule: scheduleApi });
+        assert.equal(parsed.schedule[0].productionAmount, 100);
+        assert.equal(parsed.schedule[0].size, expectedSize, input);
+        assert.equal(rules.normalizeSize(input), expectedSize, input);
+        if (!expectedDisplay) {
+            assert.throws(() => sheetOutput.buildExportPayload(parsed), /サイズが未確認/, input);
+            continue;
+        }
+        const report = sheetOutput.buildExportPayload(parsed);
+        assert.equal(report.calendarRows.length, 30);
+        assert.equal(report.calendarRows[0].size, expectedDisplay, input);
+        assert.equal(parsed.schedule[1].productionAmount, 0);
+        assert.equal(report.calendarRows[1].size, '休止');
+    }
 });
 
 test('production rows are extracted from the longest sequential day block', () => {

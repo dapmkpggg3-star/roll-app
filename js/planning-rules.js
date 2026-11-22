@@ -27,7 +27,7 @@
     function normalizeSize(value) {
         const token = normalizeToken(value).replace(/\s+/g, '');
         if (/^D\d+$/.test(token)) return token;
-        if (/STOP|休止|休み/.test(token)) return 'STOP';
+        if (token === 'STOP' || token === '休止' || token === '休み') return 'STOP';
         return '';
     }
 
