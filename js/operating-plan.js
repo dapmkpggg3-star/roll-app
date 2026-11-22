@@ -2081,6 +2081,17 @@ function simulateExchangeCycle(input) {
             push(date, '使用可能予備', `${item.id}は夜勤開始までに使用可能な予備です。本数は増やしていません。`);
         });
     };
+    const confirmedAssemblyTargets = (waiting, confirmation) => {
+        // A dated inbound record is for one roll. Accept its ledger name as well as its internal ID.
+        if (confirmation.prepared === 'reworkInbound' && !confirmation.repeatOnStops) {
+            const label = String(confirmation.preparedTarget || '').trim();
+            const ids = resources
+                ? resources.filter(roll => roll.id === label || roll.name === label).map(roll => roll.id)
+                : [label];
+            return ids.length === 1 ? waiting.filter(item => item.id === ids[0]) : [];
+        }
+        return waiting.length === 1 ? waiting : [];
+    };
     const holdAssembly = (date, row) => {
         const waiting = state.reworks.filter(item => item.status === 'awaitingAssembly');
         if (!waiting.length) return false;
@@ -2094,7 +2105,7 @@ function simulateExchangeCycle(input) {
                 const confirmation = matches.length === 1 ? matches[0] : null;
                 const assessed = assemblySlotReady(confirmation, row);
                 const overlap = events.some(event => event.date === date && ['サイズ替', 'ロール替', 'カリバ替', '組替完了'].includes(event.kind));
-                if (confirmation && assessed.ok && normalizeShiftTeam(row.shift1Team) && !overlap) {
+                if (confirmation && assessed.ok && !overlap && confirmedAssemblyTargets([item], confirmation).length) {
                     finishAssembly(date, [item], confirmation);
                     completed = true;
                 } else {
@@ -2106,11 +2117,12 @@ function simulateExchangeCycle(input) {
             return completed;
         }
         const slot = assemblySlotReady(assemblyConfirmation, row);
-        if (slot.ok) {
-            finishAssembly(date, waiting, assemblyConfirmation || {});
+        const targets = slot.ok ? confirmedAssemblyTargets(waiting, assemblyConfirmation) : [];
+        if (targets.length === 1) {
+            finishAssembly(date, targets, assemblyConfirmation);
             return true;
         }
-        push(date, '組替需要', `${waiting.map(item => item.id).join('、')}は組替前です。${slot.reason}`);
+        push(date, '組替需要', `${waiting.map(item => item.id).join('、')}は組替前です。${slot.reason || '準備を確認した対象ロールが一致しません。'}`);
         return false;
     };
     const nightOnly = row => scheduleNightOnly(row);
@@ -2476,6 +2488,7 @@ function readLedgerResources(list, selection) {
         const runs = finiteOrNull(Number(item.openingRuns));
         return {
             id: String(item.id),
+            name: item.name,
             standKey: standNumberFromName(item.name || item.id),
             frame: ledgerFrame(item.status),
             diameter: item.currentDiameter === undefined || item.currentDiameter === null || item.currentDiameter === '' ? null : diameter,

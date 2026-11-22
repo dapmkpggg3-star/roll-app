@@ -624,7 +624,7 @@ test('different diameters stay with their own roll through rework', () => {
   };
   const once = context.simulateExchangeCycle({
     maxRuns: 1, adoptedCutMm: 4, scrapDiameter: 70, reworkDays: 0, workConfirmation: slot, resources: original,
-    assemblyConfirmation: { date: '2027-05-02', period: 'day', requiredHours: 5, reservedHours: 5, people: 1, prepared: 'reworkInbound', preparedTarget: 'roll-a', preparedOn: '2027-04-01' },
+    assemblyConfirmation: { date: '2027-05-02', period: 'day', requiredHours: 5, reservedHours: 5, people: 1, prepared: 'reworkInbound', preparedTarget: 'roll-online', preparedOn: '2027-04-01' },
     days: [
       { date: '2027-05-01', productionAmount: 10, operatingHours: 8, shift1Team: 'A', shift3Team: '' },
       { date: '2027-05-02', productionAmount: 0, operatingHours: 0, shift1Team: 'A', shift3Team: '' }
@@ -1364,16 +1364,16 @@ test('the same exchange and day slot leave only the stand ready before the night
       operatingHours: date === '2027-05-04' ? 8 : 0,
       shift1Team: date === nightDate ? '' : 'A', shift3Team: date === nightDate ? 'B' : '' });
   }
-  function simulate(standKey, preparedOn, scoped = false) {
+  function simulate(standKey, preparedOn, scoped = false, preparedTarget = 'online-' + standKey) {
     const rollId = 'online-' + standKey;
     const assembly = { date: assemblyDate, period: 'day', requiredHours: 5, reservedHours: 5, people: 1,
-      prepared: 'reworkInbound', preparedTarget: rollId, preparedOn };
+      prepared: 'reworkInbound', preparedTarget, preparedOn };
     const referenceAt = days[0].date;
     const result = context.simulateExchangeCycle({
       standKey, currentSize: 'D10', referenceAt, maxRuns: 8, reworkDays: context.resolvedReworkDays(standKey),
       scrapDiameter: 70, adoptedCutMm: 4,
       resources: [
-        { id: rollId, frame: 'online', caliberId: 'a', runs: 7, diameter: 81 },
+        { id: rollId, name: '#' + standKey + '-A', frame: 'online', caliberId: 'a', runs: 7, diameter: 81 },
         { id: 'next-' + standKey, frame: 'installedSpare', caliberId: 'b', runs: 0, diameter: 85 },
         { id: 'used-' + standKey, frame: 'usedSpare', caliberId: 'c', runs: 0, diameter: 85 }
       ],
@@ -1392,7 +1392,9 @@ test('the same exchange and day slot leave only the stand ready before the night
   }
   for (const scoped of [false, true]) {
     assert.deepEqual(simulate('10', assemblyDate, scoped), { reworked: true, assembled: true, shortAtNight: false });
+    assert.deepEqual(simulate('10', assemblyDate, scoped, '#10-A'), { reworked: true, assembled: true, shortAtNight: false });
     assert.deepEqual(simulate('16', assemblyDate, scoped), { reworked: false, assembled: false, shortAtNight: true });
+    assert.deepEqual(simulate('10', assemblyDate, scoped, 'next-10'), { reworked: true, assembled: false, shortAtNight: true });
     for (const preparedOn of [nightDate, '2027-02-30', '']) {
       assert.deepEqual(simulate('10', preparedOn, scoped), { reworked: true, assembled: false, shortAtNight: true });
     }
