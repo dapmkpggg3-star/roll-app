@@ -154,3 +154,15 @@ test('a valid paired snapshot takes precedence over stale separate keys', () => 
   assert.deepEqual(saved.localOriginal, local);
   assert.deepEqual(saved.remoteOriginal, remote);
 });
+
+
+test('partial legacy originals block recovery instead of silently replacing a missing side with empty', () => {
+  const { context, storage } = harness();
+  storage.set('roles', JSON.stringify([{ id: 'current' }]));
+  storage.set('roles_original_local_before_sync', JSON.stringify([{ id: 'local-preserve' }]));
+  const pkg = context.buildOfflineRecoveryPackage({ roles: [], localOriginal: [], remoteOriginal: [] });
+  const result = context.applyOfflineRecoveryPackage(context.localStorage, pkg, { confirmed: true, rollbackAcknowledged: true });
+  assert.equal(result.applied, false);
+  assert.equal(JSON.parse(storage.get('roles'))[0].id, 'current');
+  assert.equal(storage.has('roles_offline_recovery_rollback_v1'), false);
+});
