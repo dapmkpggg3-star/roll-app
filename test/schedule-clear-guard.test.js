@@ -162,7 +162,7 @@ function existingDraftFixture() {
     gas.writePlanningCalendar_(sheet, plan.calendarRows, plan);
     cell('A1').note = 'ROLL_PLANNING_DRAFT|' + JSON.stringify({ calendarSnapshot: gas.planningCalendarSnapshot_(sheet) });
     writes.length = 0;
-    return { cell, writes, reExport: () => gas.writePlanningDraftUnlocked_(plan, 'planning-anonymous') };
+    return { cell, writes, plan, reExport: () => gas.writePlanningDraftUnlocked_(plan, 'planning-anonymous') };
 }
 
 test('re-export of an existing draft preserves team entries and manual work across two refreshes', () => {
@@ -185,11 +185,35 @@ test('re-export after a manual size change stops before the first write', () => 
     assert.equal(cell('D5').value, 'D10');
 });
 
-test('re-export should preserve a manually entered formula with the same displayed result', {
-    todo: 'The blocked draft writer snapshots values only. Keep write-back disabled pending a server fix.'
-}, () => {
+test('re-export stops before writing over calendar, heading or suggested-work formulas', () => {
+    for (const key of ['B5', 'C5', 'D5', 'G35', 'J35', 'E2', 'G2', 'N1', 'E5', 'H5', 'K5']) {
+        const { cell, writes, plan, reExport } = existingDraftFixture();
+        cell(key).formula = key === 'D5' ? '="D13"' : '=""';
+        if (['E5', 'H5', 'K5'].includes(key)) {
+            plan.suggestions = [{ date: '2032-01-01', column: key[0], text: '点検' }];
+        }
+        assert.throws(reExport, /数式/, key);
+        assert.deepEqual(writes, [], key);
+        assert.ok(cell(key).formula, key);
+    }
+});
+
+test('re-export protects a formula edited in a previously generated suggestion', () => {
+    const { cell, writes, reExport } = existingDraftFixture();
+    cell('K5').note = 'ROLL_PLANNING_GENERATED|' + JSON.stringify({ generatedValue: '点検' });
+    cell('K5').value = '点検';
+    cell('K5').formula = '="点検"';
+    assert.throws(reExport, /数式/);
+    assert.deepEqual(writes, []);
+    assert.equal(cell('K5').formula, '="点検"');
+});
+
+test('a formula outside the write targets survives two refreshes', () => {
     const { cell, reExport } = existingDraftFixture();
-    cell('D5').formula = '="D13"';
-    try { reExport(); } catch (error) { assert.match(error.message, /手修正/); }
-    assert.equal(cell('D5').formula, '="D13"');
+    cell('K8').formula = '=""';
+    cell('F5').formula = '=1';
+    reExport();
+    reExport();
+    assert.equal(cell('K8').formula, '=""');
+    assert.equal(cell('F5').formula, '=1');
 });
