@@ -106,8 +106,11 @@ function verifyOfflineRecoveryPackage(pkg) {
 
 function readStoredRecoveryArray(storage, key) {
     const raw = storage.getItem(key);
-    if (raw === null || raw === undefined || raw === '') {
+    if (raw === null || raw === undefined) {
         return [];
+    }
+    if (raw === '') {
+        return null;
     }
     try {
         const parsed = JSON.parse(raw);
