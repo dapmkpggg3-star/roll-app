@@ -198,14 +198,68 @@ function applyOfflineRecoveryPackage(storage, pkg, options) {
     if (!rollback.ok) {
         return { applied: false, reason: rollback.reason };
     }
-    // Preserve exact raw values and absence: an empty array is not the same as a missing key.
+    // Store the raw originals and the recovery payload together. localStorage replaces one
+    // value atomically, so a failed second save cannot replace half of the first undo.
     const originalKeys = RECOVERY_ORIGINAL_KEYS.map(key => [key, storage.getItem(key)]);
-    storage.setItem(OFFLINE_RECOVERY_PRESENCE_KEY, JSON.stringify(originalKeys));
-    storage.setItem(OFFLINE_RECOVERY_ROLLBACK_KEY, JSON.stringify(rollback.package));
+    const record = { ...rollback.package, originalKeys };
+    delete record.checksum;
+    record.checksum = recoveryChecksum(record);
+    const previousRecord = storage.getItem(OFFLINE_RECOVERY_ROLLBACK_KEY);
+    const previousRoles = storage.getItem('roles');
+    try {
+        storage.setItem(OFFLINE_RECOVERY_ROLLBACK_KEY, JSON.stringify(record));
+    } catch (error) {
+        return { applied: false, reason: '取り消し用の控えを保存できなかったため、適用を中止しました。' };
+    }
     const roles = cloneRecoveryValue(pkg.roles);
-    storage.setItem('roles', JSON.stringify(roles));
-    writeRecoveryOriginals(storage, pkg);
+    try {
+        storage.setItem('roles', JSON.stringify(roles));
+        writeRecoveryOriginals(storage, pkg);
+    } catch (error) {
+        try {
+            restoreRecoveryEntries(storage, [['roles', previousRoles], ...originalKeys]);
+            restoreRecoveryEntries(storage, [[OFFLINE_RECOVERY_ROLLBACK_KEY, previousRecord]]);
+        } catch (restoreError) {
+            return { applied: false, reason: '復旧途中で端末への保存が止まりました。取り消し用の控えから「直前の復旧を取り消す」を再実行してください。' };
+        }
+        return { applied: false, reason: '端末に保存できなかったため、適用前の状態に戻しました。' };
+    }
     return { applied: true, roles, rollback: rollback.package };
+}
+
+function restoreRecoveryEntries(storage, entries) {
+    // Free space taken by newly added keys before restoring prior values. A failed undo
+    // retains its checked record, so the same operation can be retried.
+    for (const [key, raw] of entries) {
+        if (raw === null) storage.removeItem(key);
+    }
+    for (const [key, raw] of entries) {
+        if (raw !== null && storage.getItem(key) !== raw) storage.setItem(key, raw);
+    }
+}
+
+function validRecoveryEntries(entries) {
+    return Array.isArray(entries) && entries.length === RECOVERY_ORIGINAL_KEYS.length &&
+        entries.every((item, i) => Array.isArray(item) && item.length === 2 &&
+            item[0] === RECOVERY_ORIGINAL_KEYS[i] && (item[1] === null || typeof item[1] === 'string'));
+}
+
+function legacyEntriesMatchPackage(entries, pkg) {
+    // Older devices wrote a separate, unchecked presence list. Verify the actual JSON
+    // against the independently checked backup before using it to restore missing keys.
+    const originals = new Map(entries);
+    const oldStorage = { getItem: key => originals.get(key) ?? null };
+    const rebuilt = buildRollbackFromStorage(oldStorage);
+    if (!rebuilt.ok) return false;
+    for (const [key, field] of [['roles_original_local_before_sync', 'localOriginal'],
+                               ['roles_original_remote_before_sync', 'remoteOriginal']]) {
+        const stored = originals.get(key);
+        if (stored !== null && canonicalRecoveryJson(cloneRecoveryValue(JSON.parse(stored))) !== canonicalRecoveryJson(pkg[field])) {
+            return false;
+        }
+    }
+    return ['localOriginal', 'remoteOriginal', 'generations'].every(key =>
+        canonicalRecoveryJson(rebuilt.package[key]) === canonicalRecoveryJson(pkg[key] || []));
 }
 
 function rollbackOfflineRecovery(storage, options) {
@@ -217,42 +271,39 @@ function rollbackOfflineRecovery(storage, options) {
         return { applied: false, reason: '取り消す復旧操作がありません。' };
     }
     let pkg;
+    let originalKeys;
     try {
         pkg = JSON.parse(raw);
-    } catch (error) {
-        return { applied: false, reason: '取り消し用の控えが壊れているため中止しました。' };
-    }
-    const verified = verifyOfflineRecoveryPackage(pkg);
-    if (!verified.ok) {
-        return { applied: false, reason: verified.reason };
-    }
-    const rawPresence = storage.getItem(OFFLINE_RECOVERY_PRESENCE_KEY);
-    let originalKeys = null;
-    if (rawPresence !== null) {
-        try {
-            const parsed = JSON.parse(rawPresence);
-            if (!Array.isArray(parsed) || parsed.length !== RECOVERY_ORIGINAL_KEYS.length ||
-                parsed.some((item, index) => !Array.isArray(item) || item.length !== 2 ||
-                    item[0] !== RECOVERY_ORIGINAL_KEYS[index] ||
-                    (item[1] !== null && typeof item[1] !== 'string'))) {
-                return { applied: false, reason: '元の保存キー情報が壊れているため、取り消しを中止しました。' };
+        const verified = verifyOfflineRecoveryPackage(pkg);
+        if (!verified.ok) return { applied: false, reason: verified.reason };
+        originalKeys = pkg.originalKeys;
+        if (originalKeys !== undefined) {
+            if (!validRecoveryEntries(originalKeys)) throw new Error('invalid-originals');
+        } else {
+            const rawPresence = storage.getItem(OFFLINE_RECOVERY_PRESENCE_KEY);
+            if (rawPresence !== null) {
+                originalKeys = JSON.parse(rawPresence);
+                if (!validRecoveryEntries(originalKeys) || !legacyEntriesMatchPackage(originalKeys, pkg)) {
+                    throw new Error('invalid-legacy-originals');
+                }
             }
-            originalKeys = parsed;
-        } catch (error) {
-            return { applied: false, reason: '元の保存キー情報が壊れているため、取り消しを中止しました。' };
         }
+    } catch (error) {
+        return { applied: false, reason: '取り消し用の控えまたは原本の情報が壊れているため中止しました。' };
     }
     const roles = cloneRecoveryValue(pkg.roles);
-    storage.setItem('roles', JSON.stringify(roles));
-    writeRecoveryOriginals(storage, pkg);
-    if (originalKeys) {
-        originalKeys.forEach(([key, raw]) => {
-            if (raw === null) storage.removeItem(key);
-            else storage.setItem(key, raw);
-        });
+    try {
+        if (originalKeys) {
+            restoreRecoveryEntries(storage, originalKeys);
+        } else {
+            writeRecoveryOriginals(storage, pkg);
+        }
+        storage.setItem('roles', JSON.stringify(roles));
         storage.removeItem(OFFLINE_RECOVERY_PRESENCE_KEY);
+        storage.removeItem(OFFLINE_RECOVERY_ROLLBACK_KEY);
+    } catch (error) {
+        return { applied: false, reason: '端末への書き込みが中断しました。「直前の復旧を取り消す」を再実行してください。' };
     }
-    storage.removeItem(OFFLINE_RECOVERY_ROLLBACK_KEY);
     return { applied: true, roles };
 }
 
