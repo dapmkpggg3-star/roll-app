@@ -1948,7 +1948,13 @@ function assemblySlotReady(confirmation, row) {
         return { ok: false, reason: '準備の種類が未確認です。発注や改削見込日数だけでは準備にしません。' };
     }
     if (!String(source.preparedTarget || '').trim()) return { ok: false, reason: '確認した対象が未入力です。発注や見込日数だけでは準備にしません。' };
-    if (!String(source.preparedOn || '').slice(0, 10)) return { ok: false, reason: '確認した日が未入力です。発注や見込日数だけでは準備にしません。' };
+    const preparedOn = source.preparedOn;
+    if (!preparedOn) return { ok: false, reason: '確認した日が未入力です。発注や見込日数だけでは準備にしません。' };
+    const confirmedAt = new Date(preparedOn + 'T00:00:00Z');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(preparedOn) || !Number.isFinite(confirmedAt.getTime()) || confirmedAt.toISOString().slice(0, 10) !== preparedOn) {
+        return { ok: false, reason: '準備の確認日が正しい日付ではないため、組替を完了にしません。' };
+    }
+    if (preparedOn > date) return { ok: false, reason: '準備の確認日が組替日より後です。' };
     return { ok: true, reason: '' };
 }
 
@@ -2075,6 +2081,17 @@ function simulateExchangeCycle(input) {
             push(date, '使用可能予備', `${item.id}は夜勤開始までに使用可能な予備です。本数は増やしていません。`);
         });
     };
+    const confirmedAssemblyTargets = (waiting, confirmation) => {
+        // A dated inbound record is for one roll. Accept its ledger name as well as its internal ID.
+        if (confirmation.prepared === 'reworkInbound' && !confirmation.repeatOnStops) {
+            const label = String(confirmation.preparedTarget || '').trim();
+            const ids = resources
+                ? resources.filter(roll => roll.id === label || roll.name === label).map(roll => roll.id)
+                : [label];
+            return ids.length === 1 ? waiting.filter(item => item.id === ids[0]) : [];
+        }
+        return waiting.length === 1 ? waiting : [];
+    };
     const holdAssembly = (date, row) => {
         const waiting = state.reworks.filter(item => item.status === 'awaitingAssembly');
         if (!waiting.length) return false;
@@ -2088,24 +2105,24 @@ function simulateExchangeCycle(input) {
                 const confirmation = matches.length === 1 ? matches[0] : null;
                 const assessed = assemblySlotReady(confirmation, row);
                 const overlap = events.some(event => event.date === date && ['サイズ替', 'ロール替', 'カリバ替', '組替完了'].includes(event.kind));
-                const futurePreparation = confirmation && confirmation.preparedOn > date;
-                if (confirmation && assessed.ok && normalizeShiftTeam(row.shift1Team) && !overlap && !futurePreparation) {
+                if (confirmation && assessed.ok && !overlap && confirmedAssemblyTargets([item], confirmation).length) {
                     finishAssembly(date, [item], confirmation);
                     completed = true;
                 } else {
                     const reason = overlap ? '同じ日の別作業と重なるため、組替完了にしません。'
-                        : (futurePreparation ? '準備の確認日が組替日より後です。' : (assessed.reason || '対象に一致する昼の組替枠が未確認です。'));
+                        : (assessed.reason || '対象に一致する昼の組替枠が未確認です。');
                     push(date, '組替需要', `${item.id}は組替前です。${reason}`);
                 }
             }
             return completed;
         }
         const slot = assemblySlotReady(assemblyConfirmation, row);
-        if (slot.ok) {
-            finishAssembly(date, waiting, assemblyConfirmation || {});
+        const targets = slot.ok ? confirmedAssemblyTargets(waiting, assemblyConfirmation) : [];
+        if (targets.length === 1) {
+            finishAssembly(date, targets, assemblyConfirmation);
             return true;
         }
-        push(date, '組替需要', `${waiting.map(item => item.id).join('、')}は組替前です。${slot.reason}`);
+        push(date, '組替需要', `${waiting.map(item => item.id).join('、')}は組替前です。${slot.reason || '準備を確認した対象ロールが一致しません。'}`);
         return false;
     };
     const nightOnly = row => scheduleNightOnly(row);
@@ -2471,6 +2488,7 @@ function readLedgerResources(list, selection) {
         const runs = finiteOrNull(Number(item.openingRuns));
         return {
             id: String(item.id),
+            name: item.name,
             standKey: standNumberFromName(item.name || item.id),
             frame: ledgerFrame(item.status),
             diameter: item.currentDiameter === undefined || item.currentDiameter === null || item.currentDiameter === '' ? null : diameter,
