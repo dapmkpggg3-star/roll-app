@@ -1837,7 +1837,9 @@ function addDays(date, days) {
 
 function addMonths(date, months) {
     const parts = String(date).slice(0, 10).split('-').map(Number);
-    const next = new Date(Date.UTC(parts[0], parts[1] - 1 + months, parts[2]));
+    const targetMonth = parts[1] - 1 + months;
+    const lastDay = new Date(Date.UTC(parts[0], targetMonth + 1, 0)).getUTCDate();
+    const next = new Date(Date.UTC(parts[0], targetMonth, Math.min(parts[2], lastDay)));
     return next.toISOString().slice(0, 10);
 }
 
