@@ -43,3 +43,5 @@ assert.deepEqual(original.saved,names);
 assert.deepEqual(original.cleared,names);
 assert.deepEqual(candidate,{cleared:names.slice(1),clearConflicts:names.slice(0,1),saved:names.slice(1),
   bulkConflicts:names.slice(0,1),success:false});
+
+require('./direct-edit.cjs');
