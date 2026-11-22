@@ -248,7 +248,7 @@
     function normalizeSize(value, productionAmount) {
         const token = String(value == null ? '' : value).normalize('NFKC').toUpperCase().replace(/\s+/g, '');
         if (/^D\d+(?:\.0)?$/.test(token)) return token.replace(/\.0$/, '');
-        if (/休止|休み|STOP/.test(token) || productionAmount === 0) return 'STOP';
+        if (token === 'STOP' || token === '休止' || token === '休み' || productionAmount === 0) return 'STOP';
         return '';
     }
 
