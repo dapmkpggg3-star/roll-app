@@ -1,0 +1,305 @@
+--- a/google-apps-script.gs
++++ b/google-apps-script.gs
+@@ -254,6 +254,7 @@
+   'useStartDate'
+ ];
+ const PLANNING_EXPORT_STATUS_PREFIX = 'ROLL_PLANNING_EXPORT_STATUS_';
++const PLANNING_CALENDAR_RANGES = ['B5:D35', 'G5:G35', 'J5:J35', 'E2', 'G2'];
+ const PLANNING_DRAFT_NOTE_PREFIX = 'ROLL_PLANNING_DRAFT|';
+ const PLANNING_GENERATED_NOTE_PREFIX = 'ROLL_PLANNING_GENERATED|';
+ const PLANNING_DRAFT_FONT_COLOR = '#1f4e78';
+@@ -988,14 +989,19 @@
+   }
+ }
+ 
+-function clearGeneratedPlanningSuggestions_(sheet) {
++function shouldRestorePlanningValue_(value, metadata) {
++  return String(value == null ? '' : value) === String(metadata.generatedValue || '');
++}
++
++function clearGeneratedPlanningSuggestions_(sheet, protectedFormulas) {
+   let cleared = 0;
+   ['E', 'H', 'K'].forEach(function(column) {
+     for (let row = 5; row <= 35; row += 1) {
+       const cell = sheet.getRange(column + row);
+       const metadata = decodePlanningGeneratedNote_(cell.getNote());
+       if (!metadata) continue;
+-      if (String(cell.getValue() == null ? '' : cell.getValue()) === String(metadata.generatedValue || '')) {
++      if (shouldRestorePlanningValue_(cell.getValue(), metadata) &&
++          !holdPlanningFormula_(protectedFormulas, column + row)) {
+         cell.setValue(metadata.previousValue == null ? '' : metadata.previousValue);
+         if (metadata.previousFontColor) cell.setFontColor(metadata.previousFontColor);
+         if (metadata.previousBackground) cell.setBackground(metadata.previousBackground);
+@@ -1023,21 +1029,25 @@
+   return grouped;
+ }
+ 
+-function writePlanningSuggestions_(sheet, suggestions, period, requestId) {
++function planningSuggestionValue_(previousValue, rowValues, texts) {
++  const generatedText = texts.join('\n');
++  if (/サイズ替/.test(rowValues.join('\n')) && /サイズ替/.test(generatedText)) return null;
++  const previousText = String(previousValue == null ? '' : previousValue).trim();
++  return previousText ? previousText + '\n' + generatedText : generatedText;
++}
++
++function writePlanningSuggestions_(sheet, suggestions, period, requestId, protectedFormulas) {
+   const grouped = normalizePlanningSuggestions_(suggestions, period);
+   let writtenCount = 0;
+   Object.keys(grouped).forEach(function(a1) {
+     const cell = sheet.getRange(a1);
+     const previousValue = cell.getValue();
+-    const previousText = String(previousValue == null ? '' : previousValue).trim();
+-    const generatedText = grouped[a1].join('\n');
+-    const rowMatch = a1.match(/(\d+)$/);
+-    const rowNumber = rowMatch ? Number(rowMatch[1]) : 0;
+-    const existingRowWork = rowNumber
+-      ? ['E', 'H', 'K'].map(function(column) { return String(sheet.getRange(column + rowNumber).getValue() || ''); }).join('\n')
+-      : previousText;
+-    if (/サイズ替/.test(existingRowWork) && /サイズ替/.test(generatedText)) return;
+-    const generatedValue = previousText ? previousText + '\n' + generatedText : generatedText;
++    const rowNumber = Number(a1.slice(1));
++    const rowValues = ['E', 'H', 'K'].map(function(column) {
++      return sheet.getRange(column + rowNumber).getValue();
++    });
++    const generatedValue = planningSuggestionValue_(previousValue, rowValues, grouped[a1]);
++    if (generatedValue === null || holdPlanningFormula_(protectedFormulas, a1)) return;
+     const metadata = {
+       requestId: requestId,
+       previousValue: previousValue == null ? '' : previousValue,
+@@ -1056,9 +1066,60 @@
+ }
+ 
+ function planningCalendarSnapshot_(sheet) {
+-  return JSON.stringify(['B5:D35', 'G5:G35', 'J5:J35', 'E2', 'G2'].map(function(range) {
++  return JSON.stringify(PLANNING_CALENDAR_RANGES.map(function(range) {
+     return sheet.getRange(range).getValues();
+   }));
++}
++
++// For existing drafts, preflight every formula that the export would replace before the first edit.
++function holdPlanningFormula_(protection, a1) {
++  if (!protection || !protection.cells.has(a1)) return false;
++  // A formula can recalculate when another cell on the same sheet changes.
++  protection.held.add(a1);
++  return true;
++}
++
++function preflightPlanningFormulas_(sheet, suggestions, period) {
++  function stop(a1) {
++    throw new Error('手修正の数式を保護するため再出力を停止しました: ' + a1);
++  }
++  PLANNING_CALENDAR_RANGES.concat(['N1']).forEach(function(ref) {
++    if (sheet.getRange(ref).getFormulas().some(function(row) { return row.some(Boolean); })) stop(ref);
++  });
++
++  // Work cells are conditional writes. Replay cleanup and suggestion order on in-memory values.
++  const work = sheet.getRange('E5:K35');
++  const columns = ['E', 'H', 'K'];
++  const offsets = [0, 3, 6];
++  const formulas = work.getFormulas();
++  const cells = new Set();
++  formulas.forEach(function(row, dayIndex) {
++    offsets.forEach(function(offset, index) {
++      if (row[offset]) cells.add(columns[index] + (dayIndex + 5));
++    });
++  });
++  if (!cells.size) return null;
++  const values = work.getValues();
++  const notes = work.getNotes();
++  values.forEach(function(row, dayIndex) {
++    offsets.forEach(function(offset, index) {
++      const metadata = decodePlanningGeneratedNote_(notes[dayIndex][offset]);
++      if (!metadata || !shouldRestorePlanningValue_(row[offset], metadata)) return;
++      if (formulas[dayIndex][offset]) stop(columns[index] + (dayIndex + 5));
++      row[offset] = metadata.previousValue == null ? '' : metadata.previousValue;
++    });
++  });
++  const grouped = normalizePlanningSuggestions_(suggestions, period);
++  Object.keys(grouped).forEach(function(a1) {
++    const dayIndex = Number(a1.slice(1)) - 5;
++    const offset = offsets[columns.indexOf(a1[0])];
++    const row = values[dayIndex];
++    const next = planningSuggestionValue_(row[offset], offsets.map(function(i) { return row[i]; }), grouped[a1]);
++    if (next === null) return;
++    if (formulas[dayIndex][offset]) stop(a1);
++    row[offset] = next;
++  });
++  return { cells: cells, held: new Set() };
+ }
+ 
+ function assertPlanningCalendarUnchanged_(sheet) {
+@@ -1095,11 +1156,13 @@
+   let sheet = destination.getSheetByName(expectedSheetName);
+   let created = false;
+   let templateSheetName = '';
++  let protectedFormulas = null;
+   if (sheet) {
+     if (String(sheet.getRange('A1').getNote() || '').indexOf(PLANNING_DRAFT_NOTE_PREFIX) !== 0) {
+       throw new Error('同名シートが既にあり、自動計画案ではないため上書きしません: ' + expectedSheetName);
+     }
+     assertPlanningCalendarUnchanged_(sheet);
++    protectedFormulas = preflightPlanningFormulas_(sheet, plan.suggestions, period);
+   } else {
+     const createdSheet = createPlanningDraftSheet_(destination, period);
+     sheet = createdSheet.sheet;
+@@ -1107,9 +1170,9 @@
+     created = true;
+   }
+ 
+-  const clearedSuggestionCount = clearGeneratedPlanningSuggestions_(sheet);
++  const clearedSuggestionCount = clearGeneratedPlanningSuggestions_(sheet, protectedFormulas);
+   writePlanningCalendar_(sheet, plan.calendarRows, period);
+-  const suggestionCount = writePlanningSuggestions_(sheet, plan.suggestions, period, normalizedRequestId);
++  const suggestionCount = writePlanningSuggestions_(sheet, plan.suggestions, period, normalizedRequestId, protectedFormulas);
+   const marker = {
+     year: period.year,
+     month: period.month,
+@@ -1137,6 +1200,7 @@
+     templateSheetName: templateSheetName,
+     suggestionCount: suggestionCount,
+     clearedSuggestionCount: clearedSuggestionCount,
++    heldFormulaCells: protectedFormulas ? Array.from(protectedFormulas.held) : [],
+     caliberConnected: Boolean(plan && plan.capabilities && plan.capabilities.caliberConnected),
+     completedAt: new Date().toISOString()
+   };
+--- a/test/schedule-clear-guard.test.js
++++ b/test/schedule-clear-guard.test.js
+@@ -109,7 +109,7 @@
+ });
+ 
+ 
+-function existingDraftFixture() {
++function existingDraftFixture(evaluateFormula) {
+     const fs = require('node:fs');
+     const vm = require('node:vm');
+     const path = require('node:path');
+@@ -121,6 +121,10 @@
+         if (!cells.has(a1)) cells.set(a1, { value: '', formula: '', note: '' });
+         return cells.get(a1);
+     }
++    function displayedValue(key) {
++        const entry = cell(key);
++        return entry.formula && evaluateFormula ? evaluateFormula(key, cell) : entry.value;
++    }
+     function range(ref) {
+         const keys = ref.includes(':') ? expandRange(ref) : [ref];
+         const rows = new Map();
+@@ -130,15 +134,20 @@
+             rows.get(row).push(key);
+         }
+         const grid = [...rows.values()];
+-        const read = field => grid.map(row => row.map(key => cell(key)[field]));
++        const read = field => grid.map(row => row.map(key => field === 'value' ? displayedValue(key) : cell(key)[field]));
+         function set(key, value) {
+             cell(key).value = value;
+             cell(key).formula = '';
+             writes.push(key);
+         }
+         return {
++            getValue: () => displayedValue(ref),
++            getFormula: () => cell(ref).formula,
++            getFontColor: () => '#000000',
++            getBackground: () => '#ffffff',
+             getValues: () => read('value'),
+             getFormulas: () => read('formula'),
++            getNotes: () => read('note'),
+             getNote: () => cell(ref).note,
+             setNote(value) { cell(ref).note = value; writes.push(ref); return this; },
+             setValue(value) { set(ref, value); return this; },
+@@ -162,7 +171,7 @@
+     gas.writePlanningCalendar_(sheet, plan.calendarRows, plan);
+     cell('A1').note = 'ROLL_PLANNING_DRAFT|' + JSON.stringify({ calendarSnapshot: gas.planningCalendarSnapshot_(sheet) });
+     writes.length = 0;
+-    return { cell, writes, reExport: () => gas.writePlanningDraftUnlocked_(plan, 'planning-anonymous') };
++    return { cell, writes, plan, reExport: () => gas.writePlanningDraftUnlocked_(plan, 'planning-anonymous') };
+ }
+ 
+ test('re-export of an existing draft preserves team entries and manual work across two refreshes', () => {
+@@ -185,11 +194,79 @@
+     assert.equal(cell('D5').value, 'D10');
+ });
+ 
+-test('re-export should preserve a manually entered formula with the same displayed result', {
+-    todo: 'The blocked draft writer snapshots values only. Keep write-back disabled pending a server fix.'
+-}, () => {
+-    const { cell, reExport } = existingDraftFixture();
+-    cell('D5').formula = '="D13"';
+-    try { reExport(); } catch (error) { assert.match(error.message, /手修正/); }
+-    assert.equal(cell('D5').formula, '="D13"');
+-});
++function putFormula(fixture, address, result) {
++    const cell = fixture.cell(address);
++    cell.value = result;
++    cell.formula = '="' + result + '"';
++    return cell;
++}
++
++function generatedNote(text) {
++    return 'ROLL_PLANNING_GENERATED|' + JSON.stringify({ previousValue: '旧案', generatedValue: text });
++}
++
++for (const address of ['D5', 'N1', 'K5', 'H5']) {
++    test('formula survives with zero writes when refresh would replace ' + address, () => {
++        const fixture = existingDraftFixture();
++        const cell = putFormula(fixture, address, address === 'D5' ? 'D13' : '匿名');
++        if (address === 'K5') cell.note = generatedNote('匿名');
++        if (address === 'H5') fixture.plan.suggestions.push({ date: '2032-01-01', column: 'H', text: '作業候補' });
++        const before = { ...cell };
++        assert.throws(fixture.reExport, /手修正の数式/);
++        assert.deepEqual(fixture.writes, []);
++        assert.deepEqual(cell, before);
++    });
++}
++
++test('untouched work, carry-forward and other formulas allow a normal refresh', () => {
++    const fixture = existingDraftFixture();
++    const addresses = ['K5', 'K38', 'P50'];
++    for (const addr of addresses) putFormula(fixture, addr, '匿名');
++    assert.equal(fixture.reExport().state, 'complete');
++    for (const addr of addresses) assert.equal(fixture.cell(addr).formula, '="匿名"');
++});
++
++test('a different display result from the generated value keeps the user formula', () => {
++    const fixture = existingDraftFixture();
++    const cell = putFormula(fixture, 'K5', '手入力');
++    cell.note = generatedNote('自動案');
++    assert.equal(fixture.reExport().state, 'complete');
++    assert.equal(cell.formula, '="手入力"');
++});
++
++test('duplicate size change leaves the target formula intact without blocking refresh', () => {
++    const fixture = existingDraftFixture();
++    const cell = putFormula(fixture, 'H5', '匿名');
++    fixture.cell('K5').value = 'サイズ替';
++    fixture.plan.suggestions.push({ date: '2032-01-01', column: 'H', text: 'サイズ替' });
++    assert.equal(fixture.reExport().state, 'complete');
++    assert.equal(cell.formula, '="匿名"');
++});
++
++test('cleanup that recalculates K5 leaves its formula intact', () => {
++    const fixture = existingDraftFixture((key, cell) => cell('E5').value);
++    fixture.cell('E5').value = '旧案';
++    const k = fixture.cell('K5');
++    k.formula = '=E5';
++    // After cleanup E5 changes from its generated value to the previous value.
++    fixture.cell('E5').note = 'ROLL_PLANNING_GENERATED|' +
++        JSON.stringify({ generatedValue: '旧案', previousValue: '確定済み' });
++    k.note = generatedNote('確定済み');
++    const result = fixture.reExport();
++    assert.equal(fixture.cell('E5').value, '確定済み');
++    assert.equal(k.formula, '=E5');
++    assert.deepEqual(Array.from(result.heldFormulaCells), ['K5']);
++});
++
++test('calendar changes that recalculate H5 keep the formula and report the held address', () => {
++    const fixture = existingDraftFixture((key, cell) => cell('D5').value === 'D13' ? 'サイズ替' : '');
++    const target = fixture.cell('H5');
++    target.formula = '=IF(D5="D13","サイズ替","")';
++    fixture.plan.calendarRows[0].size = 'D10';
++    fixture.plan.suggestions.push({ date: '2032-01-01', column: 'H', text: 'サイズ替' });
++    const result = fixture.reExport();
++    assert.equal(fixture.cell('D5').value, 'D10');
++    assert.equal(target.formula, '=IF(D5="D13","サイズ替","")');
++    assert.equal(result.suggestionCount, 0);
++    assert.deepEqual(Array.from(result.heldFormulaCells), ['H5']);
++});

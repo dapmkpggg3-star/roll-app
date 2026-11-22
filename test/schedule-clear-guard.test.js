@@ -107,3 +107,89 @@ test('real draft builder on a copied mock sheet exposes the destructive range an
     // This characterizes the blocked server path. Revisit this test when the mapping is approved.
     assert.equal(importer.planningWriteBackGate().allowed, false);
 });
+
+
+function existingDraftFixture() {
+    const fs = require('node:fs');
+    const vm = require('node:vm');
+    const path = require('node:path');
+    const gas = vm.createContext({});
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '../google-apps-script.gs'), 'utf8'), gas);
+    const cells = new Map();
+    const writes = [];
+    function cell(a1) {
+        if (!cells.has(a1)) cells.set(a1, { value: '', formula: '', note: '' });
+        return cells.get(a1);
+    }
+    function range(ref) {
+        const keys = ref.includes(':') ? expandRange(ref) : [ref];
+        const rows = new Map();
+        for (const key of keys) {
+            const row = Number(key.slice(1));
+            if (!rows.has(row)) rows.set(row, []);
+            rows.get(row).push(key);
+        }
+        const grid = [...rows.values()];
+        const read = field => grid.map(row => row.map(key => cell(key)[field]));
+        function set(key, value) {
+            cell(key).value = value;
+            cell(key).formula = '';
+            writes.push(key);
+        }
+        return {
+            getValues: () => read('value'),
+            getFormulas: () => read('formula'),
+            getNote: () => cell(ref).note,
+            setNote(value) { cell(ref).note = value; writes.push(ref); return this; },
+            setValue(value) { set(ref, value); return this; },
+            setValues(values) {
+                grid.forEach((row, i) => row.forEach((key, j) => set(key, values[i][j])));
+                return this;
+            },
+            setFontColor() { return this; },
+            setBackground() { return this; },
+            setFontWeight() { return this; }
+        };
+    }
+    const sheet = { getRange: range, getSheetId: () => 1 };
+    const plan = {
+        year: 2032, month: 1,
+        calendarRows: [{ date: '2032-01-01', weekday: '木', size: 'D13', operationAShift: 'Ⅰ', operationBShift: 'Ⅲ' }],
+        suggestions: []
+    };
+    gas.openRollManagementSpreadsheet_ = () => ({ getSheetByName: () => sheet, getUrl: () => 'mock' });
+    gas.SpreadsheetApp = { flush() {} };
+    gas.writePlanningCalendar_(sheet, plan.calendarRows, plan);
+    cell('A1').note = 'ROLL_PLANNING_DRAFT|' + JSON.stringify({ calendarSnapshot: gas.planningCalendarSnapshot_(sheet) });
+    writes.length = 0;
+    return { cell, writes, reExport: () => gas.writePlanningDraftUnlocked_(plan, 'planning-anonymous') };
+}
+
+test('re-export of an existing draft preserves team entries and manual work across two refreshes', () => {
+    const { cell, reExport } = existingDraftFixture();
+    const inputs = { E5: 'A班', H5: 'B班', K5: 'カリバ替', K38: '翌月の手入力' };
+    for (const [key, value] of Object.entries(inputs)) cell(key).value = value;
+    cell('K5').note = '引継ぎメモ';
+    for (let i = 0; i < 2; i++) {
+        assert.equal(reExport().created, false);
+        for (const [key, value] of Object.entries(inputs)) assert.equal(cell(key).value, value, key);
+        assert.equal(cell('K5').note, '引継ぎメモ');
+    }
+});
+
+test('re-export after a manual size change stops before the first write', () => {
+    const { cell, writes, reExport } = existingDraftFixture();
+    cell('D5').value = 'D10';
+    assert.throws(reExport, /手修正/);
+    assert.deepEqual(writes, []);
+    assert.equal(cell('D5').value, 'D10');
+});
+
+test('re-export should preserve a manually entered formula with the same displayed result', {
+    todo: 'The blocked draft writer snapshots values only. Keep write-back disabled pending a server fix.'
+}, () => {
+    const { cell, reExport } = existingDraftFixture();
+    cell('D5').formula = '="D13"';
+    try { reExport(); } catch (error) { assert.match(error.message, /手修正/); }
+    assert.equal(cell('D5').formula, '="D13"');
+});
