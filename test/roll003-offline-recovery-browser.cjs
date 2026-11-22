@@ -93,6 +93,8 @@ async function requireRollbackDownload(download, savedName) {
   assert.equal(checksum, recoveryChecksum(payload));
   assert.deepEqual(pkg.roles.map(role => role.name), [otherName]);
   assert.equal(pkg.roles[0].memo, 'anon-other');
+  assert.deepEqual(pkg.localOriginal, [{ id: 'other-1', memo: 'legacy-local' }]);
+  assert.deepEqual(pkg.remoteOriginal, [{ id: 'other-1', memo: 'legacy-remote' }]);
   assert.equal(pkg.roles.some(role => exportedNames.includes(role.name)), false);
   return {
     fileName: download.suggestedFilename(),
@@ -153,6 +155,11 @@ async function restoreRecoveryFileInNewBrowser(browser, filePath, outbound) {
       localStorage.setItem('roles', JSON.stringify(roles));
       renderRoles();
     }, otherName);
+    // Older installations kept two separate keys before paired snapshots existed.
+    await page.evaluate(() => {
+      localStorage.setItem('roles_original_local_before_sync', JSON.stringify([{ id: 'other-1', memo: 'legacy-local' }]));
+      localStorage.setItem('roles_original_remote_before_sync', JSON.stringify([{ id: 'other-1', memo: 'legacy-remote' }]));
+    });
     await page.locator('#toggleRoleFormBtn').click();
     const input = page.locator('#offline-recovery-input');
 
@@ -197,6 +204,9 @@ async function restoreRecoveryFileInNewBrowser(browser, filePath, outbound) {
     const afterUndo = await roleNames(page);
     assert.deepEqual(afterUndo.memory, [otherName]);
     assert.deepEqual(afterUndo.stored, [otherName]);
+    const originals = await page.evaluate(() => readIndependentSyncOriginals());
+    assert.deepEqual(originals.localOriginal, [{ id: 'other-1', memo: 'legacy-local' }]);
+    assert.deepEqual(originals.remoteOriginal, [{ id: 'other-1', memo: 'legacy-remote' }]);
     assert.equal(await page.locator('#role-file-1').count(), 0);
     return {
       refusedName: afterRefuse.memory[0],

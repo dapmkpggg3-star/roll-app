@@ -107,3 +107,50 @@ test('recovery module does not call the network', () => {
   assert.equal(source.includes('apiEndpoint'), false);
   assert.equal(source.includes('saveData('), false);
 });
+
+test('undo recovers the independent originals from installations using separate storage keys', () => {
+  const { context, storage } = harness();
+  const originalRoles = [{ id: 'old', memo: 'before-recovery' }];
+  storage.set('roles', JSON.stringify(originalRoles));
+  storage.set('roles_original_local_before_sync', JSON.stringify(local));
+  storage.set('roles_original_remote_before_sync', JSON.stringify(remote));
+
+  const pkg = context.buildOfflineRecoveryPackage({ roles: [], localOriginal: [], remoteOriginal: [] });
+  const result = context.applyOfflineRecoveryPackage(context.localStorage, pkg, { confirmed: true, rollbackAcknowledged: true });
+  assert.equal(result.applied, true);
+  const rollback = JSON.parse(storage.get('roles_offline_recovery_rollback_v1'));
+  assert.deepEqual(rollback.localOriginal, local);
+  assert.deepEqual(rollback.remoteOriginal, remote);
+  assert.equal(context.rollbackOfflineRecovery(context.localStorage, { confirmed: true }).applied, true);
+  assert.deepEqual(JSON.parse(storage.get('roles')), originalRoles);
+  assert.deepEqual(JSON.parse(storage.get('roles_original_local_before_sync')), local);
+  assert.deepEqual(JSON.parse(storage.get('roles_original_remote_before_sync')), remote);
+});
+
+test('an unreadable available original blocks recovery before any stored data changes', () => {
+  for (const [key, raw] of [
+    ['roles_original_local_before_sync', '{broken'],
+    ['roles_original_remote_before_sync', '{}'],
+    ['roles_sync_original_pair_v1', '{"localOriginal":[]}']
+  ]) {
+    const { context, storage } = harness();
+    storage.set(key, raw);
+    storage.set('roles', JSON.stringify(local));
+    const before = [...storage];
+    const pkg = context.buildOfflineRecoveryPackage({ roles: [], localOriginal: [], remoteOriginal: [] });
+    const result = context.applyOfflineRecoveryPackage(context.localStorage, pkg, { confirmed: true, rollbackAcknowledged: true });
+    assert.equal(result.applied, false, key);
+    assert.deepEqual([...storage], before);
+  }
+});
+
+test('a valid paired snapshot takes precedence over stale separate keys', () => {
+  const { context, storage } = harness();
+  storage.set('roles_sync_original_pair_v1', JSON.stringify({ localOriginal: local, remoteOriginal: remote }));
+  storage.set('roles_original_local_before_sync', '{bad');
+  const rollback = context.buildRollbackFromStorage(context.localStorage);
+  assert.equal(rollback.ok, true);
+  const saved = JSON.parse(JSON.stringify(rollback.package));
+  assert.deepEqual(saved.localOriginal, local);
+  assert.deepEqual(saved.remoteOriginal, remote);
+});
