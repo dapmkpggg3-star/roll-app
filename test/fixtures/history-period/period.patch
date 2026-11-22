@@ -1,0 +1,103 @@
+--- a/google-apps-script.gs
++++ b/google-apps-script.gs
+@@ -3563,6 +3563,14 @@
+   return String(left) === String(right);
+ }
+ 
++function findReversedActualPeriod_(rows) {
++  return rows.find(function(row) {
++    const start = row.fields.useStartDate;
++    const end = row.fields.useEndDate;
++    return start.value && end.value && !start.planned && !end.planned && end.value < start.value;
++  });
++}
++
+ function getRollHistoryOpenCycleRow(cycleRows) {
+   const rows = Array.isArray(cycleRows) ? cycleRows : [];
+   let lastCompletedIndex = -1;
+@@ -3902,6 +3910,12 @@
+       blockRange.getDisplayValues(),
+       blockRange.getFontColors()
+     );
++    const reversed = findReversedActualPeriod_(cycleRows);
++    if (reversed) {
++      result.conflicts.push({ roleName: definition.roleName, field: 'useEndDate',
++        rowNumber: reversed.rowNumber, reason: 'end-before-start' });
++      return;
++    }
+     const plan = planRollHistoryActualWrites(
+       cycleRows,
+       normalizeRollHistoryActualSnapshot(role),
+@@ -4209,6 +4223,13 @@
+     blockRange.getDisplayValues(),
+     blockRange.getFontColors()
+   );
++  const editedFieldNames = getRollHistoryActualEditedFieldNames(definition, range);
++  if (!editedFieldNames.length) return { handled: false };
++  const reversed = findReversedActualPeriod_(cycleRows);
++  if (reversed) {
++    sheet.getParent().toast(reversed.rowNumber + '行の使用開始日と終了日を確認してください。', '同期保留', 8);
++    return { handled: true, updated: false, reason: 'end-before-start', rowNumber: reversed.rowNumber };
++  }
+   const editableCycleRow = getRollHistoryCurrentEditableCycleRow(cycleRows);
+   if (!editableCycleRow
+     || range.getRow() > editableCycleRow.rowNumber
+@@ -4216,7 +4237,6 @@
+     return { handled: false };
+   }
+ 
+-  const editedFieldNames = getRollHistoryActualEditedFieldNames(definition, range);
+   const allowedFieldNames = new Set(getRollHistoryActualFieldNamesForStand(definition.standNumber));
+   const protectedFieldNames = editedFieldNames.filter(function(fieldName) {
+     return !allowedFieldNames.has(fieldName);
+@@ -4260,8 +4280,18 @@
+   const lock = LockService.getScriptLock();
+   try {
+     lock.waitLock(ROLES_EDIT_TRIGGER_LOCK_TIMEOUT_MS);
++    const roles = fetchRoles();
++    const role = roles.find(function(item) { return String(item.name || '').trim() === definition.roleName; });
++    if (role && ('useStartDate' in updates || 'useEndDate' in updates)) {
++      const current = normalizeRollHistoryActualSnapshot(role);
++      const next = Object.assign({}, current, updates);
++      if (next.useStartDate && next.useEndDate && next.useEndDate < next.useStartDate) {
++        sheet.getParent().toast('反映後の使用開始日と終了日を確認してください。', '同期保留', 8);
++        return { handled: true, updated: false, reason: 'end-before-start' };
++      }
++    }
+     const result = applyRollHistoryActualChangeToRoles(
+-      fetchRoles(),
++      roles,
+       definition.roleName,
+       updates,
+       new Date().toISOString()
+@@ -4326,6 +4356,7 @@
+   const updatedRoleNames = [];
+   const changedFields = [];
+   const sheetResults = [];
++  const conflicts = [];
+   const changedAt = new Date().toISOString();
+ 
+   const targetSheetNames = (Array.isArray(sheetNames) && sheetNames.length > 0)
+@@ -4358,6 +4389,12 @@
+         blockRange.getDisplayValues(),
+         blockRange.getFontColors()
+       );
++      const reversed = findReversedActualPeriod_(cycleRows);
++      if (reversed) {
++        conflicts.push({ sheetName: sheetName, roleName: definition.roleName,
++          rowNumber: reversed.rowNumber, reason: 'end-before-start' });
++        return;
++      }
+       const editableCycleRow = getRollHistoryCurrentEditableCycleRow(cycleRows);
+       if (!editableCycleRow) return;
+       const updates = {};
+@@ -4389,7 +4426,8 @@
+     refreshFieldRollManagementView();
+   }
+   return {
+-    success: true,
++    success: conflicts.length === 0,
++    conflicts: conflicts,
+     updatedRoleNames: Array.from(new Set(updatedRoleNames)),
+     changedFields: changedFields,
+     sheets: sheetResults
