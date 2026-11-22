@@ -182,3 +182,24 @@ test('present but empty legacy original refuses recovery before any write', () =
     assert.deepEqual([...storage], before, emptyKey);
   }
 });
+
+test('undo preserves absence of original keys on a fresh anonymous device', () => {
+  const { context, storage } = harness();
+  const originalRoles = Array.from({ length: 60 }, (_, i) => ({
+    id: 'anon-' + i, status: '予備', memo: 'memo-' + i,
+    startDate: '2026-11-01', diameter: 200 + i
+  }));
+  storage.set('roles', JSON.stringify(originalRoles));
+  storage.set('unrelated', 'keep');
+  const before = [...storage];
+  const pkg = context.buildOfflineRecoveryPackage({
+    roles: originalRoles.map(item => ({ ...item, memo: 'changed' })),
+    localOriginal: [], remoteOriginal: [], generations: [],
+    savedAt: '2026-11-22T10:28:00Z'
+  });
+  assert.equal(context.applyOfflineRecoveryPackage(context.localStorage, pkg, {
+    confirmed: true, rollbackAcknowledged: true
+  }).applied, true);
+  assert.equal(context.rollbackOfflineRecovery(context.localStorage, { confirmed: true }).applied, true);
+  assert.deepEqual([...storage], before);
+});
