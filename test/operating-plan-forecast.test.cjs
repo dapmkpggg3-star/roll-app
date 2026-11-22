@@ -1353,3 +1353,48 @@ test('a roll awaiting daytime assembly does not cancel another assembled spare o
     assert.equal(events.find(e => e.kind === '改削完了').installedSpare, frame === 'usedSpare' ? 0 : 1);
   }
 });
+
+test('the same exchange and day slot leave only the stand ready before the night with an assembled spare', () => {
+  const workDate = '2027-05-05';
+  const assemblyDate = '2027-06-04';
+  const nightDate = '2027-06-05';
+  const days = [];
+  for (let date = '2027-05-04'; date <= nightDate; date = context.addDays(date, 1)) {
+    days.push({ date, size: 'D10', productionAmount: date === '2027-05-04' ? 10 : 0,
+      operatingHours: date === '2027-05-04' ? 8 : 0,
+      shift1Team: date === nightDate ? '' : 'A', shift3Team: date === nightDate ? 'B' : '' });
+  }
+  function simulate(standKey, preparedOn, scoped = false) {
+    const rollId = 'online-' + standKey;
+    const assembly = { date: assemblyDate, period: 'day', requiredHours: 5, reservedHours: 5, people: 1,
+      prepared: 'reworkInbound', preparedTarget: rollId, preparedOn };
+    const referenceAt = days[0].date;
+    const result = context.simulateExchangeCycle({
+      standKey, currentSize: 'D10', referenceAt, maxRuns: 8, reworkDays: context.resolvedReworkDays(standKey),
+      scrapDiameter: 70, adoptedCutMm: 4,
+      resources: [
+        { id: rollId, frame: 'online', caliberId: 'a', runs: 7, diameter: 81 },
+        { id: 'next-' + standKey, frame: 'installedSpare', caliberId: 'b', runs: 0, diameter: 85 },
+        { id: 'used-' + standKey, frame: 'usedSpare', caliberId: 'c', runs: 0, diameter: 85 }
+      ],
+      workConfirmation: { date: workDate, period: 'day', workType: 'rollChange', requiredHours: 6,
+        reservedHours: 6, people: 2, continuous: 'no', changeover: 'yes', threeSet: 'yes' },
+      assemblyConfirmation: scoped ? null : assembly,
+      assemblySlots: scoped ? [{ ...assembly, owner: { rollId, standKey, size: 'D10', referenceAt } }] : [],
+      days
+    });
+    assert.ok(result.events.some(e => e.date === workDate && e.kind === 'ロール替'));
+    return {
+      reworked: result.events.some(e => e.date === assemblyDate && e.kind === '改削完了'),
+      assembled: result.events.some(e => e.date === assemblyDate && e.kind === '使用可能予備'),
+      shortAtNight: result.events.some(e => e.date === nightDate && e.kind === '夜勤予備不足')
+    };
+  }
+  for (const scoped of [false, true]) {
+    assert.deepEqual(simulate('10', assemblyDate, scoped), { reworked: true, assembled: true, shortAtNight: false });
+    assert.deepEqual(simulate('16', assemblyDate, scoped), { reworked: false, assembled: false, shortAtNight: true });
+    for (const preparedOn of [nightDate, '2027-02-30', '']) {
+      assert.deepEqual(simulate('10', preparedOn, scoped), { reworked: true, assembled: false, shortAtNight: true });
+    }
+  }
+});
