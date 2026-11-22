@@ -2,6 +2,15 @@
 const OFFLINE_RECOVERY_KIND = 'roll-app-offline-recovery';
 const OFFLINE_RECOVERY_VERSION = 1;
 const OFFLINE_RECOVERY_ROLLBACK_KEY = 'roles_offline_recovery_rollback_v1';
+const OFFLINE_RECOVERY_PRESENCE_KEY = 'roles_offline_recovery_original_keys_v1';
+const RECOVERY_ORIGINAL_KEYS = [
+    'roles_sync_original_pair_v1',
+    'roles_original_local_before_sync',
+    'roles_original_remote_before_sync',
+    'roles_original_local_before_sync_saved_at',
+    'roles_original_remote_before_sync_saved_at',
+    'roles_sync_original_generations_v1'
+];
 const SENSITIVE_RECOVERY_KEY = /token|secret|password|authorization|apiendpoint|credential/i;
 
 function cloneRecoveryValue(value) {
@@ -189,6 +198,9 @@ function applyOfflineRecoveryPackage(storage, pkg, options) {
     if (!rollback.ok) {
         return { applied: false, reason: rollback.reason };
     }
+    // Preserve exact raw values and absence: an empty array is not the same as a missing key.
+    const originalKeys = RECOVERY_ORIGINAL_KEYS.map(key => [key, storage.getItem(key)]);
+    storage.setItem(OFFLINE_RECOVERY_PRESENCE_KEY, JSON.stringify(originalKeys));
     storage.setItem(OFFLINE_RECOVERY_ROLLBACK_KEY, JSON.stringify(rollback.package));
     const roles = cloneRecoveryValue(pkg.roles);
     storage.setItem('roles', JSON.stringify(roles));
@@ -214,9 +226,32 @@ function rollbackOfflineRecovery(storage, options) {
     if (!verified.ok) {
         return { applied: false, reason: verified.reason };
     }
+    const rawPresence = storage.getItem(OFFLINE_RECOVERY_PRESENCE_KEY);
+    let originalKeys = null;
+    if (rawPresence !== null) {
+        try {
+            const parsed = JSON.parse(rawPresence);
+            if (!Array.isArray(parsed) || parsed.length !== RECOVERY_ORIGINAL_KEYS.length ||
+                parsed.some((item, index) => !Array.isArray(item) || item.length !== 2 ||
+                    item[0] !== RECOVERY_ORIGINAL_KEYS[index] ||
+                    (item[1] !== null && typeof item[1] !== 'string'))) {
+                return { applied: false, reason: '元の保存キー情報が壊れているため、取り消しを中止しました。' };
+            }
+            originalKeys = parsed;
+        } catch (error) {
+            return { applied: false, reason: '元の保存キー情報が壊れているため、取り消しを中止しました。' };
+        }
+    }
     const roles = cloneRecoveryValue(pkg.roles);
     storage.setItem('roles', JSON.stringify(roles));
     writeRecoveryOriginals(storage, pkg);
+    if (originalKeys) {
+        originalKeys.forEach(([key, raw]) => {
+            if (raw === null) storage.removeItem(key);
+            else storage.setItem(key, raw);
+        });
+        storage.removeItem(OFFLINE_RECOVERY_PRESENCE_KEY);
+    }
     storage.removeItem(OFFLINE_RECOVERY_ROLLBACK_KEY);
     return { applied: true, roles };
 }
