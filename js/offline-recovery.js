@@ -128,6 +128,11 @@ function buildRollbackFromStorage(storage) {
     try {
         const rawPair = storage.getItem('roles_sync_original_pair_v1');
         if (rawPair == null) {
+            const hasLocal = storage.getItem('roles_original_local_before_sync') != null;
+            const hasRemote = storage.getItem('roles_original_remote_before_sync') != null;
+            if (hasLocal !== hasRemote) {
+                return { ok: false, reason: '同期前の控えが片方しかないため、取り消し用の控えを作れません。' };
+            }
             localOriginal = readStoredRecoveryArray(storage, 'roles_original_local_before_sync');
             remoteOriginal = readStoredRecoveryArray(storage, 'roles_original_remote_before_sync');
         } else {
