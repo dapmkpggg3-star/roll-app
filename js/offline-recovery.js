@@ -126,10 +126,17 @@ function buildRollbackFromStorage(storage) {
     let remoteOriginal = [];
     let generations = [];
     try {
-        const pair = JSON.parse(storage.getItem('roles_sync_original_pair_v1') || 'null');
-        if (pair && Array.isArray(pair.localOriginal) && Array.isArray(pair.remoteOriginal)) {
-            localOriginal = pair.localOriginal;
-            remoteOriginal = pair.remoteOriginal;
+        const rawPair = storage.getItem('roles_sync_original_pair_v1');
+        if (rawPair == null) {
+            localOriginal = readStoredRecoveryArray(storage, 'roles_original_local_before_sync');
+            remoteOriginal = readStoredRecoveryArray(storage, 'roles_original_remote_before_sync');
+        } else {
+            const pair = JSON.parse(rawPair);
+            localOriginal = pair && pair.localOriginal;
+            remoteOriginal = pair && pair.remoteOriginal;
+        }
+        if (!Array.isArray(localOriginal) || !Array.isArray(remoteOriginal)) {
+            return { ok: false, reason: '同期前の控えが壊れているため、取り消し用の控えを作れません。' };
         }
         generations = normalizeRecoveryGenerations(JSON.parse(storage.getItem('roles_sync_original_generations_v1') || '[]'));
         if (!generations) {
