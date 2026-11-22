@@ -208,8 +208,8 @@
     }
 
     function parseMaintenanceYearMonth(sheetName) {
-        if (!/ロールカリバ替予定/.test(String(sheetName || ''))) return null;
-        const normalized = String(sheetName).normalize('NFKC');
+        const normalized = String(sheetName || '').normalize('NFKC').trim();
+        if (!/ロールカリバ替予定/.test(normalized) && !/^ロール・カリバ替予定\s*\d{2,4}[./-]\d{1,2}$/.test(normalized)) return null;
         const match = normalized.match(/(\d{2,4})\s*(?:[.\-/]|年)\s*(\d{1,2})(?:\s*月)?/);
         if (!match) return null;
         let year = Number(match[1]);
@@ -411,6 +411,21 @@
         const rows = parseWorksheetCells(xml, sharedStrings);
         const dayRows = findDaySequence(rows, period.year, period.month, layout.day);
         if (!dayRows.length) return [heldMaintenanceRead(period)];
+        if (String(sheetName).normalize('NFKC').includes('ロール・カリバ替予定')) {
+            const header = rows.get(dayRows[0].rowNumber - 1) || {};
+            const columns = [['E', '操業A'], ['H', '操業B'], ['K', '常昼']];
+            if (header.B !== '日付' || !columns.every(([key, label]) => header[key] === label)) {
+                return [heldMaintenanceRead(period)];
+            }
+            // These headings identify note columns, but do not establish a free exchange slot.
+            return dayRows.map(item => ({
+                ...heldMaintenanceRead(period),
+                date: isoDate(period.year, period.month, item.day),
+                layoutState: 'notes-only',
+                workText: columns.filter(([key]) => !blankCell(item.cells[key]))
+                    .map(([key, label]) => label + '：' + String(item.cells[key]).trim()).join('\n')
+            }));
+        }
         return dayRows.map(item => readConfirmedMaintenanceDay(item, period, layout));
     }
 
@@ -437,6 +452,10 @@
             const period = parseMaintenanceYearMonth(sheet.name);
             if (!productionPeriods.has(`${period.year}-${period.month}`)) continue;
             const monthKey = maintenanceLayoutKey(period.year, period.month);
+            if (presentMaintenanceMonths.has(monthKey)) {
+                heldMaintenanceMonths.add(monthKey);
+                continue;
+            }
             presentMaintenanceMonths.add(monthKey);
             const xml = entryText(entries, sheet.path, false);
             if (!xml) {
@@ -449,7 +468,7 @@
                 continue;
             }
             maintenanceSheets.push(sheet.name);
-            if (rows.some(row => row.layoutState !== 'confirmed')) {
+            if (rows.some(row => row.layoutState === 'unconfirmed')) {
                 heldMaintenanceMonths.add(monthKey);
                 continue;
             }
@@ -551,7 +570,9 @@
         const to = schedule[schedule.length - 1].date;
         const maintenanceCount = Array.isArray(result.maintenanceSheets) ? result.maintenanceSheets.length : 0;
         const maintenanceText = maintenanceCount ? `／作業予定${maintenanceCount}シート` : '';
-        detail.textContent = `生産予定${result.importedSheets.length}シート${maintenanceText}・${schedule.length}日分（${from}～${to}）`;
+        const notesOnlyCount = schedule.filter(row => row.maintenanceLayoutState === 'notes-only').length;
+        const note = notesOnlyCount ? `／作業メモのみ読み込み・交換枠の判定は保留（${notesOnlyCount}日）` : '';
+        detail.textContent = `生産予定${result.importedSheets.length}シート${maintenanceText}・${schedule.length}日分（${from}～${to}）${note}`;
         container.hidden = false;
     }
 

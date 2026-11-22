@@ -97,14 +97,14 @@ function productionSheetXml() {
     return `<?xml version="1.0"?><worksheet><sheetData>${rows.join('')}</sheetData></worksheet>`;
 }
 
-function workbookBuffer(monthLabel) {
+function workbookBuffer(monthLabel, maintenanceTitle = monthLabel + ' ロールカリバ替予定', maintenanceXml = maintenanceSheetXml()) {
     const productionShared = ['D1', 'D2', 'A', 'B'];
     return storedZip({
-        'xl/workbook.xml': `<?xml version="1.0"?><workbook xmlns:r="r"><sheets><sheet name="${monthLabel} 生産予定" sheetId="1" r:id="rId1"/><sheet name="${monthLabel} ロールカリバ替予定" sheetId="2" r:id="rId2"/></sheets></workbook>`,
+        'xl/workbook.xml': `<?xml version="1.0"?><workbook xmlns:r="r"><sheets><sheet name="${monthLabel} 生産予定" sheetId="1" r:id="rId1"/><sheet name="${maintenanceTitle}" sheetId="2" r:id="rId2"/></sheets></workbook>`,
         'xl/_rels/workbook.xml.rels': '<?xml version="1.0"?><Relationships><Relationship Id="rId1" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Target="worksheets/sheet2.xml"/></Relationships>',
         'xl/sharedStrings.xml': `<?xml version="1.0"?><sst>${productionShared.concat(SHARED).map(value => `<si><t>${value}</t></si>`).join('')}</sst>`,
         'xl/worksheets/sheet1.xml': productionSheetXml(),
-        'xl/worksheets/sheet2.xml': maintenanceSheetXml().replace(/t="s"><v>(\d+)<\/v>/g, (_, index) => `t="s"><v>${Number(index) + productionShared.length}</v>`)
+        'xl/worksheets/sheet2.xml': maintenanceXml.replace(/t="s"><v>(\d+)<\/v>/g, (_, index) => `t="s"><v>${Number(index) + productionShared.length}</v>`)
     });
 }
 
@@ -393,4 +393,22 @@ test('unknown companion-work count makes a slot ineligible, not merely warned', 
     assert.equal(engine.chooseSizeChangeSlot([unknownSlot], 'A'), null);
     const knownSlot = { ...unknownSlot, requiredCompanionWorkCount: 0 };
     assert.equal(engine.scoreSizeChangeSlot(knownSlot, 'A').eligible, true);
+});
+
+test('a schedule with grouped crew headers retains dated notes without approving a work slot', async () => {
+    const title = 'ロール・カリバ替予定2026.10 ';
+    const inline = (ref, label) => `<c r="${ref}" t="inlineStr"><is><t>${label}</t></is></c>`;
+    const header = '<row r="4">' + inline('B4', '日付') + inline('E4', '操業A')
+        + inline('H4', '操業B') + inline('K4', '常昼') + '</row>';
+    const xml = maintenanceSheetXml().replace('<sheetData>', '<sheetData>' + header);
+    const parsed = await importer.parseXlsxArrayBuffer(workbookBuffer('2026.10', title, xml));
+    assert.deepEqual(parsed.maintenanceSheets, [title]);
+    const day = parsed.schedule.find(row => row.date === '2026-10-03');
+    assert.match(day.maintenanceWorkText, /操業A.*ロール替/);
+    assert.equal(day.maintenanceJudgement, 'held');
+    assert.equal(day.requiredWorks, null);
+    assert.equal(day.exchangePossibleDate, null);
+    const other = await importer.parseXlsxArrayBuffer(workbookBuffer('2026.10', title, xml.replace('常昼', '別欄')));
+    assert.equal(other.schedule[2].maintenanceWorkText, null);
+    assert.equal(other.schedule[2].maintenanceLayoutState, 'unconfirmed');
 });
