@@ -166,3 +166,19 @@ test('partial legacy originals block recovery instead of silently replacing a mi
   assert.equal(JSON.parse(storage.get('roles'))[0].id, 'current');
   assert.equal(storage.has('roles_offline_recovery_rollback_v1'), false);
 });
+
+
+test('present but empty legacy original refuses recovery before any write', () => {
+  for (const emptyKey of ['roles_original_local_before_sync', 'roles_original_remote_before_sync']) {
+    const { context, storage } = harness();
+    storage.set('roles', JSON.stringify([{ id: 'keep' }]));
+    storage.set('roles_original_local_before_sync', JSON.stringify([{ id: 'local' }]));
+    storage.set('roles_original_remote_before_sync', JSON.stringify([{ id: 'remote' }]));
+    storage.set(emptyKey, '');
+    const before = [...storage];
+    const pkg = context.buildOfflineRecoveryPackage({ roles: [], localOriginal: [], remoteOriginal: [] });
+    const result = context.applyOfflineRecoveryPackage(context.localStorage, pkg, { confirmed: true, rollbackAcknowledged: true });
+    assert.equal(result.applied, false, emptyKey);
+    assert.deepEqual([...storage], before, emptyKey);
+  }
+});
