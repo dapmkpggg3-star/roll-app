@@ -203,3 +203,99 @@ test('undo preserves absence of original keys on a fresh anonymous device', () =
   assert.equal(context.rollbackOfflineRecovery(context.localStorage, { confirmed: true }).applied, true);
   assert.deepEqual([...storage], before);
 });
+
+const rollbackKey = 'roles_offline_recovery_rollback_v1';
+const oldPresenceKey = 'roles_offline_recovery_original_keys_v1';
+const confirmed = { confirmed: true, rollbackAcknowledged: true };
+
+function samplePackage(context, id) {
+  return context.buildOfflineRecoveryPackage({
+    roles: [{ id }], localOriginal: [{ id: id + '-local' }], remoteOriginal: [{ id: id + '-remote' }]
+  });
+}
+
+test('failed second apply keeps the first recovery and its undo record together', () => {
+  for (const failKey of [rollbackKey, 'roles', 'roles_original_remote_before_sync']) {
+    const { context, storage } = harness();
+    storage.set('roles', '[{"id":"initial"}]');
+    const initial = new Map(storage);
+    const device = context.localStorage;
+    assert.equal(context.applyOfflineRecoveryPackage(device, samplePackage(context, 'first'), confirmed).applied, true);
+    const beforeSecond = new Map(storage);
+    const write = device.setItem;
+    let failed = false;
+    device.setItem = (k, v) => {
+      if (k === failKey && !failed) { failed = true; throw Error('quota'); }
+      return write(k, v);
+    };
+    const second = context.applyOfflineRecoveryPackage(device, samplePackage(context, 'second'), confirmed);
+    assert.equal(second.applied, false, failKey);
+    assert.deepEqual(storage, beforeSecond, failKey);
+    assert.equal(context.rollbackOfflineRecovery(device, confirmed).applied, true);
+    assert.deepEqual(storage, initial);
+  }
+});
+
+test('undo rejects a changed raw original inside the saved record before writing', () => {
+  const { context, storage } = harness();
+  storage.set('roles_original_local_before_sync', '[{"id":"AAA"}]');
+  storage.set('roles_original_remote_before_sync', '[{"id":"RRR"}]');
+  context.applyOfflineRecoveryPackage(context.localStorage, samplePackage(context, 'first'), confirmed);
+  const key = storage.has(oldPresenceKey) ? oldPresenceKey : rollbackKey;
+  const raw = storage.get(key);
+  const altered = raw.replace(/AAA(?![\s\S]*AAA)/, 'BBB');
+  assert.notEqual(raw, altered);
+  storage.set(key, altered);
+  const before = new Map(storage);
+  assert.equal(context.rollbackOfflineRecovery(context.localStorage, confirmed).applied, false);
+  assert.deepEqual(storage, before);
+});
+
+test('undo reads earlier standalone and paired records, and refuses mismatched legacy raw data', () => {
+  const slots = [
+    'roles_sync_original_pair_v1', 'roles_original_local_before_sync', 'roles_original_remote_before_sync',
+    'roles_original_local_before_sync_saved_at', 'roles_original_remote_before_sync_saved_at',
+    'roles_sync_original_generations_v1'
+  ];
+  for (const shape of ['standalone', 'separate', 'different']) {
+    const { context, storage } = harness();
+    const pkg = samplePackage(context, 'old');
+    storage.set(rollbackKey, JSON.stringify(pkg));
+    storage.set('roles', '[{"id":"current"}]');
+    if (shape !== 'standalone') {
+      const raws = [null, JSON.stringify(pkg.localOriginal, null, 2), JSON.stringify(pkg.remoteOriginal), null, null, null];
+      if (shape === 'different') raws[1] = '[{"id":"other"}]';
+      storage.set(oldPresenceKey, JSON.stringify(slots.map((key, i) => [key, raws[i]])));
+    }
+    const before = new Map(storage);
+    const result = context.rollbackOfflineRecovery(context.localStorage, confirmed);
+    if (shape === 'different') {
+      assert.equal(result.applied, false);
+      assert.deepEqual(storage, before);
+    } else {
+      assert.equal(result.applied, true);
+      assert.equal(JSON.parse(storage.get('roles'))[0].id, 'old');
+      assert.equal(storage.has(rollbackKey), false);
+      assert.equal(storage.has(oldPresenceKey), false);
+      if (shape === 'separate') {
+        assert.equal(storage.has(slots[0]), false);
+        assert.equal(storage.get(slots[1]), JSON.stringify(pkg.localOriginal, null, 2));
+      }
+    }
+  }
+});
+
+test('interrupted undo retains the checked record and can finish on retry', () => {
+  const { context, storage } = harness();
+  storage.set('roles', '[{"id":"initial"}]');
+  const before = new Map(storage);
+  const device = context.localStorage;
+  context.applyOfflineRecoveryPackage(device, samplePackage(context, 'first'), confirmed);
+  const write = device.setItem;
+  device.setItem = () => { throw Error('quota'); };
+  assert.equal(context.rollbackOfflineRecovery(device, confirmed).applied, false);
+  assert.equal(storage.has(rollbackKey), true);
+  device.setItem = write;
+  assert.equal(context.rollbackOfflineRecovery(device, confirmed).applied, true);
+  assert.deepEqual(storage, before);
+});

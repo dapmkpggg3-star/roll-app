@@ -1061,6 +1061,29 @@ function planningCalendarSnapshot_(sheet) {
   }));
 }
 
+// The value snapshot cannot distinguish a user formula from an equal literal.
+function assertPlanningFormulasPreserved_(sheet, plan, period) {
+  const overwritten = ['B5:D35', 'G5:G35', 'J5:J35', 'E2', 'G2', 'N1'];
+  overwritten.forEach(function(a1) {
+    const formulas = sheet.getRange(a1).getFormulas();
+    if (formulas.some(function(row) { return row.some(Boolean); })) {
+      throw new Error(a1 + ' に手入力の数式があるため、再出力を停止しました。');
+    }
+  });
+
+  const suggestions = normalizePlanningSuggestions_(plan.suggestions, period);
+  ['E', 'H', 'K'].forEach(function(column) {
+    const formulas = sheet.getRange(column + '5:' + column + '35').getFormulas();
+    formulas.forEach(function(row, index) {
+      if (!row[0]) return;
+      const a1 = column + (index + 5);
+      if (suggestions[a1] || decodePlanningGeneratedNote_(sheet.getRange(a1).getNote())) {
+        throw new Error(a1 + ' に手入力の数式があるため、再出力を停止しました。');
+      }
+    });
+  });
+}
+
 function assertPlanningCalendarUnchanged_(sheet) {
   const note = String(sheet.getRange('A1').getNote() || '');
   let marker;
@@ -1099,6 +1122,7 @@ function writePlanningDraftUnlocked_(plan, requestId) {
     if (String(sheet.getRange('A1').getNote() || '').indexOf(PLANNING_DRAFT_NOTE_PREFIX) !== 0) {
       throw new Error('同名シートが既にあり、自動計画案ではないため上書きしません: ' + expectedSheetName);
     }
+    assertPlanningFormulasPreserved_(sheet, plan, period);
     assertPlanningCalendarUnchanged_(sheet);
   } else {
     const createdSheet = createPlanningDraftSheet_(destination, period);
