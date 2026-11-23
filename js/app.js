@@ -5763,6 +5763,19 @@ function updateThreeSetManagementDashboard(allRoles = roles) {
     const activeTab = normalizeThreeSetManagementTab(getStoredThreeSetManagementTab());
     const activeGroup = data.find(group => group.key === activeTab) || data[0];
 
+    const brief = document.getElementById('three-set-brief');
+    if (brief) {
+        brief.textContent = data.filter(group => group.summary.count > 0)
+            .map(group => group.label + ' ' + group.summary.count + '件').join('・');
+    }
+    const context = document.getElementById('three-set-stand-context');
+    if (context && context.dataset.stand) {
+        const stand = context.dataset.stand;
+        const current = allRoles.filter(role => String(getStandKey(role.name)) === stand);
+        context.textContent = '#' + stand + ' の登録状況：' +
+            current.map(role => role.name + '（' + role.status + '）').join('、');
+    }
+
     cardsEl.innerHTML = data.map(group => {
         const isActive = group.key === activeGroup.key;
         return `
@@ -7497,7 +7510,16 @@ function focusTodayTaskRole(taskId) {
             return;
         }
         const panel = document.getElementById('three-set-management');
-        if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        if (panel) {
+            panel.open = true;
+            const context = document.getElementById('three-set-stand-context');
+            if (context) {
+                context.dataset.stand = String(task.standKey);
+                context.hidden = false;
+                updateThreeSetManagementDashboard(roles);
+            }
+            panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
         showToast(`#${task.standKey}：現物・改削搬入予定・組替予定を確認してください`);
         return;
     }
