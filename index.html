@@ -158,16 +158,12 @@
                     </div>
                     <div id="sync-diagnostic-detail" class="sync-diagnostic-detail">Remote件数を取得中です</div>
                 </div>
-                <section id="three-set-management" class="three-set-management" aria-live="polite">
-                    <div class="three-set-management-header">
-                        <div>
-                            <h2>3セット維持管理</h2>
-                            <p>組替・搬入出/改削・購入をまとめて確認</p>
-                        </div>
-                    </div>
+                <details id="three-set-management" class="three-set-management" aria-live="polite">
+                    <summary>3セット維持管理 <span id="three-set-brief"></span></summary>
+                    <p id="three-set-stand-context" hidden></p>
                     <div id="three-set-management-cards" class="three-set-management-cards" role="tablist" aria-label="3セット維持管理分類"></div>
                     <div id="three-set-management-detail" class="three-set-management-detail"></div>
-                </section>
+                </details>
                 <section id="auto-planning-panel" class="auto-planning-panel is-collapsed" aria-live="polite">
                     <div class="auto-planning-header">
                         <div>
