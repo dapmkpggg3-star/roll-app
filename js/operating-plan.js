@@ -1964,6 +1964,10 @@ function simulateExchangeCycle(input) {
         .map(row => Object.assign({}, row))
         .sort((a, b) => String(a.date).localeCompare(String(b.date)));
     const resources = Array.isArray(source.resources) ? source.resources.map(item => Object.assign({}, item)) : null;
+    // Explicit opt-in until callers provide dated, individual physical work evidence.
+    const physical = Array.isArray(source.physicalLifecycle);
+    const physicalPlans = physical ? source.physicalLifecycle : [];
+    const nightReserveTimeline = [];
     let spareCalibers = Array.isArray(source.spareCaliberIds) ? source.spareCaliberIds.slice() : null;
     const knownSpare = finiteOrNull(source.installedSpare);
     const spareRolls = Array.isArray(source.spareRollIds)
@@ -2019,6 +2023,7 @@ function simulateExchangeCycle(input) {
         spareCaliberCount: spareCalibers ? spareCalibers.length : null,
         diameter: state.diameter,
         installedSpare: spareRolls ? spareRolls.length : null,
+        ...(physical ? {reserveAssessment:assessEmergencyReserve({standKey:source.standKey,resources}),status:'forecast'} : {}),
         onlineId: state.onlineId,
         size: activeSize,
         phase: state.phase
@@ -2028,6 +2033,15 @@ function simulateExchangeCycle(input) {
             events, rollChangeCount: null, scrapCount: null, annualRollCount: null, statusChanged: false,
             reason: '開始直数、最大直数、カリバのどれかが未確認です。0直にはしません。'
         };
+    }
+    if(physical){
+        const dateOK=d=>typeof d==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(d)&&Number.isFinite(Date.parse(d+'T00:00:00Z'))&&new Date(d+'T00:00:00Z').toISOString().slice(0,10)===d;
+        const initial=assessEmergencyReserve({standKey:source.standKey,resources});
+        const badDays=!days.length||days.some((r,i)=>!dateOK(r.date)||(i&&r.date!==addDays(days[i-1].date,1))||!['A','B',''].includes(r.shift3Team)||!Number.isFinite(r.nightProductionAmount)||r.nightProductionAmount<0||r.nightProductionAmount>r.productionAmount||(r.nightProductionAmount>0&&!normalizeShiftTeam(r.shift3Team)));
+        const badPlans=physicalPlans.some(p=>!p||p.status!=='forecast'||String(p.standKey)!==String(source.standKey)||!p.oldRollId||!p.counterpartId||p.oldRollId===p.counterpartId||!dateOK(p.exchangeDate)||!dateOK(p.assemblyDate)||p.assemblyDate<=p.exchangeDate||p.disassemblyDate!==p.assemblyDate||!dateOK(p.dispatchDate)||p.dispatchDate<p.assemblyDate||!dateOK(p.inboundDate)||!Number.isInteger(source.reworkDays)||source.reworkDays<=0||p.inboundDate<addDays(p.dispatchDate,source.reworkDays)||!String(p.basis||'').trim());
+        if(initial.normalSpare===null||!spareRolls||spareRolls.length!==initial.normalIds.length||new Set(spareRolls).size!==spareRolls.length||spareRolls.some(id=>!initial.normalIds.includes(id))||badDays||badPlans||new Set(physicalPlans.map(p=>p.exchangeDate)).size!==physicalPlans.length){
+            return {events,nightReserveTimeline,rollChangeCount:null,scrapCount:null,annualRollCount:null,statusChanged:false,stopRecord:{date:days[0]?.date||null,reason:'物理工程・個体・勤別日付の根拠未確認'},reason:'物理工程の入力未確認。不足なしとは判定しません。'};
+        }
     }
     const markConfirmed = date => { confirmedThrough = date; };
     const stopAt = (date, reason) => {
@@ -2125,6 +2139,44 @@ function simulateExchangeCycle(input) {
         push(date, '組替需要', `${waiting.map(item => item.id).join('、')}は組替前です。${slot.reason || '準備を確認した対象ロールが一致しません。'}`);
         return false;
     };
+    const physicalDay = (date,row) => {
+        for(const item of state.reworks){
+            const p=item.plan;
+            if(!p)continue;
+            const old=resources.find(r=>r.id===item.id), next=resources.find(r=>r.id===p.counterpartId);
+            if(date===p.assemblyDate){
+                const slot=p.assemblySlot||{};
+                const valid=old&&next&&item.status==='retained'&&old.frame==='usedSpare'&&old.chockInstalled===true&&next.spareKind==='新品予備（組替可能）'&&next.chockInstalled===false
+                    &&next.emergencyUsable!==false&&p.counterpartPresent===true&&p.assemblyCompletedByDayEnd===true
+                    &&slot.owner?.standKey===String(source.standKey)&&slot.owner?.rollId===next.id&&slot.date===date&&slot.preparedTarget===next.id&&assemblySlotReady(slot,row).ok
+                    &&typeof next.caliberId==='string'&&next.caliberId.trim()&&next.runs===0;
+                if(!valid){push(date,'保留','同日バラシ・組込完了または相手現物が未確認。中古予備を勝手に外しません。');stopAt(date,'組替工程未確認');return;}
+                Object.assign(old,{frame:'awaitingDispatch',spareKind:'改削搬出待ち',ledgerStatus:null,chockInstalled:false});
+                Object.assign(next,{frame:'installedSpare',spareKind:'新品予備（組込完了）',ledgerStatus:null,chockInstalled:true});
+                spareRolls.push(next.id);item.status='awaitingDispatch';
+                push(date,'組替完了','同日バラシ・組込の予測。予備は別個体へ引継ぎ。実績は変更しません。');
+            }
+            if(date===p.dispatchDate){
+                if(item.status!=='awaitingDispatch'){stopAt(date,'バラシ未完の搬出は不可');return;}
+                item.status='rework';item.readyOn=p.inboundDate;
+                Object.assign(old,{frame:'rework',spareKind:'改削中',chockInstalled:false});
+                push(date,'搬出','組替完了後の改削搬出予測。搬出日から改削期間を数えます。');
+            }
+            if(date===p.inboundDate){
+                if(item.status!=='rework'||!Array.isArray(p.returnCalibers)||!p.returnCalibers.length||p.returnCalibers.some(c=>typeof c!=='string'||!c.trim())||new Set(p.returnCalibers).size!==p.returnCalibers.length||!Number.isFinite(state.cutMm)||state.cutMm<=0||!Number.isFinite(old.diameter)||!Number.isFinite(state.scrapDiameter)){
+                    stopAt(date,'改削戻りの径・カリバ定義・搬出根拠未確認');return;
+                }
+                const nextDiameter=Math.round((old.diameter-state.cutMm)*10)/10;
+                if(nextDiameter<=state.scrapDiameter){stopAt(date,'最終使用・後継手配の別計算が必要');return;}
+                Object.assign(old,{frame:'usedSpare',spareKind:'新品予備（組替可能）',ledgerStatus:null,chockInstalled:false,diameter:nextDiameter,caliberId:p.returnCalibers[0],runs:0,spareCaliberIds:p.returnCalibers.slice(1)});
+                for(const key of sizeUsage.keys())if(key.startsWith(old.id+'|'))sizeUsage.delete(key);
+                // The explicit return definition belongs to this generation and size only.
+                if(activeSize)sizeUsage.set(old.id+'|'+activeSize,{caliberId:old.caliberId,runs:0});
+                item.status='done';
+                push(date,'搬入','改削戻りの未組込個体。新しいカリバを0直とする予測。緊急予備には数えません。');
+            }
+        }
+    };
     const nightOnly = row => scheduleNightOnly(row);
     const recordNightAssemblyWait = (date, ids) => {
         const kind = spareRolls && spareRolls.length === 0 ? '夜勤予備不足' : '組替需要';
@@ -2147,6 +2199,10 @@ function simulateExchangeCycle(input) {
         workConfirmation = workForDay();
         assemblyConfirmation = sizeChanged ? null : source.assemblyConfirmation;
         const nextSize = normalizeForecastSize(row.size);
+        if(physical&&activeSize&&nextSize!==activeSize&&(!stopped||/^D\d+$/.test(nextSize))){
+            push(date,'保留','物理工程と改削世代別サイズ替の統合は未確認です。');
+            stopAt(date,'物理工程のサイズ替は別途接続が必要');return;
+        }
         if (activeSize && nextSize !== activeSize && (!stopped || /^D\d+$/.test(nextSize))) {
             const boundary = { date, fromSize: activeSize, toSize: nextSize || '未確認' };
             const nextOperation = days.slice(index).find(item => item.productionAmount > 0);
@@ -2201,8 +2257,11 @@ function simulateExchangeCycle(input) {
             push(date, 'サイズ替', `${confirmation.date}の確認済み昼枠で${previousSize}から${activeSize}へ替えた予測です。${state.onlineId}自身のカリバと使用直数を使います。径は変えず、実状態も変更しません。`);
         }
         workConfirmation = workForDay();
-        finishDueReworks(date);
-        if (stopped && state.reworks.some(item => item.status === 'awaitingAssembly')) {
+        if(physical){
+            physicalDay(date,row);
+            if(blocked)return;
+        } else finishDueReworks(date);
+        if (!physical && stopped && state.reworks.some(item => item.status === 'awaitingAssembly')) {
             if (nightOnly(row)) {
                 const ids = state.reworks.filter(item => item.status === 'awaitingAssembly').map(item => item.id).join('、');
                 recordNightAssemblyWait(date, ids);
@@ -2240,8 +2299,10 @@ function simulateExchangeCycle(input) {
                     return;
                 }
                 const leavingId = state.onlineId;
+                // In physical mode no exchange on an assembly day without joint capacity evidence.
+                if(physical&&events.some(e=>e.date===date&&e.kind==='組替完了')){stopAt(date,'同日交換と組替の共同容量未確認');return;}
                 const unfinished = state.reworks.filter(item => item.status === 'rework' || item.status === 'awaitingAssembly' || item.status === 'held');
-                if (unfinished.length && spareRolls.length <= 1) {
+                if (!physical && unfinished.length && spareRolls.length <= 1) {
                     push(date, 'ロール替需要', `再生中の${unfinished.map(item => item.id).join('、')}が未完了です。${leavingId}を重ねると夜勤の使用可能な予備がなくなるので、交換は成立させません。`);
                     if (sizeChanged) stopAt(date, '未完了の再生と重なる交換では、夜勤の予備を維持できません。以後は計算済みにしません。');
                     else markConfirmed(date);
@@ -2319,13 +2380,26 @@ function simulateExchangeCycle(input) {
                 rememberCaliber(state.caliberId);
                 const leavingResource = resources && resources.find(item => item.id === leavingId);
                 if (leavingResource && Array.isArray(leavingResource.spareCaliberIds)) leavingResource.spareCaliberIds.forEach(rememberCaliber);
-                const currentRework = { id: leavingId, readyOn: addDays(date, reworkDays), status: 'rework', definedCalibers };
+                const plan=physical?physicalPlans.find(p=>p.exchangeDate===date&&p.oldRollId===leavingId):null;
+                if(physical){
+                    if(physicalPlans.some(p=>p.exchangeDate===date)&&!plan){stopAt(date,'交換予定の旧個体不一致');return;}
+                    if(!leavingResource||leavingResource.emergencyUsable===false||leavingResource.chockInstalled===false||source.retainedOnExchange!==true||!entering||entering.chockInstalled!==true&&entering.spareKind!=='新品予備（組込完了）'){
+                        stopAt(date,'交換後の中古予備保持または交換先組込が未確認');return;
+                    }
+                    if(state.reworks.some(r=>r.status!=='done')){stopAt(date,'前の物理工程未完了。重複交換保留');return;}
+                    if(plan&&(!resources.some(r=>r.id===plan.counterpartId&&r.id!==enteringId&&r.id!==leavingId))){stopAt(date,'組替相手個体不一致');return;}
+                }
+                const currentRework = { id: leavingId, readyOn: physical?null:addDays(date, reworkDays), status: physical?'retained':'rework', definedCalibers, ...(physical?{plan}: {}) };
                 if (activeSize) sizeUsage.set(leavingId + '|' + activeSize, { caliberId: state.caliberId, runs: state.caliberRuns });
                 state.reworks.push(currentRework);
                 if (resources) {
                     const leaving = resources.find(item => item.id === leavingId);
-                    if (leaving) leaving.frame = 'rework';
+                    if(leaving){
+                        if(physical)Object.assign(leaving,{frame:'usedSpare',spareKind:'中古予備（バラシ前）',ledgerStatus:null,chockInstalled:true});
+                        else leaving.frame='rework';
+                    }
                     entering.frame = 'online';
+                    if(physical){entering.spareKind=null;entering.ledgerStatus=null;entering.chockInstalled=true;spareCalibers=Array.isArray(entering.spareCaliberIds)?entering.spareCaliberIds.slice():null;}
                     state.diameter = finiteOrNull(entering.diameter);
                     state.caliberId = entering.caliberId;
                     state.caliberRuns = enteringRuns;
@@ -2337,7 +2411,8 @@ function simulateExchangeCycle(input) {
                 }
                 state.onlineId = spareRolls.shift();
                 state.pending = null;
-                push(date, 'ロール替', '組込済みの予備をオンラインへ移し、外した対象を再生へ入れました。この時点では径を変えません。');
+                push(date, 'ロール替', physical?'旧オンラインをチョック付き中古予備として保持する予測。径は変えません。':'組込済みの予備をオンラインへ移し、外した対象を再生へ入れました。この時点では径を変えません。');
+                if(physical){markConfirmed(date);return;}
                 if (date >= currentRework.readyOn) finishReworkItem(date, currentRework);
                 if (currentRework.status === 'awaitingAssembly' && nightOnly(row)) {
                     recordNightAssemblyWait(date, currentRework.id);
@@ -2346,7 +2421,7 @@ function simulateExchangeCycle(input) {
                 return;
             }
         }
-        if (stopped && nightOnly(row) && spareRolls && spareRolls.length === 0) {
+        if (!physical && stopped && nightOnly(row) && spareRolls && spareRolls.length === 0) {
             push(date, '夜勤予備不足', '昼間の組替が終わる前です。夜勤に使用可能な予備はありません。');
             markConfirmed(date);
             return;
@@ -2355,7 +2430,7 @@ function simulateExchangeCycle(input) {
             markConfirmed(date);
             return;
         }
-        if (normalizeShiftTeam(row.shift3Team) && spareRolls && spareRolls.length === 0) {
+        if (!physical && normalizeShiftTeam(row.shift3Team) && spareRolls && spareRolls.length === 0) {
             const reworkIds = state.reworks
                 .filter(item => item.status === 'rework' || item.status === 'awaitingAssembly' || item.status === 'held')
                 .map(item => item.id);
@@ -2391,7 +2466,13 @@ function simulateExchangeCycle(input) {
         if (blocked) return;
         simulateDay(row, index);
         // On a stopped two-shift day the night inventory is the result of all daytime work.
-        if (!blocked && row.productionAmount === 0 && normalizeShiftTeam(row.shift1Team)
+        if(physical&&normalizeShiftTeam(row.shift3Team)){
+            const date=row.date, assessment=blocked?{status:'unknown',normalSpare:null,emergencySpare:null,reason:'工程保留後の夜勤状態未確認'}:assessEmergencyReserve({standKey:source.standKey,resources});
+            nightReserveTimeline.push({date,forecast:true,...assessment});
+            if(assessment.status==='shortage')push(date,'夜勤予備不足','チョック組込済みの緊急予備0セット。');
+            if(assessment.status==='unknown')push(date,'夜勤予備未確認',assessment.reason||'予備状態未確認。');
+        }
+        if (!physical && !blocked && row.productionAmount === 0 && normalizeShiftTeam(row.shift1Team)
             && normalizeShiftTeam(row.shift3Team) && spareRolls && spareRolls.length === 0) {
             push(String(row.date).slice(0, 10), '夜勤予備不足', '昼の作業後、夜勤の開始時点で使用可能な予備がありません。');
         }
@@ -2418,6 +2499,7 @@ function simulateExchangeCycle(input) {
         annualRollCount: rollChangeCount,
         resources,
         statusChanged: false,
+        ...(physical?{nightReserveTimeline,reserveMode:'physical-forecast'}:{reserveMode:'legacy-unverified'}),
         confirmedThrough,
         stopRecord,
         reason: `${coverage}ロール替の回数は再利用の交換です。新規購入の本数にはしません。生産トン数からも数えません。`
@@ -2580,11 +2662,11 @@ function previewPairedRollExchange(input) {
     const results=members.map(m=>{
         const result=simulateExchangeCycle({standKey:String(m.standKey),currentSize:size,maxRuns:limit.runs,resources:m.resources,spareCaliberIds:[],reworkDays:m.reworkDays,workConfirmation:work,days:period});
         const event=result.events.find(e=>e.kind==='ロール替');
-        return {stand:String(m.standKey),oldRollId:m.rollId,event,stop:result.stopRecord,nightRisk:result.events.some(e=>e.kind==='夜勤予備不足')};
+        return {stand:String(m.standKey),oldRollId:m.rollId,event,stop:result.stopRecord,nightRisk:result.reserveMode==='physical-forecast'?result.events.some(e=>e.kind==='夜勤予備不足'):null};
     });
     if (results.some(r=>r.stop || !r.event || r.event.date!==work.date || r.event.onlineId===r.oldRollId)) return held('両側のロール替が成立しない',work.date);
     const setup=previewSetupMaterialInstruction(rows,work.date);
-    return {pair,status:'preview',date:work.date,reason:'匿名共同ロール替候補。搬出・搬入は未接続、交換後の予備と夜勤安全は別途確認。',event:{kind:'ロール替',members:results.map(r=>({stand:r.stand,oldRollId:r.oldRollId,newRollId:r.event.onlineId,nextCaliber:r.event.caliberId,runs:r.event.caliberRuns}))},setup,nightRisk:results.some(r=>r.nightRisk),annualComplete:false};
+    return {pair,status:'preview',date:work.date,reason:'匿名共同ロール替候補。搬出・搬入は未接続、交換後の予備と夜勤安全は別途確認。',event:{kind:'ロール替',members:results.map(r=>({stand:r.stand,oldRollId:r.oldRollId,newRollId:r.event.onlineId,nextCaliber:r.event.caliberId,runs:r.event.caliberRuns}))},setup,nightRisk:results.some(r=>r.nightRisk===true)?true:results.some(r=>r.nightRisk===null)?null:false,annualComplete:false};
 }
 
 function previewPairedExchangeWithSetup(input) {
