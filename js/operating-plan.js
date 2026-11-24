@@ -2044,7 +2044,13 @@ function simulateExchangeCycle(input) {
             return {events,nightReserveTimeline,rollChangeCount:null,scrapCount:null,annualRollCount:null,statusChanged:false,stopRecord:{date:days[0]?.date||null,reason:'物理工程・個体・勤別日付の根拠未確認'},reason:'物理工程の入力未確認。不足なしとは判定しません。'};
         }
     }
-    const markConfirmed = date => { confirmedThrough = date; };
+    const markConfirmed = date => {
+        if(physical){
+            const online=resources?.find(r=>r.id===state.onlineId&&r.frame==='online');
+            if(online)Object.assign(online,{caliberId:state.caliberId,runs:state.caliberRuns,spareCaliberIds:spareCalibers?spareCalibers.slice():null});
+        }
+        confirmedThrough = date;
+    };
     const stopAt = (date, reason) => {
         if(physical&&confirmedThrough===date)confirmedThrough=days.filter(r=>r.date<date).at(-1)?.date||null;
         stopRecord = { date, id: state.onlineId, reason };
@@ -2807,6 +2813,18 @@ function previewPairedPhysicalCycle(input) {
             if(people>c.people)return held('共同作業の同時人数容量不足',date);
         }
     }
+    // Full six-groove trial requires explicit inventories, never invented groove numbers.
+    const full=s.fullCaliberCycle===true;
+    if(full){
+        const six=ids=>Array.isArray(ids)&&ids.length===6&&ids.every(id=>typeof id==='string'&&id.trim())&&new Set(ids).size===6;
+        for(const m of members){
+            const online=m.resources.find(r=>r.frame==='online');
+            for(const r of m.resources){
+                if(!Array.isArray(r.spareCaliberIds)||!six([r.caliberId,...r.spareCaliberIds])||!Number.isInteger(r.runs)||r.runs!==0)return held('全6カリバの新品開始・個体別定義が未確認');
+            }
+            if(m.spareCaliberIds.join('|')!==online.spareCaliberIds.join('|')||m.physicalLifecycle.some(p=>!six(p.returnCalibers)))return held('全6カリバの初期・改削後定義が不一致');
+        }
+    }
     const results=members.map(m=>{
         const stand=String(m.standKey),workSlots=work.map(w=>({...w,owner:{standKey:stand,rollId:w.onlineIds[stand],size,referenceAt:s.referenceAt}}));
         return {stand,result:simulateExchangeCycle({...m,standKey:stand,currentSize:size,referenceAt:s.referenceAt,maxRuns:limit.runs,days,workSlots,workConfirmation:null})};
@@ -2823,7 +2841,26 @@ function previewPairedPhysicalCycle(input) {
         pairedEvents.push({date:w.date,kind,members:matched.map(x=>({stand:x.stand,...x.events[0]})),setup:setup.instruction,status:'forecast'});
     }
     if(results.some(x=>x.result.events.filter(e=>['ロール替','カリバ替'].includes(e.kind)).length!==work.length))return held('未計画交換または片側交換');
-    return {status:'preview',pair,size,events:pairedEvents,memberResults:results,nextMembers:results.map(x=>({standKey:x.stand,resources:x.result.resources})),exception,annualComplete:false,reason:'明示された共同容量と個体別工程による同サイズ区間予測。現場作業確定ではありません。'};
+    const usage=results.map(x=>{
+        // Count supplied tonnage exactly once per stand per production event, independently of runs.
+        const m=members.find(m=>String(m.standKey)===x.stand),cycles=[];
+        let current=null;
+        for(const e of x.result.events){
+            if(e.kind==='ロール替'){current=null;continue;}
+            if(e.kind!=='操業')continue;
+            if(!current){
+                current={rollId:e.onlineId,firstDate:e.date,lastDate:e.date,projectedTons:0,projectedRuns:0,calibers:[]};
+                cycles.push(current);
+            }
+            let c=current.calibers.find(c=>c.id===e.caliberId);
+            if(!c){c={id:e.caliberId,projectedTons:0,projectedRuns:0,lastRuns:null};current.calibers.push(c);}
+            const tons=byDay.get(e.date).productionAmount;
+            c.projectedTons+=tons;c.projectedRuns++;c.lastRuns=e.caliberRuns;
+            current.projectedTons+=tons;current.projectedRuns++;current.lastDate=e.date;
+        }
+        return {standKey:x.stand,cycles,tonBasis:knownTonBasis(x.stand),tonThresholdApplied:false,openingTons:null,totalLifetimeTons:null,reason:'計算区間の生産tを直数と別集計。現行トン数上限は未確認、過去参考値を固定しない。'};
+    });
+    return {status:'preview',pair,size,fullCaliberCycle:full,usage,events:pairedEvents,memberResults:results,nextMembers:results.map(x=>({standKey:x.stand,resources:x.result.resources})),exception,annualComplete:false,reason:'明示された共同容量と個体別工程による同サイズ区間予測。現場作業確定ではありません。'};
 }
 
 function previewPairedReworkWindow(input) {
