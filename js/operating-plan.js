@@ -2594,6 +2594,40 @@ function previewPairedExchangeWithSetup(input) {
 }
 
 // Bounded forecast of the interval after a paired exchange. Explicit projected evidence only.
+// Shared night-boundary reserve assessment. Counts are exact only for a complete, unambiguous three-set snapshot.
+function assessEmergencyReserve(input) {
+    const src=input||{}, stand=String(src.standKey||''), rows=src.resources;
+    const unknown=reason=>({normalSpare:null,emergencySpare:null,normalIds:[],emergencyIds:[],status:'unknown',reason});
+    if(!/^(?:[2-9]|1[0-7])$/.test(stand)||!Array.isArray(rows)||rows.length!==3||
+        rows.some(r=>!r||typeof r.id!=='string'||!r.id.trim()||String(r.standKey)!==stand)||
+        new Set(rows.map(r=>r.id)).size!==3||rows.filter(r=>r.frame==='online').length!==1)
+        return unknown('スタンド別3セットの個体・オンライン未確認');
+    const normalIds=[], emergencyIds=[];
+    let normalUnknown=false, emergencyUnknown=false;
+    for(const r of rows) {
+        if(r.frame==='online') continue;
+        const kind=r.spareKind||r.ledgerStatus||'';
+        const raw=kind==='新品予備（組替可能）'||r.frame==='rework'||r.frame==='awaitingAssembly'||r.frame==='scrap';
+        const normal=kind==='新品予備（組込完了）'||(r.frame==='installedSpare'&&!kind);
+        const used=kind==='中古予備（バラシ前）';
+        if((raw&&(r.chockInstalled===true||normal||used))||
+            (normal&&r.frame!=='installedSpare')||(used&&r.frame!=='usedSpare'))
+            return unknown('個体状態とチョック情報が矛盾');
+        if(raw||r.chockInstalled===false||r.emergencyUsable===false) continue;
+        if(normal) {
+            if(r.chockInstalled===true||kind==='新品予備（組込完了）'){
+                normalIds.push(r.id);emergencyIds.push(r.id);
+            } else {normalUnknown=true;emergencyUnknown=true;}
+        } else if(used) {
+            if(r.chockInstalled===true||kind==='中古予備（バラシ前）') emergencyIds.push(r.id);
+            else emergencyUnknown=true;
+        } else {normalUnknown=true;emergencyUnknown=true;}
+    }
+    return {normalSpare:normalUnknown?null:normalIds.length,emergencySpare:emergencyUnknown?null:emergencyIds.length,
+        normalIds,emergencyIds,status:emergencyIds.length?'available':emergencyUnknown?'unknown':'shortage',
+        reason:emergencyUnknown||normalUnknown?'一部の予備状態未確認':''};
+}
+
 function previewPairedReworkWindow(input) {
     const src=input||{}, exchange=src.exchange, pair=['6','7'];
     const held=(reason,warnings=[])=>({status:'held',reason,warnings,events:[],nextMembers:null,annualComplete:false});
@@ -2633,9 +2667,18 @@ function previewPairedReworkWindow(input) {
         for(let d=exchange.date;d<=src.through;d=addDays(d,1)){
             const beforeTransfer=d<l.assemblyDate;
             const eligible=beforeTransfer ? old.chockInstalled!==false && l.chockRetainedUntilAssembly!==false && old.emergencyUsable!==false : l.assemblyCompletedByDayEnd!==false;
-            const reserveId=eligible?(beforeTransfer?old.id:third.id):null;
-            spareTimeline.push({stand,date:d,status:'forecast',normalSpare:beforeTransfer?0:(eligible?1:0),emergencySpare:eligible?1:0,reserveId,reserveKind:eligible?(beforeTransfer?'中古予備（バラシ前）':'新品予備（組込完了）'):null});
-            if(!eligible && normalizeShiftTeam(dates.get(d).shift3Team))warnings.push({stand,date:d,kind:'夜勤予備不足',reason:'チョック組込済み緊急予備が0セット'});
+            // Explicit forecast snapshot; no claim that actual assembly has completed.
+            const reserveKind=beforeTransfer?'中古予備（バラシ前）':'新品予備（組込完了）';
+            const candidate=beforeTransfer?old:third, remaining=beforeTransfer?third:old;
+            const snapshot=[
+                {id:online.id,standKey:stand,frame:'online'},
+                {id:candidate.id,standKey:stand,frame:beforeTransfer?'usedSpare':'installedSpare',spareKind:reserveKind,chockInstalled:eligible,emergencyUsable:eligible},
+                {id:remaining.id,standKey:stand,frame:beforeTransfer?'usedSpare':'rework',spareKind:'新品予備（組替可能）',chockInstalled:false}
+            ];
+            const assessed=assessEmergencyReserve({standKey:stand,resources:snapshot});
+            if(assessed.status==='unknown')return held('予備状態未確認: '+d,warnings);
+            spareTimeline.push({stand,date:d,status:'forecast',normalSpare:assessed.normalSpare,emergencySpare:assessed.emergencySpare,reserveId:assessed.emergencyIds[0]||null,reserveKind:eligible?reserveKind:null});
+            if(assessed.status==='shortage' && normalizeShiftTeam(dates.get(d).shift3Team))warnings.push({stand,date:d,kind:'夜勤予備不足',reason:'チョック組込済み緊急予備が0セット'});
         }
         if(old.chockInstalled===false||l.chockRetainedUntilAssembly===false||old.emergencyUsable===false||l.assemblyCompletedByDayEnd===false) return held('緊急予備の維持または常昼内の組替完了が成立しない',warnings);
         proposals.push({stand,m,e,l,old,online,third});
@@ -2694,6 +2737,8 @@ function readLedgerResources(list, selection) {
             name: item.name,
             standKey: standNumberFromName(item.name || item.id),
             frame: ledgerFrame(item.status),
+            ledgerStatus: item.status || null,
+            chockInstalled: item.status === '中古予備（バラシ前）' || item.status === '新品予備（組込完了）' ? true : item.status === '新品予備（組替可能）' ? false : null,
             diameter: blankForecastAmount(item.currentDiameter),
             caliberId: item.currentCaliber || null,
             runs: blankForecastAmount(item.openingRuns)
