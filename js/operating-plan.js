@@ -2039,12 +2039,13 @@ function simulateExchangeCycle(input) {
         const initial=assessEmergencyReserve({standKey:source.standKey,resources});
         const badDays=!days.length||days.some((r,i)=>!dateOK(r.date)||(i&&r.date!==addDays(days[i-1].date,1))||!['A','B',''].includes(r.shift3Team)||!Number.isFinite(r.nightProductionAmount)||r.nightProductionAmount<0||r.nightProductionAmount>r.productionAmount||(r.nightProductionAmount>0&&!normalizeShiftTeam(r.shift3Team)));
         const badPlans=physicalPlans.some(p=>!p||p.status!=='forecast'||String(p.standKey)!==String(source.standKey)||!p.oldRollId||!p.counterpartId||p.oldRollId===p.counterpartId||!dateOK(p.exchangeDate)||!dateOK(p.assemblyDate)||p.assemblyDate<=p.exchangeDate||p.disassemblyDate!==p.assemblyDate||!dateOK(p.dispatchDate)||p.dispatchDate<p.assemblyDate||!dateOK(p.inboundDate)||!Number.isInteger(source.reworkDays)||source.reworkDays<=0||p.inboundDate<addDays(p.dispatchDate,source.reworkDays)||!String(p.basis||'').trim());
-        if(initial.normalSpare===null||!spareRolls||spareRolls.length!==initial.normalIds.length||new Set(spareRolls).size!==spareRolls.length||spareRolls.some(id=>!initial.normalIds.includes(id))||badDays||badPlans||new Set(physicalPlans.map(p=>p.exchangeDate)).size!==physicalPlans.length){
+        if(initial.status==='unknown'||initial.normalSpare===null||!spareRolls||spareRolls.length!==initial.normalIds.length||new Set(spareRolls).size!==spareRolls.length||spareRolls.some(id=>!initial.normalIds.includes(id))||badDays||badPlans||new Set(physicalPlans.map(p=>p.exchangeDate)).size!==physicalPlans.length){
             return {events,nightReserveTimeline,rollChangeCount:null,scrapCount:null,annualRollCount:null,statusChanged:false,stopRecord:{date:days[0]?.date||null,reason:'物理工程・個体・勤別日付の根拠未確認'},reason:'物理工程の入力未確認。不足なしとは判定しません。'};
         }
     }
     const markConfirmed = date => { confirmedThrough = date; };
     const stopAt = (date, reason) => {
+        if(physical&&confirmedThrough===date)confirmedThrough=days.filter(r=>r.date<date).at(-1)?.date||null;
         stopRecord = { date, id: state.onlineId, reason };
         blocked = true;
     };
@@ -2294,7 +2295,7 @@ function simulateExchangeCycle(input) {
                     push(date, 'ロール替需要', unnamed
                         ? '予備の本数だけでは交換できるロールが分かりません。架空のIDは作りません。'
                         : '予備がないか、改削日数が未確認なので、ロール替は成立させていません。');
-                    if (sizeChanged) stopAt(date, 'サイズ切替後の交換先の予備または改削日数が未確認です。以後は計算済みにしません。');
+                    if (physical || sizeChanged) stopAt(date, '交換先の新品組込済み予備または改削日数が未確認です。以後は計算済みにしません。');
                     else markConfirmed(date);
                     return;
                 }
@@ -2453,7 +2454,7 @@ function simulateExchangeCycle(input) {
         if (state.caliberRuns + 1 > maxRuns) {
             state.pending = spareCalibers && spareCalibers.length ? 'caliber' : 'roll';
             push(date, '交換待ち', '連続操業の途中では交換しません。次の停止枠を待ちます。');
-            if (sizeChanged) stopAt(date, '最大直数を超える操業の前に交換が完了していません。以後は計算済みにしません。');
+            if (physical || sizeChanged) stopAt(date, '最大直数を超える操業の前に交換が完了していません。以後は計算済みにしません。');
             else markConfirmed(date);
             return;
         }
@@ -2465,12 +2466,22 @@ function simulateExchangeCycle(input) {
     days.forEach((row, index) => {
         if (blocked) return;
         simulateDay(row, index);
+        if(physical&&!blocked&&physicalPlans.some(p=>p.exchangeDate===row.date)&&!state.reworks.some(r=>r.plan&&r.plan.exchangeDate===row.date)){
+            push(row.date,'保留','予定されたロール替が成立していません。');
+            stopAt(row.date,'予定交換未成立');
+        }
         // On a stopped two-shift day the night inventory is the result of all daytime work.
         if(physical&&normalizeShiftTeam(row.shift3Team)){
             const date=row.date, assessment=blocked?{status:'unknown',normalSpare:null,emergencySpare:null,reason:'工程保留後の夜勤状態未確認'}:assessEmergencyReserve({standKey:source.standKey,resources});
             nightReserveTimeline.push({date,forecast:true,...assessment});
-            if(assessment.status==='shortage')push(date,'夜勤予備不足','チョック組込済みの緊急予備0セット。');
-            if(assessment.status==='unknown')push(date,'夜勤予備未確認',assessment.reason||'予備状態未確認。');
+            if(assessment.status==='shortage'){
+                push(date,'夜勤予備不足','チョック組込済みの緊急予備0セット。');
+                stopAt(date,'夜勤緊急予備0セット。以後の安全を確定しません。');
+            }
+            if(assessment.status==='unknown'){
+                push(date,'夜勤予備未確認',assessment.reason||'予備状態未確認。');
+                if(!blocked)stopAt(date,'夜勤緊急予備未確認。以後の安全を確定しません。');
+            }
         }
         if (!physical && !blocked && row.productionAmount === 0 && normalizeShiftTeam(row.shift1Team)
             && normalizeShiftTeam(row.shift3Team) && spareRolls && spareRolls.length === 0) {
@@ -2689,7 +2700,7 @@ function assessEmergencyReserve(input) {
     for(const r of rows) {
         if(r.frame==='online') continue;
         const kind=r.spareKind||r.ledgerStatus||'';
-        const raw=kind==='新品予備（組替可能）'||r.frame==='rework'||r.frame==='awaitingAssembly'||r.frame==='scrap';
+        const raw=kind==='新品予備（組替可能）'||r.frame==='rework'||r.frame==='awaitingAssembly'||r.frame==='awaitingDispatch'||r.frame==='scrap';
         const normal=kind==='新品予備（組込完了）'||(r.frame==='installedSpare'&&!kind);
         const used=kind==='中古予備（バラシ前）';
         if((raw&&(r.chockInstalled===true||normal||used))||
