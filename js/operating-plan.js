@@ -2466,6 +2466,55 @@ function pairedStandKeys(standKey, size) {
     return [stand];
 }
 
+// Paired first-exchange preview. No ledger writes; do not treat a partial preview as annual coverage.
+function previewPairedCaliberExchange(input) {
+    const source = input || {};
+    const stand = String(source.standKey || '').replace(/^#/, '');
+    const pair = pairedStandKeys(stand, source.size).sort((a,b) => Number(a)-Number(b));
+    const held = (reason, date = null) => ({pair, status:'held', date, reason, event:null, annualComplete:false});
+    if (!['6','7','8','9'].includes(stand)) return held('対象外');
+    if (pair[0] === '8') return held('8・9番の固定使用上限は未確認。資料の13直・5265tを固定上限にしません。');
+    const size = normalizeForecastSize(source.size);
+    if (!['D10','D13'].includes(size)) return held('サイズ未確認');
+    const members = Array.isArray(source.members) ? source.members : [];
+    if (members.length !== 2 || pair.some(s => members.filter(m => m && String(m.standKey) === s).length !== 1)) return held('ペア双方の開始条件が必要');
+    const limit = knownTonBasis(pair[0]);
+    if (!limit || limit.kind !== '現行' || !Number.isInteger(limit.runs)) return held('現行直数未確認');
+    const ids = new Set();
+    for (const m of members) {
+        if (!m.rollId || ids.has(m.rollId) || !String(m.caliberId || '').trim() || !Number.isInteger(m.runs) || m.runs < 0 || m.runs >= limit.runs || !Array.isArray(m.spareCaliberIds) || m.spareCaliberIds.some(id => typeof id !== 'string' || !id.trim() || id === m.caliberId) || new Set(m.spareCaliberIds).size !== m.spareCaliberIds.length || !String(m.basis || '').trim()) return held('個体・カリバ・開始直数・残カリバ・根拠が未確認');
+        ids.add(m.rollId);
+    }
+    const rows = Array.isArray(source.days) ? source.days : [];
+    const work = source.workConfirmation;
+    if (!work || !Array.isArray(work.stands) || work.stands.map(String).sort().join(',') !== pair.join(',') || work.repeatOnStops === true || work.workType !== 'caliberChange' || !(work.requiredHours >= 4) || !work.date) return held('ペア共同の昼作業枠・必要時間が未確認');
+    const dates = new Set();
+    let prior = '';
+    for (const row of rows) {
+        if (!row || typeof row.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(row.date) || dates.has(row.date) || row.date < prior) return held('日付重複または逆転');
+        dates.add(row.date); prior=row.date;
+        if (row.date > work.date) continue;
+        if (typeof row.productionAmount !== 'number' || !Number.isFinite(row.productionAmount) || row.productionAmount < 0) return held('生産量未確認',row.date);
+        if (row.productionAmount > 0 && (normalizeForecastSize(row.size) !== size || !Number.isFinite(row.operatingHours) || row.operatingHours < 4 || Number(Boolean(normalizeShiftTeam(row.shift1Team))) + Number(Boolean(normalizeShiftTeam(row.shift3Team))) !== 1)) return held('サイズまたは勤別使用量未確認',row.date);
+    }
+    const slot = rows.find(r => r.date === work.date);
+    if (!slot || !exchangeSlotReady(work,slot,'caliberChange')) return held('共同作業枠未成立',work.date);
+    const before = rows.filter(r => r.date < work.date && r.productionAmount > 0);
+    // If one member would exceed its limit before the shared slot, do not accept either member's exchange.
+    if (members.some(m => m.runs + before.length > limit.runs)) return held('共同枠より前に使用上限へ到達',work.date);
+    const results = members.map(m => {
+        const result = simulateExchangeCycle({
+            standKey:String(m.standKey), currentSize:size, maxRuns:limit.runs,
+            onlineRollId:m.rollId, currentCaliberId:m.caliberId, openingRuns:m.runs,
+            spareCaliberIds:m.spareCaliberIds.slice(), workConfirmation:work,
+            days:rows.filter(r=>r.date<=work.date)
+        });
+        return {stand:String(m.standKey), rollId:m.rollId, event:result.events.find(e => e.kind==='カリバ替' || e.kind==='ロール替' || e.kind==='ロール替需要')};
+    });
+    if (results.some(r=>!r.event || r.event.kind!=='カリバ替' || r.event.date!==work.date)) return held('ペア双方の同日カリバ替が成立しない。片側交換やロール替にはしません。',work.date);
+    return {pair,status:'preview',date:work.date,reason:'現行15直と双方の残カリバ・共同昼枠による匿名交換候補。年間循環・型決め材挿入指示は未接続。',event:{kind:'カリバ替',members:results.map(r=>({stand:r.stand,rollId:r.rollId,nextCaliber:r.event.caliberId,runs:r.event.caliberRuns}))},annualComplete:false};
+}
+
 function ledgerFrame(status) {
     if (status === 'オンライン') return 'online';
     if (status === '新品予備（組込完了）') return 'installedSpare';
