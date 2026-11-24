@@ -2764,7 +2764,7 @@ function previewPairedPhysicalCycle(input) {
     const members=s.members,days=s.days,work=s.jointWork,capacity=s.capacity;
     if(!pair.includes(String(s.standKey))||!['D10','D13'].includes(size)||!validDate(s.referenceAt)||!Array.isArray(members)||members.length!==2||pair.some(k=>members.filter(m=>m&&String(m.standKey)===k).length!==1)||!Array.isArray(days)||!days.length||days[0].date!==s.referenceAt||!Array.isArray(work)||!Array.isArray(capacity))return held('共同循環の入力未確認');
     const exception=assessPairException({members,referenceAt:s.referenceAt,compatibility:s.compatibility});
-    if(exception.status!=='routine-candidate')return {...held(exception.reason,s.referenceAt),status:'exception-review',exception};
+    if(exception.status!=='routine-candidate')return {...held(exception.reason,s.referenceAt),status:exception.status==='individual-review'?'exception-review':'held',exception};
     const limit=knownTonBasis('6');
     if(!limit||limit.runs!==15||knownTonBasis('7')?.runs!==15)return held('現行15直基準未確認');
     const byDay=new Map();
