@@ -2515,6 +2515,84 @@ function previewPairedCaliberExchange(input) {
     return {pair,status:'preview',date:work.date,reason:'現行15直と双方の残カリバ・共同昼枠による匿名交換候補。年間循環・型決め材挿入指示は未接続。',event:{kind:'カリバ替',members:results.map(r=>({stand:r.stand,rollId:r.rollId,nextCaliber:r.event.caliberId,runs:r.event.caliberRuns}))},annualComplete:false};
 }
 
+// Forecast-only: select the immediately preceding known producing night for setup material.
+function previewSetupMaterialInstruction(days, exchangeDate) {
+    const validDate = d => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d) && Number.isFinite(Date.parse(d+'T00:00:00Z')) && new Date(d+'T00:00:00Z').toISOString().slice(0,10) === d;
+    const held = reason => ({status:'held',reason,instruction:null});
+    if (!validDate(exchangeDate) || !Array.isArray(days) || days.some(r=>!r || !validDate(r.date))) return held('日付未確認');
+    const rows = days.filter(r=>r.date<exchangeDate);
+    const byDate = new Map();
+    for (const row of rows) {
+        if (byDate.has(row.date)) return held('日付重複');
+        byDate.set(row.date,row);
+    }
+    for (let d=addDays(exchangeDate,-1); byDate.size && d>=rows.map(r=>r.date).sort()[0]; d=addDays(d,-1)) {
+        const row=byDate.get(d);
+        if (!row || typeof row.nightProductionAmount !== 'number' || !Number.isFinite(row.nightProductionAmount) || row.nightProductionAmount<0 || typeof row.productionAmount !== 'number' || !Number.isFinite(row.productionAmount) || row.productionAmount<row.nightProductionAmount) return held('直前夜勤の操業が未確認: '+d);
+        if (row.nightProductionAmount===0) continue;
+        const team=normalizeShiftTeam(row.shift3Team);
+        if (!team) return held('夜勤担当班未確認: '+d);
+        return {status:'preview',reason:'交換前の直近操業夜勤',instruction:{date:d,team,shift:'3勤',text:'#6st用型決め材挿入',exchangeDate,status:'forecast'}};
+    }
+    return held('交換前の操業夜勤が確認できません');
+}
+
+// Forecast-only paired roll change at exhaustion. Never promotes rework or assembly to actuals.
+function previewPairedRollExchange(input) {
+    const source=input||{};
+    const stand=String(source.standKey||'').replace(/^#/,'');
+    const pair=pairedStandKeys(stand,source.size).sort((a,b)=>Number(a)-Number(b));
+    const held=(reason,date=null)=>({pair,status:'held',date,reason,event:null,annualComplete:false});
+    if (!['6','7'].includes(stand)) return held('6・7番以外は未接続');
+    const size=normalizeForecastSize(source.size);
+    if (!['D10','D13'].includes(size)) return held('サイズ未確認');
+    const limit=knownTonBasis(pair[0]);
+    const members=Array.isArray(source.members)?source.members:[];
+    if (members.length!==2 || pair.some(s=>members.filter(m=>m&&String(m.standKey)===s).length!==1)) return held('ペア双方の開始条件が必要');
+    const rows=Array.isArray(source.days)?source.days:[];
+    const work=source.workConfirmation;
+    if (!work || !Array.isArray(work.stands) || work.stands.map(String).sort().join(',')!==pair.join(',') || work.repeatOnStops===true || work.workType!=='rollChange' || !(work.requiredHours>=6) || !work.date) return held('共同ロール替枠未確認');
+    const validDate=d=>typeof d==='string' && /^\d{4}-\d{2}-\d{2}$/.test(d) && Number.isFinite(Date.parse(d+'T00:00:00Z')) && new Date(d+'T00:00:00Z').toISOString().slice(0,10)===d;
+    if (!validDate(work.date) || !validDate(source.referenceAt) || source.referenceAt>work.date) return held('基準日・作業日未確認');
+    const period=rows.filter(r=>r && r.date>=source.referenceAt && r.date<=work.date);
+    let expected=source.referenceAt;
+    let count=0;
+    for (const row of period) {
+        if (!validDate(row.date) || row.date!==expected) return held('日付欠損・重複・逆転',row.date);
+        expected=addDays(expected,1);
+        if (typeof row.productionAmount!=='number' || !Number.isFinite(row.productionAmount) || row.productionAmount<0) return held('生産量未確認',row.date);
+        if (row.productionAmount>0) {
+            if (normalizeForecastSize(row.size)!==size || !Number.isFinite(row.operatingHours) || row.operatingHours<4 || Number(Boolean(normalizeShiftTeam(row.shift1Team)))+Number(Boolean(normalizeShiftTeam(row.shift3Team)))!==1) return held('勤別使用量・サイズ未確認',row.date);
+            count++;
+        }
+    }
+    if (expected!==addDays(work.date,1)) return held('共同枠までの日付不足',work.date);
+    const slot=period.find(r=>r.date===work.date);
+    if (!slot || !exchangeSlotReady(work,slot,'rollChange')) return held('共同枠未成立',work.date);
+    const allIds=new Set();
+    for (const m of members) {
+        if (!m.rollId || !String(m.caliberId||'').trim() || !String(m.basis||'').trim() || !Number.isInteger(m.runs) || m.runs<0 || m.runs>=limit.runs || m.runs+count!==limit.runs || !Array.isArray(m.spareCaliberIds) || m.spareCaliberIds.length!==0 || !Number.isInteger(m.reworkDays) || m.reworkDays<=0 || !Array.isArray(m.resources) || m.resources.length!==3) return held('双方のカリバ消尽・改削日数・3セット未確認',work.date);
+        if (m.resources.some(r=>!r || typeof r.id!=='string' || !r.id.trim() || allIds.has(r.id) || String(r.standKey)!==String(m.standKey) || !Number.isFinite(r.diameter) || r.diameter<=0)) return held('個体ID・所属・径未確認',work.date);
+        for (const r of m.resources) { if (allIds.has(r.id)) return held('個体重複',work.date); allIds.add(r.id); }
+        const online=m.resources.filter(r=>r.frame==='online'), installed=m.resources.filter(r=>r.frame==='installedSpare'), used=m.resources.filter(r=>r.frame==='usedSpare');
+        if (online.length!==1 || installed.length!==1 || used.length!==1 || online[0].id!==m.rollId || online[0].caliberId!==m.caliberId || online[0].runs!==m.runs || !Array.isArray(online[0].spareCaliberIds) || online[0].spareCaliberIds.length!==0 || !String(installed[0].caliberId||'').trim() || installed[0].runs!==0 || installed[0].prepared!==true || !validDate(installed[0].preparedOn) || installed[0].preparedOn>work.date) return held('交換先の組込・新品カリバ・開始条件未確認',work.date);
+    }
+    const results=members.map(m=>{
+        const result=simulateExchangeCycle({standKey:String(m.standKey),currentSize:size,maxRuns:limit.runs,resources:m.resources,spareCaliberIds:[],reworkDays:m.reworkDays,workConfirmation:work,days:period});
+        const event=result.events.find(e=>e.kind==='ロール替');
+        return {stand:String(m.standKey),oldRollId:m.rollId,event,stop:result.stopRecord,nightRisk:result.events.some(e=>e.kind==='夜勤予備不足')};
+    });
+    if (results.some(r=>r.stop || !r.event || r.event.date!==work.date || r.event.onlineId===r.oldRollId)) return held('両側のロール替が成立しない',work.date);
+    const setup=previewSetupMaterialInstruction(rows,work.date);
+    return {pair,status:'preview',date:work.date,reason:'匿名共同ロール替候補。搬出・搬入は未接続、交換後の予備と夜勤安全は別途確認。',event:{kind:'ロール替',members:results.map(r=>({stand:r.stand,oldRollId:r.oldRollId,newRollId:r.event.onlineId,nextCaliber:r.event.caliberId,runs:r.event.caliberRuns}))},setup,nightRisk:results.some(r=>r.nightRisk),annualComplete:false};
+}
+
+function previewPairedExchangeWithSetup(input) {
+    const result=input && input.workConfirmation && input.workConfirmation.workType==='rollChange' ? previewPairedRollExchange(input) : previewPairedCaliberExchange(input);
+    if (result.status!=='preview' || result.setup) return result;
+    return Object.assign({},result,{setup:previewSetupMaterialInstruction(input.days,result.date)});
+}
+
 function ledgerFrame(status) {
     if (status === 'オンライン') return 'online';
     if (status === '新品予備（組込完了）') return 'installedSpare';
