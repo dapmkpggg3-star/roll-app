@@ -2199,6 +2199,10 @@ function simulateExchangeCycle(input) {
         workConfirmation = workForDay();
         assemblyConfirmation = sizeChanged ? null : source.assemblyConfirmation;
         const nextSize = normalizeForecastSize(row.size);
+        if(physical&&activeSize&&nextSize!==activeSize&&(!stopped||/^D\d+$/.test(nextSize))){
+            push(date,'保留','物理工程と改削世代別サイズ替の統合は未確認です。');
+            stopAt(date,'物理工程のサイズ替は別途接続が必要');return;
+        }
         if (activeSize && nextSize !== activeSize && (!stopped || /^D\d+$/.test(nextSize))) {
             const boundary = { date, fromSize: activeSize, toSize: nextSize || '未確認' };
             const nextOperation = days.slice(index).find(item => item.productionAmount > 0);
@@ -2378,6 +2382,7 @@ function simulateExchangeCycle(input) {
                 if (leavingResource && Array.isArray(leavingResource.spareCaliberIds)) leavingResource.spareCaliberIds.forEach(rememberCaliber);
                 const plan=physical?physicalPlans.find(p=>p.exchangeDate===date&&p.oldRollId===leavingId):null;
                 if(physical){
+                    if(physicalPlans.some(p=>p.exchangeDate===date)&&!plan){stopAt(date,'交換予定の旧個体不一致');return;}
                     if(!leavingResource||leavingResource.emergencyUsable===false||leavingResource.chockInstalled===false||source.retainedOnExchange!==true||!entering||entering.chockInstalled!==true&&entering.spareKind!=='新品予備（組込完了）'){
                         stopAt(date,'交換後の中古予備保持または交換先組込が未確認');return;
                     }
@@ -2657,11 +2662,11 @@ function previewPairedRollExchange(input) {
     const results=members.map(m=>{
         const result=simulateExchangeCycle({standKey:String(m.standKey),currentSize:size,maxRuns:limit.runs,resources:m.resources,spareCaliberIds:[],reworkDays:m.reworkDays,workConfirmation:work,days:period});
         const event=result.events.find(e=>e.kind==='ロール替');
-        return {stand:String(m.standKey),oldRollId:m.rollId,event,stop:result.stopRecord,nightRisk:result.events.some(e=>e.kind==='夜勤予備不足')};
+        return {stand:String(m.standKey),oldRollId:m.rollId,event,stop:result.stopRecord,nightRisk:result.reserveMode==='physical-forecast'?result.events.some(e=>e.kind==='夜勤予備不足'):null};
     });
     if (results.some(r=>r.stop || !r.event || r.event.date!==work.date || r.event.onlineId===r.oldRollId)) return held('両側のロール替が成立しない',work.date);
     const setup=previewSetupMaterialInstruction(rows,work.date);
-    return {pair,status:'preview',date:work.date,reason:'匿名共同ロール替候補。搬出・搬入は未接続、交換後の予備と夜勤安全は別途確認。',event:{kind:'ロール替',members:results.map(r=>({stand:r.stand,oldRollId:r.oldRollId,newRollId:r.event.onlineId,nextCaliber:r.event.caliberId,runs:r.event.caliberRuns}))},setup,nightRisk:results.some(r=>r.nightRisk),annualComplete:false};
+    return {pair,status:'preview',date:work.date,reason:'匿名共同ロール替候補。搬出・搬入は未接続、交換後の予備と夜勤安全は別途確認。',event:{kind:'ロール替',members:results.map(r=>({stand:r.stand,oldRollId:r.oldRollId,newRollId:r.event.onlineId,nextCaliber:r.event.caliberId,runs:r.event.caliberRuns}))},setup,nightRisk:results.some(r=>r.nightRisk===true)?true:results.some(r=>r.nightRisk===null)?null:false,annualComplete:false};
 }
 
 function previewPairedExchangeWithSetup(input) {
