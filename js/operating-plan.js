@@ -2037,9 +2037,10 @@ function simulateExchangeCycle(input) {
     if(physical){
         const dateOK=d=>typeof d==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(d)&&Number.isFinite(Date.parse(d+'T00:00:00Z'))&&new Date(d+'T00:00:00Z').toISOString().slice(0,10)===d;
         const initial=assessEmergencyReserve({standKey:source.standKey,resources});
+        const brokenOnline=resources?.some(r=>r.frame==='online'&&(r.condition==='broken'||r.ledgerStatus==='折損'||r.spareKind==='折損'));
         const badDays=!days.length||days.some((r,i)=>!dateOK(r.date)||(i&&r.date!==addDays(days[i-1].date,1))||!['A','B',''].includes(r.shift3Team)||!Number.isFinite(r.nightProductionAmount)||r.nightProductionAmount<0||r.nightProductionAmount>r.productionAmount||(r.nightProductionAmount>0&&!normalizeShiftTeam(r.shift3Team)));
         const badPlans=physicalPlans.some(p=>!p||p.status!=='forecast'||String(p.standKey)!==String(source.standKey)||!p.oldRollId||!p.counterpartId||p.oldRollId===p.counterpartId||!dateOK(p.exchangeDate)||!dateOK(p.assemblyDate)||p.assemblyDate<=p.exchangeDate||p.disassemblyDate!==p.assemblyDate||!dateOK(p.dispatchDate)||p.dispatchDate<p.assemblyDate||!dateOK(p.inboundDate)||!Number.isInteger(source.reworkDays)||source.reworkDays<=0||p.inboundDate<addDays(p.dispatchDate,source.reworkDays)||!String(p.basis||'').trim());
-        if(initial.status==='unknown'||initial.normalSpare===null||!spareRolls||spareRolls.length!==initial.normalIds.length||new Set(spareRolls).size!==spareRolls.length||spareRolls.some(id=>!initial.normalIds.includes(id))||badDays||badPlans||new Set(physicalPlans.map(p=>p.exchangeDate)).size!==physicalPlans.length){
+        if(brokenOnline||initial.status==='unknown'||initial.normalSpare===null||!spareRolls||spareRolls.length!==initial.normalIds.length||new Set(spareRolls).size!==spareRolls.length||spareRolls.some(id=>!initial.normalIds.includes(id))||badDays||badPlans||new Set(physicalPlans.map(p=>p.exchangeDate)).size!==physicalPlans.length){
             return {events,nightReserveTimeline,rollChangeCount:null,scrapCount:null,annualRollCount:null,statusChanged:false,stopRecord:{date:days[0]?.date||null,reason:'物理工程・個体・勤別日付の根拠未確認'},reason:'物理工程の入力未確認。不足なしとは判定しません。'};
         }
     }
@@ -2706,7 +2707,7 @@ function assessEmergencyReserve(input) {
         if((raw&&(r.chockInstalled===true||normal||used))||
             (normal&&r.frame!=='installedSpare')||(used&&r.frame!=='usedSpare'))
             return unknown('個体状態とチョック情報が矛盾');
-        if(raw||r.chockInstalled===false||r.emergencyUsable===false) continue;
+        if(raw||r.chockInstalled===false||r.emergencyUsable===false||r.condition==='broken'||r.ledgerStatus==='折損'||r.spareKind==='折損') continue;
         if(normal) {
             if(r.chockInstalled===true||kind==='新品予備（組込完了）'){
                 normalIds.push(r.id);emergencyIds.push(r.id);
@@ -2723,12 +2724,47 @@ function assessEmergencyReserve(input) {
 
 // Atomic paired preview: both existing physical simulations must agree, and shared
 // daytime crew allocations must fit a separately supplied capacity window.
+// Explicit exception classification, not a diameter tolerance or permission to run.
+function assessPairException(input) {
+    const s=input||{}, pair=['6','7'], members=s.members;
+    const result=(status,reason,affected=[],individualRecords=[])=>({status,reason,affected,individualRecords,individualReviewRequired:status!=='routine-candidate',automaticRelease:false,operationAuthorized:false});
+    if(!Array.isArray(members)||members.length!==2||pair.some(k=>members.filter(m=>m&&String(m.standKey)===k).length!==1))return result('unconfirmed','ペア双方の個体未確認');
+    const records=[],ids=new Set(),broken=[];
+    for(const stand of pair){
+        const m=members.find(x=>String(x.standKey)===stand);
+        if(!Array.isArray(m.resources)||m.resources.length!==3||m.resources.filter(r=>r?.frame==='online').length!==1)return result('unconfirmed','3セット・オンライン未確認');
+        for(const r of m.resources){
+            if(!r||typeof r.id!=='string'||!r.id.trim()||ids.has(r.id)||String(r.standKey)!==stand||!Number.isFinite(r.diameter)||r.diameter<=0)return result('unconfirmed','個体・径・所属未確認');
+            ids.add(r.id);
+            const damaged=r.condition==='broken'||r.ledgerStatus==='折損'||r.spareKind==='折損';
+            const rec={standKey:stand,id:r.id,frame:r.frame,diameter:r.diameter,condition:damaged?'broken':r.condition||null,adoptedCutMm:Number.isFinite(m.adoptedCutMm)?m.adoptedCutMm:null};
+            records.push(rec);
+            if(damaged)broken.push(rec);
+        }
+    }
+    if(broken.length)return result('individual-review','折損個体あり。通常の共同計画と分離して個別対応を確認',broken,records);
+    // Compatibility evidence is tied to the exact current online rolls, diameters and reference date.
+    const online=records.filter(r=>r.frame==='online'), c=s.compatibility;
+    if(c!==undefined&&c!==null){
+        const valid=c&&typeof c.basis==='string'&&c.basis.trim()&&typeof s.referenceAt==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(s.referenceAt)&&c.referenceAt===s.referenceAt&&['compatible','incompatible','unknown'].includes(c.status)&&online.every(r=>c.rollIds?.[r.standKey]===r.id&&c.diameters?.[r.standKey]===r.diameter);
+        if(!valid)return result('unconfirmed','セット適合情報の個体・径・基準日不一致',online,records);
+        if(c.status==='incompatible')return result('individual-review','セット不成立。組合せ・個別手配を再確認',online,records);
+        if(c.status==='unknown')return result('unconfirmed','セット適合未確認',online,records);
+    }
+    const cuts=members.map(m=>m.adoptedCutMm);
+    if(cuts.some(n=>!Number.isFinite(n)||n<=0))return result('unconfirmed','改削量未確認',online,records);
+    if(cuts[0]!==cuts[1])return result('individual-review','採用改削量に差がある。将来のセット適合を別途確認',online,records);
+    return {...result('routine-candidate','通常計画候補。将来のセット適合は未確認',[],records),openingCompatibility:c?.status==='compatible'?'confirmed-input':'unconfirmed',futureCompatibility:'unconfirmed'};
+}
+
 function previewPairedPhysicalCycle(input) {
     const s=input||{}, pair=['6','7'], size=normalizeForecastSize(s.size);
     const held=(reason,date=null,details=[])=>({status:'held',reason,date,details,events:[],nextMembers:null,annualComplete:false});
     const validDate=d=>typeof d==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(d)&&Number.isFinite(Date.parse(d+'T00:00:00Z'))&&new Date(d+'T00:00:00Z').toISOString().slice(0,10)===d;
     const members=s.members,days=s.days,work=s.jointWork,capacity=s.capacity;
     if(!pair.includes(String(s.standKey))||!['D10','D13'].includes(size)||!validDate(s.referenceAt)||!Array.isArray(members)||members.length!==2||pair.some(k=>members.filter(m=>m&&String(m.standKey)===k).length!==1)||!Array.isArray(days)||!days.length||days[0].date!==s.referenceAt||!Array.isArray(work)||!Array.isArray(capacity))return held('共同循環の入力未確認');
+    const exception=assessPairException({members,referenceAt:s.referenceAt,compatibility:s.compatibility});
+    if(exception.status!=='routine-candidate')return {...held(exception.reason,s.referenceAt),status:'exception-review',exception};
     const limit=knownTonBasis('6');
     if(!limit||limit.runs!==15||knownTonBasis('7')?.runs!==15)return held('現行15直基準未確認');
     const byDay=new Map();
@@ -2787,7 +2823,7 @@ function previewPairedPhysicalCycle(input) {
         pairedEvents.push({date:w.date,kind,members:matched.map(x=>({stand:x.stand,...x.events[0]})),setup:setup.instruction,status:'forecast'});
     }
     if(results.some(x=>x.result.events.filter(e=>['ロール替','カリバ替'].includes(e.kind)).length!==work.length))return held('未計画交換または片側交換');
-    return {status:'preview',pair,size,events:pairedEvents,memberResults:results,nextMembers:results.map(x=>({standKey:x.stand,resources:x.result.resources})),annualComplete:false,reason:'明示された共同容量と個体別工程による同サイズ区間予測。現場作業確定ではありません。'};
+    return {status:'preview',pair,size,events:pairedEvents,memberResults:results,nextMembers:results.map(x=>({standKey:x.stand,resources:x.result.resources})),exception,annualComplete:false,reason:'明示された共同容量と個体別工程による同サイズ区間予測。現場作業確定ではありません。'};
 }
 
 function previewPairedReworkWindow(input) {
