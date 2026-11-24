@@ -2721,6 +2721,75 @@ function assessEmergencyReserve(input) {
         reason:emergencyUnknown||normalUnknown?'一部の予備状態未確認':''};
 }
 
+// Atomic paired preview: both existing physical simulations must agree, and shared
+// daytime crew allocations must fit a separately supplied capacity window.
+function previewPairedPhysicalCycle(input) {
+    const s=input||{}, pair=['6','7'], size=normalizeForecastSize(s.size);
+    const held=(reason,date=null,details=[])=>({status:'held',reason,date,details,events:[],nextMembers:null,annualComplete:false});
+    const validDate=d=>typeof d==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(d)&&Number.isFinite(Date.parse(d+'T00:00:00Z'))&&new Date(d+'T00:00:00Z').toISOString().slice(0,10)===d;
+    const members=s.members,days=s.days,work=s.jointWork,capacity=s.capacity;
+    if(!pair.includes(String(s.standKey))||!['D10','D13'].includes(size)||!validDate(s.referenceAt)||!Array.isArray(members)||members.length!==2||pair.some(k=>members.filter(m=>m&&String(m.standKey)===k).length!==1)||!Array.isArray(days)||!days.length||days[0].date!==s.referenceAt||!Array.isArray(work)||!Array.isArray(capacity))return held('共同循環の入力未確認');
+    const limit=knownTonBasis('6');
+    if(!limit||limit.runs!==15||knownTonBasis('7')?.runs!==15)return held('現行15直基準未確認');
+    const byDay=new Map();
+    for(const [i,r] of days.entries()){
+        if(!r||!validDate(r.date)||(i&&r.date!==addDays(days[i-1].date,1))||!Number.isFinite(r.productionAmount)||r.productionAmount<0||!Number.isFinite(r.nightProductionAmount)||r.nightProductionAmount<0||r.nightProductionAmount>r.productionAmount||!['A','B',''].includes(r.shift3Team)||(r.nightProductionAmount>0&&!normalizeShiftTeam(r.shift3Team)))return held('日別・夜勤生産未確認',r?.date);
+        if(r.productionAmount>0&&(normalizeForecastSize(r.size)!==size||!Number.isFinite(r.operatingHours)||r.operatingHours<4||Number(Boolean(normalizeShiftTeam(r.shift1Team)))+Number(Boolean(normalizeShiftTeam(r.shift3Team)))!==1||(normalizeShiftTeam(r.shift3Team)?r.nightProductionAmount!==r.productionAmount:r.nightProductionAmount!==0)))return held('サイズ・勤別直数未確認',r.date);
+        byDay.set(r.date,r);
+    }
+    const allIds=new Set(),tasks=[],workByDate=new Map(),caps=new Map();
+    const positive=n=>Number.isFinite(n)&&n>0;
+    const interval=t=>Number.isFinite(t.startHour)&&Number.isFinite(t.endHour)&&t.startHour>=0&&t.endHour<=24&&t.endHour>t.startHour&&Number.isInteger(t.people)&&t.people>0;
+    for(const c of capacity){
+        if(!c||!byDay.has(c.date)||caps.has(c.date)||c.period!=='day'||c.status!=='forecast'||!String(c.basis||'').trim()||!interval(c))return held('共同作業容量未確認',c?.date);
+        caps.set(c.date,c);
+    }
+    for(const w of work){
+        if(!w||!byDay.has(w.date)||workByDate.has(w.date)||w.status!=='forecast'||!String(w.basis||'').trim()||!Array.isArray(w.stands)||w.stands.map(String).sort().join(',')!=='6,7'||!['rollChange','caliberChange'].includes(w.workType)||w.repeatOnStops===true||!interval(w)||!positive(w.requiredHours)||w.requiredHours<(w.workType==='rollChange'?6:4)||w.endHour-w.startHour<w.requiredHours||w.reservedHours>w.endHour-w.startHour||!exchangeSlotReady(w,byDay.get(w.date),w.workType)||pair.some(k=>typeof w.onlineIds?.[k]!=='string'||!w.onlineIds[k]))return held('共同交換枠・個体・時間未確認',w?.date);
+        workByDate.set(w.date,w);tasks.push({...w,task:'jointExchange'});
+    }
+    for(const m of members){
+        if(!String(m.basis||'').trim()||!Array.isArray(m.resources)||m.resources.length!==3||!Array.isArray(m.spareCaliberIds)||!Number.isInteger(m.reworkDays)||m.reworkDays<=0||!positive(m.adoptedCutMm)||!positive(m.scrapDiameter)||!Array.isArray(m.physicalLifecycle)||m.retainedOnExchange!==true)return held('個体・工程・改削基準未確認');
+        const stand=String(m.standKey), a=assessEmergencyReserve({standKey:stand,resources:m.resources});
+        if(a.normalSpare===null||a.status==='unknown'||m.resources.some(r=>!positive(r.diameter)||allIds.has(r.id)))return held('個体・所属・径・予備不明');
+        for(const r of m.resources){if(allIds.has(r.id))return held('ペア間個体重複');allIds.add(r.id);}
+        const online=m.resources.find(r=>r.frame==='online');
+        if(!online||!Number.isInteger(online.runs)||online.runs<0||online.runs>=limit.runs||!String(online.caliberId||'').trim())return held('開始直数・カリバ未確認');
+        for(const p of m.physicalLifecycle){
+            const slot=p?.assemblySlot,w=workByDate.get(p?.exchangeDate);
+            if(!p||String(p.standKey)!==stand||!w||w.workType!=='rollChange'||w.onlineIds[stand]!==p.oldRollId||!byDay.has(p.assemblyDate)||!slot||slot.date!==p.assemblyDate||!interval(slot)||!positive(slot.requiredHours)||slot.endHour-slot.startHour<slot.requiredHours||slot.reservedHours>slot.endHour-slot.startHour||!assemblySlotReady(slot,byDay.get(p.assemblyDate)).ok)return held('共同交換と個体組替枠の対応未確認',p?.assemblyDate);
+            tasks.push({...slot,task:'assembly',stand});
+        }
+        for(const w of work.filter(x=>x.workType==='rollChange'))if(m.physicalLifecycle.filter(p=>p.exchangeDate===w.date).length!==1)return held('ペア双方の交換後工程未確認',w.date);
+    }
+    for(const date of new Set(tasks.map(t=>t.date))){
+        const c=caps.get(date),ts=tasks.filter(t=>t.date===date);
+        if(!c||ts.some(t=>t.startHour<c.startHour||t.endHour>c.endHour))return held('共同作業の時間帯未確認',date);
+        const edges=[...new Set(ts.flatMap(t=>[t.startHour,t.endHour]))].sort((a,b)=>a-b);
+        for(let i=0;i<edges.length-1;i++){
+            const mid=(edges[i]+edges[i+1])/2,people=ts.filter(t=>t.startHour<=mid&&mid<t.endHour).reduce((n,t)=>n+t.people,0);
+            if(people>c.people)return held('共同作業の同時人数容量不足',date);
+        }
+    }
+    const results=members.map(m=>{
+        const stand=String(m.standKey),workSlots=work.map(w=>({...w,owner:{standKey:stand,rollId:w.onlineIds[stand],size,referenceAt:s.referenceAt}}));
+        return {stand,result:simulateExchangeCycle({...m,standKey:stand,currentSize:size,referenceAt:s.referenceAt,maxRuns:limit.runs,days,workSlots,workConfirmation:null})};
+    });
+    const failures=results.filter(x=>x.result.stopRecord||x.result.reserveMode!=='physical-forecast'||x.result.confirmedThrough!==days.at(-1).date);
+    if(failures.length)return held('片側または双方の循環保留',failures.map(x=>x.result.stopRecord?.date||s.referenceAt).sort()[0],failures.map(x=>({stand:x.stand,stop:x.result.stopRecord,warnings:x.result.events.filter(e=>e.kind==='夜勤予備不足'||e.kind==='夜勤予備未確認')})));
+    const pairedEvents=[];
+    for(const w of work){
+        const kind=w.workType==='rollChange'?'ロール替':'カリバ替';
+        const matched=results.map(x=>({stand:x.stand,events:x.result.events.filter(e=>e.date===w.date&&e.kind===kind)}));
+        if(matched.some(x=>x.events.length!==1))return held('ペア交換日不一致',w.date);
+        const setup=previewSetupMaterialInstruction(days,w.date);
+        if(setup.status!=='preview')return held('前操業夜勤の型決め材指示未確認',w.date);
+        pairedEvents.push({date:w.date,kind,members:matched.map(x=>({stand:x.stand,...x.events[0]})),setup:setup.instruction,status:'forecast'});
+    }
+    if(results.some(x=>x.result.events.filter(e=>['ロール替','カリバ替'].includes(e.kind)).length!==work.length))return held('未計画交換または片側交換');
+    return {status:'preview',pair,size,events:pairedEvents,memberResults:results,nextMembers:results.map(x=>({standKey:x.stand,resources:x.result.resources})),annualComplete:false,reason:'明示された共同容量と個体別工程による同サイズ区間予測。現場作業確定ではありません。'};
+}
+
 function previewPairedReworkWindow(input) {
     const src=input||{}, exchange=src.exchange, pair=['6','7'];
     const held=(reason,warnings=[])=>({status:'held',reason,warnings,events:[],nextMembers:null,annualComplete:false});
