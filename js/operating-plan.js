@@ -2609,7 +2609,7 @@ function previewPairedReworkWindow(input) {
         const row=dates.get(d);
         if(!row || typeof row.productionAmount!=='number' || !Number.isFinite(row.productionAmount) || row.productionAmount<0 || !['A','B',''].includes(row.shift3Team) || (row.nightProductionAmount!==0 && !normalizeShiftTeam(row.shift3Team)) || typeof row.nightProductionAmount!=='number' || !Number.isFinite(row.nightProductionAmount) || row.nightProductionAmount<0 || row.nightProductionAmount>row.productionAmount) return held('夜勤・生産量・日付未確認: '+d);
     }
-    const proposals=[],warnings=[],events=[];
+    const proposals=[],warnings=[],events=[],spareTimeline=[];
     const unique=new Set();
     for(const stand of pair){
         const mm=src.members.filter(m=>String(m.standKey)===stand),ee=exchange.event.members.filter(m=>String(m.stand)===stand),ll=src.lifecycle.filter(m=>String(m.standKey)===stand);
@@ -2618,7 +2618,7 @@ function previewPairedReworkWindow(input) {
         if(rs.length!==3||rs.some(r=>!r||!txt(r.id)||String(r.standKey)!==stand))return held('3セット個体未確認');
         for(const r of rs){if(unique.has(r.id))return held('個体ID重複');unique.add(r.id);}
         const old=rs.find(r=>r.id===e.oldRollId&&r.frame==='online'), online=rs.find(r=>r.id===e.newRollId&&r.frame==='installedSpare'), third=rs.find(r=>r.frame==='usedSpare');
-        if(!old||!online||!third||old.id!==l.oldRollId||third.id!==l.counterpartId||!txt(l.basis)||l.status!=='forecast')return held('搬出対象・現物の相手・予測根拠未確認');
+        if(!old||!online||!third||old.id!==l.oldRollId||third.id!==l.counterpartId||third.chockInstalled===true||!txt(l.basis)||l.status!=='forecast')return held('搬出対象・現物の相手・予測根拠未確認');
         if(!dateOK(l.assemblyDate)||!dateOK(l.dispatchDate)||!dateOK(l.inboundDate)||!dateOK(l.counterpartReadyOn)||l.assemblyDate<exchange.date||l.dispatchDate<l.assemblyDate||l.inboundDate<l.dispatchDate||l.counterpartReadyOn>l.assemblyDate||l.disassemblyDate!==l.assemblyDate||l.inboundDate>src.through)return held('同日バラシ組込・搬出入順序未確認');
         if(!Number.isInteger(m.reworkDays)||m.reworkDays<=0||l.inboundDate<addDays(l.dispatchDate,m.reworkDays))return held('改削リードタイム不足');
         const slot=l.assemblySlot||{};
@@ -2628,10 +2628,16 @@ function previewPairedReworkWindow(input) {
         if(!Array.isArray(l.returnCalibers)||!l.returnCalibers.length||l.returnCalibers.some(x=>!txt(x))||new Set(l.returnCalibers).size!==l.returnCalibers.length)return held('改削後カリバ定義未確認');
         // Same-day work needs explicit sequencing and capacity, not a second independent time slot.
         if(l.assemblyDate===exchange.date)return held('交換当日の追加組替枠は別途共同作業容量確認が必要');
-        for(let d=exchange.date;d<l.assemblyDate;d=addDays(d,1)){
-            const row=dates.get(d);
-            if(normalizeShiftTeam(row.shift3Team))warnings.push({stand,date:d,kind:'夜勤予備不足',reason:'組込済み予備が0セット'});
+        // The displaced online roll retains its chocks until the same-day transfer.
+        // Emergency-ready used spare is not the same as a newly assembled normal spare.
+        for(let d=exchange.date;d<=src.through;d=addDays(d,1)){
+            const beforeTransfer=d<l.assemblyDate;
+            const eligible=beforeTransfer ? old.chockInstalled!==false && l.chockRetainedUntilAssembly!==false && old.emergencyUsable!==false : l.assemblyCompletedByDayEnd!==false;
+            const reserveId=eligible?(beforeTransfer?old.id:third.id):null;
+            spareTimeline.push({stand,date:d,status:'forecast',normalSpare:beforeTransfer?0:(eligible?1:0),emergencySpare:eligible?1:0,reserveId,reserveKind:eligible?(beforeTransfer?'中古予備（バラシ前）':'新品予備（組込完了）'):null});
+            if(!eligible && normalizeShiftTeam(dates.get(d).shift3Team))warnings.push({stand,date:d,kind:'夜勤予備不足',reason:'チョック組込済み緊急予備が0セット'});
         }
+        if(old.chockInstalled===false||l.chockRetainedUntilAssembly===false||old.emergencyUsable===false||l.assemblyCompletedByDayEnd===false) return held('緊急予備の維持または常昼内の組替完了が成立しない',warnings);
         proposals.push({stand,m,e,l,old,online,third});
     }
     // Conservatively do not complete the pair if either side has a known night without a spare.
@@ -2649,12 +2655,12 @@ function previewPairedReworkWindow(input) {
         const max=knownTonBasis(stand).runs;
         if(e.runs+count>=max)return held('次の交換が必要な時点を越えており、区間を分割してください');
         nextMembers.push({...m,rollId:online.id,caliberId:e.nextCaliber,runs:e.runs+count,spareCaliberIds:Array.isArray(online.spareCaliberIds)?online.spareCaliberIds.slice():[],resources:[
-            {...online,frame:'online',caliberId:e.nextCaliber,runs:e.runs+count},
-            {...third,frame:'installedSpare',caliberId:l.counterpartCaliberId,runs:0,spareCaliberIds:l.counterpartSpareCaliberIds.slice(),prepared:true,preparedOn:l.assemblyDate},
-            {...old,frame:'usedSpare',diameter:Math.round((old.diameter-l.cutMm)*1e6)/1e6,caliberId:l.returnCalibers[0],runs:0,spareCaliberIds:l.returnCalibers.slice(1),prepared:false}
+            {...online,frame:'online',chockInstalled:true,caliberId:e.nextCaliber,runs:e.runs+count},
+            {...third,frame:'installedSpare',chockInstalled:true,spareKind:'新品予備（組込完了）',caliberId:l.counterpartCaliberId,runs:0,spareCaliberIds:l.counterpartSpareCaliberIds.slice(),prepared:true,preparedOn:l.assemblyDate},
+            {...old,frame:'usedSpare',chockInstalled:false,spareKind:'新品予備（組替可能）',diameter:Math.round((old.diameter-l.cutMm)*1e6)/1e6,caliberId:l.returnCalibers[0],runs:0,spareCaliberIds:l.returnCalibers.slice(1),prepared:false}
         ]});
     }
-    return {status:'preview',reason:'明示した工程根拠による区間予測のみ',warnings,events:events.sort((a,b)=>a.date.localeCompare(b.date)),nextMembers,nextReferenceAt:addDays(src.through,1),annualComplete:false};
+    return {status:'preview',reason:'明示した工程根拠による区間予測のみ',warnings,spareTimeline,events:events.sort((a,b)=>a.date.localeCompare(b.date)),nextMembers,nextReferenceAt:addDays(src.through,1),annualComplete:false};
 }
 
 function ledgerFrame(status) {
