@@ -10,7 +10,7 @@ function selfTest(api){
  ];
  const plan={standKey:stand,status:'forecast',basis:'anonymous',oldRollId:'A',counterpartId:'C',exchangeDate:d(3),assemblyDate:d(4),disassemblyDate:d(4),dispatchDate:d(5),inboundDate:d(25),counterpartPresent:true,assemblyCompletedByDayEnd:true,returnCalibers:['1','2'],assemblySlot:{owner:{standKey:stand,rollId:'C'},date:d(4),period:'day',requiredHours:4,reservedHours:4,people:3,prepared:'newSide',preparedTarget:'C',preparedOn:d(2)}};
  const input={standKey:stand,currentSize:'D10',maxRuns:8,resources,spareCaliberIds:[],reworkDays:20,adoptedCutMm:7,scrapDiameter:80,workConfirmation:{date:d(3),period:'day',reservedHours:7,requiredHours:6,people:3,workType:'rollChange',continuous:'no',changeover:'yes',threeSet:'yes'},days,physicalLifecycle:[plan],retainedOnExchange:true};
- const run=p=>api.simulateExchangeCycle({...input,...p});const r=run({}),before=JSON.stringify(input);const event=(k,date)=>r.events.find(e=>e.kind===k&&e.date===date);const night=(date,x=r)=>x.nightReserveTimeline?.find(e=>e.date===date);
+ const run=p=>api.simulateExchangeCycle({...input,...p});const before=JSON.stringify(input),r=run({});const event=(k,date)=>r.events.find(e=>e.kind===k&&e.date===date);const night=(date,x=r)=>x.nightReserveTimeline?.find(e=>e.date===date);
  const patch=p=>[ {...plan,...p} ];
  const rr=(i,p)=>resources.map((x,j)=>i===j?{...x,...p}:x);
  const noPlan=run({physicalLifecycle:[],days:days.slice(0,4)});
@@ -39,6 +39,8 @@ function selfTest(api){
  ['missing night held',!!run({days:days.map((x,i)=>i===2?{...x,nightProductionAmount:null}:x)}).stopRecord],
  ['unsuitable old held',!!run({resources:rr(0,{emergencyUsable:false})}).stopRecord],
  ['missing retention held',!!run({retainedOnExchange:false}).stopRecord],
+ ['wrong leaving identity held',!!run({physicalLifecycle:patch({oldRollId:'other'})}).stopRecord],
+ ['size transition held',!!run({days:days.map((x,i)=>i===5?{...x,size:'D13'}:x)}).stopRecord],
  ['no actual mutation',r.statusChanged===false&&JSON.stringify(input)===before],
  ['forecast events only',r.events.every(e=>e.status==='forecast')]
  ];
