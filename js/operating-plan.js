@@ -1991,6 +1991,40 @@ function previewOpeningReceiptLink(input){
     return out('conditional','実搬入確認後に組替可能。搬入見込だけでバラシ・組込を確定しない',{...fields,assemblyCandidateDate:p.assemblyDate});
 }
 
+
+// Select among explicit dated workshop allocations, not inferred plant holidays.
+// A deadline is a target; a late candidate is visible but never silently adopted.
+function selectOpeningAssemblyCandidate(input){
+    const s=input||{},p=s.handover,r=s.receipt,stand=String(s.standKey||'');
+    const dateOK=d=>typeof d==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(d)&&Number.isFinite(Date.parse(d+'T00:00:00Z'))&&new Date(d+'T00:00:00Z').toISOString().slice(0,10)===d;
+    const basis=x=>typeof x==='string'&&x.trim().length>0;
+    const rejected=[];
+    const out=(status,reason,extra={})=>({status,reason,selectedDate:null,selectedPlan:null,deadline:s.targetDeadline??null,deadlineStatus:'unknown',rejected,operationAuthorized:false,...extra});
+    if(!['2','3','4','5'].includes(stand)||!dateOK(s.asOf)||!p||String(p.standKey)!==stand||p.status!=='forecast'||!basis(p.basis)||!dateOK(p.exchangeDate)||p.exchangeDate>=s.asOf||!dateOK(p.dispatchDate)||!dateOK(p.inboundDate)||!Number.isInteger(s.reworkDays)||s.reworkDays<=0||p.inboundDate<addDays(p.dispatchDate,s.reworkDays)||!r||r.rollId!==p.counterpartId||!Array.isArray(s.slots)||!Array.isArray(s.days)||!Array.isArray(s.resources))return out('held','対象・搬出目標・日別作業枠未確認');
+    if(s.targetDeadline!=null&&(!dateOK(s.targetDeadline)||s.targetDeadline>p.dispatchDate||!basis(s.deadlineBasis)))return out('held','組替期限の根拠未確認');
+    const assessment=assessEmergencyReserve({standKey:stand,resources:s.resources});
+    const old=s.resources.find(x=>x.id===p.oldRollId);
+    if(!old||old.frame!=='usedSpare'||!assessment.emergencyIds.includes(old.id)||old.chockInstalled!==true||(old.spareKind||old.ledgerStatus)!=='中古予備（バラシ前）')return out('held','引継ぎ前の中古予備未確認');
+    const valid=[];
+    for(const slot of s.slots){
+        const date=slot?.date??null;
+        const reject=reason=>rejected.push({date,reason});
+        if(!dateOK(date)||date<s.asOf||date<=p.exchangeDate||date>=p.dispatchDate){reject('組替可能期間外（搬出当日は時刻未確認）');continue;}
+        const rows=s.days.filter(x=>x?.date===date);
+        if(rows.length!==1||s.slots.filter(x=>x?.date===date).length!==1){reject('日別予定または作業枠が重複・欠落');continue;}
+        if(slot.status!=='forecast'||!basis(slot.basis)||slot.repeatOnStops===true||slot.capacityConfirmed!==true||!basis(slot.capacityBasis)||slot.owner?.standKey!==stand||slot.owner?.rollId!==r.rollId||slot.preparedTarget!==r.rollId){reject('対象・作業枠・人員容量の根拠未確認');continue;}
+        if(!Number.isFinite(slot.startHour)||!Number.isFinite(slot.endHour)||slot.startHour<0||slot.endHour>24||slot.endHour<=slot.startHour||!Number.isFinite(slot.reservedHours)||slot.reservedHours>slot.endHour-slot.startHour||!Number.isInteger(slot.availablePeople)||!Number.isInteger(slot.people)||slot.people>slot.availablePeople){reject('時間または人員容量不足');continue;}
+        const plan={...p,assemblyDate:date,disassemblyDate:date,assemblySlot:{...slot}};
+        const link=previewOpeningReceiptLink({standKey:stand,asOf:s.asOf,receipt:r,handover:plan,resources:s.resources,reworkDays:s.reworkDays,days:s.days});
+        if(!['conditional','ready-for-forecast'].includes(link.status)){reject(link.reason);continue;}
+        valid.push({date,plan,link});
+    }
+    valid.sort((a,b)=>a.date.localeCompare(b.date));
+    if(!valid.length)return out('held','根拠が揃う組替候補なし。中古予備を維持');
+    const best=valid[0],deadlineStatus=s.targetDeadline==null?'unknown':best.date<=s.targetDeadline?'within':'late';
+    return out(deadlineStatus==='late'?'late-review':best.link.status,deadlineStatus==='late'?'組替期限超過の候補。搬出目標・工作課と再調整':best.link.reason,{selectedDate:best.date,selectedPlan:best.plan,deadlineStatus,receiptLink:best.link,alternatives:valid.map(v=>v.date)});
+}
+
 function simulateExchangeCycle(input) {
     const source = input || {};
     const days = (Array.isArray(source.days) ? source.days : [])
@@ -2000,7 +2034,11 @@ function simulateExchangeCycle(input) {
     // Explicit opt-in until callers provide dated, individual physical work evidence.
     const physical = Array.isArray(source.physicalLifecycle);
     const physicalPlans = physical ? source.physicalLifecycle : [];
-    const opening=physical?source.openingHandover:null;
+    const auto=physical&&source.openingAssemblySelection!=null?selectOpeningAssemblyCandidate({standKey:source.standKey,asOf:days[0]?.date,receipt:source.openingReceipt,handover:source.openingHandover,resources,reworkDays:source.reworkDays,days,slots:source.openingAssemblySelection.slots,targetDeadline:source.openingAssemblySelection.targetDeadline,deadlineBasis:source.openingAssemblySelection.deadlineBasis}):null;
+    if(auto&&(!auto.selectedPlan||auto.deadlineStatus==='late')){
+        return {events:[],resources,nightReserveTimeline:[],reserveMode:'physical-forecast',assemblySelection:auto,rollChangeCount:null,scrapCount:null,annualRollCount:null,statusChanged:false,confirmedThrough:null,stopRecord:{date:days[0]?.date||null,reason:auto.reason},reason:'組替候補保留。以後の予備安全を確定しません。'};
+    }
+    const opening=physical?(auto?auto.selectedPlan:source.openingHandover):null;
     const receiptLink=physical&&source.openingReceipt?previewOpeningReceiptLink({standKey:source.standKey,asOf:days[0]?.date,receipt:source.openingReceipt,handover:opening,resources,reworkDays:source.reworkDays,days}):null;
     const nightReserveTimeline = [];
     let spareCalibers = Array.isArray(source.spareCaliberIds) ? source.spareCaliberIds.slice() : null;
@@ -2569,7 +2607,7 @@ function simulateExchangeCycle(input) {
         annualRollCount: rollChangeCount,
         resources,
         statusChanged: false,
-        ...(physical?{nightReserveTimeline,reserveMode:'physical-forecast',...(receiptLink?{receiptLink}:{})}:{reserveMode:'legacy-unverified'}),
+        ...(physical?{nightReserveTimeline,reserveMode:'physical-forecast',...(receiptLink?{receiptLink}:{}),...(auto?{assemblySelection:auto}:{})}:{reserveMode:'legacy-unverified'}),
         confirmedThrough,
         stopRecord,
         reason: `${coverage}ロール替の回数は再利用の交換です。新規購入の本数にはしません。生産トン数からも数えません。`
