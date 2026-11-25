@@ -1958,6 +1958,39 @@ function assemblySlotReady(confirmation, row) {
     return { ok: true, reason: '' };
 }
 
+
+// Opening receipt linkage: estimate does not create physical inventory.
+function previewOpeningReceiptLink(input){
+    const s=input||{},r=s.receipt,p=s.handover,stand=String(s.standKey||'');
+    const dateOK=d=>typeof d==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(d)&&Number.isFinite(Date.parse(d+'T00:00:00Z'))&&new Date(d+'T00:00:00Z').toISOString().slice(0,10)===d;
+    const basis=x=>typeof x==='string'&&x.trim().length>0;
+    const out=(status,reason,extra={})=>({status,reason,expectedInboundDate:null,assemblyCandidateDate:null,actualInboundDate:null,arrivalConfirmed:false,operationAuthorized:false,...extra});
+    if(!['2','3','4','5'].includes(stand)||!dateOK(s.asOf)||!r||String(r.standKey)!==stand||!basis(r.rollId)||!p||String(p.standKey)!==stand||p.counterpartId!==r.rollId||!Array.isArray(s.resources))return out('unknown','期首搬入と組替の対象未確認');
+    const target=s.resources.find(x=>x.id===r.rollId&&String(x.standKey)===stand);
+    if(!target||target.frame==='online'||target.condition==='broken'||target.emergencyUsable===false)return out('unknown','組替対象個体の状態未確認');
+    if(!dateOK(r.dispatchDate)||r.dispatchDate>=s.asOf||r.dispatchStatus!=='actual'||!basis(r.dispatchBasis)||!Number.isInteger(s.reworkDays)||s.reworkDays<=0)return out('unknown','実搬出日または改削期間未確認');
+    const earliest=addDays(r.dispatchDate,s.reworkDays);
+    if(r.expectedInboundDate!==undefined&&(!dateOK(r.expectedInboundDate)||r.expectedInboundDate<earliest||!basis(r.expectedBasis)))return out('unknown','搬入見込根拠未確認');
+    const expected=r.expectedInboundDate||earliest;
+    const fields={expectedInboundDate:expected};
+    const actual=r.actualInbound;
+    if(actual!==undefined&&actual!==null){
+        if(actual.status!=='actual'||actual.rollId!==r.rollId||String(actual.standKey)!==stand||!basis(actual.basis)||!dateOK(actual.date)||actual.date<r.dispatchDate||actual.date>=s.asOf||(target.spareKind||target.ledgerStatus)!=='新品予備（組替可能）'||target.chockInstalled!==false)return out('unknown','実搬入日と期首台帳の一致未確認',fields);
+        if(!dateOK(p.assemblyDate)||p.assemblyDate<s.asOf||p.assemblyDate<=actual.date)return out('held','搬入後の昼組替日未確認',{...fields,actualInboundDate:actual.date,arrivalConfirmed:true});
+        const row=s.days?.find(x=>x.date===p.assemblyDate),slot=p.assemblySlot;
+        if(!row||!slot||slot.owner?.rollId!==r.rollId||String(slot.owner?.standKey)!==stand||slot.preparedTarget!==r.rollId||slot.prepared!=='reworkInbound'||slot.preparedOn<actual.date||!assemblySlotReady(slot,row).ok||p.counterpartPresent!==true||p.assemblyCompletedByDayEnd!==true)return out('held','搬入済みだが組替根拠未確認',{...fields,actualInboundDate:actual.date,arrivalConfirmed:true});
+        return out('ready-for-forecast','実搬入と組替予定の根拠を確認。組替完了自体は予測',{...fields,actualInboundDate:actual.date,arrivalConfirmed:true,assemblyCandidateDate:p.assemblyDate});
+    }
+    if((target.spareKind||target.ledgerStatus)!=='改削中'&&target.frame!=='rework')return out('unknown','搬入実績と台帳の確認が必要',fields);
+    if(expected<s.asOf)return out('held','搬入見込日経過・実搬入未確認',fields);
+    if(!dateOK(p.assemblyDate)||p.assemblyDate<=expected)return out('held','搬入見込後の組替枠未確認',fields);
+    const row=s.days?.find(x=>x.date===p.assemblyDate),slot=p.assemblySlot;
+    // Validate only a proposed slot. A future receipt cannot serve as prepared evidence.
+    const proposed=slot&&{...slot,prepared:'reworkInbound',preparedOn:expected};
+    if(!row||!slot||slot.owner?.rollId!==r.rollId||String(slot.owner?.standKey)!==stand||slot.preparedTarget!==r.rollId||!assemblySlotReady(proposed,row).ok)return out('held','搬入見込後の作業枠未確認',fields);
+    return out('conditional','実搬入確認後に組替可能。搬入見込だけでバラシ・組込を確定しない',{...fields,assemblyCandidateDate:p.assemblyDate});
+}
+
 function simulateExchangeCycle(input) {
     const source = input || {};
     const days = (Array.isArray(source.days) ? source.days : [])
@@ -1968,6 +2001,7 @@ function simulateExchangeCycle(input) {
     const physical = Array.isArray(source.physicalLifecycle);
     const physicalPlans = physical ? source.physicalLifecycle : [];
     const opening=physical?source.openingHandover:null;
+    const receiptLink=physical&&source.openingReceipt?previewOpeningReceiptLink({standKey:source.standKey,asOf:days[0]?.date,receipt:source.openingReceipt,handover:opening,resources,reworkDays:source.reworkDays,days}):null;
     const nightReserveTimeline = [];
     let spareCalibers = Array.isArray(source.spareCaliberIds) ? source.spareCaliberIds.slice() : null;
     const knownSpare = finiteOrNull(source.installedSpare);
@@ -2155,6 +2189,12 @@ function simulateExchangeCycle(input) {
         return false;
     };
     const physicalDay = (date,row) => {
+        if(receiptLink&&receiptLink.expectedInboundDate===date&&!receiptLink.arrivalConfirmed)push(date,'搬入見込','実搬入未確認。未組込品・緊急予備の状態を変更しません。');
+        if(receiptLink&&opening&&date===opening.assemblyDate&&receiptLink.status!=='ready-for-forecast'){
+            push(date,'組替候補',receiptLink.reason);
+            stopAt(date,'実搬入・組替条件未確認。中古予備を維持します。');
+            return;
+        }
         for(const item of state.reworks){
             const p=item.plan;
             if(!p)continue;
@@ -2529,7 +2569,7 @@ function simulateExchangeCycle(input) {
         annualRollCount: rollChangeCount,
         resources,
         statusChanged: false,
-        ...(physical?{nightReserveTimeline,reserveMode:'physical-forecast'}:{reserveMode:'legacy-unverified'}),
+        ...(physical?{nightReserveTimeline,reserveMode:'physical-forecast',...(receiptLink?{receiptLink}:{})}:{reserveMode:'legacy-unverified'}),
         confirmedThrough,
         stopRecord,
         reason: `${coverage}ロール替の回数は再利用の交換です。新規購入の本数にはしません。生産トン数からも数えません。`
