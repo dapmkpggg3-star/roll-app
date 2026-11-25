@@ -1967,6 +1967,7 @@ function simulateExchangeCycle(input) {
     // Explicit opt-in until callers provide dated, individual physical work evidence.
     const physical = Array.isArray(source.physicalLifecycle);
     const physicalPlans = physical ? source.physicalLifecycle : [];
+    const opening=physical?source.openingHandover:null;
     const nightReserveTimeline = [];
     let spareCalibers = Array.isArray(source.spareCaliberIds) ? source.spareCaliberIds.slice() : null;
     const knownSpare = finiteOrNull(source.installedSpare);
@@ -2039,10 +2040,16 @@ function simulateExchangeCycle(input) {
         const initial=assessEmergencyReserve({standKey:source.standKey,resources});
         const brokenOnline=resources?.some(r=>r.frame==='online'&&(r.condition==='broken'||r.ledgerStatus==='折損'||r.spareKind==='折損'));
         const badDays=!days.length||days.some((r,i)=>!dateOK(r.date)||(i&&r.date!==addDays(days[i-1].date,1))||!['A','B',''].includes(r.shift3Team)||!Number.isFinite(r.nightProductionAmount)||r.nightProductionAmount<0||r.nightProductionAmount>r.productionAmount||(r.nightProductionAmount>0&&!normalizeShiftTeam(r.shift3Team)));
-        const badPlans=physicalPlans.some(p=>!p||p.status!=='forecast'||String(p.standKey)!==String(source.standKey)||!p.oldRollId||!p.counterpartId||p.oldRollId===p.counterpartId||!dateOK(p.exchangeDate)||!dateOK(p.assemblyDate)||p.assemblyDate<=p.exchangeDate||p.disassemblyDate!==p.assemblyDate||!dateOK(p.dispatchDate)||p.dispatchDate<p.assemblyDate||!dateOK(p.inboundDate)||!Number.isInteger(source.reworkDays)||source.reworkDays<=0||p.inboundDate<addDays(p.dispatchDate,source.reworkDays)||!String(p.basis||'').trim());
-        if(brokenOnline||initial.status==='unknown'||initial.normalSpare===null||!spareRolls||spareRolls.length!==initial.normalIds.length||new Set(spareRolls).size!==spareRolls.length||spareRolls.some(id=>!initial.normalIds.includes(id))||badDays||badPlans||new Set(physicalPlans.map(p=>p.exchangeDate)).size!==physicalPlans.length){
+        const badPlans=[...physicalPlans,...(opening?[opening]:[])].some(p=>!p||p.status!=='forecast'||String(p.standKey)!==String(source.standKey)||!p.oldRollId||!p.counterpartId||p.oldRollId===p.counterpartId||!dateOK(p.exchangeDate)||!dateOK(p.assemblyDate)||p.assemblyDate<=p.exchangeDate||p.disassemblyDate!==p.assemblyDate||!dateOK(p.dispatchDate)||p.dispatchDate<p.assemblyDate||!dateOK(p.inboundDate)||!Number.isInteger(source.reworkDays)||source.reworkDays<=0||p.inboundDate<addDays(p.dispatchDate,source.reworkDays)||!String(p.basis||'').trim());
+        const oldOpening=opening&&resources?.find(r=>r.id===opening.oldRollId);
+        const nextOpening=opening&&resources?.find(r=>r.id===opening.counterpartId);
+        const openingBad=opening&&(!days.length||opening.exchangeDate>=days[0].date||opening.assemblyDate<days[0].date||!oldOpening||oldOpening.frame!=='usedSpare'||(oldOpening.spareKind||oldOpening.ledgerStatus)!=='中古予備（バラシ前）'||oldOpening.chockInstalled!==true||!initial.emergencyIds.includes(oldOpening.id)||!nextOpening||nextOpening.frame==='online'||nextOpening.id===oldOpening.id||physicalPlans.some(p=>p.exchangeDate===opening.exchangeDate));
+        if(brokenOnline||openingBad||initial.status==='unknown'||initial.normalSpare===null||!spareRolls||spareRolls.length!==initial.normalIds.length||new Set(spareRolls).size!==spareRolls.length||spareRolls.some(id=>!initial.normalIds.includes(id))||badDays||badPlans||new Set(physicalPlans.map(p=>p.exchangeDate)).size!==physicalPlans.length){
             return {events,nightReserveTimeline,rollChangeCount:null,scrapCount:null,annualRollCount:null,statusChanged:false,stopRecord:{date:days[0]?.date||null,reason:'物理工程・個体・勤別日付の根拠未確認'},reason:'物理工程の入力未確認。不足なしとは判定しません。'};
         }
+    }
+    if(physical&&opening){
+        state.reworks.push({id:opening.oldRollId,status:'retained',plan:opening});
     }
     const markConfirmed = date => {
         if(physical){
@@ -2154,7 +2161,7 @@ function simulateExchangeCycle(input) {
             const old=resources.find(r=>r.id===item.id), next=resources.find(r=>r.id===p.counterpartId);
             if(date===p.assemblyDate){
                 const slot=p.assemblySlot||{};
-                const valid=old&&next&&item.status==='retained'&&old.frame==='usedSpare'&&old.chockInstalled===true&&next.spareKind==='新品予備（組替可能）'&&next.chockInstalled===false
+                const valid=old&&next&&item.status==='retained'&&old.frame==='usedSpare'&&old.chockInstalled===true&&(next.spareKind||next.ledgerStatus)==='新品予備（組替可能）'&&next.chockInstalled===false
                     &&next.emergencyUsable!==false&&p.counterpartPresent===true&&p.assemblyCompletedByDayEnd===true
                     &&slot.owner?.standKey===String(source.standKey)&&slot.owner?.rollId===next.id&&slot.date===date&&slot.preparedTarget===next.id&&assemblySlotReady(slot,row).ok
                     &&typeof next.caliberId==='string'&&next.caliberId.trim()&&next.runs===0;
@@ -2480,8 +2487,13 @@ function simulateExchangeCycle(input) {
         // On a stopped two-shift day the night inventory is the result of all daytime work.
         if(physical&&normalizeShiftTeam(row.shift3Team)){
             const date=row.date, assessment=blocked?{status:'unknown',normalSpare:null,emergencySpare:null,reason:'工程保留後の夜勤状態未確認'}:assessEmergencyReserve({standKey:source.standKey,resources});
-            nightReserveTimeline.push({date,forecast:true,...assessment});
-            if(assessment.status==='shortage'){
+            const warning=assessNightReserveWarning({assessment,evidence:source.reserveEvidence});
+            nightReserveTimeline.push({date,forecast:true,...assessment,warning});
+            if(assessment.status==='shortage'&&warning.kind==='夜勤予備未確認'){
+                push(date,warning.kind,warning.reason);
+                stopAt(date,'台帳上0セット・現場組替確認必要。以後の安全を確定しません。');
+            }
+            if(assessment.status==='shortage'&&warning.kind==='夜勤予備不足'){
                 push(date,'夜勤予備不足','チョック組込済みの緊急予備0セット。');
                 stopAt(date,'夜勤緊急予備0セット。以後の安全を確定しません。');
             }
@@ -2707,7 +2719,7 @@ function assessEmergencyReserve(input) {
     for(const r of rows) {
         if(r.frame==='online') continue;
         const kind=r.spareKind||r.ledgerStatus||'';
-        const raw=kind==='新品予備（組替可能）'||r.frame==='rework'||r.frame==='awaitingAssembly'||r.frame==='awaitingDispatch'||r.frame==='scrap';
+        const raw=['新品予備（組替可能）','改削中','改削行き（搬出可能）','改削搬出待ち','新品予備保管','廃却待ち（ラック保管）','発注済み（納入待ち）'].includes(kind)||r.frame==='rework'||r.frame==='awaitingAssembly'||r.frame==='awaitingDispatch'||r.frame==='scrap';
         const normal=kind==='新品予備（組込完了）'||(r.frame==='installedSpare'&&!kind);
         const used=kind==='中古予備（バラシ前）';
         if((raw&&(r.chockInstalled===true||normal||used))||
@@ -2731,6 +2743,18 @@ function assessEmergencyReserve(input) {
 // Atomic paired preview: both existing physical simulations must agree, and shared
 // daytime crew allocations must fit a separately supplied capacity window.
 // Explicit exception classification, not a diameter tolerance or permission to run.
+// Forecast warnings never assert a physical field shortage from ledger-only evidence.
+function assessNightReserveWarning(input) {
+    const s=input||{},a=s.assessment||assessEmergencyReserve(s);
+    const evidence=s.evidence==='ledger-only'?'ledger-only':'forecast';
+    const shortage=a.status==='shortage',unknown=a.status==='unknown';
+    const needsCheck=shortage||unknown;
+    return {evidence,registeredOrProjectedCount:a.emergencySpare??null,fieldConfirmedCount:null,
+        warningRequired:needsCheck,kind:!needsCheck?null:shortage&&evidence==='forecast'?'夜勤予備不足':'夜勤予備未確認',
+        reason:!needsCheck?'組込済み予備の登録または予測あり。現場確認済みとはしない。':evidence==='ledger-only'?'台帳上の予備不足または状態未確認。現場の組替完了と台帳反映を確認。':shortage?'予測上の緊急予備0セット。':'予測の緊急予備状態未確認。',
+        operationAuthorized:false};
+}
+
 function assessPairException(input) {
     const s=input||{}, pair=['6','7'], members=s.members;
     const result=(status,reason,affected=[],individualRecords=[])=>({status,reason,affected,individualRecords,individualReviewRequired:status!=='routine-candidate',automaticRelease:false,operationAuthorized:false});
