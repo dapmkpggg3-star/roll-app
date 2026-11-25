@@ -1959,6 +1959,29 @@ function assemblySlotReady(confirmation, row) {
 }
 
 
+
+// Separate offline workshop evidence from line stop/crew evidence.
+// Only the physical forecast callers use this opt-in path.
+function physicalAssemblySlotReady(slot,row){
+    if(slot?.workArea===undefined)return assemblySlotReady(slot,row);
+    const fail=reason=>({ok:false,reason});
+    const basis=x=>typeof x==='string'&&x.trim().length>0;
+    if(slot.workArea!=='workshop'||slot.status!=='forecast'||!basis(slot.basis)||slot.period!=='day'||slot.repeatOnStops===true||
+       !row||slot.date!==row.date||slot.workshopWorking!==true||!basis(slot.workshopCalendarBasis)||
+       slot.offlineIsolated!==true||!basis(slot.isolationBasis)||slot.independentOfLineCrew!==true||
+       slot.capacityConfirmed!==true||!basis(slot.capacityBasis))return fail('工作課の勤務・独立作業・容量根拠未確認');
+    if(!Number.isFinite(row.productionAmount)||row.productionAmount<0)return fail('操業予定未確認');
+    const {startHour,endHour,workshopStartHour,workshopEndHour,requiredHours,reservedHours,people,availablePeople}=slot;
+    if(![startHour,endHour,workshopStartHour,workshopEndHour,requiredHours,reservedHours].every(Number.isFinite)||
+       workshopStartHour<0||workshopEndHour>22||workshopEndHour<=workshopStartHour||
+       startHour<workshopStartHour||endHour>workshopEndHour||endHour<=startHour||
+       requiredHours<=0||reservedHours<requiredHours||reservedHours>endHour-startHour||
+       !Number.isInteger(people)||people<=0||!Number.isInteger(availablePeople)||availablePeople<people)return fail('工作課の昼間時間・人員不足');
+    // Reuse only preparation checks via an explicit synthetic stopped-day context.
+    // The original schedule is not changed, and line replacement still uses its own gate.
+    return assemblySlotReady(slot,{...row,productionAmount:0,shift1Team:'A',shift3Team:''});
+}
+
 // Opening receipt linkage: estimate does not create physical inventory.
 function previewOpeningReceiptLink(input){
     const s=input||{},r=s.receipt,p=s.handover,stand=String(s.standKey||'');
@@ -1978,7 +2001,7 @@ function previewOpeningReceiptLink(input){
         if(actual.status!=='actual'||actual.rollId!==r.rollId||String(actual.standKey)!==stand||!basis(actual.basis)||!dateOK(actual.date)||actual.date<r.dispatchDate||actual.date>=s.asOf||(target.spareKind||target.ledgerStatus)!=='新品予備（組替可能）'||target.chockInstalled!==false)return out('unknown','実搬入日と期首台帳の一致未確認',fields);
         if(!dateOK(p.assemblyDate)||p.assemblyDate<s.asOf||p.assemblyDate<=actual.date)return out('held','搬入後の昼組替日未確認',{...fields,actualInboundDate:actual.date,arrivalConfirmed:true});
         const row=s.days?.find(x=>x.date===p.assemblyDate),slot=p.assemblySlot;
-        if(!row||!slot||slot.owner?.rollId!==r.rollId||String(slot.owner?.standKey)!==stand||slot.preparedTarget!==r.rollId||slot.prepared!=='reworkInbound'||slot.preparedOn<actual.date||!assemblySlotReady(slot,row).ok||p.counterpartPresent!==true||p.assemblyCompletedByDayEnd!==true)return out('held','搬入済みだが組替根拠未確認',{...fields,actualInboundDate:actual.date,arrivalConfirmed:true});
+        if(!row||!slot||slot.owner?.rollId!==r.rollId||String(slot.owner?.standKey)!==stand||slot.preparedTarget!==r.rollId||slot.prepared!=='reworkInbound'||slot.preparedOn<actual.date||!physicalAssemblySlotReady(slot,row).ok||p.counterpartPresent!==true||p.assemblyCompletedByDayEnd!==true)return out('held','搬入済みだが組替根拠未確認',{...fields,actualInboundDate:actual.date,arrivalConfirmed:true});
         return out('ready-for-forecast','実搬入と組替予定の根拠を確認。組替完了自体は予測',{...fields,actualInboundDate:actual.date,arrivalConfirmed:true,assemblyCandidateDate:p.assemblyDate});
     }
     if((target.spareKind||target.ledgerStatus)!=='改削中'&&target.frame!=='rework')return out('unknown','搬入実績と台帳の確認が必要',fields);
@@ -1987,7 +2010,7 @@ function previewOpeningReceiptLink(input){
     const row=s.days?.find(x=>x.date===p.assemblyDate),slot=p.assemblySlot;
     // Validate only a proposed slot. A future receipt cannot serve as prepared evidence.
     const proposed=slot&&{...slot,prepared:'reworkInbound',preparedOn:expected};
-    if(!row||!slot||slot.owner?.rollId!==r.rollId||String(slot.owner?.standKey)!==stand||slot.preparedTarget!==r.rollId||!assemblySlotReady(proposed,row).ok)return out('held','搬入見込後の作業枠未確認',fields);
+    if(!row||!slot||slot.owner?.rollId!==r.rollId||String(slot.owner?.standKey)!==stand||slot.preparedTarget!==r.rollId||!physicalAssemblySlotReady(proposed,row).ok)return out('held','搬入見込後の作業枠未確認',fields);
     return out('conditional','実搬入確認後に組替可能。搬入見込だけでバラシ・組込を確定しない',{...fields,assemblyCandidateDate:p.assemblyDate});
 }
 
@@ -2241,7 +2264,7 @@ function simulateExchangeCycle(input) {
                 const slot=p.assemblySlot||{};
                 const valid=old&&next&&item.status==='retained'&&old.frame==='usedSpare'&&old.chockInstalled===true&&(next.spareKind||next.ledgerStatus)==='新品予備（組替可能）'&&next.chockInstalled===false
                     &&next.emergencyUsable!==false&&p.counterpartPresent===true&&p.assemblyCompletedByDayEnd===true
-                    &&slot.owner?.standKey===String(source.standKey)&&slot.owner?.rollId===next.id&&slot.date===date&&slot.preparedTarget===next.id&&assemblySlotReady(slot,row).ok
+                    &&slot.owner?.standKey===String(source.standKey)&&slot.owner?.rollId===next.id&&slot.date===date&&slot.preparedTarget===next.id&&physicalAssemblySlotReady(slot,row).ok
                     &&typeof next.caliberId==='string'&&next.caliberId.trim()&&next.runs===0;
                 if(!valid){push(date,'保留','同日バラシ・組込完了または相手現物が未確認。中古予備を勝手に外しません。');stopAt(date,'組替工程未確認');return;}
                 Object.assign(old,{frame:'awaitingDispatch',spareKind:'改削搬出待ち',ledgerStatus:null,chockInstalled:false});
