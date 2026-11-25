@@ -5432,3 +5432,44 @@ if (typeof document !== 'undefined') {
     }
 }
 
+
+
+// Call only on identified history date columns (year/month/day).
+function classifyRollHistoryDate(cells, asOf) {
+    const unknown=reason=>({status:'unknown',date:null,period:null,reason});
+    const rgb=x=>x&&typeof x==='object'&&!Array.isArray(x)&&['red','green','blue'].every(k=>x[k]===undefined||(typeof x[k]==='number'&&Number.isFinite(x[k])&&x[k]>=0&&x[k]<=1))&&(x.alpha===undefined||x.alpha===1)?[x.red??0,x.green??0,x.blue??0]:null;
+    const same=(a,b)=>a&&b&&a.every((v,i)=>v===b[i]);
+    const color=(style,legacy,defaultRgb=null)=>{
+        if(style!==undefined){
+            if(!style||style.themeColor||!style.rgbColor)return null;
+            const a=rgb(style.rgbColor);
+            if(legacy!==undefined&&!same(a,rgb(legacy)))return null;
+            return a;
+        }
+        return legacy!==undefined?rgb(legacy):defaultRgb;
+    };
+    const kind=c=>{
+        const f=c?.effectiveFormat,t=f?.textFormat;
+        if(!f||!t||typeof t!=='object'||Array.isArray(t)||Object.keys(t).length===0)return 'unknown';
+        const fg=color(t.foregroundColorStyle,t.foregroundColor,[0,0,0]);
+        const bg=color(f.backgroundColorStyle,f.backgroundColor);
+        if(same(fg,[1,0,0]))return 'planned';
+        if(same(fg,[0,0,0])&&same(bg,[1,1,1]))return 'actual';
+        return 'unknown';
+    };
+    const validDate=d=>typeof d==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(d)&&Number.isFinite(Date.parse(d+'T00:00:00Z'))&&new Date(d+'T00:00:00Z').toISOString().slice(0,10)===d;
+    if(!validDate(asOf)||!Array.isArray(cells)||cells.length!==3)return unknown('基準日または年月日3セル未確認');
+    const raw=cells.map(c=>typeof c?.formattedValue==='string'?c.formattedValue.trim():null);
+    if(raw.some(v=>!v))return unknown('年月日欠損');
+    const kinds=cells.map(kind);
+    if(kinds.some(k=>k==='unknown')||new Set(kinds).size!==1)return unknown('文字色・背景色未確認または混在');
+    if(!/^(19|20|21)\d{2}$/.test(raw[0])||!/^\d{1,2}$/.test(raw[1])||+raw[1]<1||+raw[1]>12)return unknown('西暦年月未確認');
+    const ym=raw[0]+'-'+raw[1].padStart(2,'0');
+    const periods={'上':'上旬','上旬':'上旬','中':'中旬','中旬':'中旬','下':'下旬','下旬':'下旬'};
+    if(Object.prototype.hasOwnProperty.call(periods,raw[2]))return kinds[0]==='planned'?{status:'planned',date:null,period:ym+' '+periods[raw[2]],reason:'旬単位の予定'}:unknown('実績の確定日なし');
+    if(!/^\d{1,2}$/.test(raw[2]))return unknown('日付未確認');
+    const date=ym+'-'+raw[2].padStart(2,'0');
+    if(!validDate(date))return unknown('存在しない日付');
+    if(kinds[0]==='actual'&&date>asOf)return unknown('基準日後の黒字日付');
+    return {status:kinds[0],date,period:null,reason:kinds[0]==='actual'?'黒字・白背景':'赤字予定'};
+}
