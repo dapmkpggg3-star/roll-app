@@ -5598,3 +5598,70 @@ function classifyRollHistoryDate(cells, asOf) {
     if(kinds[0]==='actual'&&date>asOf)return unknown('基準日後の黒字日付');
     return {status:kinds[0],date,period:null,reason:kinds[0]==='actual'?'黒字・白背景':'赤字予定'};
 }
+
+
+// Monthly planning reference, independent of execution authorization and rolling columns.
+function monthlyExchangeEffort(workType, stands, size) {
+    if(!Array.isArray(stands)||!stands.length)return null;
+    const keys=stands.map(x=>String(x).replace(/^#/,'')).sort((a,b)=>+a-+b);
+    if(keys.some(x=>!/^(?:[2-9]|1[0-7])$/.test(x))||new Set(keys).size!==keys.length)return null;
+    const key=keys.join(','),sz=String(size||'').normalize('NFKC').toUpperCase().trim();
+    const effort=(minutes,people,extraMinutes=0)=>({workType,stands:keys,minutes,referencePeople:people,extraMinutes,referencePersonHours:extraMinutes?null:people*minutes/60,operationAuthorized:false});
+    if(workType==='rollChange'){
+        if(/^(?:[2-5]|16|17|10,11)$/.test(key))return effort(360,3);
+        if(['6,7','8,9','12,13','14,15'].includes(key))return effort(420,3);
+        return null;
+    }
+    if(workType==='sizeChange'&&key==='12,13,14,15,16,17')return effort(390,4,30);
+    if(workType!=='caliberChange')return null;
+    if(['6,7','8,9'].includes(key))return effort(360,3);
+    if(key==='10,11')return effort(60,3);
+    if(key==='14,15')return effort(60,2);
+    if(!['D10','D13'].includes(sz))return null;
+    if(sz==='D10'&&['12','13'].includes(key))return effort(180,2,120);
+    if(key==='12,13')return effort(240,2,120);
+    if(key==='16')return effort(sz==='D10'?90:45,2);
+    if(key==='17')return effort(sz==='D10'?30:45,sz==='D10'?2:1);
+    return null;
+}
+
+// Bounded sequential preview. Externally evidenced deadlines and stopped slots only.
+// A missing headcount never deletes an exchange demand; explicit safety blocks remain.
+function previewDeadlineFirstExchangePlan(input) {
+    const src=input||{},demands=Array.isArray(src.demands)?src.demands:[],slots=Array.isArray(src.slots)?src.slots:[];
+    const validDate=d=>typeof d==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(d)&&Number.isFinite(Date.parse(d+'T00:00:00Z'))&&new Date(d+'T00:00:00Z').toISOString().slice(0,10)===d;
+    const minute=n=>Number.isInteger(n)&&n>=0&&n<=1440,nonblank=x=>typeof x==='string'&&x.trim().length>0;
+    const counts=new Map(),slotCounts=new Map(),allocations=[],unresolved=[],load=new Map(),used=new Map();
+    for(const d of demands)counts.set(d?.id,(counts.get(d?.id)||0)+1);
+    for(const s of slots)slotCounts.set(s?.id,(slotCounts.get(s?.id)||0)+1);
+    const cleanSlots=slots.filter(s=>s&&nonblank(s.id)&&slotCounts.get(s.id)===1&&validDate(s.date)&&minute(s.startMinute)&&minute(s.endMinute)&&s.endMinute>s.startMinute&&['常昼','Ⅰ勤A','Ⅰ勤B','Ⅲ勤A','Ⅲ勤B'].includes(s.team)&&s.lineStopped===true&&nonblank(s.basis)&&Array.isArray(s.eligibility));
+    // Overlap is ambiguous even across teams: do not invent parallel capacity.
+    const safeSlots=cleanSlots.filter(s=>!cleanSlots.some(t=>t!==s&&t.date===s.date&&t.startMinute<s.endMinute&&s.startMinute<t.endMinute));
+    const ordered=demands.map((d,index)=>({d,index})).sort((a,b)=>String(a.d?.latestDate||'').localeCompare(String(b.d?.latestDate||''))||((a.d?.latestMinute??0)-(b.d?.latestMinute??0))||a.index-b.index);
+    for(const {d,index} of ordered){
+        const hold=reason=>unresolved.push({id:d?.id??null,inputIndex:index,stands:Array.isArray(d?.stands)?d.stands.slice():[],workType:d?.workType??null,latestDate:d?.latestDate??null,latestMinute:d?.latestMinute??null,reason,requiredExchange:true,operationAuthorized:false});
+        if(!d||!nonblank(d.id)||counts.get(d.id)!==1||!validDate(d.latestDate)||!minute(d.latestMinute)||!validDate(d.earliestDate)||d.earliestDate>d.latestDate||!nonblank(d.deadlineBasis)){hold('交換需要・期限根拠未確認');continue;}
+        const e=monthlyExchangeEffort(d.workType,d.stands,d.size);
+        if(!e){hold('作業種別・対象・計画時間未確認');continue;}
+        const candidates=[];
+        for(const s of safeSlots){
+            if(s.date<d.earliestDate||s.date>d.latestDate)continue;
+            const matches=s.eligibility.filter(x=>x&&x.demandId===d.id);
+            if(matches.length!==1)continue;
+            const x=matches[0];
+            if(!nonblank(x.basis)||x.preparationReady!==true||x.reserveReady!==true||x.pairReady!==true||x.additionalReady!==true||x.safetyBlocked!==false)continue;
+            const start=s.startMinute+(used.get(s.id)||0),end=start+e.minutes;
+            if(end>s.endMinute||(s.date===d.latestDate&&end>d.latestMinute))continue;
+            const k=s.date+'|'+s.team;
+            candidates.push({s,k,start,end,load:load.get(k)||0});
+        }
+        candidates.sort((a,b)=>a.load-b.load||b.s.date.localeCompare(a.s.date)||a.start-b.start||a.s.id.localeCompare(b.s.id));
+        if(!candidates.length){hold('期限内の根拠付き停止枠・準備・予備・時間が未成立');continue;}
+        const c=candidates[0];
+        used.set(c.s.id,(used.get(c.s.id)||0)+e.minutes);load.set(c.k,c.load+e.minutes);
+        allocations.push({id:d.id,stands:e.stands,workType:d.workType,date:c.s.date,team:c.s.team,startMinute:c.start,endMinute:c.end,minutes:e.minutes,referencePeople:e.referencePeople,referencePersonHours:e.referencePersonHours,reportedPeople:Number.isInteger(d.people)&&d.people>0?d.people:null,deadlineBasis:d.deadlineBasis,slotBasis:c.s.basis,status:'proposal',operationAuthorized:false});
+    }
+    const warnings=unresolved.map(u=>({id:u.id,kind:'交換需要未解決',reason:u.reason}));
+    for(const a of allocations)if(allocations.filter(b=>b.date===a.date&&b.team===a.team).length>1)warnings.push({id:a.id,kind:'同日同班の負荷集中',reason:'交換は保持し、調整可能なら負荷分散を検討'});
+    return {allocations,unresolved,warnings,complete:demands.length>0&&unresolved.length===0,operationAuthorized:false,status:'planning-preview'};
+}
