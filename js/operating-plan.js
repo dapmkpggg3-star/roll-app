@@ -5631,7 +5631,8 @@ function previewDeadlineFirstExchangePlan(input) {
     const src=input||{},demands=Array.isArray(src.demands)?src.demands:[],slots=Array.isArray(src.slots)?src.slots:[];
     const validDate=d=>typeof d==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(d)&&Number.isFinite(Date.parse(d+'T00:00:00Z'))&&new Date(d+'T00:00:00Z').toISOString().slice(0,10)===d;
     const minute=n=>Number.isInteger(n)&&n>=0&&n<=1440,nonblank=x=>typeof x==='string'&&x.trim().length>0;
-    const counts=new Map(),slotCounts=new Map(),allocations=[],unresolved=[],load=new Map(),used=new Map();
+    const counts=new Map(),slotCounts=new Map(),allocations=[],unresolved=[],load=new Map(),used=new Map(),dayUsed=new Map();
+    const dateCapacity=src.exchangeCapacityByDate;
     for(const d of demands)counts.set(d?.id,(counts.get(d?.id)||0)+1);
     for(const s of slots)slotCounts.set(s?.id,(slotCounts.get(s?.id)||0)+1);
     const cleanSlots=slots.filter(s=>s&&nonblank(s.id)&&slotCounts.get(s.id)===1&&validDate(s.date)&&minute(s.startMinute)&&minute(s.endMinute)&&s.endMinute>s.startMinute&&['常昼','Ⅰ勤A','Ⅰ勤B','Ⅲ勤A','Ⅲ勤B'].includes(s.team)&&s.lineStopped===true&&nonblank(s.basis)&&Array.isArray(s.eligibility));
@@ -5646,6 +5647,7 @@ function previewDeadlineFirstExchangePlan(input) {
         const candidates=[];
         for(const s of safeSlots){
             if(s.date<d.earliestDate||s.date>d.latestDate)continue;
+            if(dateCapacity!==undefined&&(!Number.isInteger(dateCapacity[s.date])||dateCapacity[s.date]<=0||(dayUsed.get(s.date)||0)>=dateCapacity[s.date]))continue;
             const matches=s.eligibility.filter(x=>x&&x.demandId===d.id);
             if(matches.length!==1)continue;
             const x=matches[0];
@@ -5658,10 +5660,132 @@ function previewDeadlineFirstExchangePlan(input) {
         candidates.sort((a,b)=>a.load-b.load||b.s.date.localeCompare(a.s.date)||a.start-b.start||a.s.id.localeCompare(b.s.id));
         if(!candidates.length){hold('期限内の根拠付き停止枠・準備・予備・時間が未成立');continue;}
         const c=candidates[0];
-        used.set(c.s.id,(used.get(c.s.id)||0)+e.minutes);load.set(c.k,c.load+e.minutes);
+        used.set(c.s.id,(used.get(c.s.id)||0)+e.minutes);load.set(c.k,c.load+e.minutes);dayUsed.set(c.s.date,(dayUsed.get(c.s.date)||0)+1);
         allocations.push({id:d.id,stands:e.stands,workType:d.workType,date:c.s.date,team:c.s.team,startMinute:c.start,endMinute:c.end,minutes:e.minutes,referencePeople:e.referencePeople,referencePersonHours:e.referencePersonHours,reportedPeople:Number.isInteger(d.people)&&d.people>0?d.people:null,deadlineBasis:d.deadlineBasis,slotBasis:c.s.basis,status:'proposal',operationAuthorized:false});
     }
     const warnings=unresolved.map(u=>({id:u.id,kind:'交換需要未解決',reason:u.reason}));
     for(const a of allocations)if(allocations.filter(b=>b.date===a.date&&b.team===a.team).length>1)warnings.push({id:a.id,kind:'同日同班の負荷集中',reason:'交換は保持し、調整可能なら負荷分散を検討'});
     return {allocations,unresolved,warnings,complete:demands.length>0&&unresolved.length===0,operationAuthorized:false,status:'planning-preview'};
+}
+
+
+// First-exchange planning bridge. Uses the existing straight classification and
+// caliber limit table, but does not treat old tonnage references as current rules.
+function monthlyUsageThreshold(standKey,size){
+    const stand=String(standKey).replace(/^#/,'');
+    const n=Number(stand);
+    if(n>=2&&n<=5&&String(n)===stand){
+        const t=knownTonBasis(stand);
+        return t?{tons:t.tons,runs:null,kind:'基準トン数（旧直数表は固定上限にしない）'}:null;
+    }
+    if(['6','7'].includes(stand))return {tons:6075,runs:15,kind:'現行直数・基準トン数'};
+    if(['8','9'].includes(stand))return {tons:5265,runs:null,kind:'基準トン数'};
+    if(n>=10&&n<=17&&String(n)===stand){
+        const l=knownCaliberLimit(stand,size);
+        return l?{tons:null,runs:l.runs,kind:l.kind+'直数'}:null;
+    }
+    return null;
+}
+
+function deriveFirstMonthlyExchange(input){
+    const src=input||{},g=src.group||{},days=Array.isArray(src.days)?src.days:[];
+    const validDate=d=>typeof d==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(d)&&Number.isFinite(Date.parse(d+'T00:00:00Z'))&&new Date(d+'T00:00:00Z').toISOString().slice(0,10)===d;
+    const nextDate=d=>new Date(Date.parse(d+'T00:00:00Z')+86400000).toISOString().slice(0,10);
+    const nonblank=x=>typeof x==='string'&&x.trim().length>0;
+    const amount=x=>typeof x==='number'&&Number.isFinite(x)&&x>=0;
+    const size=normalizeForecastSize(g.size);
+    const base={id:g.id??null,stands:Array.isArray(g.stands)?g.stands.slice():[],workType:g.workType??null,size,operationAuthorized:false};
+    let reached=null;
+    const hold=(reason,unknownDate=null)=>({...base,status:'unresolved',reason,unknownDate,reached,requiredExchange:reached!==null?true:null,demand:null});
+    if(!nonblank(g.id)||!validDate(src.referenceDate)||!validDate(src.throughDate)||src.referenceDate>src.throughDate||!nonblank(g.basis)||g.standPass!=='pass'||!['D10','D13'].includes(size))return hold('基準日・対象・通過・サイズ・根拠未確認');
+    if(!['rollChange','caliberChange'].includes(g.workType))return hold('交換種別未確認');
+    const effort=monthlyExchangeEffort(g.workType,g.stands,size);
+    if(!effort)return hold('通常交換の組合せ未確認');
+    if(!Array.isArray(g.members)||g.members.length!==effort.stands.length)return hold('対象個体の情報不足');
+    const states=[],rollIds=new Set();
+    for(const stand of effort.stands){
+        const matching=g.members.filter(m=>m&&String(m.standKey).replace(/^#/,'')===stand);
+        if(matching.length!==1)return hold('対象個体の重複・欠損');
+        const m=matching[0],limit=monthlyUsageThreshold(stand,size);
+        if(!limit||!nonblank(m.rollId)||rollIds.has(m.rollId)||!nonblank(m.usageBasis))return hold('個体・使用量根拠未確認');
+        rollIds.add(m.rollId);
+        // For downstream equipment the remaining-groove decision must be explicit.
+        if(Number(stand)>=6&&(!nonblank(m.remainingBasis)||m.nextCaliberAvailable!==(g.workType==='caliberChange')))return hold('残カリバと交換種別の対応未確認');
+        if(limit.tons!==null&&!amount(m.openingUsedTons))return hold('開始トン数未確認');
+        let grooves=[];
+        if(limit.runs!==null){
+            const two=size==='D10'&&['16','17'].includes(stand);
+            if(!Array.isArray(m.activeCalibers)||m.activeCalibers.length!==(two?2:1))return hold('現用カリバ・列未確認');
+            if(m.activeCalibers.some(c=>!c||!nonblank(c.id)||!Number.isInteger(c.runs)||c.runs<0)||new Set(m.activeCalibers.map(c=>c.id)).size!==m.activeCalibers.length)return hold('カリバ別開始直数未確認');
+            if(two&&(!nonblank(m.columnBasis)||new Set(m.activeCalibers.map(c=>c.column)).size!==2||!m.activeCalibers.every(c=>['東','西'].includes(c.column))))return hold('D10二列の対応根拠未確認');
+            grooves=m.activeCalibers.map(c=>({...c}));
+        }
+        states.push({stand,rollId:m.rollId,limit,tons:limit.tons===null?null:m.openingUsedTons,grooves});
+    }
+    const snapshot=()=>states.map(s=>({standKey:s.stand,rollId:s.rollId,limit:{...s.limit},tons:s.tons,calibers:s.grooves.map(c=>({...c}))}));
+    const triggers=(deltaT=0,deltaR=0,strict=false)=>states.flatMap(s=>{
+        const compare=(v,l)=>strict?v>l:v>=l;
+        const t=s.limit.tons!==null&&compare(s.tons+deltaT,s.limit.tons)?[{standKey:s.stand,measure:'tons',value:s.tons+deltaT,limit:s.limit.tons,kind:s.limit.kind}]:[];
+        return t.concat(s.limit.runs===null?[]:s.grooves.filter(c=>compare(c.runs+deltaR,s.limit.runs)).map(c=>({standKey:s.stand,caliberId:c.id,measure:'runs',value:c.runs+deltaR,limit:s.limit.runs,kind:s.limit.kind})));
+    });
+    const due=(date,why,causes)=>({...base,status:'required',reason:why,reached,requiredExchange:true,usage:snapshot(),triggers:causes,demand:{id:g.id,stands:effort.stands,workType:g.workType,size,earliestDate:src.referenceDate,latestDate:date,latestMinute:0,deadlinePrecision:'day-start-conservative',deadlineBasis:g.basis+'／'+why,people:g.people}});
+    const opening=triggers();
+    if(opening.length)reached={date:src.referenceDate,point:'opening',triggers:opening};
+    if(triggers(0,0,true).length)return due(src.referenceDate,'基準日時点で計画基準超過',opening);
+    // Preserve the verified prefix only. A calendar gap cannot be treated as zero.
+    let expected=src.referenceDate;
+    for(const row of days){
+        if(expected>src.throughDate)return hold('予測範囲外の日付混入',row?.date??null);
+        if(!row||row.date!==expected||!validDate(row.date))return hold('日別予定の欠損・重複・順序不明',expected);
+        if(!amount(row.productionAmount)||!['plan','計画'].includes(row.recordKind))return hold('生産量または予定区分未確認',row.date);
+        expected=nextDate(expected);
+        if(row.productionAmount===0)continue;
+        if(normalizeForecastSize(row.size)!==size)return hold('サイズ切替後のカリバ・使用量未接続',row.date);
+        if(reached)return due(row.date,'前操業で計画基準到達・次の操業前に交換',reached.triggers);
+        let runs=0;
+        if(states.some(s=>s.limit.runs!==null)){
+            const teams=[normalizeShiftTeam(row.shift1Team),normalizeShiftTeam(row.shift3Team)].filter(Boolean);
+            if(teams.length!==1||typeof row.operatingHours!=='number'||!Number.isFinite(row.operatingHours)||row.operatingHours<=0||row.operatingHours>24)return hold('勤別使用時間未確認',row.date);
+            const use=shiftUseFromHours(row.operatingHours);
+            if(use==='short')return hold('2時間以上4時間未満は提案扱い',row.date);
+            if(use!=='full'&&use!=='underTwo')return hold('使用時間未確認',row.date);
+            runs=use==='full'?1:0;
+        }
+        const over=triggers(row.productionAmount,runs,true);
+        if(over.length)return due(row.date,'当日の予定使用量で計画基準超過見込み・操業前に交換',over);
+        for(const s of states){
+            if(s.limit.tons!==null)s.tons+=row.productionAmount;
+            for(const c of s.grooves)c.runs+=runs;
+        }
+        const at=triggers();
+        if(at.length)reached={date:row.date,point:'end-of-day',triggers:at};
+    }
+    if(expected!==nextDate(src.throughDate))return hold('予測期間末までの予定不足',expected);
+    if(reached)return hold('計画基準到達・次回操業日未確認');
+    return {...base,status:'not-due-in-window',reason:'確認した期間内は計画基準未到達',requiredExchange:false,reached:null,usage:snapshot(),demand:null};
+}
+
+// Connect known usage demands to the #68 planner. Only separately evidenced
+// full-day stops are accepted here; a day with production needs shift-level timing.
+function previewUsageLinkedMonthlyPlan(input){
+    const src=input||{},groups=Array.isArray(src.groups)?src.groups:[],days=Array.isArray(src.days)?src.days:[];
+    const ids=new Map(),standCounts=new Map(),dayCounts=new Map(),byDate=new Map();
+    for(const g of groups){
+        ids.set(g?.id,(ids.get(g?.id)||0)+1);
+        for(const s of Array.isArray(g?.stands)?g.stands:[]){const k=String(s).replace(/^#/,'');standCounts.set(k,(standCounts.get(k)||0)+1);}
+    }
+    for(const d of days){dayCounts.set(d?.date,(dayCounts.get(d?.date)||0)+1);byDate.set(d?.date,d);}
+    const forecasts=groups.map(g=>{
+        if(ids.get(g?.id)!==1||(Array.isArray(g?.stands)&&g.stands.some(s=>standCounts.get(String(s).replace(/^#/,''))!==1)))return {id:g?.id??null,stands:g?.stands??[],status:'unresolved',reason:'交換対象の重複・競合',requiredExchange:null,demand:null,operationAuthorized:false};
+        return deriveFirstMonthlyExchange({...src,group:g});
+    });
+    const demands=forecasts.filter(f=>f.demand).map(f=>f.demand);
+    const capacity=Object.create(null);
+    for(const [date,d] of byDate){
+        if(dayCounts.get(date)===1&&d?.productionAmount===0&&['plan','計画'].includes(d.recordKind)&&Number.isInteger(d.exchangeCapacity)&&d.exchangeCapacity>0&&typeof d.exchangeCapacityBasis==='string'&&d.exchangeCapacityBasis.trim())capacity[date]=d.exchangeCapacity;
+    }
+    const slots=(Array.isArray(src.slots)?src.slots:[]).filter(s=>s&&Object.prototype.hasOwnProperty.call(capacity,s.date));
+    const plan=previewDeadlineFirstExchangePlan({demands,slots,exchangeCapacityByDate:capacity});
+    const unresolvedUsage=forecasts.filter(f=>f.status==='unresolved');
+    return {...plan,forecasts,unresolvedUsage,warnings:[...plan.warnings,...unresolvedUsage.map(f=>({id:f.id,kind:'使用量・交換期限未解決',reason:f.reason}))],complete:groups.length>0&&unresolvedUsage.length===0&&plan.unresolved.length===0,operationAuthorized:false,status:'usage-linked-first-exchange-preview'};
 }
