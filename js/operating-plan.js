@@ -5732,6 +5732,9 @@ function deriveFirstMonthlyExchange(input){
     const opening=triggers();
     if(opening.length)reached={date:src.referenceDate,point:'opening',triggers:opening};
     if(triggers(0,0,true).length)return due(src.referenceDate,'基準日時点で計画基準超過',opening);
+    let calendar=src.referenceDate;
+    for(const row of days){if(calendar>src.throughDate||!row||row.date!==calendar)return hold('日別予定の欠損・重複・順序不明',calendar);calendar=nextDate(calendar);}
+    if(calendar!==nextDate(src.throughDate))return hold('予測期間末までの予定不足',calendar);
     // Preserve the verified prefix only. A calendar gap cannot be treated as zero.
     let expected=src.referenceDate;
     for(const row of days){
