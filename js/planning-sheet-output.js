@@ -250,7 +250,9 @@
         }
         const p=s.plan;
         if(!p||p.status!=='usage-linked-first-exchange-preview'||p.operationAuthorized!==false||!Array.isArray(p.allocations)||!Array.isArray(p.forecasts)||!Array.isArray(p.unresolved)||!Array.isArray(p.unresolvedUsage)||!Array.isArray(p.warnings)){
-            issue('plan','交換予測の接続未確認');return result;
+            issue('plan','交換予測の接続未確認');
+            if(p?.status==='source-unresolved'){for(const w of p.warnings||[])issue('planning-warning',w.reason||'要確認',{label:w.kind});for(const u of p.unresolvedUsage||[])issue('usage-unresolved',u.reason,{id:u.id,stands:u.stands,requiredExchange:u.requiredExchange});}
+            return result;
         }
         for(const w of p.warnings)issue('planning-warning',w?.reason||'要確認',{id:w?.id??null,label:w?.kind??null});
         for(const u of p.unresolved)issue('exchange-unresolved',u.reason,{id:u.id,stands:u.stands,latestDate:u.latestDate});
