@@ -5820,3 +5820,16 @@ function previewImportedMonthlyExchangePlan(input){
     const out=previewUsageLinkedMonthlyPlan({...s,days});
     return {...out,sourceBasis:s.sourceBasis,sourceKind:'plan',sourceStatus:'verified-input-only'};
 }
+
+
+// Explicit read-only connection from the imported schedule and first-exchange
+// forecast into the logical sheet preview. Never call the Sheets export path.
+function previewImportedMonthlyExchangeSheet(input){
+    const s=input||{},api=globalThis.RollPlanningSheetOutput;
+    if(!api||typeof api.buildMonthlyExchangePreview!=='function'||typeof api.renderMonthlyExchangePreviewHtml!=='function')return {status:'sheet-api-unavailable',complete:false,operationAuthorized:false,writeAllowed:false,plan:null,sheet:null,html:null};
+    const plan=previewImportedMonthlyExchangePlan(s);
+    const ref=typeof s.referenceDate==='string'?s.referenceDate:'';
+    const period=/^\d{4}-\d{2}-\d{2}$/.test(ref)?{year:Number(ref.slice(0,4)),month:Number(ref.slice(5,7))}:null;
+    const sheet=api.buildMonthlyExchangePreview({period,sourceRevision:s.sourceRevision,previewRevision:s.previewRevision,schedule:s.summary?.days,manualEntries:s.manualEntries,plan});
+    return {status:'read-only-sheet-preview',complete:plan.complete&&sheet.complete,operationAuthorized:false,writeAllowed:false,plan,sheet,html:api.renderMonthlyExchangePreviewHtml(sheet)};
+}
