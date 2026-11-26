@@ -42,6 +42,15 @@ function selfTest(m,api){
  ['no operation permission',!r.operationAuthorized&&!r.writeAllowed],
  ['input unchanged',JSON.stringify(base)===before]
  ];
+ const different=mutate(base,'A',m=>{for(const n of [4,15])m.calibers[n-1].size='D13';return m});
+ const x=resolve(base),y=resolve(different);
+ tests.push(['same total different size mix',x.totalCalibers===22&&y.totalCalibers===22&&x.sizeCounts.D10.total===16&&y.sizeCounts.D10.total===14&&x.sizeCounts.D13.total===6&&y.sizeCounts.D13.total===8]);
+ tests.push(['east west counts from layout',y.sizeCounts.D13.west===4&&y.sizeCounts.D13.east===4]);
+ tests.push(['shares from physical counts',Math.abs(y.sizeCounts.D13.share-8/22)<1e-12]);
+ tests.push(['declared inconsistent count held',resolve(mutate(base,'A',m=>({...m,sizeCounts:{D10:12,D13:10}}))).status==='unconfirmed']);
+ tests.push(['declared correct count accepted',resolve(mutate(base,'A',m=>({...m,sizeCounts:{D10:16,D13:6}}))).status==='resolved']);
+ tests.push(['grade count separate from total',resolve(mutate(base,'A',m=>{m.calibers[3].grades=['SD345'];return m})).sizeCounts.D10.gradeCounts.SD295===15]);
+ tests.push(['different online size mix recalculated',resolve(sw).sizeCounts.D10.total===12&&resolve(sw).sizeCounts.D13.total===6]);
  return {tests,result:r};
 }
 module.exports={selfTest};
