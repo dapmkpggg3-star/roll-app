@@ -5647,7 +5647,7 @@ function previewDeadlineFirstExchangePlan(input) {
         const candidates=[];
         for(const s of safeSlots){
             if(s.date<d.earliestDate||s.date>d.latestDate)continue;
-            if(dateCapacity!==undefined&&(!Number.isInteger(dateCapacity[s.date])||dateCapacity[s.date]<=0||(dayUsed.get(s.date)||0)>=dateCapacity[s.date]))continue;
+            if(dateCapacity!==undefined&&(!dateCapacity||!Number.isInteger(dateCapacity[s.date])||dateCapacity[s.date]<=0||(dayUsed.get(s.date)||0)>=dateCapacity[s.date]))continue;
             const matches=s.eligibility.filter(x=>x&&x.demandId===d.id);
             if(matches.length!==1)continue;
             const x=matches[0];
@@ -5738,14 +5738,20 @@ function deriveFirstMonthlyExchange(input){
         if(expected>src.throughDate)return hold('予測範囲外の日付混入',row?.date??null);
         if(!row||row.date!==expected||!validDate(row.date))return hold('日別予定の欠損・重複・順序不明',expected);
         if(!amount(row.productionAmount)||!['plan','計画'].includes(row.recordKind))return hold('生産量または予定区分未確認',row.date);
+        if(row.productionByTeam&&typeof row.productionByTeam==='object'){
+            const vals=['A','B'].map(k=>row.productionByTeam[k]);
+            if(vals.some(v=>v!=null&&!amount(v))||vals.filter(amount).reduce((a,b)=>a+b,0)>row.productionAmount||(vals.every(amount)&&vals[0]+vals[1]!==row.productionAmount))return hold('班別と日計の生産量不一致',row.date);
+        }
         expected=nextDate(expected);
         if(row.productionAmount===0)continue;
         if(normalizeForecastSize(row.size)!==size)return hold('サイズ切替後のカリバ・使用量未接続',row.date);
         if(reached)return due(row.date,'前操業で計画基準到達・次の操業前に交換',reached.triggers);
         let runs=0;
         if(states.some(s=>s.limit.runs!==null)){
-            const teams=[normalizeShiftTeam(row.shift1Team),normalizeShiftTeam(row.shift3Team)].filter(Boolean);
-            if(teams.length!==1||typeof row.operatingHours!=='number'||!Number.isFinite(row.operatingHours)||row.operatingHours<=0||row.operatingHours>24)return hold('勤別使用時間未確認',row.date);
+            const rawTeams=[row.shift1Team,row.shift3Team];
+            const teams=rawTeams.map(normalizeShiftTeam).filter(Boolean);
+            if(rawTeams.some(t=>t!=null&&String(t).trim()&&!normalizeShiftTeam(t))||teams.length!==1||typeof row.operatingHours!=='number'||!Number.isFinite(row.operatingHours)||row.operatingHours<=0||row.operatingHours>24)return hold('勤別使用時間未確認',row.date);
+            if(row.productionByTeam&&row.productionByTeam[teams[0]]!==row.productionAmount)return hold('操業班の生産量未確認',row.date);
             const use=shiftUseFromHours(row.operatingHours);
             if(use==='short')return hold('2時間以上4時間未満は提案扱い',row.date);
             if(use!=='full'&&use!=='underTwo')return hold('使用時間未確認',row.date);
@@ -5782,10 +5788,32 @@ function previewUsageLinkedMonthlyPlan(input){
     const demands=forecasts.filter(f=>f.demand).map(f=>f.demand);
     const capacity=Object.create(null);
     for(const [date,d] of byDate){
-        if(dayCounts.get(date)===1&&d?.productionAmount===0&&['plan','計画'].includes(d.recordKind)&&Number.isInteger(d.exchangeCapacity)&&d.exchangeCapacity>0&&typeof d.exchangeCapacityBasis==='string'&&d.exchangeCapacityBasis.trim())capacity[date]=d.exchangeCapacity;
+        if(dayCounts.get(date)===1&&d?.productionAmount===0&&(!d.productionByTeam||['A','B'].every(k=>d.productionByTeam[k]==null||d.productionByTeam[k]===0))&&['plan','計画'].includes(d.recordKind)&&Number.isInteger(d.exchangeCapacity)&&d.exchangeCapacity>0&&typeof d.exchangeCapacityBasis==='string'&&d.exchangeCapacityBasis.trim())capacity[date]=d.exchangeCapacity;
     }
     const slots=(Array.isArray(src.slots)?src.slots:[]).filter(s=>s&&Object.prototype.hasOwnProperty.call(capacity,s.date));
     const plan=previewDeadlineFirstExchangePlan({demands,slots,exchangeCapacityByDate:capacity});
     const unresolvedUsage=forecasts.filter(f=>f.status==='unresolved');
     return {...plan,forecasts,unresolvedUsage,warnings:[...plan.warnings,...unresolvedUsage.map(f=>({id:f.id,kind:'使用量・交換期限未解決',reason:f.reason}))],complete:groups.length>0&&unresolvedUsage.length===0&&plan.unresolved.length===0,operationAuthorized:false,status:'usage-linked-first-exchange-preview'};
+}
+
+
+// Adapter for the exact summary.days shape returned by readMonthlyScheduleFile.
+// The production importer does not classify actual/plan and deduplicates dates.
+// Never manufacture these confirmations or reinterpret scheduled work as free capacity.
+function previewImportedMonthlyExchangePlan(input){
+    const s=input||{},summary=s.summary,records=Array.isArray(s.capacityRecords)?s.capacityRecords:[];
+    const nonblank=x=>typeof x==='string'&&x.trim().length>0;
+    const blocked=reason=>({status:'source-unresolved',complete:false,operationAuthorized:false,allocations:[],forecasts:[],unresolved:[],unresolvedUsage:(Array.isArray(s.groups)?s.groups:[]).map(g=>({id:g?.id??null,stands:g?.stands??[],reason,requiredExchange:null})),warnings:[{kind:'原資料確認待ち',reason}]});
+    if(!summary||summary.ok!==true||summary.kind!=='monthly-production-schedule'||!Array.isArray(summary.days)||s.sourceKind!=='plan'||!nonblank(s.sourceBasis)||s.dateRowsVerified!==true)return blocked('予定版・日付行の重複確認・出典未確認');
+    const datePattern=/^\d{4}-\d{2}-\d{2}$/;
+    if(!datePattern.test(s.referenceDate||'')||!datePattern.test(s.throughDate||'')||s.referenceDate>s.throughDate||s.referenceDate.slice(0,7)!==s.throughDate.slice(0,7))return blocked('対象月・基準日未確認');
+    if(String(summary.referenceDate||'').slice(0,7)!==s.referenceDate.slice(0,7))return blocked('読込予定と対象月不一致');
+    const days=summary.days.filter(d=>d&&typeof d.date==='string'&&d.date>=s.referenceDate&&d.date<=s.throughDate).map(d=>{
+        const rs=records.filter(r=>r&&r.date===d.date);
+        const c=rs.length===1?rs[0]:null;
+        const capacity=c&&c.confirmed===true&&c.kind==='exchange-capacity'&&Number.isInteger(c.count)&&c.count>0&&nonblank(c.basis)?c.count:null;
+        return {...d,recordKind:d.recordKind===undefined?'plan':d.recordKind,exchangeCapacity:capacity,exchangeCapacityBasis:capacity===null?null:c.basis};
+    });
+    const out=previewUsageLinkedMonthlyPlan({...s,days});
+    return {...out,sourceBasis:s.sourceBasis,sourceKind:'plan',sourceStatus:'verified-input-only'};
 }
