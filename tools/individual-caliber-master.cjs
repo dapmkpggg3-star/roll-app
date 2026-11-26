@@ -28,7 +28,13 @@ function resolveOnlineCaliberMaster(input,stand){
    const known=u&&u.snapshotId===s.snapshotId&&u.sourceRevision===s.sourceRevision&&str(u.basis)&&Number.isInteger(u.runs)&&u.runs>=0&&typeof u.available==='boolean';
    return {...copy(c),runs:known?u.runs:null,available:known?u.available:null,usageBasis:known?u.basis:null};
  });
- return {status:'resolved',stand:k,rollId:o.rollId,generation:o.generation,totalCalibers:m.totalCalibers,calibers,pairs:copy(m.pairs||[]),masterBasis:m.basis,snapshotId:s.snapshotId,sourceRevision:s.sourceRevision,operationAuthorized:false,writeAllowed:false};
+ const sizeCounts=Object.fromEntries(['D10','D13'].map(size=>{
+   const items=calibers.filter(c=>c.size===size);
+   return [size,{total:items.length,west:items.filter(c=>c.column==='西').length,east:items.filter(c=>c.column==='東').length,share:items.length/m.totalCalibers,gradeCounts:Object.fromEntries(['SD295','SD345'].map(grade=>[grade,items.filter(c=>c.grades.includes(grade)).length]))}];
+ }));
+ // Optional declared counts are assertions, never the source of a fabricated layout.
+ if(m.sizeCounts!==undefined&&(!m.sizeCounts||['D10','D13'].some(size=>m.sizeCounts[size]!==sizeCounts[size].total)))return hold('サイズ別本数と個体配置が不一致');
+ return {status:'resolved',stand:k,rollId:o.rollId,generation:o.generation,totalCalibers:m.totalCalibers,sizeCounts,calibers,pairs:copy(m.pairs||[]),masterBasis:m.basis,snapshotId:s.snapshotId,sourceRevision:s.sourceRevision,operationAuthorized:false,writeAllowed:false};
 }
 function previewMasterPassline1517(input){
  const s=input||{},resolved=['15','16','17'].map(k=>resolveOnlineCaliberMaster(s,k));
