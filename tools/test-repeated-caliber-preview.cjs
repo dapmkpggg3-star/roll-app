@@ -39,6 +39,12 @@ function selfTest(api,preview){
  ['no nonanonymous input',run({anonymousOnly:false}).events.length===0],
  ['no actual schedule accepted',run({days:[{...days[0],recordKind:'actual'},...days.slice(1)]}).events.length===0]
  ];
+ const d10stages=stages.map(stage=>({...stage,size:'D10',members:stage.members.map(m=>({...m,columnBasis:'anonymous paired columns',activeCalibers:[{...m.activeCalibers[0],id:m.activeCalibers[0].id+'-W',column:'西'},{...m.activeCalibers[0],id:m.activeCalibers[0].id+'-E',column:'東',runs:Math.max(0,m.activeCalibers[0].runs-1)}]}))}));
+ const d10={size:'D10',days:days.map(d=>({...d,size:'D10'})),stages:d10stages};
+ const rr=run(d10);
+ tests.push(['D10 both columns one run each',rr.complete&&rr.events.length===2&&rr.events[0].fromCalibers[0].calibers.map(c=>c.runs).join(',')==='6,5'&&rr.endingUsage[0].calibers.map(c=>c.runs).join(',')==='1,1']);
+ tests.push(['D10 missing column rejected',run({...d10,stages:d10stages.map((g,i)=>i===1?{...g,members:g.members.map(m=>({...m,activeCalibers:m.activeCalibers.slice(0,1)}))}:g)}).events.length===0]);
+ tests.push(['successor already at limit rejected',run({stages:f(1,m=>m.activeCalibers[0].runs=6)}).events.length===0]);
  return {tests,result:r};
 }
 module.exports={selfTest};
