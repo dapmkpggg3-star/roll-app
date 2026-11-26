@@ -32,7 +32,7 @@ def export_model(model, destination):
     wb = Workbook.create()
     def table(name, heads, data, widths, height=24):
         ws = wb.worksheets.add(name)
-        matrix = [heads] + [[safe(v) for v in line] for line in data]
+        matrix = [[safe(v) for v in heads]] + [[safe(v) for v in line] for line in data]
         rg = ws.get_range_by_indexes(0, 0, len(matrix), len(heads))
         rg.values = matrix
         rg.format = {'horizontal_alignment': 'center', 'vertical_alignment': 'center', 'wrap_text': True, 'row_height': height}
