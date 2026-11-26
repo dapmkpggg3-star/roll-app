@@ -63,12 +63,11 @@ def add_paper_layout(wb, model):
                 ws.get_range(f'{start}{i}:{shift}{i}').format.fill='#E4EDF5'
             ws.get_range(work).format.borders=cross if rest and not lines else borders
             if shift:ws.get_range(f'{shift}{i}').format.borders=borders
-        # Blade evidence is not connected yet; no placeholder in the printed M column.
-        ws.get_range(f'M{i}').values=[[None]]
+        ws.get_range(f'M{i}').values=[['●' if row.get('bladeState')=='予定あり' else None]]
         for col in 'BCDM':ws.get_range(f'{col}{i}').format.borders=borders
     # A 30-day month has a blank day-31 row; never place a fictional date there.
     # Keep the note after the maximum calendar row so 31-day months cannot collide.
-    ws.merge_cells('B36:M36');ws.get_range('B36').values=[['SD345・刃替：原予定の確認待ち。混在セルの部分赤字は未対応（交換明細で確認）。']]
+    ws.merge_cells('B36:M36');ws.get_range('B36').values=[['SD345：確認待ち。刃替の根拠・未確認は別紙へ。混在セルの部分赤字は未対応。']]
     ws.get_range('B36:M36').format.row_height=24
     ws.get_range('B36').format.font.color='#666666'
     return ws,mixed

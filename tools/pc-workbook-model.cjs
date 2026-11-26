@@ -58,5 +58,7 @@ if(require.main===module){
   const input=JSON.parse(fs.readFileSync(0,'utf8'));
   const preview=ctx.previewImportedMonthlyExchangeSheet(input);
   if(preview.writeAllowed!==false || preview.operationAuthorized!==false)throw new Error('Unsafe preview');
-  process.stdout.write(JSON.stringify(buildPcWorkbookModel(preview.sheet),null,2)+'\n');
+  const model = buildPcWorkbookModel(preview.sheet);
+  if (Object.prototype.hasOwnProperty.call(input,'bladeRecords')) model.bladeRecords = input.bladeRecords;
+  process.stdout.write(JSON.stringify(model,null,2)+'\n');
 }
