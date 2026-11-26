@@ -1,6 +1,7 @@
 'use strict';
 // R18/R20: resolve the exact online roll and generation; never default groove count.
 const {previewPassline1517}=require('./passline-15-17-preview.cjs');
+const {previewRepeatedCaliberCampaign}=require('./repeated-caliber-preview.cjs');
 const str=x=>typeof x==='string'&&x.trim().length>0;
 const key=(stand,roll,generation)=>JSON.stringify([String(stand),roll,generation]);
 const copy=x=>JSON.parse(JSON.stringify(x));
@@ -53,4 +54,24 @@ function previewMasterPassline1517(input){
  const gate=previewPassline1517({...s,calibers:selected,pairEvidence});
  return {...gate,resolved,selected};
 }
-module.exports={resolveOnlineCaliberMaster,previewMasterPassline1517};
+// New master-linked entry point for the single #16 or #17 campaign prototype.
+// Original repeated-caliber-preview remains an isolated algorithm test helper.
+function previewMasterLinkedCampaign(input,api){
+ const s=input||{}, stages=Array.isArray(s.stages)?s.stages:[];
+ const results=[];
+ const hold=reason=>({status:'master-linked-unresolved',reason,passlineResults:results,events:[],complete:false,operationAuthorized:false,writeAllowed:false});
+ if(s.anonymousOnly!==true||!stages.length)return hold('匿名・対象候補未確認');
+ for(const stage of stages){
+   if(!Array.isArray(stage?.stands)||stage.stands.length!==1||!['16','17'].includes(String(stage.stands[0])))return hold('現在は#16/#17単独交換のみ');
+   const ctx={...s,grade:s.steelGrade,selection:stage.selection};
+   const gate=previewMasterPassline1517(ctx);results.push({stageId:stage.id,...gate});
+   if(gate.status!=='planning-match')return hold(gate.reason);
+   const st=String(stage.stands[0]),sel=gate.selected.filter(c=>c.stand===st);
+   const member=stage.members?.[0];
+   if(stage.members?.length!==1||String(member?.standKey)!==st||member.rollId!==sel[0]?.rollId||member.generation!==sel[0]?.generation||!Array.isArray(member.activeCalibers)||member.activeCalibers.length!==sel.length)return hold('交換対象とオンラインマスター不一致');
+   if(!sel.every(c=>member.activeCalibers.filter(g=>g&&g.id===String(c.number)&&g.runs===c.runs&&g.available===true&&g.steelGrade===s.steelGrade&&g.column===c.column).length===1))return hold('交換候補番号・直数・東西列とマスター不一致');
+ }
+ const out=previewRepeatedCaliberCampaign(s,api);
+ return {...out,passlineResults:results,masterLinked:true};
+}
+module.exports={resolveOnlineCaliberMaster,previewMasterPassline1517,previewMasterLinkedCampaign};
