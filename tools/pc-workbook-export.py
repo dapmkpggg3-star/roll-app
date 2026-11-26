@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import sys
 from artifact_tool import Workbook, SpreadsheetFile
+from pc_paper_layout import add_paper_layout
 
 
 def export_model(model, destination):
@@ -30,6 +31,7 @@ def export_model(model, destination):
             v = json.dumps(v, ensure_ascii=False, separators=(',', ':'))
         return "'" + v if isinstance(v, str) and v.lstrip().startswith(('=', '+', '-', '@')) else v
     wb = Workbook.create()
+    paper, mixed = add_paper_layout(wb, model)
     def table(name, heads, data, widths, height=24):
         ws = wb.worksheets.add(name)
         matrix = [[safe(v) for v in heads]] + [[safe(v) for v in line] for line in data]
@@ -51,7 +53,10 @@ def export_model(model, destination):
           [[e.get(k) for k in ('id','date','team','deadlineDate','deadlineMinute','deadlineBasis','slotBasis','triggers','reason')] for e in model['evidence']], [10,14,12,14,10,32,28,48,32], 68)
     table('要確認', ['種別','ID','日付','理由','詳細原文'], [[e.get('kind'),e.get('id'),e.get('date'),e.get('reason'),e] for e in model['issues']], [22,10,14,42,55], 60)
     table('手入力原文', ['日付','班','ID','原文'], [[e.get(k) for k in ('date','team','id','text')] for e in model['manual']], [14,12,10,55], 48)
-    table('交換明細', ['ID','日付','班','交換候補','分','開始分','終了分','要照合'], [[e.get(k) for k in ('id','date','team','text','minutes','startMinute','endMinute','reviewRequired')] for e in model['details']], [10,14,12,25,10,10,10,12])
+    detail_sheet = table('交換明細', ['ID','日付','班','交換候補','分','開始分','終了分','要照合'], [[e.get(k) for k in ('id','date','team','text','minutes','startMinute','endMinute','reviewRequired')] for e in model['details']], [10,14,12,25,10,10,10,12])
+    for i, detail in enumerate(model['details'], 1):
+        if detail.get('style') == 'roll-red':
+            detail_sheet.get_cell(i, 3).format.font.color = '#C00000'
     table('出力条件', ['項目','値'], [['用途','匿名試作・操業許可なし'],['対象月',model['period']],['元版',model['sourceRevision']],['出力版',model['previewRevision']],['書込許可',False],['操業許可',False]] + [['未確認',s] for s in model['limitations']], [16,75], 36)
     # Exclusive create protects existing files even if another process writes after the check.
     data = SpreadsheetFile.export_xlsx(wb)
