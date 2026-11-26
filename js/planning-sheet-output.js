@@ -217,7 +217,7 @@
         for(let day=1;day<=days;day++){
             const date=ym+'-'+String(day).padStart(2,'0'), matches=dates.get(date)||[];
             const source=matches.length===1?matches[0]:null, parsed=source?buildCalendarRows([source],period)[0]:null;
-            const row={date,day,weekday:WEEKDAYS[dateParts(date).date.getUTCDay()],size:parsed?.size||null,sourceState:'unconfirmed',teams:{A:{shift:null,operating:null,manual:[],proposals:[]},B:{shift:null,operating:null,manual:[],proposals:[]},day:{shift:'常昼',operating:null,manual:[],proposals:[]}}};
+            const row={date,day,productionState:source?productionAmountState(source.productionAmount):'unknown',weekday:WEEKDAYS[dateParts(date).date.getUTCDay()],size:parsed?.size||null,sourceState:'unconfirmed',teams:{A:{shift:null,operating:null,manual:[],proposals:[]},B:{shift:null,operating:null,manual:[],proposals:[]},day:{shift:'常昼',operating:null,manual:[],proposals:[]}}};
             if(source){
                 const a=normalizeTeam(source.shift1Team),b=normalizeTeam(source.shift3Team);
                 const raw=[source.shift1Team,source.shift3Team];
@@ -259,7 +259,7 @@
         for(const a of p.allocations){
             const k=teamKey(a?.team),row=byDate.get(a?.date),fs=p.forecasts.filter(f=>f?.id===a?.id&&f.status==='required'&&f.demand);
             const validStand=Array.isArray(a?.stands)&&a.stands.length>0&&a.stands.every(n=>/^(?:[2-9]|1[0-7])$/.test(String(n)))&&new Set(a.stands.map(String)).size===a.stands.length;
-            const valid=nonblank(a?.id)&&counts.get(a.id)===1&&fs.length===1&&row?.sourceState==='read'&&k&&validStand&&['rollChange','caliberChange'].includes(a.workType)&&a.status==='proposal'&&a.operationAuthorized===false&&Number.isInteger(a.startMinute)&&Number.isInteger(a.endMinute)&&a.startMinute>=0&&a.endMinute<=1440&&a.endMinute>a.startMinute&&a.minutes===a.endMinute-a.startMinute&&nonblank(a.slotBasis)&&nonblank(a.deadlineBasis);
+            const valid=nonblank(a?.id)&&counts.get(a.id)===1&&fs.length===1&&row?.sourceState==='read'&&row.productionState==='zero'&&k&&validStand&&['rollChange','caliberChange'].includes(a.workType)&&a.status==='proposal'&&a.operationAuthorized===false&&Number.isInteger(a.startMinute)&&Number.isInteger(a.endMinute)&&a.startMinute>=0&&a.endMinute<=1440&&a.endMinute>a.startMinute&&a.minutes===a.endMinute-a.startMinute&&nonblank(a.slotBasis)&&nonblank(a.deadlineBasis);
             if(!valid){issue('allocation','候補の元日程・根拠・対象未確認。候補を別欄に保持',{entry:a});continue;}
             const f=fs[0],d=f.demand;
             if(a.workType!==d.workType||!Array.isArray(d.stands)||a.stands.map(String).sort().join(',')!==d.stands.map(String).sort().join(',')||a.date<d.earliestDate||a.date>d.latestDate||(a.date===d.latestDate&&a.endMinute>d.latestMinute)||a.deadlineBasis!==d.deadlineBasis||
@@ -274,11 +274,29 @@
             if(cell.manual.length)issue('manual-conflict','手入力あり。自動上書きせず候補を併記',{date:a.date,id:a.id});
             result.evidence.push({id:a.id,date:a.date,team:a.team,deadlineDate:d.latestDate,deadlineMinute:d.latestMinute,deadlineBasis:a.deadlineBasis,slotBasis:a.slotBasis,triggers:Array.isArray(f.triggers)?f.triggers:[],reason:f.reason});
         }
+        for(const f of p.forecasts)if(f?.status==='required'&&!result.evidence.some(e=>e.id===f.id)&&!p.unresolved.some(u=>u.id===f.id))issue('exchange-unresolved','必要交換の割当または未解決記録が不足',{id:f.id,stands:f.stands});
         result.complete=p.complete===true&&result.issues.length===0;
         return result;
     }
 
+
+    // HTML preview only. All text is escaped, including source and manual notes.
+    function renderMonthlyExchangePreviewHtml(preview){
+        const p=preview||{}, esc=v=>String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+        const cell=t=>{
+            if(!t)return '<td>未確認</td>';
+            const manual=(Array.isArray(t.manual)?t.manual:[]).map(e=>'<span class="manual">手入力：'+esc(e.text)+'</span>');
+            const proposals=(Array.isArray(t.proposals)?t.proposals:[]).map(e=>'<span class="'+(e.style==='roll-red'?'roll-red':'normal')+'">'+esc(e.text)+(e.reviewRequired?'（要照合）':'')+'</span>');
+            return '<td'+(t.operating===true?' class="operating"':'')+'><span class="shift">'+esc(t.rest===true?'×':t.shift||'')+'</span>'+manual.concat(proposals).join('')+'</td>';
+        };
+        const rows=(Array.isArray(p.rows)?p.rows:[]).map(r=>'<tr><td>'+esc(r.day)+' '+esc(r.weekday)+'</td><td>'+esc(r.size||'未確認')+(r.sourceState!=='read'?'（要確認）':'')+'</td>'+cell(r.teams?.A)+cell(r.teams?.B)+cell(r.teams?.day)+'</tr>').join('');
+        const issues=(Array.isArray(p.issues)?p.issues:[]).map(i=>'<li>'+esc([i.date,i.id,i.reason].filter(Boolean).join(' / '))+'</li>').join('');
+        const evidence=(Array.isArray(p.evidence)?p.evidence:[]).map(e=>'<li>'+esc(e.id)+'：'+esc(e.date)+' '+esc(e.team)+'／期限 '+esc(e.deadlineDate)+'／'+esc(e.deadlineBasis)+'／'+esc(e.slotBasis)+'</li>').join('');
+        return '<section class="monthly-exchange-preview"><style>.monthly-exchange-preview table{border-collapse:collapse;width:100%;table-layout:fixed}.monthly-exchange-preview th,.monthly-exchange-preview td{border:1px solid #aaa;text-align:center;vertical-align:middle;padding:4px}.monthly-exchange-preview tbody tr{height:54px}.monthly-exchange-preview .operating{background:#e4edf5}.monthly-exchange-preview .roll-red{color:#b91c1c}.monthly-exchange-preview .manual,.monthly-exchange-preview .shift,.monthly-exchange-preview .roll-red,.monthly-exchange-preview .normal{display:block;white-space:pre-wrap;overflow-wrap:anywhere}</style><h3>'+esc(p.period)+' ロール・カリバ替予定（確認用）</h3><p>原版 '+esc(p.sourceRevision)+' ／ プレビュー '+esc(p.previewRevision)+' ／ 書き込みなし・作業許可ではありません</p><table><thead><tr><th>日付</th><th>サイズ</th><th>A班</th><th>B班</th><th>常昼</th></tr></thead><tbody>'+rows+'</tbody></table><h4>未解決・要確認</h4><ul>'+issues+'</ul><h4>交換根拠</h4><ul>'+evidence+'</ul></section>';
+    }
+
     return {
+        renderMonthlyExchangePreviewHtml,
         buildMonthlyExchangePreview,
         dateParts,
         latestPeriod,
