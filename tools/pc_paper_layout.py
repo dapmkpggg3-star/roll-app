@@ -34,6 +34,9 @@ def add_paper_layout(wb, model):
     borders={'preset':'outside','style':'thin','color':'#333333'}
     for r in ['B4','C4','D4','E4:G4','H4:J4','K4:L4','M4']:
         ws.get_range(r).format.borders=borders
+    edge={'style':'thin','color':'#333333'}
+    cross={'top':edge,'bottom':edge,'left':edge,'right':edge,
+           'diagonal_up':edge,'diagonal_down':edge}
     details=defaultdict(list)
     for d in model['details']:
         details[(d['date'],d['team'])].append(d)
@@ -48,7 +51,8 @@ def add_paper_layout(wb, model):
             notes=[]
             if v[idx+3]: notes.append('手入力あり・要照合')
             elif any(d.get('reviewRequired') for d in ds): notes.append('要照合')
-            if key!='day' and v[idx]=='×': notes.insert(0,'×')
+            rest=key!='day' and v[idx]=='×'
+            if rest and (roll or other or notes): notes.insert(0,'休み・作業要照合')
             lines=roll+other+notes
             if roll and (other or notes): mixed.append((row['date'],key))
             cell=ws.get_range(f'{start}{i}');cell.values=[[safe_text('\n'.join(lines))]]
@@ -57,9 +61,10 @@ def add_paper_layout(wb, model):
             if shift and v[idx]!='×':ws.get_range(f'{shift}{i}').values=[[safe_text(v[idx])]]
             if key!='day' and idx in row['operating']:
                 ws.get_range(f'{start}{i}:{shift}{i}').format.fill='#E4EDF5'
-            ws.get_range(work).format.borders=borders
+            ws.get_range(work).format.borders=cross if rest and not lines else borders
             if shift:ws.get_range(f'{shift}{i}').format.borders=borders
-        ws.get_range(f'M{i}').values=[['未確認']]
+        # Blade evidence is not connected yet; no placeholder in the printed M column.
+        ws.get_range(f'M{i}').values=[[None]]
         for col in 'BCDM':ws.get_range(f'{col}{i}').format.borders=borders
     # A 30-day month has a blank day-31 row; never place a fictional date there.
     # Keep the note after the maximum calendar row so 31-day months cannot collide.
