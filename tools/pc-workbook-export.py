@@ -6,6 +6,7 @@ from pathlib import Path
 import sys
 from artifact_tool import Workbook, SpreadsheetFile
 from pc_paper_layout import add_paper_layout
+from pc_blade_evidence import attach_blade_evidence
 
 
 def export_model(model, destination):
@@ -30,6 +31,8 @@ def export_model(model, destination):
         if isinstance(v, (dict, list)):
             v = json.dumps(v, ensure_ascii=False, separators=(',', ':'))
         return "'" + v if isinstance(v, str) and v.lstrip().startswith(('=', '+', '-', '@')) else v
+    model = attach_blade_evidence(model)
+    rows = model['rows']
     wb = Workbook.create()
     paper, mixed = add_paper_layout(wb, model)
     def table(name, heads, data, widths, height=24):
@@ -52,6 +55,7 @@ def export_model(model, destination):
     table('交換根拠', ['ID','候補日','班','期限日','期限分','期限根拠','停止枠根拠','使用量根拠','理由'],
           [[e.get(k) for k in ('id','date','team','deadlineDate','deadlineMinute','deadlineBasis','slotBasis','triggers','reason')] for e in model['evidence']], [10,14,12,14,10,32,28,48,32], 68)
     table('要確認', ['種別','ID','日付','理由','詳細原文'], [[e.get('kind'),e.get('id'),e.get('date'),e.get('reason'),e] for e in model['issues']], [22,10,14,42,55], 60)
+    table('刃替根拠', ['日付','状態','原表セル','原版','根拠'], [[e.get(k) for k in ('date','state','sourceCell','sourceRevision','basis')] for e in model['bladeEvidence']], [14,16,14,20,45])
     table('手入力原文', ['日付','班','ID','原文'], [[e.get(k) for k in ('date','team','id','text')] for e in model['manual']], [14,12,10,55], 48)
     detail_sheet = table('交換明細', ['ID','日付','班','交換候補','分','開始分','終了分','要照合'], [[e.get(k) for k in ('id','date','team','text','minutes','startMinute','endMinute','reviewRequired')] for e in model['details']], [10,14,12,25,10,10,10,12])
     for i, detail in enumerate(model['details'], 1):
