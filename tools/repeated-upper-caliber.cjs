@@ -22,7 +22,7 @@ function carryUsage(s,g,usage,days,api){
  const result=deriveUpperGroup(s,{...g,members},api);
  return result.status==='derived'?result:null;
 }
-function previewUpperSequence(input,api){
+function previewUpperSequence(input,api,onRoll){
  const s=input||{},events=[],unresolved=[],ending=[],reservations=[],setupInstructions=[],rollHandoverCandidates=[],states=[];
  const base={status:'upper-sequence-preview',events,unresolved,ending,reservations,setupInstructions,rollHandoverCandidates,complete:false,annualComplete:false,operationAuthorized:false,writeAllowed:false,scope:'first physical roll change per upstream pair; shared line capacity only'};
  const hold=(g,reason,extra={})=>unresolved.push({id:g?.id??null,stands:g?.stands??[],reason,...extra,operationAuthorized:false});
@@ -79,6 +79,7 @@ function previewUpperSequence(input,api){
   st.group=after.group;st.cursor=api.addDays(a.date,1);
   if(a.workType==='rollChange'){
    const replay=r.replays.find(z=>z.id===g.id);
+   if(typeof onRoll==='function')onRoll(copy(window),copy(event));
    rollHandoverCandidates.push({eventId,stands:g.stands,date:a.date,projectedRoles:copy(replay.projectedRoles),emergencyReserveByStand:copy(replay.emergencyReserveByStand),workshopVerified:false,reworkConfirmed:false});
    // Stop physical circulation here: future assembly/receipts must be verified separately.
    finish(st,after,'first-roll-change',st.cursor,{nextForecast:u.followup??null,requiresWorkshop:true});
