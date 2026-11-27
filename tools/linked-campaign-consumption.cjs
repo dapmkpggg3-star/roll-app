@@ -55,7 +55,7 @@ function previewLinkedCampaign(input,api){
    sizeChange=sizeFit(prev,p);
    if(!sizeChange)return hold('サイズ替停止枠・赤通し・上流準備未確認',p,{requiredSizeChange:true,fromSize:currentSize,toSize:p.size});
    const evidence=p.targetSelectionEvidence;
-   if(!evidence||evidence.confirmed!==true||!str(evidence.basis)||evidence.snapshotId!==s.snapshotId||evidence.sourceRevision!==s.sourceRevision||evidence.size!==p.size||!evidence.selection)return hold('サイズ替後の個体別候補根拠未確認',p,{requiredSizeChange:true});
+   if(!evidence||evidence.confirmed!==true||!str(evidence.basis)||evidence.snapshotId!==s.snapshotId||evidence.sourceRevision!==s.sourceRevision||evidence.size!==p.size||evidence.grade!==p.grade||!evidence.selection)return hold('サイズ替後の個体別候補根拠未確認',p,{requiredSizeChange:true});
    targetSelection=evidence.selection;
   }
   if(p.productionMinutes>=120&&p.productionMinutes<240)return hold('2〜4h未満は提案のみ・確定消費しない',p);
