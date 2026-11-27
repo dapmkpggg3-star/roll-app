@@ -30,7 +30,7 @@ function replayUpperCaliber(s,a,g,api){
  for(const stand of a.stands){
   const m=g.members.find(x=>String(x.standKey)===stand),u=opening.usage.find(x=>x.standKey===stand&&x.rollId===m?.rollId),p=e.members.filter(x=>String(x?.standKey)===stand),q=p[0],old=m?.caliberLedger.calibers.find(c=>c.state==='active'),next=m?.caliberLedger.calibers.find(c=>c.id===q?.nextId),lim=api.monthlyUsageThreshold(stand,a.size);
   if(!m||!u||p.length!==1||!same(s,q)||q.identity!==m.caliberLedger.identity||!old||q.oldId!==old.id||next?.state!=='unused'||!lim)return hold('新品カリバ・個体世代不一致 #'+stand);
-  const retired={...old,state:'used',tons:lim.tons===null?null:u.tons,runs:lim.runs===null?null:u.calibers[0].runs};
+  const retired={...old,state:'used',tons:lim.tons===null?(old.tons===null?null:old.tons+s.days.filter(d=>d.date<=a.date).reduce((n,d)=>n+d.productionAmount,0)):u.tons,runs:lim.runs===null?(old.runs??null):u.calibers[0].runs};
   const current={...next,state:'active'};
   const ledger={...m.caliberLedger,calibers:m.caliberLedger.calibers.map(c=>c.id===old.id?retired:c.id===next.id?current:{...c})};
   members.push({...m,caliberLedger:ledger,openingUsedTons:lim.tons===null?null:0,activeCalibers:lim.runs===null?[]:[{id:next.id,runs:0}]});
