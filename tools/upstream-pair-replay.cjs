@@ -1,5 +1,6 @@
 'use strict';
 // R04/R05/R06/R09: upstream use replay and separately evidenced setup material.
+const {deriveUpperGroup}=require('./caliber-lifetime-policy.cjs');
 const str=x=>typeof x==='string'&&x.trim().length>0;
 const id=r=>JSON.stringify([String(r.stand),r.rollId,r.generation]);
 const same=(s,x)=>x&&x.snapshotId===s.snapshotId&&x.sourceRevision===s.sourceRevision&&str(x.basis);
@@ -36,13 +37,15 @@ function replayUpstreamPair(s,a,r,api){
   if(limit.runs!==null&&(!Array.isArray(u.activeCalibers)||u.activeCalibers.length!==1||!str(u.activeCalibers[0]?.id)||!Number.isInteger(u.activeCalibers[0]?.runs)||u.activeCalibers[0].runs<0||u.activeCalibers[0].runs>=limit.runs))return hold('交換先開始直数未確認 #'+stand);
   oldIdentities[stand]=id(old);newIdentities[stand]=id(next);newMembers.push({...u});
  }
- if(new Set(newMembers.map(m=>m.nextCaliberAvailable)).size!==1)return hold('交換先の次回カリバ可否がペアで不一致・個別確認');
+ const replacement=deriveUpperGroup(s,{...g,members:newMembers},api);
+ if(replacement.status!=='derived')return hold('交換先全カリバ根拠：'+replacement.reason);
+ if(newMembers.some(m=>m.caliberLedger.calibers.some(c=>c.state==='active'&&(c.tons!==0||(api.monthlyUsageThreshold(m.standKey,a.size).runs!==null&&c.runs!==0)))))return hold('通常中古カリバを交換先にしない');
  const setup=setupForSlot(s,a,a,api);
  if(setup.status==='held')return hold(setup.reason);
  // Reuse the real consumption forecast from the first day after the stopped exchange.
- const start=api.addDays(a.date,1),suffixGroup={...g,members:newMembers,workType:newMembers[0].nextCaliberAvailable?'caliberChange':'rollChange'};
+ const start=api.addDays(a.date,1),suffixGroup=replacement.group;
  let suffix=null;
  if(start<=s.throughDate)suffix=api.deriveFirstMonthlyExchange({referenceDate:start,throughDate:s.throughDate,days:days.filter(d=>d.date>=start),group:suffixGroup});
- return {status:'conditional-upstream-pair-preview',id:a.id,date:a.date,startMinute:a.startMinute,endMinute:a.endMinute,oldIdentities,newIdentities,openingUsage:opening.usage,replacementUsage:newMembers,endingUsage:suffix?.usage??null,followup:suffix,requiresFollowup:suffix?.status!=='not-due-in-window',setupInstruction:setup.instruction,upstreamFitEvidenceOnly:true,operationAuthorized:false,writeAllowed:false};
+ return {status:'conditional-upstream-pair-preview',id:a.id,date:a.date,startMinute:a.startMinute,endMinute:a.endMinute,oldIdentities,newIdentities,openingUsage:opening.usage,replacementUsage:replacement.group.members,replacementLifetime:replacement.ledgers,endingUsage:suffix?.usage??null,followup:suffix,requiresFollowup:suffix?.status!=='not-due-in-window',setupInstruction:setup.instruction,upstreamFitEvidenceOnly:true,operationAuthorized:false,writeAllowed:false};
 }
 module.exports={setupForSlot,replayUpstreamPair};
