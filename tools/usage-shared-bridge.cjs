@@ -1,5 +1,6 @@
 'use strict';
 // Anonymous PC bridge: derive first demands, allocate once, replay paired lifecycle on exact allocated interval.
+const {deriveUpperGroup}=require('./caliber-lifetime-policy.cjs');
 const {setupForSlot,replayUpstreamPair}=require('./upstream-pair-replay.cjs');
 const {previewSharedLineCapacity}=require('./shared-line-capacity.cjs');
 const {previewPairedAssemblyDisposition}=require('./paired-assembly-disposition.cjs');
@@ -9,19 +10,23 @@ const key=x=>String(x).replace(/^#/,'');
 const pairKeys=['6,7','8,9','10,11','12,13','14,15'];
 const id=r=>JSON.stringify([key(r.stand),r.rollId,r.generation]);
 function previewUsageSharedBridge(input,api){
- const s=input||{},groups=Array.isArray(s.groups)?s.groups:[],forecasts=[],demands=[],unresolved=[],replays=[],upstreamPairReplays=[],setupInstructions=[];
- const base={status:'usage-shared-bridge',forecasts,demands,unresolved,replays,upstreamPairReplays,setupInstructions,allocations:[],complete:false,annualComplete:false,operationAuthorized:false,writeAllowed:false};
+ const s=input||{},rawGroups=Array.isArray(s.groups)?s.groups:[],groups=[],caliberLifetime=[],forecasts=[],demands=[],unresolved=[],replays=[],upstreamPairReplays=[],setupInstructions=[];
+ const base={status:'usage-shared-bridge',forecasts,demands,unresolved,replays,caliberLifetime,upstreamPairReplays,setupInstructions,allocations:[],complete:false,annualComplete:false,operationAuthorized:false,writeAllowed:false};
  const same=x=>x&&x.snapshotId===s.snapshotId&&x.sourceRevision===s.sourceRevision&&str(x.basis);
  const hold=(g,reason,required=null)=>unresolved.push({id:g?.id??null,stands:g?.stands??[],requiredExchange:required,reason,operationAuthorized:false});
- if(s.anonymousOnly!==true||!str(s.snapshotId)||!str(s.sourceRevision)||!date(s.asOf)||!date(s.throughDate)||s.throughDate<s.asOf){groups.forEach(g=>hold(g,'匿名・版・期間未確認'));return base;}
+ if(s.anonymousOnly!==true||!str(s.snapshotId)||!str(s.sourceRevision)||!date(s.asOf)||!date(s.throughDate)||s.throughDate<s.asOf){rawGroups.forEach(g=>hold(g,'匿名・版・期間未確認'));return base;}
  const days=Array.isArray(s.days)?s.days:[],slots=Array.isArray(s.slots)?s.slots:[],paired=Array.isArray(s.pairedInputs)?s.pairedInputs:[];
- const covered=groups.flatMap(g=>Array.isArray(g?.stands)?g.stands.map(key):[]);
+ const covered=rawGroups.flatMap(g=>Array.isArray(g?.stands)?g.stands.map(key):[]);
  const cleanDays=days.every(d=>same(d)&&d.dateRowVerified===true&&d.recordKind==='plan');
  const candidates=slots.filter(t=>days.some(d=>d?.date===t?.date&&d.productionAmount===0&&(!d.productionByTeam||['A','B'].every(k=>d.productionByTeam[k]==null||d.productionByTeam[k]===0))));
  const capacity=Object.fromEntries(days.filter(d=>Number.isInteger(d.exchangeCapacity)&&d.exchangeCapacity>0).map(d=>[d.date,d.exchangeCapacity]));
  const pairContexts=new Map();
- for(const g of groups){
-  if(!same(g)||!str(g.id)||groups.filter(x=>x?.id===g.id).length!==1||!Array.isArray(g.stands)||g.stands.some(k=>covered.filter(x=>x===key(k)).length!==1)||!Array.isArray(g.members)||g.members.some(m=>!same(m)||!str(m.generation))||!cleanDays){hold(g,'個体・版・日別計画・重複未確認');continue;}
+ for(const raw of rawGroups){
+  const normalized=deriveUpperGroup(s,raw,api);
+  if(normalized.status!=='not-applicable')caliberLifetime.push({id:raw?.id,...normalized,group:undefined});
+  if(normalized.status==='held'){hold(raw,normalized.reason);continue;}
+  const g=normalized.group;groups.push(g);
+  if(!same(g)||!str(g.id)||rawGroups.filter(x=>x?.id===g.id).length!==1||!Array.isArray(g.stands)||g.stands.some(k=>covered.filter(x=>x===key(k)).length!==1)||!Array.isArray(g.members)||g.members.some(m=>!same(m)||!str(m.generation))||!cleanDays){hold(g,'個体・版・日別計画・重複未確認');continue;}
   const f=api.deriveFirstMonthlyExchange({referenceDate:s.asOf,throughDate:s.throughDate,days,group:g});
   forecasts.push(f);
   if(f.status==='not-due-in-window')continue;
@@ -67,7 +72,7 @@ function previewUsageSharedBridge(input,api){
   if(!ok){hold(g,r.reason||'割当後共同交換再照合未成立',true);replays.push({id:a.id,allocation:a,status:'held',reason:r.reason,operationAuthorized:false});continue;}
   const replay={id:a.id,allocation:a,status:'conditional-pair-replay',projectedRoles:r.projectedRoles,handovers:r.handovers,dispositions:r.dispositions,emergencyReserveByStand:r.emergencyReserveByStand,requiresFullPathlineRecalculation:true,requiresUsageReplay:true,operationAuthorized:false};
   if(['6,7','8,9','10,11'].includes(a.stands.join(','))){
-   const u=replayUpstreamPair(s,a,replay,api);upstreamPairReplays.push({...u,id:a.id});
+   const u=replayUpstreamPair({...s,groups},a,replay,api);upstreamPairReplays.push({...u,id:a.id});
    if(u.status!=='conditional-upstream-pair-preview'){hold(g,u.reason,true);replay.status='held';replay.reason=u.reason;}
   }
   replays.push(replay);
