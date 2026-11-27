@@ -16,6 +16,11 @@ function selfTest(preview,api){
  const ev=(from,to,n1,n2)=>({confirmed:true,snapshotId,sourceRevision,size:'D13',grade,fromIdentity:id(from,n1),toIdentity:id(to,n2),basis:'anonymous'});
  const d13={...base,size:'D13',selection:{13:[3],14:[3],15:[3],16:[3],17:[3]},approachEvidence:[ev(13,14,3,3),ev(13,14,3,4)],foldEvidence:[ev(15,16,3,3),ev(15,16,3,4),ev(15,16,4,3),ev(15,16,4,4)]};
  const d13r=run(d13);
+ const offsets=(w,e)=>({...base,masterRows:ms.map(x=>x.stand===17?{...x,calibers:x.calibers.map(c=>c.number===2?{...c,centerMm:100+w}:c.number===6?{...c,centerMm:400+e}:c)}:x)});
+ const single=run(offsets(30,40));
+ const both=run(offsets(40,40));
+ const currentValid={...offsets(30,40),usageRows:usageRows.map(u=>u.stand===17?{...u,runs:0}:u),selection:{...base.selection,17:[2,6]}};
+ const d13Offset={...d13,masterRows:ms.map(x=>x.stand===17?{...x,calibers:x.calibers.map(c=>c.number===3?{...c,centerMm:166}:c)}:x)};
  const before=JSON.stringify(base);
  const tests=[
  ['second downstream pair unlocked by #16 change',r.preferred?.selection['16'].join(',')==='2,6'&&r.preferred?.selection['17'].join(',')==='2,6'],
@@ -35,6 +40,11 @@ function selfTest(preview,api){
  ['unknown position no false optimum',run(master(17,x=>{x.calibers[5].centerMm=null;return x})).searchComplete===false],
  ['damaged pair excluded',run(patch(17,6,{available:false})).preferred===null],
  ['missing online not zero',run({...base,onlineRows:onlineRows.slice(1)}).status==='unconfirmed'],
+ ['nonzero D10 both lanes valid without #16 exchange',single.preferred?.changes.map(x=>x.join('/')).join(',')==='17'&&single.preferred.checks.filter(c=>c.segment==='16→17').map(c=>c.deltaMm).join(',')==='30,40'],
+ ['40 inclusive both lanes',both.preferred?.changeCount===1&&both.preferred.maxDownstreamDeltaMm===40],
+ ['one side beyond 40 requires other combination',run(offsets(30,40.1)).preferred?.changeCount===2],
+ ['keep valid nonzero current selection instead of zero difference',run(currentValid).preferred?.changeCount===0&&run(currentValid).preferred.maxDownstreamDeltaMm===40],
+ ['D13 nonzero current selection retained',run(d13Offset).preferred?.changeCount===0&&run(d13Offset).preferred.maxDownstreamDeltaMm===36],
  ['no operation authorization',!r.operationAuthorized&&!r.writeAllowed],
  ['no mutation',JSON.stringify(base)===before]
  ];
