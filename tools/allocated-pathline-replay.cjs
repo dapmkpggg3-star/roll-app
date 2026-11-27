@@ -1,5 +1,6 @@
 'use strict';
 // R18/R20: replay actual master arithmetic after shared allocation; no operation authorization.
+const {previewSingleAllocated}=require('./shared-single-exchange.cjs');
 const {previewUsageSharedBridge}=require('./usage-shared-bridge.cjs');
 const {previewLinked1217}=require('./linked-12-17-combinations.cjs');
 const {resolveOnlineCaliberMaster}=require('./individual-caliber-master.cjs');
@@ -34,8 +35,9 @@ function previewAllocatedPathline(input,api){
  const choose=state=>{const q=previewLinked1217(state,api);return {q,chosen:q.searchComplete?q.candidates.find(x=>x.changeCount===0&&x.remainingRuns>=1):null};};
  for(const d of days){
   for(const a of pending.filter(a=>a.date===d.date)){
-   const replay=r.replays.find(x=>x.id===a.id),req=choices.filter(x=>x?.demandId===a.id),e=req[0];
-   if(d.productionAmount!==0||a.workType!=='rollChange'||!['12,13','14,15'].includes(a.stands.join(','))||replay?.status!=='conditional-pair-replay')return finish('今回未接続の下流交換・停止条件 '+a.id);
+   const single=a.stands.length===1&&['16','17'].includes(a.stands[0]);
+   const replay=single?previewSingleAllocated(s,a,api):r.replays.find(x=>x.id===a.id),req=choices.filter(x=>x?.demandId===a.id),e=req[0];
+   if(d.productionAmount!==0||a.workType!=='rollChange'||!(single?replay?.status==='conditional-single-replay':['12,13','14,15'].includes(a.stands.join(','))&&replay?.status==='conditional-pair-replay'))return finish('今回未接続の下流交換・停止条件 '+a.id);
    if(req.length!==1||!same(e)||e.date!==a.date||e.startMinute!==a.startMinute||e.endMinute!==a.endMinute||!e.selection||!e.oldIdentities||!e.newIdentities)return finish('割当時点の使用カリバ指定根拠未確認 '+a.id);
    const next=copy(online),sel=copy(selection);
    for(const k of a.stands){
@@ -48,7 +50,7 @@ function previewAllocatedPathline(input,api){
    const {q,chosen}=choose({...ctx(),onlineRows:next,selection:sel});
    if(!chosen)return finish('交換後の全パスライン・残直未成立 '+a.id+' '+q.issues.join('／'));
    online=next;selection=sel;
-   events.push({type:'allocated-pair-pathline-preview',id:a.id,date:a.date,startMinute:a.startMinute,endMinute:a.endMinute,oldIdentities:e.oldIdentities,newIdentities:e.newIdentities,selection:copy(sel),checks:copy(chosen.checks),remainingRuns:chosen.remainingRuns,operationAuthorized:false});
+   events.push({type:single?'allocated-single-pathline-preview':'allocated-pair-pathline-preview',id:a.id,date:a.date,startMinute:a.startMinute,endMinute:a.endMinute,oldIdentities:e.oldIdentities,newIdentities:e.newIdentities,selection:copy(sel),checks:copy(chosen.checks),remainingRuns:chosen.remainingRuns,operationAuthorized:false});
   }
   if(d.productionAmount===0)continue;
   if(d.size!==c.size||d.grade!==c.grade||d.shiftEvidenceVerified!==true||![d.shift1Team,d.shift3Team].filter(x=>x==='A'||x==='B').length||[d.shift1Team,d.shift3Team].filter(x=>x==='A'||x==='B').length!==1||typeof d.operatingHours!=='number'||!Number.isFinite(d.operatingHours)||d.operatingHours<=0||d.operatingHours>24||d.operatingHours>=2&&d.operatingHours<4)return finish('単一勤・同サイズ鋼種・使用時間未確認 '+d.date);

@@ -1,5 +1,6 @@
 'use strict';
 // Anonymous PC-only shared workshop allocation after a verified physical pathline replay.
+const {previewSingleAllocated,previewSingleDisposition}=require('./shared-single-exchange.cjs');
 const {previewAllocatedPathline}=require('./allocated-pathline-replay.cjs');
 const str=x=>typeof x==='string'&&x.trim().length>0;
 const date=x=>typeof x==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(x)&&Number.isFinite(Date.parse(x+'T00:00:00Z'))&&new Date(Date.parse(x+'T00:00:00Z')).toISOString().slice(0,10)===x;
@@ -12,9 +13,15 @@ function previewSharedWorkshop(input,api){
  const base={status:'shared-workshop-preview',allocations,held,dispositions,projectedRoles,warnings,complete:false,annualComplete:false,operationAuthorized:false,writeAllowed:false};
  const same=x=>x&&x.snapshotId===s.snapshotId&&x.sourceRevision===s.sourceRevision&&str(x.basis);
  const pairs=Array.isArray(s.pairedInputs)?s.pairedInputs:[],options=Array.isArray(s.workshopOptions)?s.workshopOptions:[],manual=Array.isArray(s.workshopReserved)?s.workshopReserved:null;
- const events=p.pathlineEvents.filter(e=>e.type==='allocated-pair-pathline-preview');
+ const events=p.pathlineEvents.filter(e=>['allocated-pair-pathline-preview','allocated-single-pathline-preview'].includes(e.type));
  const demand=[];
  for(const a of p.allocations.filter(a=>a.workType==='rollChange')){
+  if(a.stands.length===1&&['2','3','4','5','16','17'].includes(a.stands[0])){
+   const k=a.stands[0],r=previewSingleAllocated(s,a,api),upstream=+k<=5,event=events.find(e=>e.id===a.id&&e.date===a.date&&e.startMinute===a.startMinute&&e.endMinute===a.endMinute),prefix=p.replays.find(x=>x.id===a.id);
+   if(r.status!=='conditional-single-replay'||(upstream?!(prefix?.usageAtAllocatedDate?.some(u=>u.rollId===JSON.parse(r.oldIdentity)[1])):!event)){held.push({demandId:a.id,stands:a.stands,reason:'単独個体・使用量またはパスライン未確認',oldReserveRetained:null});continue;}
+   const old=r.projectedRoles.find(x=>x.status==='used-standby'),next=r.projectedRoles.find(x=>x.status==='online'),target=r.projectedRoles.find(x=>x!==old&&x!==next);
+   demand.push({a,k,old,next,target,single:r,key:a.id+'|'+k});continue;
+  }
   const paired=pairs.filter(q=>q&&a.stands.includes(String(q.stand)));
   if(paired.length!==1){held.push({demandId:a.id,stands:a.stands,reason:'単独等の物理引継ぎ未接続',oldReserveRetained:null});continue;}
   const q=paired[0],event=events.find(e=>e.id===a.id&&e.date===a.date&&e.startMinute===a.startMinute&&e.endMinute===a.endMinute);
@@ -55,6 +62,13 @@ function previewSharedWorkshop(input,api){
  const patched=pairs.map(q=>({...q,assemblies:demand.filter(d=>d.q===q&&selected.has(d.key)).map(d=>selected.get(d.key))}));
  const replay=previewAllocatedPathline({...s,pairedInputs:patched},api);
  for(const d of demand){
+  if(d.single){
+   const fresh=previewSingleAllocated(s,d.a,api),upstream=+d.k<=5,event=replay.pathlineEvents.find(e=>e.type==='allocated-single-pathline-preview'&&e.id===d.a.id&&e.date===d.a.date&&e.startMinute===d.a.startMinute&&e.endMinute===d.a.endMinute),prefix=replay.replays.find(x=>x.id===d.a.id),a=allocations.find(x=>x.demandId===d.a.id&&x.stand===d.k);
+   if(fresh.status!=='conditional-single-replay'||(!upstream&&!event)||(upstream&&!prefix?.usageAtAllocatedDate?.some(u=>u.rollId===d.old.rollId))){if(a)a.status='held';held.push({demandId:d.a.id,stand:d.k,reason:'単独交換再照合未成立',oldReserveRetained:null});continue;}
+   const out=previewSingleDisposition(s,d.a,fresh,selected.get(d.key),api);
+   if(a)a.status='conditional-assembly';
+   projectedRoles.push(...out.roles);dispositions.push({...out.disposition,demandId:d.a.id,upstreamFitEvidenceOnly:upstream});continue;
+  }
   const event=replay.pathlineEvents.find(e=>e.type==='allocated-pair-pathline-preview'&&e.id===d.a.id&&e.date===d.a.date&&e.startMinute===d.a.startMinute&&e.endMinute===d.a.endMinute);
   const r=replay.replays.find(x=>x.id===d.a.id),a=allocations.find(x=>x.demandId===d.a.id&&x.stand===d.k),h=r?.handovers?.find(x=>x.stand===d.k),disp=r?.dispositions?.find(x=>x.stand===d.k);
   if(!event){if(a)a.status='held';if(!held.some(x=>x.demandId===d.a.id&&x.stand===d.k))held.push({demandId:d.a.id,stand:d.k,reason:'再計算で交換未成立',oldReserveRetained:null});continue;}
@@ -62,6 +76,6 @@ function previewSharedWorkshop(input,api){
   if(valid){a.status='conditional-assembly';projectedRoles.push(...r.projectedRoles.filter(x=>String(x.stand)===d.k).map(x=>({...x})));if(disp)dispositions.push({...disp,demandId:d.a.id});}
   else {if(a)a.status='held';if(!held.some(x=>x.demandId===d.a.id&&x.stand===d.k))retain(d,'工作引継ぎ再計算未成立');projectedRoles.push({...d.old,status:'used-standby'},{...d.next,status:'online'},{...d.target});if(disp?.procurement)dispositions.push({...disp,demandId:d.a.id,rework:undefined});}
  }
- return {...base,exchangeUnresolved:replay.unresolved,uncoveredStands:replay.uncoveredStands,pathlineComplete:replay.pathlineComplete,pathlineIssues:replay.pathlineIssues,verifiedExchangeEvents:replay.pathlineEvents,pairedWorkshopComplete:demand.length>0&&!held.some(h=>demand.some(d=>d.a.id===h.demandId))&&allocations.every(a=>a.status==='conditional-assembly'),workshopComplete:replay.allocationComplete===true&&demand.length>0&&held.length===0&&allocations.every(a=>a.status==='conditional-assembly'),scope:'verified paired exchanges only; global shared workshop capacity, no assumed parallel work'};
+ return {...base,exchangeUnresolved:replay.unresolved,uncoveredStands:replay.uncoveredStands,pathlineComplete:replay.pathlineComplete,pathlineIssues:replay.pathlineIssues,verifiedExchangeEvents:replay.pathlineEvents,pairedWorkshopComplete:demand.some(d=>!d.single)&&!held.some(h=>demand.some(d=>!d.single&&d.a.id===h.demandId))&&allocations.filter(a=>demand.some(d=>!d.single&&d.a.id===a.demandId)).every(a=>a.status==='conditional-assembly'),workshopComplete:replay.allocationComplete===true&&demand.length>0&&held.length===0&&allocations.every(a=>a.status==='conditional-assembly'),scope:'paired and supported single exchanges; upstream fit evidence only; shared workshop capacity, no assumed parallel work'};
 }
 module.exports={previewSharedWorkshop};
