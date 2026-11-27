@@ -34,7 +34,7 @@ function selfTest(workshop,bridge,paired,api){
  ['6/7 new 400t and 1 straight',use('paired-6-7','7')?.tons===400&&use('paired-6-7','7')?.calibers[0].runs===1],
  ['8/9 5265t without inferred straight',use('paired-8-9','8')?.limit.tons===5265&&use('paired-8-9','8')?.limit.runs===null&&use('paired-8-9','8')?.tons===400],
  ['10/11 8 straight and 1 new straight',use('paired-10-11','10')?.limit.runs===8&&use('paired-10-11','10')?.calibers[0].runs===1],
- ['old usage retained separate',u('paired-10-11')?.openingUsage.every(z=>z.calibers[0].runs===8)],
+ ['old usage retained separate',u('paired-10-11')?.openingUsage?.every(z=>z.calibers[0].runs===8)],
  ['six workshop allocations and 18 roles',r.allocations.length===6&&r.projectedRoles.length===18],
  ['one emergency standby per stand', [6,7,8,9,10,11].every(k=>r.projectedRoles.filter(z=>String(z.stand)===String(k)&&z.status!=='online'&&z.chockAssembled&&z.emergencyEligible).length===1)],
  ['20 day rework upstream',r.dispositions.find(z=>z.stand==='6')?.rework?.expectedInboundDate==='2027-05-05'],
