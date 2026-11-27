@@ -10,9 +10,9 @@ function selfTest(preview,pathline,bridge,paired,linked,api){
  const noAlt=run({workshopOptions:[a,b]}),manual=run({workshopReserved:[{...v,id:'other-stand',date:'2027-04-06',startHour:8,endHour:16}]});
  const missing=run({workshopReservationsVerified:false}),bad=run({pathline:{...x.pathline,link1213Evidence:[]}});
  const tests=[
- ['same shared slot not double booked',r.allocations.length===2&&forStand(r,'13')?.date==='2027-04-06'&&!forStand(r,'12')],
+ ['same shared slot not double booked',r.allocations.length===1&&forStand(r,'13')?.date==='2027-04-06'&&!forStand(r,'12')],
  ['explicit priority target and held old spare',held(r,'12')?.oldReserveRetained===true&&roles(r,'12').some(z=>z.status==='used-standby'&&z.chockAssembled&&z.emergencyEligible)],
- ['alternative slot with both allocated',(()=>{const t=run({workshopTargets:[]});return t.workshopComplete&&forStand(t,'12')?.date==='2027-04-06'&&forStand(t,'13')?.date==='2027-04-07'})()],
+ ['alternative slot with both allocated',(()=>{const t=run({workshopTargets:[]});return t.pairedWorkshopComplete&&!t.workshopComplete&&forStand(t,'12')?.date==='2027-04-06'&&forStand(t,'13')?.date==='2027-04-07'})()],
  ['no alternate retains spare',held(noAlt,'12')?.emergencyReserveCount===1],
  ['manual reservation for other stand blocks',forStand(manual,'13')?.date==='2027-04-07'&&held(manual,'12')?.oldReserveRetained],
  ['late target warning',manual.warnings.some(z=>z.stand==='13'&&z.kind==='組替目標日超過')],
@@ -28,9 +28,9 @@ function selfTest(preview,pathline,bridge,paired,linked,api){
  ['no future receipt as actual',held(run({workshopOptions:[{...a,request:{...a.request,receipt:{...a.request.receipt,date:'2027-04-02'}}},b,alt]}),'12')?.oldReserveRetained],
  ['missing calendar evidence held',run({workshopDays:[]}).allocations.length===0],
  ['no authorization',!r.complete&&!r.annualComplete&&!r.writeAllowed&&!r.operationAuthorized&&r.allocations.every(a=>!a.actualCompletion)],
+ ['unallocated exchange not lost',run({slots:[x.slots[1]]}).exchangeUnresolved.some(u=>u.id===did&&u.requiredExchange===true)],
  ['input unchanged',JSON.stringify(x)===before]];
- // First test expects the priority case to schedule #13 only (no #12 alternative).
- tests[0][1]=r.allocations.length===1&&forStand(r,'13')?.date==='2027-04-06'&&!forStand(r,'12');
+
  return {tests,result:r,alternate:run({workshopTargets:[]}),manual};
 }
 module.exports={selfTest};
