@@ -17,8 +17,15 @@ function replayUpstreamPair(s,a,r,api){
  const groups=(s.groups||[]).filter(g=>g?.id===a.id),contexts=(s.pairedInputs||[]).filter(p=>a.stands.includes(String(p?.stand)));
  if(groups.length!==1||contexts.length!==1)return hold('共同交換入力未確認');
  const g=groups[0],p=contexts[0],days=s.days||[];
- const opening=api.deriveFirstMonthlyExchange({referenceDate:s.asOf,throughDate:a.date,days:days.filter(d=>d.date<=a.date),group:g});
- if(opening.status!=='not-due-in-window'||!Array.isArray(opening.usage))return hold('割当日までの使用量・上限未確認');
+ let opening=api.deriveFirstMonthlyExchange({referenceDate:s.asOf,throughDate:a.date,days:days.filter(d=>d.date<=a.date),group:g});
+ // At an exact limit, the prefix reports 'next operation unknown' rather than usage.
+ // Recover the identical verified usage from the full demand calculation only when
+ // the first actual planned production after reaching the limit is later than this allocation.
+ if(opening.status==='unresolved'&&opening.reason==='計画基準到達・次回操業日未確認'&&opening.reached){
+  const full=api.deriveFirstMonthlyExchange({referenceDate:s.asOf,throughDate:s.throughDate,days,group:g});
+  if(full.status==='required'&&full.demand?.latestDate>a.date&&full.reached?.date===opening.reached.date&&full.reason==='前操業で計画基準到達・次の操業前に交換'&&Array.isArray(full.usage))opening={...opening,status:'verified-prefix-at-limit',usage:full.usage};
+ }
+ if(!['not-due-in-window','verified-prefix-at-limit'].includes(opening.status)||!Array.isArray(opening.usage))return hold('割当日までの使用量・上限未確認');
  const choices=p.replacementUsage;
  if(!Array.isArray(choices)||choices.length!==2)return hold('交換先の使用開始条件未確認');
  const newMembers=[],oldIdentities={},newIdentities={};
