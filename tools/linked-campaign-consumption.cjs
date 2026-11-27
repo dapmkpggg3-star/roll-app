@@ -7,8 +7,8 @@ function previewLinkedCampaign(input,api){
  const str=x=>typeof x==='string'&&x.trim().length>0;
  const key=(k,r,g,n)=>JSON.stringify([String(k),r,g,n]);
  const copy=x=>JSON.parse(JSON.stringify(x));
- let usageRows=[],selection=null,operatingRuns=0,prev=null;
- const finish=(status)=>({status,complete:status==='campaign-preview-complete',events,unresolved,operatingRuns,endingUsage:usageRows,endingSelection:selection,operationAuthorized:false,writeAllowed:false});
+ let usageRows=[],selection=null,operatingRuns=0,prev=null,currentSize=s.size;
+ const finish=(status)=>({status,complete:status==='campaign-preview-complete',events,unresolved,operatingRuns,endingUsage:usageRows,endingSelection:selection,endingSize:currentSize,operationAuthorized:false,writeAllowed:false});
  const hold=(reason,period=null,extra={})=>{unresolved.push({periodId:period?.id??null,date:period?.date??null,reason,...extra});return finish('campaign-preview-held');};
  if(s.anonymousOnly!==true||!['D10','D13'].includes(s.size)||s.grade!=='SD295'||s.timelineVerified!==true||!str(s.timelineBasis)||!Array.isArray(s.periods)||!s.periods.length||s.periods.length>1000||!Array.isArray(s.usageRows))return hold('対象・SD295単一キャンペーン・連続時系列未確認');
  const localDate=t=>new Date((t+540)*60000).toISOString().slice(0,10);
@@ -27,6 +27,16 @@ function previewLinkedCampaign(input,api){
  const masters=['12','13','14','15','16','17'].map(k=>resolveOnlineCaliberMaster(s,k));
  if(masters.some(r=>r.status!=='resolved'))return hold('開始時オンライン個体・配置未確認');
  selection=copy(s.selection||{});usageRows=copy(s.usageRows);
+ const mixed=s.mixedSizePreview===true;
+ const ready=e=>e&&str(e.basis)&&e.preparationReady===true&&e.reserveReady===true&&e.pairReady===true&&e.additionalReady===true&&e.safetyBlocked===false;
+ const sizeFit=(stop,p)=>{
+  const e=stop?.sizeChangeEvidence;
+  const all=['12','13','14','15','16','17'];
+  const effort=api.monthlyExchangeEffort('sizeChange',all,p.size);
+  const minutes=e?.redPassIncluded===true?360:effort?.minutes;
+  if(!stop||stop.type!=='stop'||stop.end!==p.start||stop.lineStopped!==true||stop.dateRowVerified!==true||!['常昼','Ⅰ勤A','Ⅰ勤B','Ⅲ勤A','Ⅲ勤B'].includes(stop.team)||stop.date!==localDate(stop.end-1)||!ready(e)||e.fromSize!==currentSize||e.toSize!==p.size||e.snapshotId!==s.snapshotId||e.sourceRevision!==s.sourceRevision||!Array.isArray(e.stands)||e.stands.slice().sort().join(',')!==all.join(',')||e.upstreamReady!==true||!Number.isFinite(minutes)||stop.end-stop.start<minutes)return null;
+  return {minutes,basis:e.basis};
+ };
  const canFit=(candidate,stop,p)=>{
   if(!stop||stop.type!=='stop'||stop.end!==p.start||stop.dateRowVerified!==true||stop.lineStopped!==true||!['常昼','Ⅰ勤A','Ⅰ勤B','Ⅲ勤A','Ⅲ勤B'].includes(stop.team)||!Number.isInteger(stop.capacity)||stop.capacity<=0||!str(stop.capacityBasis)||!Array.isArray(stop.eligibility)||stop.date!==localDate(stop.end-1)||candidate.columnChange||candidate.referenceMinutes>stop.end-stop.start||candidate.changeCount>stop.capacity)return false;
   return candidate.changes.every(group=>{
@@ -37,13 +47,24 @@ function previewLinkedCampaign(input,api){
  };
  for(const p of s.periods){
   if(p.type!=='production'){prev=p;continue;}
-  if(p.size!==s.size||p.grade!==s.grade)return hold('サイズ・鋼種切替は未接続',p);
+  if(p.grade!==s.grade)return hold('鋼種切替の作業・使用時間根拠未確認',p);
+  const sizeChanged=p.size!==currentSize;
+  let sizeChange=null,targetSelection=selection;
+  if(sizeChanged){
+   if(!mixed)return hold('サイズ・鋼種切替は未接続',p);
+   sizeChange=sizeFit(prev,p);
+   if(!sizeChange)return hold('サイズ替停止枠・赤通し・上流準備未確認',p,{requiredSizeChange:true,fromSize:currentSize,toSize:p.size});
+   const evidence=p.targetSelectionEvidence;
+   if(!evidence||evidence.confirmed!==true||!str(evidence.basis)||evidence.snapshotId!==s.snapshotId||evidence.sourceRevision!==s.sourceRevision||evidence.size!==p.size||!evidence.selection)return hold('サイズ替後の個体別候補根拠未確認',p,{requiredSizeChange:true});
+   targetSelection=evidence.selection;
+  }
   if(p.productionMinutes>=120&&p.productionMinutes<240)return hold('2〜4h未満は提案のみ・確定消費しない',p);
   const runs=p.productionMinutes>=240?1:0;
-  const search=previewLinked1217({...s,selection,usageRows},api);
+  const search=previewLinked1217({...s,size:p.size,selection:targetSelection,usageRows},api);
   const candidates=search.candidates||[];
   const current=candidates.find(c=>c.changeCount===0&&c.remainingRuns>=1);
   let chosen=current;
+  if(sizeChanged&&!chosen)return hold('サイズ替後の指定候補が不成立・要再選定',p,{requiredSizeChange:true,issues:search.issues||[]});
   if(!chosen){
    const required={requiredExchange:true,candidateCount:candidates.length,searchComplete:search.searchComplete===true,issues:search.issues||[]};
    // Unknown does not prove exhaustion, and a column switch requires upstream approval.
@@ -53,7 +74,7 @@ function previewLinkedCampaign(input,api){
   }
   const d=chosen.detail;
   const updates=new Map();
-  if(!Array.isArray(d)||d.length!==(s.size==='D10'?8:6))return hold('選択カリバ本数不一致',p);
+  if(!Array.isArray(d)||d.length!==(p.size==='D10'?8:6))return hold('選択カリバ本数不一致',p);
   for(const c of d){
    const k=key(c.stand,c.rollId,c.generation,c.number);
    const records=usageRows.filter(u=>u&&key(u.stand,u.rollId,u.generation,u.number)===k);
@@ -61,11 +82,12 @@ function previewLinkedCampaign(input,api){
    updates.set(k,{stand:c.stand,rollId:c.rollId,generation:c.generation,number:c.number,before:c.runs,after:c.runs+runs,limit:c.limit});
   }
   // An exchange is committed only in this synthetic forecast after all checks.
-  if(chosen.changeCount>0)events.push({type:'caliber-exchange-preview',periodId:prev.id,date:prev.date,forPeriod:p.id,from:copy(selection),to:copy(chosen.selection),changes:copy(chosen.changes),referenceMinutes:chosen.referenceMinutes,capacityBasis:prev.capacityBasis,checks:copy(chosen.checks),operationAuthorized:false});
-  selection=copy(chosen.selection);
+  if(sizeChanged)events.push({type:'size-exchange-preview',periodId:prev.id,date:prev.date,forPeriod:p.id,fromSize:currentSize,toSize:p.size,from:copy(selection),to:copy(chosen.selection),referenceMinutes:sizeChange.minutes,basis:sizeChange.basis,countsAgainstCaliberCapacity:false,checks:copy(chosen.checks),operationAuthorized:false});
+  else if(chosen.changeCount>0)events.push({type:'caliber-exchange-preview',periodId:prev.id,date:prev.date,forPeriod:p.id,from:copy(selection),to:copy(chosen.selection),changes:copy(chosen.changes),referenceMinutes:chosen.referenceMinutes,capacityBasis:prev.capacityBasis,checks:copy(chosen.checks),operationAuthorized:false});
+  selection=copy(chosen.selection);currentSize=p.size;
   usageRows=usageRows.map(u=>{const v=updates.get(key(u?.stand,u?.rollId,u?.generation,u?.number));return v?{...u,runs:v.after}:u;});
   operatingRuns+=runs;
-  events.push({type:'production-preview',periodId:p.id,date:p.date,productionMinutes:p.productionMinutes,operatingRuns:runs,selection:copy(selection),consumption:[...updates.values()],reached:[...updates.values()].filter(v=>v.after===v.limit),operationAuthorized:false});
+  events.push({type:'production-preview',periodId:p.id,date:p.date,size:p.size,grade:p.grade,productionMinutes:p.productionMinutes,operatingRuns:runs,selection:copy(selection),consumption:[...updates.values()],reached:[...updates.values()].filter(v=>v.after===v.limit),operationAuthorized:false});
   prev=p;
  }
  return finish('campaign-preview-complete');
