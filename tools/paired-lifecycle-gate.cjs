@@ -1,0 +1,52 @@
+'use strict';
+const {assessDiameterLife}=require('./annual-diameter-gate.cjs');
+const pairs=[['6','7'],['8','9'],['10','11'],['12','13'],['14','15']];
+const str=x=>typeof x==='string'&&x.trim().length>0;
+const date=x=>typeof x==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(x)&&Number.isFinite(Date.parse(x+'T00:00:00Z'))&&new Date(Date.parse(x+'T00:00:00Z')).toISOString().slice(0,10)===x;
+const id=r=>JSON.stringify([String(r.stand),r.rollId,r.generation]);
+const broken=r=>r.condition==='broken'||r.ledgerStatus==='折損'||r.spareKind==='折損';
+function previewPairedLifecycle(input,api){
+ const s=input||{},pair=pairs.find(p=>p.includes(String(s.stand)))||[],size=s.size;
+ const base={status:'held',pair,size,individual:[],allocation:null,projectedRoles:null,requiredExchange:null,automaticPairRelease:false,operationAuthorized:false,writeAllowed:false,annualComplete:false};
+ const hold=(reason,status='held',extra={})=>({...base,status,reason,...extra});
+ if(s.anonymousOnly!==true||!pair.length||!['D10','D13'].includes(size)||!date(s.asOf)||!str(s.snapshotId)||!str(s.sourceRevision)||!str(s.basis))return hold('匿名・ペア・版・サイズ未確認');
+ const ms=s.members;
+ if(!Array.isArray(ms)||ms.length!==2||pair.some(k=>ms.filter(m=>m&&String(m.stand)===k).length!==1))return hold('ペア双方の個体情報未確認');
+ const all=[],individual=[];
+ for(const stand of pair){
+  const m=ms.find(m=>String(m.stand)===stand),rs=m.roles;
+  if(!Array.isArray(rs)||rs.length!==3||rs.some(r=>!r||String(r.stand)!==stand||!str(r.rollId)||!str(r.generation)||r.snapshotId!==s.snapshotId||r.sourceRevision!==s.sourceRevision||!str(r.basis))||new Set(rs.map(r=>r.rollId)).size!==3)return hold('個体・世代・版・3セット未確認','held',{individual});
+  const old=rs.filter(r=>r.status==='online'),spare=rs.filter(r=>r.status==='new-standby');
+  if(old.length!==1||spare.length!==1)return hold('オンライン・組込予備未確認','held',{individual});
+  const third=rs.find(r=>r!==old[0]&&r!==spare[0]);
+  if(!['rework','rework-ready','unassembled-return','new-unassembled'].includes(third.status)||third.chockAssembled!==false||third.emergencyEligible!==false)return hold('第3セットの状態未確認','held',{individual});
+  const d=m.diameter||{};
+  const life=d.identity===id(old[0])&&d.currentMm===old[0].diameterMm?assessDiameterLife({...s,diameter:d,history:m.diameterHistory}):{status:'held',reason:'現オンライン個体の径未確認'};
+  const due=m.deadline||{};
+  const dueOK=due.identity===id(old[0])&&due.snapshotId===s.snapshotId&&due.sourceRevision===s.sourceRevision&&due.required===true&&date(due.date)&&due.date>=s.asOf&&Number.isInteger(due.minute)&&due.minute>=0&&due.minute<=1440&&str(due.basis);
+  individual.push({stand,oldIdentity:id(old[0]),replacementIdentity:id(spare[0]),life,deadline:dueOK?{date:due.date,minute:due.minute,basis:due.basis}:null,brokenIdentities:rs.filter(broken).map(id),disposition:life.status==='final-use'?'successor-needed':life.status==='rework-candidate'?'rework-candidate':'review',actualDisposition:false});
+  all.push({stand,m,old:old[0],spare:spare[0],third});
+ }
+ const deadlines=individual.filter(x=>x.deadline).sort((a,b)=>a.deadline.date.localeCompare(b.deadline.date)||a.deadline.minute-b.deadline.minute);
+ const common={individual,requiredExchange:deadlines.length?true:null,earliestDeadline:deadlines[0]?.deadline??null};
+ const fail=(reason,status='held')=>hold(reason,status,common);
+ if(new Set(all.flatMap(x=>[x.old.rollId,x.spare.rollId,x.third.rollId])).size!==6)return fail('個体ID重複');
+ if(individual.some(x=>x.brokenIdentities.length))return fail('折損あり。正常共同交換と分け個体別確認','individual-review');
+ if(all.some(x=>x.old.chockAssembled!==true||x.old.emergencyEligible!==true||x.spare.chockAssembled!==true||x.spare.emergencyEligible!==true))return fail('交換前後の緊急予備未確認');
+ if(!deadlines.length)return fail('交換期限の根拠未確認');
+ const c=s.compatibility||{};
+ const exact=c.snapshotId===s.snapshotId&&c.sourceRevision===s.sourceRevision&&c.size===size&&str(c.basis)&&pair.every(k=>c.oldIdentities?.[k]===individual.find(x=>x.stand===k).oldIdentity&&c.replacementIdentities?.[k]===individual.find(x=>x.stand===k).replacementIdentity&&Number.isFinite(c.replacementDiameters?.[k])&&c.replacementDiameters[k]>0&&c.replacementDiameters[k]===all.find(x=>x.stand===k).spare.diameterMm);
+ if(!exact||c.status!=='compatible'||c.lineFitConfirmed!==true)return fail('交換先のセット適合・下流適合未確認','individual-review');
+ const d=deadlines[0].deadline;
+ const demand={id:'paired-'+pair.join('-'),stands:pair,workType:'rollChange',size,earliestDate:s.asOf,latestDate:d.date,latestMinute:d.minute,deadlineBasis:d.basis};
+ const slots=Array.isArray(s.slots)?s.slots.filter(Boolean).map(slot=>({...slot,eligibility:(Array.isArray(slot.eligibility)?slot.eligibility:[]).filter(e=>e?.demandId===demand.id&&e.snapshotId===s.snapshotId&&e.sourceRevision===s.sourceRevision&&e.compatibilityBasis===c.basis)})):[];
+ if(!s.exchangeCapacityByDate)return fail('日別交換可能件数未確認');
+ const plan=api.previewDeadlineFirstExchangePlan({demands:[demand],slots,exchangeCapacityByDate:s.exchangeCapacityByDate});
+ if(plan.allocations.length!==1)return {...fail('期限内共同停止枠未成立'),unresolved:plan.unresolved};
+ const allocation=plan.allocations[0];
+ const projectedRoles=all.flatMap(x=>[{...x.old,status:'used-standby'},{...x.spare,status:'online'},{...x.third}]);
+ const cuts=individual.map(x=>x.life.cut?.value);
+ const review=individual.some(x=>x.life.status==='held'||x.life.status==='boundary-review')||cuts[0]!==cuts[1]||individual[0].disposition!==individual[1].disposition;
+ return {...base,...common,status:'conditional-pair-exchange',allocation,projectedRoles,emergencyReserveByStand:Object.fromEntries(pair.map(k=>[k,1])),futurePairReview:review,reason:'共同ロール替候補。個体別改削・廃却・購入は別判定、将来適合未確定',actualExchange:false};
+}
+module.exports={previewPairedLifecycle};
