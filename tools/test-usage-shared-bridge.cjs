@@ -24,11 +24,12 @@ function selfTest(preview,paired,api){
  ['one slot retains pair demand',run({slots:[x.slots[1]]}).unresolved.some(u=>u.id===b.id&&u.requiredExchange===true)],
  ['wrong pair role generation held',run({groups:[a,{...b,members:b.members.map(m=>({...m,generation:'wrong'}))}]}).unresolved.some(u=>u.id===b.id)],
  ['missing pair state holds need',run({pairedInputs:[]}).unresolved.some(u=>u.id===b.id&&u.requiredExchange===true)],
- ['mismatch compatibility blocks replay',run({pairedInputs:[{...p,compatibility:{...p.compatibility,lineFitConfirmed:false}}]}).replays.some(u=>u.id===b.id&&u.status==='held')],
+ ['mismatch compatibility holds before allocation',(()=>{const q=run({pairedInputs:[{...p,compatibility:{...p.compatibility,lineFitConfirmed:false}}]});return q.unresolved.some(u=>u.id===b.id&&u.requiredExchange)&&!q.allocations.some(u=>u.id===b.id)})()],
  ['stale usage version held',run({groups:[{...a,members:[{...a.members[0],sourceRevision:'old'}]},b]}).unresolved.some(u=>u.id==='a')],
  ['duplicate stand held',run({groups:[a,{...a,id:'other'},b]}).unresolved.filter(u=>['a','other'].includes(u.id)).length===2],
  ['missing day no fabricated need',run({days:days.slice(1)}).demands.length===0],
  ['same-day production slot not used',run({days:days.map(d=>d.date==='2027-04-04'?{...d,productionAmount:100,shift1Team:'A',operatingHours:5}:d)}).allocations.every(a=>a.date!=='2027-04-04')],
+ ['all allocations clearly pending physical replay',r.allocations.every(a=>a.status==='proposal-replay-pending')],
  ['no input mutation',JSON.stringify(x)===before]];
  return {tests,result:r};
 }
