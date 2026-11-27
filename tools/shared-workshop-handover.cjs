@@ -62,6 +62,6 @@ function previewSharedWorkshop(input,api){
   if(valid){a.status='conditional-assembly';projectedRoles.push(...r.projectedRoles.filter(x=>String(x.stand)===d.k).map(x=>({...x})));if(disp)dispositions.push({...disp,demandId:d.a.id});}
   else {if(a)a.status='held';if(!held.some(x=>x.demandId===d.a.id&&x.stand===d.k))retain(d,'工作引継ぎ再計算未成立');projectedRoles.push({...d.old,status:'used-standby'},{...d.next,status:'online'},{...d.target});if(disp?.procurement)dispositions.push({...disp,demandId:d.a.id,rework:undefined});}
  }
- return {...base,pathlineComplete:replay.pathlineComplete,pathlineIssues:replay.pathlineIssues,verifiedExchangeEvents:replay.pathlineEvents,workshopComplete:demand.length>0&&held.length===0&&allocations.every(a=>a.status==='conditional-assembly'),scope:'verified paired exchanges only; global shared workshop capacity, no assumed parallel work'};
+ return {...base,exchangeUnresolved:replay.unresolved,uncoveredStands:replay.uncoveredStands,pathlineComplete:replay.pathlineComplete,pathlineIssues:replay.pathlineIssues,verifiedExchangeEvents:replay.pathlineEvents,pairedWorkshopComplete:demand.length>0&&!held.some(h=>demand.some(d=>d.a.id===h.demandId))&&allocations.every(a=>a.status==='conditional-assembly'),workshopComplete:replay.allocationComplete===true&&demand.length>0&&held.length===0&&allocations.every(a=>a.status==='conditional-assembly'),scope:'verified paired exchanges only; global shared workshop capacity, no assumed parallel work'};
 }
 module.exports={previewSharedWorkshop};
