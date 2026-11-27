@@ -47,7 +47,7 @@ function previewLinkedCampaign(input,api){
  };
  for(const p of s.periods){
   if(p.type!=='production'){prev=p;continue;}
-  if(p.grade!==s.grade)return hold('鋼種切替の作業・使用時間根拠未確認',p);
+  if(p.grade!==s.grade)return hold('鋼種切替の作業・使用時間根拠未確認',p,{requiredGradeReview:true,grade:p.grade,chargeCount:p.chargeCount??null,convertedRuns:null});
   const sizeChanged=p.size!==currentSize;
   let sizeChange=null,targetSelection=selection;
   if(sizeChanged){
@@ -92,4 +92,18 @@ function previewLinkedCampaign(input,api){
  }
  return finish('campaign-preview-complete');
 }
-module.exports={previewLinkedCampaign};
+// A one-charge plan is a separate unit, never an inferred production shift.
+function previewSD345ChargePlan(input,api){
+ const s=input||{}, p=s.chargePlan||{};
+ const str=x=>typeof x==='string'&&x.trim().length>0;
+ const base={size:'D10',grade:'SD345',convertedRuns:null,operationAuthorized:false,writeAllowed:false};
+ const hold=reason=>({...base,status:'unconfirmed',reason});
+ if(s.anonymousOnly!==true||p.size!=='D10'||p.grade!=='SD345'||p.chargeCount!==1||!str(p.basis)||!str(p.shiftId)||p.dateRowVerified!==true||typeof p.date!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(p.date)||!Number.isFinite(Date.parse(p.date+'T00:00:00Z'))||new Date(Date.parse(p.date+'T00:00:00Z')).toISOString().slice(0,10)!==p.date)return hold('仮予定・チャージ根拠未確認');
+ const e=p.targetSelectionEvidence;
+ if(!e||e.confirmed!==true||!str(e.basis)||e.snapshotId!==s.snapshotId||e.sourceRevision!==s.sourceRevision||e.size!=='D10'||e.grade!=='SD345'||!e.selection)return hold('SD345候補・個体版未確認');
+ const search=previewLinked1217({...s,size:'D10',grade:'SD345',selection:e.selection},api);
+ const chosen=search.candidates.find(c=>c.changeCount===0&&c.remainingRuns>=1);
+ if(!chosen)return hold('SD345鋼種・位置・残直候補未確認');
+ return {...base,status:'provisional-charge-plan',date:p.date,shiftId:p.shiftId,chargeCount:1,selection:chosen.selection,checks:chosen.checks,gradeTransitionReviewRequired:true,basis:p.basis};
+}
+module.exports={previewLinkedCampaign,previewSD345ChargePlan};
