@@ -11,6 +11,10 @@ function selfTest(preview,workshop,pathline,bridge,paired,linked,api){
  };
  const a=make(2,'a2','a',420),b=make(17,'r17','z17',420),old=b.roles[0],next=b.roles[1];
  x.singleInputs=[a,b];
+ // Pair is due at the following shift, not already exhausted before the first single exchange.
+ x.throughDate='2027-04-06';x.days.push({...x.days.at(-1),date:x.throughDate});
+ x.groups=x.groups.map(g=>g.id==='paired-12-13'?{...g,members:g.members.map(m=>String(m.standKey)==='13'?{...m,activeCalibers:m.activeCalibers.map(z=>({...z,runs:5}))}:m)}:g);
+ c.usageRows=c.usageRows.map(q=>q.rollId===x.pairedInputs[0].members[1].roles[0].rollId&&q.number===1?{...q,runs:5}:q);
  const g={...v,id:'z17',stands:['17'],workType:'rollChange',size:'D10',standPass:'pass',members:[{...v,standKey:'17',rollId:old.rollId,generation:'g1',usageBasis:'anon',remainingBasis:'anon',nextCaliberAvailable:false,columnBasis:'anon',activeCalibers:[{id:'1',runs:6,column:'西'},{id:'5',runs:6,column:'東'}]}]};
  x.groups.push(g);
  const demand=api.deriveFirstMonthlyExchange({referenceDate:x.asOf,throughDate:x.throughDate,days:x.days,group:g}).demand;
@@ -29,7 +33,7 @@ function selfTest(preview,workshop,pathline,bridge,paired,linked,api){
   return {...v,demandId:q.demandId,stand:String(k),request:{...template,...v,stand:k,oldIdentity:id(q.roles[0]),targetIdentity:id(target),receipt:{...template.receipt,identity:id(target)},slot:{...template.slot,date,owner:{rollId:target.rollId,standKey:k},preparedTarget:target.rollId},day:{...template.day,date},dispatchPlan:{...template.dispatchPlan,identity:id(q.roles[0]),cycleId:'cycle-'+k,date:'2027-04-10'}}};
  };
  const o2=option(a,'2027-04-08'),o17=option(b,'2027-04-07'),alt17=option(b,'2027-04-09');
- x.workshopOptions.push(o2,o17,alt17);x.workshopDays.push(...[o2,alt17].map(o=>({...v,...o.request.day,workshopWorking:true})));x.workshopTargets=[];
+ x.workshopOptions.push(o2,o17,alt17);x.workshopDays.push(...[o2,alt17].map(o=>({...v,...o.request.day,workshopWorking:true})));x.workshopTargets=['12','13'].map(stand=>({...v,demandId:'paired-12-13',stand,targetDate:'2027-04-06'}));
  const before=JSON.stringify(x),r=preview(x,api),p=pathline(x,api),run=q=>preview({...x,...q},api),rs=(out,k)=>out.projectedRoles.filter(y=>String(y.stand)===k);
  const held17=run({workshopOptions:x.workshopOptions.filter(o=>o.demandId!=='z17')});
  const bad=run({pathline:{...c,masterRows:c.masterRows.map(m=>m.rollId===next.rollId?{...m,calibers:m.calibers.map(z=>({...z,centerMm:z.centerMm+41}))}:m)}});
@@ -37,7 +41,7 @@ function selfTest(preview,workshop,pathline,bridge,paired,linked,api){
  ['single and pair line replay succeeds',p.pathlineComplete&&p.pathlineEvents.some(e=>e.type==='allocated-single-pathline-preview'&&e.id==='z17')],
  ['new individual count and selection',p.endingOnline.some(y=>y.rollId===next.rollId)&&p.endingSelection['17'].join(',')==='1,4'],
  ['old usage preserved',p.endingUsage.find(y=>y.rollId===old.rollId&&y.number===5)?.runs===6],
- ['new dual groove consumed',p.endingUsage.filter(y=>y.rollId===next.rollId&&[1,4].includes(y.number)).every(y=>y.runs===1)],
+ ['new dual groove consumed',p.endingUsage.filter(y=>y.rollId===next.rollId&&[1,4].includes(y.number)).every(y=>y.runs===2)],
  ['shared workshop allocation four sides',r.allocations.length===4&&new Set(r.allocations.map(a=>a.date)).size===4],
  ['single 17 moves off pair slot',r.allocations.find(a=>a.stand==='17')?.date==='2027-04-09'],
  ['single 2 joins shared workshop',r.allocations.find(a=>a.stand==='2')?.date==='2027-04-08'],
