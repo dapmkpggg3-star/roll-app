@@ -16,6 +16,10 @@ function selfTest(sequence,workshop,bridge,paired,api){
  const before=JSON.stringify(x),r=sequence(x,api),run=fn=>{const q=JSON.parse(JSON.stringify(x));fn(q);return sequence(q,api);};
  const e=r.events,finish=r.ending[0],old=e[2]?.oldGroup.members[0].caliberLedger.calibers,newLedger=finish?.group.members[0].caliberLedger;
  const no=run(q=>q.upperCaliberSelections.pop()),busy=run(q=>q.days.find(d=>d.date==='2027-04-18').reservedExchangeCount=1),bad=run(q=>q.upperCaliberSelections[1].members[0].nextId='1'),noRoll=run(q=>q.pairedInputs=[]),short=run(q=>{q.throughDate='2027-04-12';q.days=q.days.filter(d=>d.date<=q.throughDate);});
+ const conflict=run(q=>{
+  const g67=fixture.groups.find(g=>g.id==='paired-6-7'),p67=fixture.pairedInputs.find(p=>p.stand===6),e67=fixture.slots.find(t=>t.date==='2027-04-02').eligibility[0];
+  q.groups.push(g67);q.pairedInputs.push(p67);q.slots[0].eligibility.push(e67);
+ });
  const tests=[
  ['prior upstream regression',regression.tests.every(t=>t[1])],
  ['two caliber changes followed by roll replacement',e.length===3&&e.map(a=>a.workType).join(',')==='caliberChange,caliberChange,rollChange'&&r.sequenceComplete],
@@ -31,6 +35,8 @@ function selfTest(sequence,workshop,bridge,paired,api){
  ['cannot go back to used groove',bad.events.length===1&&bad.unresolved.length===1],
  ['missing spare proof blocks roll only',noRoll.events.length===2&&noRoll.unresolved[0]?.requiredExchange===true&&!noRoll.rollHandoverCandidates.length],
  ['period end usage written back into ledger',short.events.length===1&&short.ending[0]?.status==='period-end'&&short.ending[0].group.members[0].caliberLedger.calibers.find(c=>c.state==='active')?.tons===3200],
+ ['two pairs share one daily count',conflict.events.length===1&&conflict.events[0].id==='paired-6-7'&&conflict.unresolved.some(u=>u.id==='paired-8-9')],
+ ['6/7 earlier night retained in repeated planner',conflict.setupInstructions.length===1&&conflict.setupInstructions[0].date==='2027-03-31'],
  ['source untouched',JSON.stringify(x)===before],
  ['never full annual or operation authorization',!r.complete&&!r.annualComplete&&!r.operationAuthorized&&!r.writeAllowed]
  ];
