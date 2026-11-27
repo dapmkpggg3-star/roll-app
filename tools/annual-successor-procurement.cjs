@@ -1,0 +1,32 @@
+'use strict';
+const {previewAnnualDiameterGate}=require('./annual-diameter-gate.cjs');
+const {previewNextPhysicalCycle}=require('./second-physical-cycle.cjs');
+const str=x=>typeof x==='string'&&x.trim().length>0;
+const date=x=>typeof x==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(x)&&Number.isFinite(Date.parse(x+'T00:00:00Z'))&&new Date(Date.parse(x+'T00:00:00Z')).toISOString().slice(0,10)===x;
+const id=r=>JSON.stringify([String(r.stand),r.rollId,r.generation]);
+function previewSuccessorProcurement(input,api){
+ const s=input||{},a=s.actual||{},r=previewAnnualDiameterGate(s,api),p=r.purchaseNeed;
+ const out={...r,procurement:null,successorAdmission:null,operationAuthorized:false,writeAllowed:false};
+ if(!p)return out;
+ const stand=String(s.diameter.stand),lead=s.purchaseLead;
+ const l=lead==null?{...api.defaultStandLeadTime(stand),basis:'R12 暫定6か月'}:lead;
+ if(String(l.standKey)!==stand||!Number.isInteger(l.months)||l.months<1||l.months>120||!['confirmed','provisional'].includes(l.status)||!str(l.basis)||lead!=null&&l.sourceRevision!==a.sourceRevision)return {...out,unresolved:[...out.unresolved,'購入LT・単位・版未確認']};
+ const target=p.idealReadyBefore?api.addDays(p.idealReadyBefore,-1):null,latest=p.latestReadyBy;
+ const idealOrder=target?api.addMonths(target,-l.months):null,latestOrder=api.addMonths(latest,-l.months);
+ const next=s.successor||{},rs=a.currentRoles||[];
+ const known=rs.some(x=>x.rollId===next.rollId)||(a.masterRows||[]).some(x=>String(x.stand)===stand&&x.rollId===next.rollId);
+ const receiptOk=String(next.stand)===stand&&str(next.rollId)&&str(next.generation)&&!known&&next.identity===id(next)&&next.replacesIdentity===p.identity&&next.snapshotId===a.snapshotId&&next.sourceRevision===a.sourceRevision&&next.status==='actual'&&date(next.receiptDate)&&next.receiptDate<=a.asOf&&str(next.basis)&&next.present===true&&next.unassembled===true&&next.usable===true&&next.neverUsed===true&&next.chockAssembled===false;
+ const proc={status:'forecast-guidance',stand,replacesIdentity:p.identity,leadMonths:l.months,leadStatus:l.status,leadBasis:l.basis,idealArrivalBy:target,latestArrivalBy:latest,idealOrderBy:idealOrder,latestOrderBy:latestOrder,idealOrderMonth:idealOrder?.slice(0,7)??null,latestOrderMonth:latestOrder.slice(0,7),arrivalEvidence:receiptOk?'actual-receipt':'unverified',actualReceiptDate:receiptOk?next.receiptDate:null,idealReceiptMet:receiptOk&&target?next.receiptDate<=target:null,latestReceiptMet:receiptOk?next.receiptDate<=latest:null,orderWindow:receiptOk?'received':a.asOf>latestOrder?'latest-order-guide-passed':idealOrder&&a.asOf>idealOrder?'ideal-order-guide-passed':'within-known-order-guide',actualOrderDate:null,accountingMonth:null,issueMonth:null,reason:p.reason};
+ const base={...out,procurement:proc};
+ const hold=reason=>({...base,successorAdmission:{status:'held',reason,actualAdmission:false,issueMonth:null},unresolved:[...out.unresolved,reason]});
+ if(!receiptOk||next.receiptDate>latest)return hold('後継の実搬入・未使用・個体対応未確認');
+ if(r.life.status!=='final-use')return hold('廃却径同値のため後継加入保留');
+ const cycle=previewNextPhysicalCycle(s,api).nextCycle;
+ const h=cycle?.assemblyHandover,roles=cycle?.projectedRoles;
+ if(h?.status!=='conditional-assembly'||!Array.isArray(roles)||roles.length!==3||new Set(roles.map(x=>x.rollId)).size!==3||roles.filter(x=>String(x.stand)===stand).length!==3)return hold('中古予備の安全な引継ぎ未成立');
+ const old=roles.find(x=>id(x)===p.identity),online=roles.find(x=>x.status==='online'),spare=roles.find(x=>x.status==='new-standby');
+ if(!old||old.status!=='rework-ready'||old.chockAssembled!==false||!online||!spare||spare.chockAssembled!==true||spare.emergencyEligible!==true||h.emergencyReserveCount!==1)return hold('離脱後3セットの役割未確認');
+ const projected=roles.map(x=>x===old?{stand:next.stand,rollId:next.rollId,generation:next.generation,status:'new-unassembled',chockAssembled:false,emergencyEligible:false,neverUsed:true,basis:next.basis,snapshotId:a.snapshotId,sourceRevision:a.sourceRevision}: {...x});
+ return {...base,successorAdmission:{status:'conditional-admission',date:h.date,replacesIdentity:p.identity,successorIdentity:next.identity,projectedRoles:projected,projectedCount:3,emergencyReserveCount:1,actualAdmission:false,actualRetired:false,firstUseConfirmed:false,issueMonth:null,requiresCaliberMasterAndAssembly:true,operationAuthorized:false,writeAllowed:false},unresolved:[...out.unresolved,'新品の個体カリバ・組込・初回使用は未確認']};
+}
+module.exports={previewSuccessorProcurement};
