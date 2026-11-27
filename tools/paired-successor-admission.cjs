@@ -36,13 +36,15 @@ function previewPairedSuccessorAdmission(input,api){
   const v=n.firstUseEvidence;if(!v)continue;
   const evidence=e=>e&&e.status==='actual'&&e.snapshotId===v.snapshotId&&e.sourceRevision===v.sourceRevision&&str(e.basis)&&date(e.date)&&e.date<=v.asOf;
   const b=v.admission,t=v.intermediateExchange,w=v.assembly,z=v.firstRolling,rs=v.currentRoles,history=v.issueHistory;
+  const mateStand=r.pair.find(p=>p!==k), mateOpening=r.projectedRoles.find(q=>String(q.stand)===mateStand&&q.status==='online');
+  const mateId=x=>{try{const a=JSON.parse(x);return Array.isArray(a)&&a.length===3&&a[0]===mateStand&&str(a[1])&&str(a[2]);}catch{return false;}};
   const pairOK=e=>Array.isArray(e?.pair)&&e.pair.map(String).slice().sort().join(',')===r.pair.slice().sort().join(',')&&e.pairCompatibilityConfirmed===true&&str(e.compatibilityBasis);
   const fail=reason=>{result.firstUse={status:'held',reason};};
   if(v.anonymousOnly!==true||!date(v.asOf)||v.asOf<h.date||!str(v.snapshotId)||v.snapshotId===s.snapshotId||!str(v.sourceRevision)||!str(v.basis)){fail('後日実績版未確認');continue;}
   if(!evidence(b)||b.date<h.date||b.retiredIdentity!==d.identity||b.successorIdentity!==n.identity||b.onlineIdentity!==id(online)||b.spareIdentity!==id(spare)||b.oldRetired!==true||b.spareAssembled!==true||b.successorAdmitted!==true){fail('廃却・加入実績未確認');continue;}
-  if(!evidence(t)||t.date<=b.date||t.oldIdentity!==id(online)||t.newIdentity!==id(spare)||t.oldEmergencyUsable!==true||!pairOK(t)){fail('中間共同交換実績未確認');continue;}
+  if(!evidence(t)||t.date<=b.date||t.oldIdentity!==id(online)||t.newIdentity!==id(spare)||t.oldEmergencyUsable!==true||!pairOK(t)||t.mateOldIdentity!==id(mateOpening)||!mateId(t.mateNewIdentity)||t.mateOldIdentity===t.mateNewIdentity){fail('中間共同交換実績未確認');continue;}
   if(!evidence(w)||w.date<t.date||w.oldIdentity!==id(online)||w.targetIdentity!==n.identity||w.sameDayHandover!==true||w.newAssembled!==true||w.emergencyUsable!==true||w.neverUsed!==true){fail('新品組込実績未確認');continue;}
-  if(!evidence(z)||z.date<=w.date||z.oldIdentity!==id(spare)||z.newIdentity!==n.identity||!pairOK(z)||z.exchangeCompleted!==true||z.actualRolling!==true||z.firstEverUse!==true||!Number.isInteger(z.productionMinutes)||z.productionMinutes<=0||!['D10','D13'].includes(z.size)||!['SD295','SD345'].includes(z.grade)||!str(z.periodId)){fail('共同交換後初回圧延実績未確認');continue;}
+  if(!evidence(z)||z.date<=w.date||z.oldIdentity!==id(spare)||z.newIdentity!==n.identity||!pairOK(z)||z.mateOldIdentity!==t.mateNewIdentity||!mateId(z.mateIdentity)||z.mateOldIdentity===z.mateIdentity||z.exchangeCompleted!==true||z.actualRolling!==true||z.firstEverUse!==true||!Number.isInteger(z.productionMinutes)||z.productionMinutes<=0||!['D10','D13'].includes(z.size)||!['SD295','SD345'].includes(z.grade)||!str(z.periodId)){fail('共同交換後初回圧延実績未確認');continue;}
   if(!Array.isArray(rs)||rs.length!==6||new Set(rs.map(x=>x?.rollId)).size!==6||rs.some(x=>!x||!r.pair.includes(String(x.stand))||x.snapshotId!==v.snapshotId||x.sourceRevision!==v.sourceRevision||!str(x.basis))||r.pair.some(p=>{const q=rs.filter(x=>String(x.stand)===p);return q.length!==3||q.filter(x=>x.status==='online'&&x.chockAssembled===true).length!==1||q.filter(x=>['new-standby','used-standby'].includes(x.status)&&x.chockAssembled===true&&x.emergencyEligible===true).length!==1;})){fail('後日ペア3セット現況未確認');continue;}
   const current=rs.find(x=>id(x)===n.identity&&x.status==='online');
   const mate=rs.find(x=>String(x.stand)!==k&&x.status==='online');
