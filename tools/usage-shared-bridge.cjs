@@ -1,5 +1,6 @@
 'use strict';
 // Anonymous PC bridge: derive first demands, allocate once, replay paired lifecycle on exact allocated interval.
+const {setupForSlot,replayUpstreamPair}=require('./upstream-pair-replay.cjs');
 const {previewSharedLineCapacity}=require('./shared-line-capacity.cjs');
 const {previewPairedAssemblyDisposition}=require('./paired-assembly-disposition.cjs');
 const str=x=>typeof x==='string'&&x.trim().length>0;
@@ -8,8 +9,8 @@ const key=x=>String(x).replace(/^#/,'');
 const pairKeys=['6,7','8,9','10,11','12,13','14,15'];
 const id=r=>JSON.stringify([key(r.stand),r.rollId,r.generation]);
 function previewUsageSharedBridge(input,api){
- const s=input||{},groups=Array.isArray(s.groups)?s.groups:[],forecasts=[],demands=[],unresolved=[],replays=[];
- const base={status:'usage-shared-bridge',forecasts,demands,unresolved,replays,allocations:[],complete:false,annualComplete:false,operationAuthorized:false,writeAllowed:false};
+ const s=input||{},groups=Array.isArray(s.groups)?s.groups:[],forecasts=[],demands=[],unresolved=[],replays=[],upstreamPairReplays=[],setupInstructions=[];
+ const base={status:'usage-shared-bridge',forecasts,demands,unresolved,replays,upstreamPairReplays,setupInstructions,allocations:[],complete:false,annualComplete:false,operationAuthorized:false,writeAllowed:false};
  const same=x=>x&&x.snapshotId===s.snapshotId&&x.sourceRevision===s.sourceRevision&&str(x.basis);
  const hold=(g,reason,required=null)=>unresolved.push({id:g?.id??null,stands:g?.stands??[],requiredExchange:required,reason,operationAuthorized:false});
  if(s.anonymousOnly!==true||!str(s.snapshotId)||!str(s.sourceRevision)||!date(s.asOf)||!date(s.throughDate)||s.throughDate<s.asOf){groups.forEach(g=>hold(g,'匿名・版・期間未確認'));return base;}
@@ -47,11 +48,13 @@ function previewUsageSharedBridge(input,api){
   }
   demands.push(d);
  }
- const plan=previewSharedLineCapacity({...s,demands,slots:candidates},api);
+ const eligibleSlots=candidates.map(t=>({...t,eligibility:(t.eligibility||[]).filter(e=>{const d=demands.find(x=>x.id===e?.demandId);return d?.stands.join(',')!=='6,7'||setupForSlot(s,d,t,api).status==='preview';})}));
+ const plan=previewSharedLineCapacity({...s,demands,slots:eligibleSlots},api);
  for(const u of plan.unresolved)unresolved.push(u);
  const chronological=plan.allocations.slice().sort((a,b)=>a.date.localeCompare(b.date)||a.startMinute-b.startMinute);
  for(const a of chronological){
-  const d=demands.find(x=>x.id===a.id),ctx=pairContexts.get(a.id),slot=candidates.find(x=>x.id===a.slotId),g=groups.find(x=>x.id===a.id);
+  const d=demands.find(x=>x.id===a.id),ctx=pairContexts.get(a.id),slot=eligibleSlots.find(x=>x.id===a.slotId),g=groups.find(x=>x.id===a.id);
+  const setup=setupForSlot(s,a,a,api);if(setup.instruction)setupInstructions.push(setup.instruction);
   if(!ctx){
    // Upstream use is recomputed through the assigned zero-production day, without consuming the later original deadline.
    const prefix=days.filter(x=>x.date<=a.date),p=api.deriveFirstMonthlyExchange({referenceDate:s.asOf,throughDate:a.date,days:prefix,group:g});
@@ -62,7 +65,12 @@ function previewUsageSharedBridge(input,api){
   const r=previewPairedAssemblyDisposition({...ctx,slots:[exact],exchangeCapacityByDate:{[a.date]:1}},api);
   const ok=r.status==='conditional-pair-exchange'&&r.allocation.date===a.date&&r.allocation.startMinute===a.startMinute&&r.allocation.endMinute===a.endMinute;
   if(!ok){hold(g,r.reason||'割当後共同交換再照合未成立',true);replays.push({id:a.id,allocation:a,status:'held',reason:r.reason,operationAuthorized:false});continue;}
-  replays.push({id:a.id,allocation:a,status:'conditional-pair-replay',projectedRoles:r.projectedRoles,handovers:r.handovers,dispositions:r.dispositions,emergencyReserveByStand:r.emergencyReserveByStand,requiresFullPathlineRecalculation:true,requiresUsageReplay:true,operationAuthorized:false});
+  const replay={id:a.id,allocation:a,status:'conditional-pair-replay',projectedRoles:r.projectedRoles,handovers:r.handovers,dispositions:r.dispositions,emergencyReserveByStand:r.emergencyReserveByStand,requiresFullPathlineRecalculation:true,requiresUsageReplay:true,operationAuthorized:false};
+  if(['6,7','8,9','10,11'].includes(a.stands.join(','))){
+   const u=replayUpstreamPair(s,a,replay,api);upstreamPairReplays.push({...u,id:a.id});
+   if(u.status!=='conditional-upstream-pair-preview'){hold(g,u.reason,true);replay.status='held';replay.reason=u.reason;}
+  }
+  replays.push(replay);
  }
  return {...base,allocations:chronological.map(a=>({...a,status:replays.find(r=>r.id===a.id)?.status==='held'?'held-replay':'proposal-replay-pending'})),sharedPlan:plan,allocationComplete:groups.length>0&&unresolved.length===0,uncoveredStands:Array.from({length:16},(_,i)=>String(i+2)).filter(k=>!covered.includes(k)),complete:false};
 }
