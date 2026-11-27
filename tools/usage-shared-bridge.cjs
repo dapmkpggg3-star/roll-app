@@ -1,7 +1,7 @@
 'use strict';
 // Anonymous PC bridge: derive first demands, allocate once, replay paired lifecycle on exact allocated interval.
 const {deriveUpperGroup}=require('./caliber-lifetime-policy.cjs');
-const {setupForSlot,replayUpstreamPair}=require('./upstream-pair-replay.cjs');
+const {setupForSlot,replayUpstreamPair,replayUpperCaliber}=require('./upstream-pair-replay.cjs');
 const {previewSharedLineCapacity}=require('./shared-line-capacity.cjs');
 const {previewPairedAssemblyDisposition}=require('./paired-assembly-disposition.cjs');
 const str=x=>typeof x==='string'&&x.trim().length>0;
@@ -60,6 +60,12 @@ function previewUsageSharedBridge(input,api){
  for(const a of chronological){
   const d=demands.find(x=>x.id===a.id),ctx=pairContexts.get(a.id),slot=eligibleSlots.find(x=>x.id===a.slotId),g=groups.find(x=>x.id===a.id);
   const setup=setupForSlot(s,a,a,api);if(setup.instruction)setupInstructions.push(setup.instruction);
+  if(a.workType==='caliberChange'&&['6,7','8,9','10,11'].includes(a.stands.join(','))){
+   const u=replayUpperCaliber({...s,groups},a,g,api);upstreamPairReplays.push(u);
+   if(u.status!=='conditional-upstream-caliber-preview')hold(g,u.reason,true);
+   replays.push({id:a.id,allocation:a,status:u.status==='conditional-upstream-caliber-preview'?'conditional-caliber-replay':'held',reason:u.reason,operationAuthorized:false});
+   continue;
+  }
   if(!ctx){
    // Upstream use is recomputed through the assigned zero-production day, without consuming the later original deadline.
    const prefix=days.filter(x=>x.date<=a.date),p=api.deriveFirstMonthlyExchange({referenceDate:s.asOf,throughDate:a.date,days:prefix,group:g});
