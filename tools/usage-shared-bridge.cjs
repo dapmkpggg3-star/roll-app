@@ -40,6 +40,9 @@ function previewUsageSharedBridge(input,api){
    });
    if(members.some(x=>!x)||!members.some(x=>x.deadline)){hold(g,'共同交換の使用個体・期限原因不一致',true);continue;}
    const ctx={...p,members,slots:candidates,exchangeCapacityByDate:capacity};
+   // Do not consume shared capacity on an already known invalid paired state.
+   const preflight=previewPairedAssemblyDisposition(ctx,api);
+   if(preflight.status!=='conditional-pair-exchange'){hold(g,preflight.reason||'共同交換事前照合未成立',true);continue;}
    pairContexts.set(d.id,ctx);
   }
   demands.push(d);
@@ -61,6 +64,6 @@ function previewUsageSharedBridge(input,api){
   if(!ok){hold(g,r.reason||'割当後共同交換再照合未成立',true);replays.push({id:a.id,allocation:a,status:'held',reason:r.reason,operationAuthorized:false});continue;}
   replays.push({id:a.id,allocation:a,status:'conditional-pair-replay',projectedRoles:r.projectedRoles,handovers:r.handovers,dispositions:r.dispositions,emergencyReserveByStand:r.emergencyReserveByStand,requiresFullPathlineRecalculation:true,requiresUsageReplay:true,operationAuthorized:false});
  }
- return {...base,allocations:chronological,sharedPlan:plan,allocationComplete:groups.length>0&&unresolved.length===0,uncoveredStands:Array.from({length:16},(_,i)=>String(i+2)).filter(k=>!covered.includes(k)),complete:false};
+ return {...base,allocations:chronological.map(a=>({...a,status:replays.find(r=>r.id===a.id)?.status==='held'?'held-replay':'proposal-replay-pending'})),sharedPlan:plan,allocationComplete:groups.length>0&&unresolved.length===0,uncoveredStands:Array.from({length:16},(_,i)=>String(i+2)).filter(k=>!covered.includes(k)),complete:false};
 }
 module.exports={previewUsageSharedBridge};
