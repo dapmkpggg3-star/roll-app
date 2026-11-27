@@ -8,8 +8,8 @@ const id=r=>JSON.stringify([String(r.stand),r.rollId,r.generation]);
 const overlap=(a,b)=>a.date===b.date&&a.startHour<b.endHour&&b.startHour<a.endHour;
 const interval=x=>x&&date(x.date)&&Number.isFinite(x.startHour)&&Number.isFinite(x.endHour)&&x.startHour>=0&&x.endHour<=22&&x.endHour>x.startHour;
 const copy=x=>JSON.parse(JSON.stringify(x));
-function previewSharedWorkshop(input,api){
- const s=input||{},p=previewAllocatedPathline(s,api),allocations=[],held=[],dispositions=[],projectedRoles=[],warnings=[];
+function runSharedWorkshop(input,api,preview){
+ const s=input||{},p=preview(s,api),allocations=[],held=[],dispositions=[],projectedRoles=[],warnings=[];
  const base={status:'shared-workshop-preview',allocations,held,dispositions,projectedRoles,warnings,complete:false,annualComplete:false,operationAuthorized:false,writeAllowed:false};
  const same=x=>x&&x.snapshotId===s.snapshotId&&x.sourceRevision===s.sourceRevision&&str(x.basis);
  const pairs=Array.isArray(s.pairedInputs)?s.pairedInputs:[],options=Array.isArray(s.workshopOptions)?s.workshopOptions:[],manual=Array.isArray(s.workshopReserved)?s.workshopReserved:null;
@@ -60,7 +60,7 @@ function previewSharedWorkshop(input,api){
  }
  // Re-run the existing coupled disposition engine with only globally selected requests.
  const patched=pairs.map(q=>({...q,assemblies:demand.filter(d=>d.q===q&&selected.has(d.key)).map(d=>selected.get(d.key))}));
- const replay=previewAllocatedPathline({...s,pairedInputs:patched},api);
+ const replay=preview({...s,pairedInputs:patched},api);
  for(const d of demand){
   if(d.single){
    const fresh=previewSingleAllocated(s,d.a,api),upstream=+d.k<=5,event=replay.pathlineEvents.find(e=>e.type==='allocated-single-pathline-preview'&&e.id===d.a.id&&e.date===d.a.date&&e.startMinute===d.a.startMinute&&e.endMinute===d.a.endMinute),prefix=replay.replays.find(x=>x.id===d.a.id),a=allocations.find(x=>x.demandId===d.a.id&&x.stand===d.k);
@@ -78,4 +78,27 @@ function previewSharedWorkshop(input,api){
  }
  return {...base,exchangeUnresolved:replay.unresolved,caliberLifetime:replay.caliberLifetime,upstreamPairReplays:replay.upstreamPairReplays,setupInstructions:replay.setupInstructions,uncoveredStands:replay.uncoveredStands,pathlineComplete:replay.pathlineComplete,pathlineIssues:replay.pathlineIssues,verifiedExchangeEvents:replay.pathlineEvents,pairedWorkshopComplete:demand.some(d=>!d.single)&&!held.some(h=>demand.some(d=>!d.single&&d.a.id===h.demandId))&&allocations.filter(a=>demand.some(d=>!d.single&&d.a.id===a.demandId)).every(a=>a.status==='conditional-assembly'),workshopComplete:replay.allocationComplete===true&&demand.length>0&&held.length===0&&allocations.every(a=>a.status==='conditional-assembly'),scope:'paired and supported single exchanges; upstream fit evidence only; shared workshop capacity, no assumed parallel work'};
 }
-module.exports={previewSharedWorkshop};
+function previewSharedWorkshop(input,api){return runSharedWorkshop(input,api,previewAllocatedPathline);}
+function previewSequenceWorkshop(input,api){
+ const s=input||{},windows=[];
+ const {previewUpperSequence}=require('./repeated-upper-caliber.cjs');
+ const {previewUsageSharedBridge}=require('./usage-shared-bridge.cjs');
+ const sequence=previewUpperSequence(s,api,(window,event)=>windows.push({window,event}));
+ const preview=(state)=>{
+  const allocations=[],replays=[],upstreamPairReplays=[],unresolved=[...sequence.unresolved];
+  for(const {window,event} of windows){
+   const p=(state.pairedInputs||[]).filter(q=>q&&event.stands.includes(String(q.stand)));
+   if(p.length!==1){unresolved.push({id:event.id,reason:'循環共同個体再照合未成立',requiredExchange:true});continue;}
+   // Original observation date remains authoritative. A future receipt is not actual.
+   const assemblies=(p[0].assemblies||[]).filter(a=>a?.receipt?.status==='actual'&&date(a.receipt.date)&&a.receipt.date<=s.asOf);
+   const r=previewUsageSharedBridge({...window,pairedInputs:window.pairedInputs.map(q=>({...q,assemblies}))},api);
+   const a=r.allocations.find(a=>a.id===event.id),u=r.upstreamPairReplays.find(u=>u.id===event.id),v=r.replays.find(v=>v.id===event.id);
+   if(r.unresolved.length||!a||!v||u?.status!=='conditional-upstream-pair-preview'||a.date!==event.date||a.startMinute!==event.startMinute||a.endMinute!==event.endMinute||a.slotId!==event.slotId){unresolved.push({id:event.id,reason:'連続交換の確定候補と再計算不一致',requiredExchange:true});continue;}
+   allocations.push(a);replays.push(v);upstreamPairReplays.push(u);
+  }
+  return {allocations,replays,upstreamPairReplays,unresolved,pathlineEvents:[],pathlineComplete:false,pathlineIssues:[],allocationComplete:sequence.sequenceComplete&&unresolved.length===0,uncoveredStands:Array.from({length:16},(_,i)=>String(i+2)).filter(k=>!(sequence.coveredStands||[]).includes(k)),setupInstructions:sequence.setupInstructions};
+ };
+ const workshop=runSharedWorkshop(s,api,preview);
+ return {...workshop,sequence,scope:'upstream repeated caliber sequence to first roll change and shared workshop; forecast only'};
+}
+module.exports={previewSharedWorkshop,previewSequenceWorkshop};
