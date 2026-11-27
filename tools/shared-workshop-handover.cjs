@@ -24,12 +24,12 @@ function previewSharedWorkshop(input,api){
   }
   const paired=pairs.filter(q=>q&&a.stands.includes(String(q.stand)));
   if(paired.length!==1){held.push({demandId:a.id,stands:a.stands,reason:'単独等の物理引継ぎ未接続',oldReserveRetained:null});continue;}
-  const q=paired[0],event=events.find(e=>e.id===a.id&&e.date===a.date&&e.startMinute===a.startMinute&&e.endMinute===a.endMinute);
+  const q=paired[0],upstream=a.stands.every(k=>+k<=11),event=(upstream?(p.upstreamPairReplays||[]).filter(e=>e.status==='conditional-upstream-pair-preview'):events).find(e=>e.id===a.id&&e.date===a.date&&e.startMinute===a.startMinute&&e.endMinute===a.endMinute);
   if(!event){held.push({demandId:a.id,stands:a.stands,reason:'交換後パスライン未成立・後続計画保留',oldReserveRetained:null});continue;}
   for(const k of a.stands){
    const m=q.members.find(m=>String(m.stand)===k),old=m?.roles.find(r=>r.status==='online'),next=m?.roles.find(r=>r.status==='new-standby'),target=m?.roles.find(r=>r!==old&&r!==next);
    if(!old||!next||!target||event.oldIdentities[k]!==id(old)||event.newIdentities[k]!==id(next)){held.push({demandId:a.id,stand:k,reason:'旧新個体不一致',oldReserveRetained:null});continue;}
-   demand.push({a,q,k,old,next,target,key:a.id+'|'+k});
+   demand.push({a,q,k,old,next,target,upstream,key:a.id+'|'+k});
   }
  }
  const retain=(d,reason)=>{held.push({demandId:d.a.id,stand:d.k,oldIdentity:id(d.old),targetIdentity:id(d.target),reason,oldReserveRetained:true,emergencyReserveCount:1});};
@@ -69,13 +69,13 @@ function previewSharedWorkshop(input,api){
    if(a)a.status='conditional-assembly';
    projectedRoles.push(...out.roles);dispositions.push({...out.disposition,demandId:d.a.id,upstreamFitEvidenceOnly:upstream});continue;
   }
-  const event=replay.pathlineEvents.find(e=>e.type==='allocated-pair-pathline-preview'&&e.id===d.a.id&&e.date===d.a.date&&e.startMinute===d.a.startMinute&&e.endMinute===d.a.endMinute);
+  const event=(d.upstream?(replay.upstreamPairReplays||[]).filter(e=>e.status==='conditional-upstream-pair-preview'):replay.pathlineEvents.filter(e=>e.type==='allocated-pair-pathline-preview')).find(e=>e.id===d.a.id&&e.date===d.a.date&&e.startMinute===d.a.startMinute&&e.endMinute===d.a.endMinute);
   const r=replay.replays.find(x=>x.id===d.a.id),a=allocations.find(x=>x.demandId===d.a.id&&x.stand===d.k),h=r?.handovers?.find(x=>x.stand===d.k),disp=r?.dispositions?.find(x=>x.stand===d.k);
   if(!event){if(a)a.status='held';if(!held.some(x=>x.demandId===d.a.id&&x.stand===d.k))held.push({demandId:d.a.id,stand:d.k,reason:'再計算で交換未成立',oldReserveRetained:null});continue;}
   const valid=a&&h?.status==='conditional-assembly'&&h.date===a.date&&h.oldIdentity===a.oldIdentity&&h.targetIdentity===a.targetIdentity;
-  if(valid){a.status='conditional-assembly';projectedRoles.push(...r.projectedRoles.filter(x=>String(x.stand)===d.k).map(x=>({...x})));if(disp)dispositions.push({...disp,demandId:d.a.id});}
-  else {if(a)a.status='held';if(!held.some(x=>x.demandId===d.a.id&&x.stand===d.k))retain(d,'工作引継ぎ再計算未成立');projectedRoles.push({...d.old,status:'used-standby'},{...d.next,status:'online'},{...d.target});if(disp?.procurement)dispositions.push({...disp,demandId:d.a.id,rework:undefined});}
+  if(valid){a.status='conditional-assembly';projectedRoles.push(...r.projectedRoles.filter(x=>String(x.stand)===d.k).map(x=>({...x})));if(disp)dispositions.push({...disp,demandId:d.a.id,upstreamFitEvidenceOnly:d.upstream===true});}
+  else {if(a)a.status='held';if(!held.some(x=>x.demandId===d.a.id&&x.stand===d.k))retain(d,'工作引継ぎ再計算未成立');projectedRoles.push({...d.old,status:'used-standby'},{...d.next,status:'online'},{...d.target});if(disp?.procurement)dispositions.push({...disp,demandId:d.a.id,rework:undefined,upstreamFitEvidenceOnly:d.upstream===true});}
  }
- return {...base,exchangeUnresolved:replay.unresolved,uncoveredStands:replay.uncoveredStands,pathlineComplete:replay.pathlineComplete,pathlineIssues:replay.pathlineIssues,verifiedExchangeEvents:replay.pathlineEvents,pairedWorkshopComplete:demand.some(d=>!d.single)&&!held.some(h=>demand.some(d=>!d.single&&d.a.id===h.demandId))&&allocations.filter(a=>demand.some(d=>!d.single&&d.a.id===a.demandId)).every(a=>a.status==='conditional-assembly'),workshopComplete:replay.allocationComplete===true&&demand.length>0&&held.length===0&&allocations.every(a=>a.status==='conditional-assembly'),scope:'paired and supported single exchanges; upstream fit evidence only; shared workshop capacity, no assumed parallel work'};
+ return {...base,exchangeUnresolved:replay.unresolved,upstreamPairReplays:replay.upstreamPairReplays,setupInstructions:replay.setupInstructions,uncoveredStands:replay.uncoveredStands,pathlineComplete:replay.pathlineComplete,pathlineIssues:replay.pathlineIssues,verifiedExchangeEvents:replay.pathlineEvents,pairedWorkshopComplete:demand.some(d=>!d.single)&&!held.some(h=>demand.some(d=>!d.single&&d.a.id===h.demandId))&&allocations.filter(a=>demand.some(d=>!d.single&&d.a.id===a.demandId)).every(a=>a.status==='conditional-assembly'),workshopComplete:replay.allocationComplete===true&&demand.length>0&&held.length===0&&allocations.every(a=>a.status==='conditional-assembly'),scope:'paired and supported single exchanges; upstream fit evidence only; shared workshop capacity, no assumed parallel work'};
 }
 module.exports={previewSharedWorkshop};
