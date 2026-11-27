@@ -28,6 +28,8 @@ function selfTest(preview,api){
  const ex=r.events.filter(e=>e.type==='caliber-exchange-preview');
  const p1=r.events.find(e=>e.periodId==='p1');
  const p2=r.events.find(e=>e.periodId==='p2');
+ const d13={...start,size:'D13',selection:{12:[2],13:[3],14:[3],15:[3],16:[3],17:[3]},link1213Evidence:[map(2,[3],'D13'),map(3,[4],'D13'),map(5,[7],'D13'),map(6,[8],'D13')],approachEvidence:[3,4,7,8].flatMap(n=>[3,4,7,8].map(v=>ev(13,14,n,v))),foldEvidence:[3,4,7,8].flatMap(n=>[3,4,7,8].map(v=>ev(15,16,n,v))),usageRows:start.usageRows.map(u=>({...u,runs:u.stand===12&&u.number===2?10:0})),periods:[{...prod('p1',0,240),size:'D13'},stop('s1',240,480,[['12','13']]),{...prod('p2',480,720),size:'D13'}]};
+ const dr=preview(d13,api);
  const before=JSON.stringify(start);
  const tests=[
  ['three operating runs',r.complete&&r.operatingRuns===3],
@@ -49,6 +51,10 @@ function selfTest(preview,api){
  ['exact four hours counts one',run({periods:[prod('p1',0,240)]}).operatingRuns===1],
  ['steel grade switch held',!run({periods:[periods[0],{...prod('p2',240,480),grade:'SD345'}]}).complete],
  ['unknown date row held',run({periods:[{...periods[0],dateRowVerified:false}]}).operatingRuns===0],
+ ['D13 six single grooves per shift',dr.complete&&dr.operatingRuns===2&&dr.events.filter(e=>e.type==='production-preview').every(e=>e.consumption.length===6)],
+ ['D13 coupled exchange after 11 runs',dr.events.some(e=>e.type==='caliber-exchange-preview'&&e.changes.length===1&&e.changes[0].join(',')==='12,13')&&get(dr,12,2)===11&&get(dr,13,3)===1&&get(dr,12,3)===1&&get(dr,13,4)===1],
+ ['D13 isolated exchange slot not valid',!preview({...d13,periods:[d13.periods[0],stop('s1',240,480,[['12'],['13']]),d13.periods[2]]},api).complete],
+ ['size switch held',!run({periods:[periods[0],{...prod('p2',240,480),size:'D13'}]}).complete],
  ['input not mutated',JSON.stringify(start)===before],
  ['no write permission',!r.writeAllowed&&!r.operationAuthorized]
  ];
