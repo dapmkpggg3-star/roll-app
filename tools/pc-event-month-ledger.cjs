@@ -22,7 +22,7 @@ function previewPcEventMonths(s={}){
   const actual=rows.filter(e=>e.status==='actual'),forecast=rows.filter(e=>e.status==='forecast');
   const selected=actual.length?actual:forecast;
   if(new Set(selected.map(e=>e.date)).size!==1){held.push({key,reason:'同一イベント日付競合'});continue;}
-  const e=selected[0],entry={key,stand:String(e.stand),rollId:e.rollId,cycleId:e.kind==='rework-inbound'?e.cycleId:null,kind:e.kind,status:e.status,date:e.date,month:e.date.slice(0,7),basis:[...new Set(selected.map(e=>e.basis))],supersededForecastDates:actual.length?[...new Set(forecast.map(e=>e.date))]:[],accountingAmount:null};
+  const e=selected[0],entry={key,stand:String(e.stand),rollId:e.rollId,cycleId:e.kind==='rework-inbound'?e.cycleId:null,kind:e.kind,status:e.status,date:e.date,month:e.date.slice(0,7),basis:[...new Set(selected.map(e=>e.basis))],supersededForecastDates:actual.length?[...new Set(forecast.map(e=>e.date))]:[],accountingAmount:null,evidence:rows.map(q=>({status:q.status,date:q.date,basis:q.basis,source:q.source??null,generation:q.generation??null,dispatchDate:q.dispatchDate??null,forecastDiameterMm:q.forecastDiameterMm??null,exchangeDate:q.exchangeDate??null}))};
   entries.push(entry);
   const dest=months.find(x=>x.month===entry.month);
   if(!dest){outside.push(entry);continue;}
