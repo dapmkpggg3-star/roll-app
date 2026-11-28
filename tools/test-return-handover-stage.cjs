@@ -13,7 +13,14 @@ function selfTest(api){
   plan.dispatchPlans.push({...v,stand:k,identity:id(old),status:'planned',date:'2027-07-15',cycleId:'third-'+k,priorCycleIds:[cycle],dispatchCapacityConfirmed:true,vendorAcceptanceConfirmed:true});
  }
  const before=JSON.stringify([s,stage,plan]),r=previewReturnHandover(s,stage,plan,api),run=fn=>{const [a,b,c]=JSON.parse(before);fn(a,b,c);return previewReturnHandover(a,b,c,api);},retain=(r,k)=>r.roles.some(q=>String(q.stand)===k&&q.status==='used-standby'&&q.emergencyEligible&&q.chockAssembled);
+ const deadlinePlan=(a,b,c)=>{c.deadlineMode=true;c.deadlineInputs=c.workshopOptions.map(o=>({...v,stand:o.stand,oldIdentity:o.oldIdentity,targetIdentity:o.targetIdentity,inboundRequiredBy:'2027-08-04',leadDays:20,leadBasis:'anon',needBasis:'anon',preDispatchDays:3,bufferBasis:'anon',nextExchangeDeadline:'2027-07-20'}));};
+ const rd=run(deadlinePlan);
  return [
+ ['R23 deadline-only instructions and conditional internal handover',rd.readyForNextRotation&&rd.workshopInstructions.length===2&&rd.workshopInstructions.every(x=>x.workDate===null&&x.assemblyDeadline==='2027-07-12'&&x.dispatchDeadline==='2027-07-15'&&x.actualCompletion===false)&&rd.handovers.length===2],
+ ['R23 late dispatch retains reserve',retain(run((a,b,c)=>{deadlinePlan(a,b,c);c.dispatchPlans[0].date='2027-07-16';}),'8')],
+ ['R23 missing deadline retains reserve',retain(run((a,b,c)=>{deadlinePlan(a,b,c);c.deadlineInputs.pop();}),'9')],
+ ['R23 next exchange before candidate retains reserve',retain(run((a,b,c)=>{deadlinePlan(a,b,c);c.deadlineInputs[0].nextExchangeDeadline='2027-07-06';}),'8')],
+ ['R23 wrong individual retains reserve',retain(run((a,b,c)=>{deadlinePlan(a,b,c);c.deadlineInputs[0].targetIdentity='wrong';}),'8')],
  ['third conditional handover and next rotation ready',r.readyForNextRotation&&r.conditionalHandoverComplete&&r.handovers.length===2&&r.roles.length===6],
  ['one emergency standby each',stage.group.stands.every(k=>r.roles.filter(q=>String(q.stand)===k&&q.status!=='online'&&q.chockAssembled&&q.emergencyEligible).length===1)],
  ['new generations only conditional',r.roles.filter(q=>q.status==='new-standby').every(q=>q.generation==='g2'&&q.forecastOnly&&q.conditionalAssembly)],
