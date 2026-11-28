@@ -3,7 +3,7 @@ const {selfTest:prior}=require('./test-sequence-workshop-disposition.cjs');
 function selfTest(preview,sequenceWorkshop,sequence,workshop,bridge,paired,api){
  let fixture;const reg=prior((x,a)=>{if(!fixture)fixture=x;return sequenceWorkshop(x,a)},sequence,workshop,bridge,paired,api);
  const x=JSON.parse(JSON.stringify(fixture)),v={snapshotId:x.snapshotId,sourceRevision:x.sourceRevision,basis:'anonymous second cycle'},id=r=>JSON.stringify([String(r.stand),r.rollId,r.generation]);
- x.throughDate='2027-06-06';
+ x.throughDate='2027-06-08';
  for(let d='2027-05-04';d<=x.throughDate;d=api.addDays(d,1)){
   const production=(d>='2027-05-08'&&d<='2027-05-19'||d>='2027-05-21'&&d<='2027-06-02'||d==='2027-06-06')?400:0;
   x.days.push({...x.days[0],date:d,productionAmount:production,nightProductionAmount:0,shift1Team:production?'A':'',operatingHours:production?5:0});
@@ -24,12 +24,13 @@ function selfTest(preview,sequenceWorkshop,sequence,workshop,bridge,paired,api){
  x.upperCaliberSelections.push({...v,demandId:g.id,date:'2027-05-20',startMinute:480,endMinute:840,size:'D10',pairFitConfirmed:true,fitBasis:'anonymous fit',members:p.replacementUsage.map(u=>({...v,standKey:u.standKey,identity:u.identity,oldId:'1',nextId:'2'}))});
  const before=JSON.stringify(x),r=preview(x,api),run=fn=>{const q=JSON.parse(JSON.stringify(x));fn(q);return preview(q,api);};
  const badGen=run(q=>q.secondCycle.returnMasters[0].generation='g1'),badDiameter=run(q=>q.secondCycle.returnMasters[0].diameterMm=420),badCount=run(q=>q.secondCycle.returnMasters[0].caliberLedger.totalCalibers=4),badHistory=run(q=>q.secondCycle.returnMasters[0].caliberLedger.calibers[0].tons=100),noAssembly=run(q=>q.secondCycle.workshopOptions.pop()),fake=run(q=>q.secondCycle.workshopOptions[0].receiptStatus='actual'),noFirst=run(q=>q.workshopOptions=[]),noSlot=run(q=>q.slots=q.slots.filter(t=>t.date!=='2027-06-05')),overlap=run(q=>{const o=q.secondCycle.workshopOptions[1];o.slot.date=o.day.date='2027-06-07';});
+ const beyond=run(q=>{const o=q.secondCycle.workshopOptions[1];o.slot.date=o.day.date='2027-06-09';q.workshopDays.push({...q.workshopDays.at(-1),date:'2027-06-09'});});
  const role=(q,k,status)=>q.projectedRoles.find(r=>String(r.stand)===k&&r.status===status);
  const tests=[
  ['prior workshop regression',reg.tests.every(t=>t[1])],
  ['second sequence uses first new online',r.second?.events.map(e=>e.workType).join(',')==='caliberChange,rollChange'&&r.second.events[0].oldGroup.members[0].rollId===p.members[0].roles[1].rollId],
  ['second exchange dates',r.second?.events.map(e=>e.date).join(',')==='2027-05-20,2027-06-05'],
- ['return new generation zero usage and 0/6',r.returns.length===2&&r.returns.every(t=>t.newIdentity!==t.oldIdentity&&t.diameterMm===413&&t.progress===0&&t.progressTotal===6&&t.caliberLedger.calibers.every(c=>c.tons===0)&&!t.actualReceipt&&!t.chockAssembled&&!t.emergencyEligible)],
+ ['return new generation zero usage and 0/6',r.returns.length===2&&r.returns.every(t=>t.newIdentity!==t.oldIdentity&&t.diameterMm===413&&t.initialCycleProgress===0&&t.progressTotal===6&&t.caliberLedger.calibers.every(c=>c.tons===0)&&!t.actualReceipt&&!t.chockAssembled&&!t.emergencyEligible)],
  ['original full history retained',r.returns[0]?.oldCaliberLedger.calibers.map(c=>c.tons).join(',')==='5190,5265,5200,5200'],
  ['forecast handovers only after receipt',r.nextHandovers.length===2&&r.nextHandovers.every(h=>h.date>'2027-06-04'&&!h.actualCompletion&&!h.receiptConfirmed)],
  ['3 sets one conditional spare per side',r.conditionalCycleComplete&&['8','9'].every(k=>r.projectedRoles.filter(z=>String(z.stand)===k).length===3&&r.projectedRoles.filter(z=>String(z.stand)===k&&z.status!=='online'&&z.emergencyEligible&&z.chockAssembled).length===1&&role(r,k,'new-standby').generation==='g2')],
@@ -43,6 +44,7 @@ function selfTest(preview,sequenceWorkshop,sequence,workshop,bridge,paired,api){
  ['second roll slot missing holds demand',noSlot.second?.unresolved.some(u=>u.requiredExchange===true)&&!noSlot.nextHandovers.length],
  ['shared second workshop capacity',overlap.nextHandovers.length===1&&role(overlap,'9','used-standby')?.emergencyEligible===true],
  ['no actual writes or authorization',!r.actualReceipt&&!r.actualAssembly&&!r.operationAuthorized&&!r.writeAllowed&&!r.annualComplete],
+ ['outside horizon assembly not projected',beyond.nextHandovers.length===1&&role(beyond,'9','used-standby')?.emergencyEligible===true],
  ['source unchanged',JSON.stringify(x)===before]];
  return {tests,result:r,regression:reg.tests};
 }
