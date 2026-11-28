@@ -1,7 +1,7 @@
 'use strict';
 // Focused real-engine integration: only #2, not a downstream or annual completion test.
 const {previewPcSharedCirculation}=require('./pc-shared-circulation.cjs');
-function selfTest(api){
+function fixture(api){
  const v={snapshotId:'anon',sourceRevision:'v1',basis:'anonymous'},asOf='2027-04-01',throughDate='2027-04-05',id=r=>JSON.stringify([String(r.stand),r.rollId,r.generation]);
  const roles=['online','new-standby','unassembled-return'].map((status,i)=>({...v,stand:'2',rollId:'R'+i,generation:'g1',status,chockAssembled:i!==2,emergencyEligible:i!==2,diameterMm:420}));
  const [old,next,target]=roles;
@@ -13,6 +13,10 @@ function selfTest(api){
  const workDate='2027-04-06',workDay={...v,date:workDate,dateRowVerified:true,productionAmount:400,nightOperating:true,workshopWorking:true};
  const request={...v,stand:'2',oldIdentity:id(old),targetIdentity:id(target),receipt:{...v,identity:id(target),status:'actual',date:'2027-03-31',present:true,usable:true,unassembled:true},slot:{date:workDate,workArea:'workshop',status:'forecast',period:'day',basis:'anon',workshopWorking:true,workshopCalendarBasis:'anon',offlineIsolated:true,isolationBasis:'anon',independentOfLineCrew:true,capacityConfirmed:true,capacityBasis:'anon',startHour:8,endHour:16,workshopStartHour:8,workshopEndHour:17,requiredHours:6,reservedHours:6,people:3,availablePeople:3,owner:{rollId:target.rollId,standKey:'2'},prepared:'reworkInbound',preparedTarget:target.rollId,preparedOn:'2027-03-31'},day:workDay,sameDayCompletionPlanned:true,targetEmergencyEligible:true,safetyBlocked:false,completionBasis:'anon',nightBasis:'anon',dispatchPlan:{...v,identity:id(old),status:'planned',date:'2027-04-11',cycleId:'new-cycle',priorCycleIds:[],dispatchCapacityConfirmed:true,vendorAcceptanceConfirmed:true}};
  const x={...v,anonymousOnly:true,asOf,throughDate,days,groups:[group],pairedInputs:[],singleInputs:[single],slots:[slot],workshopOptions:[{...v,demandId:group.id,stand:'2',request}],workshopDays:[workDay],workshopReserved:[],workshopReservationsVerified:true,workshopReservationBasis:'anon',actualEvents:[],startMonth:'2027-04',fiscalYear:2027};
+ return x;
+}
+function selfTest(api){
+ const x=fixture(api),[old,next,target]=x.singleInputs[0].roles,workDate=x.workshopDays[0].date;
  const before=JSON.stringify(x),r=previewPcSharedCirculation(x,api),missing=previewPcSharedCirculation({...x,workshopOptions:[]},api),blocked=previewPcSharedCirculation({...x,slots:[]},api);
  const own=r.first?.projectedRoles?.filter(y=>String(y.stand)==='2')||[],d=r.first?.dispositions?.find(y=>y.stand==='2'),e=r.annual?.detail?.find(y=>y.stand==='2'&&y.kind==='rework-inbound');
  const oldSpare=missing.first?.projectedRoles?.find(y=>y.rollId===old.rollId);
@@ -29,5 +33,5 @@ function selfTest(api){
  ['Input untouched',JSON.stringify(x)===before]
  ],result:r};
 }
-module.exports={selfTest};
+module.exports={selfTest,fixture};
 if(require.main===module){const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),api=vm.createContext({});vm.runInContext(fs.readFileSync(path.resolve(__dirname,'../js/operating-plan.js'),'utf8'),api);const {tests}=selfTest(api);for(const [n,ok] of tests)console.log((ok?'PASS ':'FAIL ')+n);if(tests.some(x=>!x[1]))process.exitCode=1;}
