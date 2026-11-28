@@ -1,6 +1,5 @@
 'use strict';
 // First exchange / shared workshop -> PC reporting. NOT a full-horizon recurrence.
-const {previewSharedWorkshop}=require('./shared-workshop-handover.cjs');
 const {previewPcStandYear}=require('./pc-stand-year-matrix.cjs');
 const {previewPcPurchaseWarnings}=require('./pc-purchase-warning.cjs');
 const str=x=>typeof x==='string'&&x.trim().length>0;
@@ -8,9 +7,9 @@ const day=x=>typeof x==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(x)&&Number.isFinite
 const groups=['2','3','4','5','6,7','8,9','10,11','12,13','14,15','16','17'];
 const stands=Array.from({length:16},(_,i)=>String(i+2));
 const key=a=>Array.isArray(a)?a.map(String).sort((x,y)=>Number(x)-Number(y)).join(','):'';
-function previewPcSharedCirculation(s={},api){
+function projectPcSharedCirculation(s={},runShared){
  const base={coverage:stands.map(stand=>({stand,state:'未確認',fullHorizonVerified:false})),held:[],first:null,annual:null,purchase:null,periodComplete:false,complete:false,writeAllowed:false,operationAuthorized:false};
- if(s.anonymousOnly!==true||!str(s.snapshotId)||!str(s.sourceRevision)||!day(s.asOf)||!day(s.throughDate)||!Array.isArray(s.groups)||!Array.isArray(s.actualEvents)||!api){base.held.push({reason:'共有循環入力未確認'});return base;}
+ if(s.anonymousOnly!==true||!str(s.snapshotId)||!str(s.sourceRevision)||!day(s.asOf)||!day(s.throughDate)||!Array.isArray(s.groups)||!Array.isArray(s.actualEvents)||typeof runShared!=='function'){base.held.push({reason:'共有循環入力未確認'});return base;}
  const seen=new Map(),same=x=>x&&x.snapshotId===s.snapshotId&&x.sourceRevision===s.sourceRevision&&str(x.basis);
  for(const g of s.groups){
   const k=key(g?.stands);
@@ -20,13 +19,13 @@ function previewPcSharedCirculation(s={},api){
  }
  if(base.held.length||[...seen.values()].some(v=>v.length!==1)||new Set(s.groups.map(g=>g.id)).size!==s.groups.length){base.held.push({reason:'対象重複・構成不整合、共有計算保留'});return base;}
  let first;
- try{first=previewSharedWorkshop(s,api);}catch(e){base.held.push({reason:'共有計算実行未成立',detail:String(e.message??e)});return base;}
+ try{first=runShared(s);}catch(e){base.held.push({reason:'共有計算実行未成立',detail:String(e.message??e)});return base;}
  base.first=first;
- if(first.writeAllowed!==false||first.operationAuthorized!==false){base.held.push({reason:'読取専用結果未確認'});return base;}
+ if(first?.status!=='shared-workshop-preview'||first.writeAllowed!==false||first.operationAuthorized!==false){base.held.push({reason:'読取専用結果未確認'});return base;}
  const holds=[...(first.held||[]),...(first.exchangeUnresolved||[])];
  for(const h of holds){
   const ks=Array.isArray(h.stands)&&h.stands.length?h.stands.map(String):h.stand!=null?[String(h.stand)]:[];
-  if(ks.length)for(const stand of ks)base.held.push({...h,stand});
+  if(ks.length)for(const stand of ks)base.held.push({...h,stand,demandId:h.demandId??h.id??null,date:h.date??h.latestDate??null});
   else base.held.push({...h});
  }
  for(const issue of first.pathlineIssues||[])base.held.push({reason:'下流パスライン：'+String(issue)});
@@ -54,4 +53,8 @@ function previewPcSharedCirculation(s={},api){
  base.annual=previewPcStandYear(reportInput);base.purchase=previewPcPurchaseWarnings(reportInput);
  return {...base,reportInput,scope:'全16対象の共通初回交換・工作からPCへの接続。反復循環未成立'};
 }
-module.exports={previewPcSharedCirculation};
+function previewPcSharedCirculation(s={},api){
+ if(!api)return projectPcSharedCirculation(s,null);
+ return projectPcSharedCirculation(s,input=>require('./shared-workshop-handover.cjs').previewSharedWorkshop(input,api));
+}
+module.exports={previewPcSharedCirculation,projectPcSharedCirculation};
