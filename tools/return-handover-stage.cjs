@@ -9,6 +9,8 @@ const same=(s,x)=>x&&x.snapshotId===s.snapshotId&&x.sourceRevision===s.sourceRev
 const id=r=>JSON.stringify([String(r.stand),r.rollId,r.generation]);
 const interval=x=>x&&day(x.date)&&Number.isFinite(x.startHour)&&Number.isFinite(x.endHour)&&x.startHour>=0&&x.endHour<=22&&x.endHour>x.startHour;
 const copy=x=>JSON.parse(JSON.stringify(x));
+const broken=r=>r?.condition==='broken'||r?.ledgerStatus==='折損'||r?.spareKind==='折損';
+const usableOld=r=>!!r&&r.status==='used-standby'&&!broken(r)&&r.emergencyEligible===true&&r.chockAssembled===true;
 // Deadline instructions are not time reservations. Internal forecast dates
 // may coincide across different rolls; never infer actual staffing or completion.
 function workshopTimeConflict(plan,busy,t){
@@ -25,7 +27,8 @@ function previewReturnHandover(s,stage,plan,api){
  const find=(arr,k)=>{const a=arr.filter(x=>String(x?.standKey??x?.stand)===k);return a.length===1?a[0]:null;};
  for(const k of ks){
   const own=roles.filter(r=>String(r.stand)===k),old=own.find(r=>r.status==='used-standby'),online=own.find(r=>r.status==='online'),target=own.find(r=>r.status==='rework'||r.status==='new-unassembled'&&r.purchaseSuccessor===true),d=find(stage.dispositions,k),m=find(plan.returnMasters,k),q=find(plan.members,k),dispatch=find(plan.dispatchPlans,k);
-  const retain=reason=>held.push({stand:k,reason,oldReserveRetained:!!old?.emergencyEligible&&!!old?.chockAssembled});
+  const retain=reason=>held.push({stand:k,reason,oldReserveRetained:usableOld(old),oldPhysicalRetained:old?.status==='used-standby'&&old.chockAssembled===true});
+  if(broken(old)||broken(online)){retain('折損個体・緊急予備またはオンライン未成立');continue;}
   const purchased=target?.status==='new-unassembled',ad=purchased?find(stage.admissions||[],k):null;
   if(own.length!==3||!old||!online||!target||new Set(own.map(r=>r.rollId)).size!==3||old.emergencyEligible!==true||old.chockAssembled!==true||(!purchased&&(!d?.rework||d.status!=='conditional-rework'||d.identity!==id(target)||d.rework.receiptConfirmed!==false||!cycles.includes(d.rework.cycleId)||!same(s,m)||m.status!=='forecast'||m.cycleId!==d.rework.cycleId||m.oldIdentity!==id(target)||m.rollId!==target.rollId||!str(m.generation)||m.generation===target.generation||m.identity!==JSON.stringify([k,target.rollId,m.generation])||m.expectedInboundDate!==d.rework.expectedInboundDate||m.diameterMm!==d.rework.forecastDiameterMm||!day(m.expectedInboundDate)||m.expectedInboundDate<=s.asOf))||!same(s,m)||!Array.isArray(m.caliberLedger?.calibers)||m.caliberLedger.calibers.some(c=>!['active','unused','unavailable'].includes(c.state)||c.tons!==0&&c.tons!==null||c.runs!==0&&c.runs!==null)||inspectUpperLedger(s,m,g.size,api).status!=='verified-ledger'){retain('改削戻りの新世代・個体・全カリバ未確認');continue;}
   if(purchased&&(!ad||ad.status!=='conditional-slot-replacement'||ad.newIdentity!==id(target)||ad.actualAdmission!==false||ad.actualReceipt!==false||ad.master?.identity!==m.identity||m.identity!==id(target)||m.status!=='new-purchase-forecast'||m.diameterMm!==target.diameterMm||JSON.stringify(ad.master.caliberLedger)!==JSON.stringify(m.caliberLedger)||!day(ad.date)||!day(ad.expectedReceiptDate)||ad.date>e.date||ad.expectedReceiptDate>ad.date)){retain('新品後継の受入・個体台帳未確認');continue;}
