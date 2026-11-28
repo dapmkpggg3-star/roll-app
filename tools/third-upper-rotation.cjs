@@ -43,7 +43,7 @@ function previewThirdUpperRotation(input,api){
  for(const k of e.stands){
   const old=candidate.projectedRoles.find(r=>String(r.stand)===k&&r.status==='used-standby'),q=s.secondCycle.members.find(m=>String(m.stand)===k),h=second.nextHandovers.find(h=>h.stand===k),dispatches=plan.dispatchPlans.filter(d=>String(d?.stand)===k);
   if(!old||!q)return hold('第2旧個体未確認 #'+k);
-  const d=forecastDisposition(s,old,{...q,onlineStartDate:second.first.sequence.events.find(e=>e.rollChanged).date},e,h,dispatches.length===1?dispatches[0]:null,priorCycles,api);
+  const d=forecastDisposition(s,old,{...q,onlineStartDate:s.days.find(d=>d.date>second.first.sequence.events.find(e=>e.rollChanged).date&&d.productionAmount>0)?.date??null},e,h,dispatches.length===1?dispatches[0]:null,priorCycles,api);
   dispositions.push(d);
   if(d.rework)priorCycles.push(d.rework.cycleId);
   const current=roles.find(r=>id(r)===id(old));
@@ -65,6 +65,6 @@ function previewThirdUpperRotation(input,api){
  const r=previewUpperSequence({...s,asOf:f.asOf,days,slots,groups:[g],pairedInputs:[{...original,asOf:f.asOf,members,replacementUsage,compatibility:plan.compatibility,assemblies:[]}],setupNightHistory:[...(s.setupNightHistory||[]),...s.days.filter(d=>d.date<f.asOf)]},api);
  base.third=r;
  if(!r.sequenceComplete)return hold('第3交換の停止枠・選択・適合未成立',{forecast:r.unresolved});
- return {...base,thirdRotationComplete:r.rollHandoverCandidates.length===1,forecastOnly:true};
+ return {...base,thirdRotationComplete:r.rollHandoverCandidates.length===1,thirdProjectedRoles:(r.rollHandoverCandidates[0]?.projectedRoles||[]).map(role=>({...role,forecastOnly:true})),forecastOnly:true};
 }
 module.exports={previewThirdUpperRotation,forecastDisposition};
