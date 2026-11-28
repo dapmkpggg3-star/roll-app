@@ -1,5 +1,6 @@
 'use strict';
 // R01/R12/R13/R21/R22: forecast diameter lineage, separate from the actual measurement gate.
+const {assessPurchasedDiameter}=require('./purchase-diameter-anchor.cjs');
 const {assessDiameterLife}=require('./annual-diameter-gate.cjs');
 const {finalState}=require('../test/fixtures/annual-projection/tonnage-circulation.cjs');
 const str=x=>typeof x==='string'&&x.trim().length>0;
@@ -7,13 +8,14 @@ const day=x=>typeof x==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(x)&&Number.isFinite
 const fixed=x=>Math.round(x*1e6)/1e6;
 const same=(s,x)=>x&&x.snapshotId===s.snapshotId&&x.sourceRevision===s.sourceRevision&&str(x.basis);
 function assessForecastDiameterChain(input){
- const s=input||{},d=s.diameter||{},base={status:'held',identity:null,forecastOnly:true,actualMeasurement:false,actualReceipt:false,operationAuthorized:false,writeAllowed:false,remainingReworks:null,nextDiameter:null,steps:[]};
+ const s=input||{},d=s.purchaseOrigin?.role||s.diameter||{},base={status:'held',identity:null,forecastOnly:true,actualMeasurement:false,actualReceipt:false,operationAuthorized:false,writeAllowed:false,remainingReworks:null,nextDiameter:null,steps:[]};
  const hold=(reason,extra={})=>({...base,...extra,status:'held',reason});
  if(!day(s.asOf)||!day(s.forecastAsOf)||s.forecastAsOf<s.asOf||!Array.isArray(s.steps)||!s.steps.length)return hold('予測基準日または改削履歴未確認');
- const anchor=assessDiameterLife(s);
+ const origin=s.purchaseOrigin;
+ const anchor=origin?assessPurchasedDiameter(s,origin.role,origin.evidence,{date:s.forecastAsOf}):assessDiameterLife(s);
  if(anchor.status==='held')return hold('起点実測径・実績平均・廃却径未確認',{anchor});
- const k=String(d.stand),cut=anchor.cut.value,limit=anchor.limitMm,steps=[],generations=new Set([d.generation]),cycles=new Set((s.history||[]).filter(r=>r&&String(r.stand)===k&&r.rollId===d.rollId&&r.status==='actual').map(r=>r.cycleId));
- let identity=d.identity,current=anchor.currentMm,prevDate=s.asOf;
+ const k=String(d.stand),cut=anchor.cut.value,limit=anchor.limitMm,steps=[],generations=new Set([d.generation]),cycles=new Set((origin?origin.evidence.purchaseAnchor.history||[]:s.history||[]).filter(r=>r&&String(r.stand)===k&&r.rollId===d.rollId&&r.status==='actual').map(r=>r.cycleId));
+ let identity=origin?anchor.identity:d.identity,current=anchor.currentMm,prevDate=origin?d.purchaseFirstUse.firstUseDate:s.asOf;
  for(const step of s.steps){
   if(!same(s,step)||step.status!=='conditional-return'||step.actualReceipt!==false||String(step.stand)!==k||step.rollId!==d.rollId||step.oldIdentity!==identity||!str(step.generation)||generations.has(step.generation)||step.newIdentity!==JSON.stringify([k,d.rollId,step.generation])||!str(step.cycleId)||cycles.has(step.cycleId)||!day(step.dispatchDate)||!day(step.expectedInboundDate)||step.dispatchDate<=prevDate||step.expectedInboundDate<=step.dispatchDate||step.expectedInboundDate>s.forecastAsOf||!Number.isInteger(step.leadDays)||step.leadDays<=0||Date.parse(step.expectedInboundDate+'T00:00:00Z')-Date.parse(step.dispatchDate+'T00:00:00Z')!==step.leadDays*86400000)return hold('改削予測の個体・世代・回次・時系列・LT不一致',{anchor,steps});
   const next=fixed(current-cut);
@@ -23,7 +25,7 @@ function assessForecastDiameterChain(input){
  }
  const state=finalState(current,limit,cut),next=fixed(current-cut);
  if(state==='unknown'||next<=0)return hold('予測径計算未成立',{anchor,steps});
- return {...base,status:state==='final'?'final-use':state==='boundary'?'boundary-review':'rework-candidate',identity,anchor,steps,currentMm:current,limitMm:limit,nextDiameter:next,remainingReworks:Math.max(0,Math.ceil(fixed(current-limit)/cut-1e-9)-1),cut:anchor.cut,measurementBasis:d.basis,limitBasis:d.limitBasis,extensionApproved:false,reason:state==='final'?'予測径の次回平均改削後が廃却径未満':state==='boundary'?'予測径の次回平均改削後が廃却径と同値・要確認':'予測径の次回平均改削後が廃却径より大きい'};
+ return {...base,status:state==='final'?'final-use':state==='boundary'?'boundary-review':'rework-candidate',identity,anchor,steps,currentMm:current,limitMm:limit,nextDiameter:next,remainingReworks:Math.max(0,Math.ceil(fixed(current-limit)/cut-1e-9)-1),cut:anchor.cut,measurementBasis:origin?null:d.basis,purchaseSpecificationBasis:origin?anchor.purchaseSpecificationBasis:null,limitBasis:anchor.limitBasis,extensionApproved:false,reason:state==='final'?'予測径の次回平均改削後が廃却径未満':state==='boundary'?'予測径の次回平均改削後が廃却径と同値・要確認':'予測径の次回平均改削後が廃却径より大きい'};
 }
 function selfTest(){
  const s={anonymousOnly:true,asOf:'2027-04-01',forecastAsOf:'2027-09-01',snapshotId:'anon',sourceRevision:'anon-v1'};

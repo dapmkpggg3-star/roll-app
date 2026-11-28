@@ -21,14 +21,14 @@ function resolveDispositionLife(s,role,evidence,event,priorCycles,api){
   return assessDiameterLife({...s,diameter:evidence.diameter,history:evidence.diameterHistory});
  }
  const c=evidence.diameterChain,hold=reason=>({status:'held',forecastOnly:true,reason});
- if(!same(s,c)||!Array.isArray(c.steps)||!c.steps.length||!Array.isArray(priorCycles)||c.diameter?.rollId!==role.rollId||String(c.diameter?.stand)!==k)return hold('予測径の起点未確認');
+ if(!same(s,c)||!Array.isArray(c.steps)||!c.steps.length||!Array.isArray(priorCycles)||(c.purchaseOrigin?.role??c.diameter)?.rollId!==role.rollId||String((c.purchaseOrigin?.role??c.diameter)?.stand)!==k)return hold('予測径の起点未確認');
  for(const step of c.steps){
   const proof=step?.dispatchEvidence,ov=proof?.leadOverride;
   if(!same(s,proof)||proof.identity!==step.oldIdentity||proof.cycleId!==step.cycleId||proof.date!==step.dispatchDate||proof.status!=='planned'||proof.dispatchCapacityConfirmed!==true||proof.vendorAcceptanceConfirmed!==true||!day(proof.handoverDate)||proof.handoverDate>=proof.date||proof.handoverConfirmed!==true||!str(proof.handoverBasis)||!priorCycles.includes(step.cycleId))return hold('先行回次・搬出・引継ぎ根拠未確認');
   if(ov!==undefined&&(!ov||String(ov.stand)!==k||!Number.isInteger(ov.days)||ov.days<=0||!str(ov.basis)||ov.sourceRevision!==s.sourceRevision))return hold('予測改削LT根拠未確認');
   if(step.leadDays!==(ov===undefined?api.provisionalReworkCalendarDays(k):ov.days))return hold('予測改削LT不一致');
  }
- const life=assessForecastDiameterChain({...s,diameter:c.diameter,history:c.history,steps:c.steps,forecastAsOf:event.date});
+ const life=assessForecastDiameterChain({...s,diameter:c.diameter,history:c.history,purchaseOrigin:c.purchaseOrigin,steps:c.steps,forecastAsOf:event.date});
  if(life.status==='held')return life;
  if(life.identity!==identity||life.currentMm!==role.diameterMm)return hold('予測新世代・個体径不一致');
  return life;

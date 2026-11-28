@@ -33,6 +33,10 @@ function previewRepeatedFollowing(s,api){
   for(const k of ks){
    const old=current.endingRoles.find(r=>String(r.stand)===k&&r.status==='used-standby'),q=find(plan.workshop.members,k),anchor=old&&evidence.get(id(old));
    if(!old||!same(s,q)||q.onlineIdentity!==id(old)||!anchor)return hold('使用終了個体の予測径履歴未確認',{stand:k});
+   if(anchor.purchaseAnchor){
+    if(!old.purchaseFirstUse)return hold('新品初回使用根拠未確認',{stand:k});
+    anchor.purchaseOriginRole=copy(old);
+   }
    members.push({...q,...anchor,onlineStartDate:q.onlineStartDate,finalUseStart:q.finalUseStart});
   }
   let stage=previewReturnHandover(s,{roles:current.endingRoles,event,group:g,busy:previous.busy,priorCycles:previous.priorCycles,dispositions:previous.dispositions,admissions:previous.admissions||[]},{...plan.workshop,members},api);
