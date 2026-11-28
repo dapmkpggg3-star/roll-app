@@ -3,6 +3,7 @@
 const {previewThirdWorkshop}=require('./return-handover-stage.cjs');
 const {previewUpperSequence}=require('./repeated-upper-caliber.cjs');
 const {resolveDispositionLife}=require('./third-upper-rotation.cjs');
+const {forecastFirstPurchaseUse}=require('./successor-first-use.cjs');
 const {inspectUpperLedger}=require('./caliber-lifetime-policy.cjs');
 const str=x=>typeof x==='string'&&x.trim().length>0;
 const same=(s,x)=>x&&x.snapshotId===s.snapshotId&&x.sourceRevision===s.sourceRevision&&str(x.basis);
@@ -42,7 +43,10 @@ function previewFollowingUpperSequence(s,state,plan,api){
  const f=r.ending[0];
  if(f.status==='period-end')return {...out,periodComplete:true,endingGroup:f.group,endingRoles:copy(stage.roles),reservations:[...state.reservations,...r.reservations]};
  if(f.status!=='first-roll-change'||r.rollHandoverCandidates.length!==1)return hold('次回交換結果未確認');
- return {...out,rotationComplete:true,endingGroup:f.group,endingRoles:r.rollHandoverCandidates[0].projectedRoles.map(r=>({...r,forecastOnly:true})),cursor:f.asOf,reservations:[...state.reservations,...r.reservations]};
+ const endingRoles=r.rollHandoverCandidates[0].projectedRoles.map(r=>({...r,forecastOnly:true}));
+ const firstUse=forecastFirstPurchaseUse(s,stage,r,endingRoles,api);
+ if(firstUse.held.length){held.push(...firstUse.held);return out;}
+ return {...out,rotationComplete:true,endingGroup:f.group,endingRoles:firstUse.roles,plannedIssues:firstUse.issues,pendingFirstUse:firstUse.pending,cursor:f.asOf,reservations:[...state.reservations,...r.reservations]};
 }
 function previewFourthUpperRotation(s,api){
  const third=previewThirdWorkshop(s,api),r=third.third,t=third.stage,plan=s.fourthCycle;

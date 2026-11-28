@@ -35,7 +35,7 @@ function previewRepeatedFollowing(s,api){
    if(!old||!same(s,q)||q.onlineIdentity!==id(old)||!anchor)return hold('使用終了個体の予測径履歴未確認',{stand:k});
    members.push({...q,...anchor,onlineStartDate:q.onlineStartDate,finalUseStart:q.finalUseStart});
   }
-  let stage=previewReturnHandover(s,{roles:current.endingRoles,event,group:g,busy:previous.busy,priorCycles:previous.priorCycles,dispositions:previous.dispositions},{...plan.workshop,members},api);
+  let stage=previewReturnHandover(s,{roles:current.endingRoles,event,group:g,busy:previous.busy,priorCycles:previous.priorCycles,dispositions:previous.dispositions,admissions:previous.admissions||[]},{...plan.workshop,members},api);
   const entry={exchangeDate:event.date,stage,next:null};stages.push(entry);
   if(stage.conditionalHandoverComplete&&stage.dispositions.some(d=>d.kind==='successor-needed')){
    stage=previewSuccessorAdmission(s,stage,event,g,plan.successors,[...knownRollIds],api);entry.admission=stage;entry.stage=stage;
@@ -43,7 +43,9 @@ function previewRepeatedFollowing(s,api){
   }
   if(!stage.readyForNextRotation)return hold('工作・次回処遇未成立',{exchangeDate:event.date,details:stage.held});
   for(const k of ks){
-   const m=find(plan.workshop.returnMasters,k),anchor=evidence.get(m.oldIdentity),h=find(previous.handovers,k),d=find(previous.dispositions,k),dispatch=find(previousDispatch,k);
+   const m=find(plan.workshop.returnMasters,k);
+   if(m?.status==='new-purchase-forecast')continue; // purchased diameter lineage is a separate pending gate
+   const anchor=evidence.get(m.oldIdentity),h=find(previous.handovers,k),d=find(previous.dispositions,k),dispatch=find(previousDispatch,k);
    const ev=anchor&&makeReturnEvidence(s,anchor,m,d,h,dispatch);
    if(!ev||evidence.has(m.identity))return hold('戻り世代の履歴連結未成立',{stand:k});
    evidence.set(m.identity,ev);
