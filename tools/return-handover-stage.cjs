@@ -2,7 +2,7 @@
 // Reusable conditional return/assembly stage, independent of the rotation number.
 const {previewWorkshopDeadline}=require('./workshop-deadline.cjs');
 const {inspectUpperLedger}=require('./caliber-lifetime-policy.cjs');
-const {previewThirdUpperRotation,forecastDisposition}=require('./third-upper-rotation.cjs');
+const {previewThirdUpperRotation,forecastDisposition,resolveDispositionLife}=require('./third-upper-rotation.cjs');
 const str=x=>typeof x==='string'&&x.trim().length>0;
 const day=x=>typeof x==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(x)&&Number.isFinite(Date.parse(x+'T00:00:00Z'))&&new Date(x+'T00:00:00Z').toISOString().slice(0,10)===x;
 const same=(s,x)=>x&&x.snapshotId===s.snapshotId&&x.sourceRevision===s.sourceRevision&&str(x.basis);
@@ -36,15 +36,17 @@ function previewReturnHandover(s,stage,plan,api){
   let eligibleOptions=options;
   if(plan.deadlineMode===true){
    const spec=find(Array.isArray(plan.deadlineInputs)?plan.deadlineInputs:[],k);
+   const life=resolveDispositionLife(s,old,q,e,cycles,api);
+   const retiring=life.status==='final-use';
    const lead=dispatch?.leadOverride?.days??api.provisionalReworkCalendarDays(k);
-   if(!same(s,spec)||spec.oldIdentity!==id(old)||spec.targetIdentity!==m.identity||!same(s,dispatch)||dispatch.identity!==id(old)||dispatch.status!=='planned'||!day(dispatch.date)||spec.leadDays!==lead){retain('R23期限・個体・搬出根拠未確認');continue;}
-   const deadline=previewWorkshopDeadline({...spec,asOf:e.date,roles:[
+   if(!same(s,spec)||spec.oldIdentity!==id(old)||spec.targetIdentity!==m.identity||life.status==='held'||life.status==='boundary-review'||(!retiring&&(!same(s,dispatch)||dispatch.identity!==id(old)||dispatch.status!=='planned'||!day(dispatch.date)||spec.leadDays!==lead))){retain('R23期限・個体・搬出根拠未確認');continue;}
+   const deadline=previewWorkshopDeadline({...spec,dispositionKind:retiring?'retirement':'rework',asOf:e.date,roles:[
     {rollId:online.rollId,status:'online'},
     {rollId:old.rollId,status:'used-standby',assembled:old.chockAssembled,emergencyEligible:old.emergencyEligible},
     {rollId:target.rollId,status:purchased?'new-unassembled':'rework-in-progress',availableDate:receiptDate,receiptKind:'forecast',receiptBasis:m.basis}
    ],verifiedWorkDays:options.map(o=>({date:o.slot.date,workshopWorking:true,sameDayHandover:true,safetyConfirmed:true,basis:o.basis}))});
-   if(deadline.status!=='conditional-deadline'||dispatch.date>deadline.dispatchDeadline){workshopInstructions.push({stand:k,...deadline,status:'held',warnings:[...deadline.warnings,...(dispatch.date>deadline.dispatchDeadline&&deadline.dispatchDeadline?['搬出予定が期限超過']:[])]});retain('R23期限内成立せず');continue;}
-   eligibleOptions=options.filter(o=>o.slot.date<=deadline.assemblyDeadline&&o.slot.date<spec.nextExchangeDeadline&&o.slot.date<dispatch.date&&api.addDays(o.slot.date,spec.preDispatchDays)<=dispatch.date);
+   if(deadline.status!=='conditional-deadline'||(!retiring&&dispatch.date>deadline.dispatchDeadline)){workshopInstructions.push({stand:k,...deadline,status:'held',warnings:[...deadline.warnings,...(!retiring&&dispatch.date>deadline.dispatchDeadline&&deadline.dispatchDeadline?['搬出予定が期限超過']:[])]});retain('R23期限内成立せず');continue;}
+   eligibleOptions=options.filter(o=>o.slot.date<=deadline.assemblyDeadline&&o.slot.date<spec.nextExchangeDeadline&&(retiring||(o.slot.date<dispatch.date&&api.addDays(o.slot.date,spec.preDispatchDays)<=dispatch.date)));
    workshopInstructions.push({stand:k,...deadline,status:eligibleOptions.length?'conditional-deadline':'held',warnings:eligibleOptions.length?deadline.warnings:[...deadline.warnings,'搬出予定と組替候補が不整合']});
    if(!eligibleOptions.length){retain('R23期限内の実行可能性未確認');continue;}
   }
