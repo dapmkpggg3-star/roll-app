@@ -15,9 +15,16 @@ function checkWorkshopBatch(s,calendar,stage){
 const id=r=>JSON.stringify([String(r.stand),r.rollId,r.generation]);
 const same=(s,x)=>x&&x.snapshotId===s.snapshotId&&x.sourceRevision===s.sourceRevision&&typeof x.basis==='string'&&x.basis.trim();
 const copy=x=>JSON.parse(JSON.stringify(x));
+// Preserve the last independently established exchange, not a later unconfirmed assembly.
+function exchangeCheckpoint(node){
+ if(node?.rotationComplete!==true||node.forecastOnly!==true||node.operationAuthorized!==false||node.writeAllowed!==false||!Array.isArray(node.endingRoles)||!Array.isArray(node.endingGroup?.stands)||!Array.isArray(node.reservations))return null;
+ const events=(node.sequence?.events||[]).filter(e=>e.rollChanged===true);
+ if(events.length!==1||typeof events[0].date!=='string')return null;
+ return {date:events[0].date,phase:'after-roll-exchange',forecastOnly:true,actualCompletion:false,group:copy(node.endingGroup),roles:copy(node.endingRoles),reservations:copy(node.reservations)};
+}
 function previewRepeatedFollowing(s,api){
  const initial=previewFourthUpperRotation(s,api),fourth=initial.fourth,stages=[],held=[],evidence=new Map();
- const base={initial,stages,held,periodComplete:false,annualComplete:false,forecastOnly:true,operationAuthorized:false,writeAllowed:false};
+ const base={initial,stages,held,lastVerifiedExchange:exchangeCheckpoint(fourth),periodComplete:false,annualComplete:false,forecastOnly:true,operationAuthorized:false,writeAllowed:false};
  const hold=(reason,extra={})=>{held.push({reason,...extra});return base;};
  const shared=s.sharedRecurrenceCalendar;
  let calendar=shared&&Array.isArray(shared.existing)?copy(shared.existing):null;
@@ -57,7 +64,7 @@ function previewRepeatedFollowing(s,api){
   let stage=previewReturnHandover(s,{roles:current.endingRoles,event,group:g,busy:previous.busy,priorCycles:previous.priorCycles,dispositions:previous.dispositions,admissions:previous.admissions||[]},{...plan.workshop,members},api);
   if(shared&&plan.workshop.deadlineMode!==true){
    const check=checkWorkshopBatch(s,calendar,stage);
-   if(!check.accepted)return hold('共通工作枠競合・組替保留',{exchangeDate:event.date,details:check.held,endingRoles:copy(current.endingRoles),requiredExchange:true});
+   if(!check.accepted)return hold('共通工作枠競合・組替保留',{exchangeDate:event.date,details:check.held,workshopDetails:copy(stage.held||[]),endingRoles:copy(current.endingRoles),requiredExchange:null,requiredWorkshop:true});
    calendar=check.calendar;base.sharedCalendar=calendar;
   }
   const entry={exchangeDate:event.date,stage,next:null};stages.push(entry);
@@ -65,7 +72,7 @@ function previewRepeatedFollowing(s,api){
    stage=previewSuccessorAdmission(s,stage,event,g,plan.successors,[...knownRollIds],api);entry.admission=stage;entry.stage=stage;
    for(const a of stage.admissions||[])knownRollIds.add(a.master.rollId);
   }
-  if(!stage.readyForNextRotation)return hold('工作・次回処遇未成立',{exchangeDate:event.date,details:stage.held});
+  if(!stage.readyForNextRotation)return hold('工作・次回処遇未成立',{exchangeDate:event.date,details:stage.held,requiredWorkshop:stage.conditionalHandoverComplete!==true,requiredExchange:null});
   for(const k of ks){
    const m=find(plan.workshop.returnMasters,k);
    if(m?.status==='new-purchase-forecast'){
@@ -90,8 +97,8 @@ function previewRepeatedFollowing(s,api){
   if(next.periodComplete)return {...base,periodComplete:true,endingGroup:next.endingGroup,endingRoles:next.endingRoles,reservations:next.reservations};
   if(!next.rotationComplete)return hold('次回交換未成立',{details:next.held,requiredExchange:next.held.some(h=>h.requiredExchange===true)});
   if(next.cursor<=current.cursor)return hold('反復時系列が進まない');
-  current=next;previous=stage;previousDispatch=plan.workshop.dispatchPlans;
+  current=next;base.lastVerifiedExchange=exchangeCheckpoint(next);previous=stage;previousDispatch=plan.workshop.dispatchPlans;
  }
  return {...base,held:[...held,{reason:'期間内の次回工作計画未確認',exchangeDate:current.sequence.events.find(e=>e.rollChanged)?.date}],endingGroup:current.endingGroup,endingRoles:current.endingRoles,reservations:current.reservations};
 }
-module.exports={previewRepeatedFollowing,checkWorkshopBatch};
+module.exports={previewRepeatedFollowing,checkWorkshopBatch,exchangeCheckpoint};
