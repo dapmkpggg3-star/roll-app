@@ -10,9 +10,13 @@ function selfTest(api){
  const conflict=forecastFirstPurchaseUse(s,stage,seq,[{...online,purchaseFirstUse:{...issue,firstUseDate:'2028-01-02'}}],api);
  const original={...old,generation:'g1',purchaseAssemblyDate:'2027-12-30'},first={...original,status:'online'},e={events:[{rollChanged:true,date:'2027-12-31',newGroup:{members:[{identity:issue.identity}]}}]},a={roles:[original],handovers:[{stand:'8',targetIdentity:issue.identity,date:'2027-12-30',actualCompletion:false}]},ss={...s,throughDate:'2028-01-01',days:[{...s.days[0],date:'2028-01-01'}]},f=forecastFirstPurchaseUse(ss,a,e,[first],api);
  const lost={...stage,roles:[{...old,purchaseReworked:true}]},lostOrigin={...stage,roles:[{...old,purchaseOriginIdentity:issue.identity}]};
+ const priorGen={...old,generation:'g1',status:'rework',purchaseReworked:true},otherGen=forecastFirstPurchaseUse(s,{roles:[old,priorGen],handovers:stage.handovers},seq,[online],api);
+ const priorOrigin={...old,generation:'g1',status:'rework',purchaseOriginIdentity:JSON.stringify(['8','D','g1'])},otherOrigin=forecastFirstPurchaseUse(s,{roles:[old,priorOrigin],handovers:stage.handovers},seq,[online],api);
  const l=forecastFirstPurchaseUse(s,lost,seq,[online],api),lo=forecastFirstPurchaseUse(s,lostOrigin,seq,[online],api);
  return [
  ['lost history after rework held',l.issues.length===0&&l.held.length===1],
+ ['rework marker on earlier generation held',otherGen.issues.length===0&&otherGen.held.length===1&&otherGen.held[0].reason==='改削済み購入個体の初回払出履歴欠損'],
+ ['origin on earlier generation held',otherOrigin.issues.length===0&&otherOrigin.held.length===1&&otherOrigin.held[0].reason==='改削済み購入個体の初回払出履歴欠損'],
  ['original generation mismatch without history held',lo.issues.length===0&&lo.held.length===1],
  ['physical roll history retained across g1 to g2',r.issues.length===0&&r.held.length===0&&r.roles[0].purchaseFirstUse.identity===issue.identity&&r.roles[0].generation==='g2'],
  ['conflicting history held',conflict.held.length===1&&conflict.issues.length===0],

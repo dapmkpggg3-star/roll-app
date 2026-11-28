@@ -27,7 +27,7 @@ function selfTest(api){
  const blocked=previewReturnHandover(s,input,{...work,workshopOptions:work.workshopOptions.slice(0,1)},api);
  const pending=r.rotationComplete?forecastFirstPurchaseUse({...s,throughDate:'2027-12-31'},h,r.sequence,r.endingRoles.map(t=>{const q={...t};delete q.purchaseFirstUse;return q;}),api):null;
  const duplicate=r.rotationComplete?forecastFirstPurchaseUse(s,h,r.sequence,r.endingRoles,api):null;
- return {result:r,work:h,tests:[
+ return {result:r,work:h,chain:{s,admission:a,plan:work},tests:[
  ['prior successor tests',prev.tests.every(t=>t[1])],
  ['D assembled without a fourth set',h.readyForNextRotation&&h.roles.length===6&&h.purchases.length===2&&h.roles.filter(r=>r.purchaseSuccessor).every(r=>r.status==='new-standby'&&r.chockAssembled&&r.emergencyEligible)],
  ['old B becomes rework only after handover',h.dispositions.every(d=>d.rework?.expectedInboundDate==='2027-12-15')&&h.roles.filter(r=>r.status==='rework-ready').length===2],
