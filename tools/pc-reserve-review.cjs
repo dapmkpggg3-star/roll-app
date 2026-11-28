@@ -13,8 +13,9 @@ function classify(roles,k){
  const standby=roles.filter(r=>r.status==='new-standby'||r.status==='used-standby'),all=roles.filter(r=>r.status!=='online');
  if(all.some(r=>typeof r.chockAssembled!=='boolean'||typeof r.emergencyEligible!=='boolean'||(!standby.includes(r)&&(r.chockAssembled||r.emergencyEligible))||(r.emergencyEligible&&!r.chockAssembled)))return unknown('組込・緊急使用適合未確認または矛盾');
  const available=standby.filter(r=>r.chockAssembled&&r.emergencyEligible);
- const normal=available.filter(r=>r.status==='new-standby'||(Number(k)>=12&&r.normalEligible===true));
- const uncertainNormal=available.some(r=>r.status==='used-standby'&&Number(k)>=12&&typeof r.normalEligible!=='boolean');
+ const candidates=available.filter(r=>r.status==='new-standby'||Number(k)>=12);
+ const normal=candidates.filter(r=>r.normalEligible===true);
+ const uncertainNormal=candidates.some(r=>typeof r.normalEligible!=='boolean');
  return {stand:k,emergencyCount:available.length,normalCount:uncertainNormal?null:normal.length,emergencyIdentities:available.map(id),reason:available.length?'適合組込済予備あり（個体単位）':'確認対象の3セットに適合組込済予備なし'};
 }
 function previewPcReserveReview(s={}){
@@ -35,7 +36,7 @@ function previewPcReserveReview(s={}){
    const r=classify(own,k),key=JSON.stringify([k,date,phase]);
    const row={...r,date,phase,kind:'forecast',state:r.emergencyCount===null?'情報不足':r.emergencyCount===0?'将来の予備不足見込み':'個体別予備見込みあり',source,forecastOnly:true};
    if(!seen.has(key))seen.set(key,row);
-   else{const p=seen.get(key);if(p.emergencyCount!==row.emergencyCount||p.normalCount!==row.normalCount||JSON.stringify(p.emergencyIdentities.slice().sort())!==JSON.stringify(row.emergencyIdentities.slice().sort()))seen.set(key,{...row,emergencyCount:null,normalCount:null,emergencyIdentities:[],state:'情報不足',reason:'同一予測時点の予備根拠競合'});}
+   else{const p=seen.get(key);if(p.emergencyCount!==row.emergencyCount||p.normalCount!==row.normalCount||JSON.stringify(p.emergencyIdentities.slice().sort())!==JSON.stringify(row.emergencyIdentities.slice().sort()))seen.set(key,{...row,emergencyCount:null,normalCount:null,emergencyIdentities:[],state:'情報不足',reason:'同一予測時点の予備根拠競合',possibleShortage:p.emergencyCount===0||row.emergencyCount===0||p.possibleShortage===true});}
   }
  };
  for(const [i,c] of s.circulations.entries()){
