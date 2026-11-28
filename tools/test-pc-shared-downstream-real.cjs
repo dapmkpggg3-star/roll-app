@@ -54,13 +54,17 @@ function fixture(api){
  path.stopBatches=[{...v,id:'continuous-stop',noProductionConfirmed:true,demandIds:x.groups.map(g=>g.id),fromDate:x.days[0].date,toDate:x.days[3].date}];
  x.pathline=path;return x;
 }
-function selfTest(api){
- const x=fixture(api),before=JSON.stringify(x),run=z=>previewPcSharedCirculation(z,api),r=run(x),bad=fn=>{const z=JSON.parse(JSON.stringify(x));fn(z);return run(z);};
- const off=bad(z=>{const m=z.pathline.masterRows.find(m=>m.rollId==='R17-1');m.calibers.find(c=>c.number===4).centerMm+=41;});
- const edge=bad(z=>{const m=z.pathline.masterRows.find(m=>m.rollId==='R17-1');m.calibers.find(c=>c.number===4).centerMm+=40;});
- const missing=bad(z=>{z.pathline.masterRows=z.pathline.masterRows.filter(m=>m.rollId!=='R17-1');});
- const noBatch=bad(z=>delete z.pathline.stopBatches);
- const noWork=bad(z=>{z.workshopOptions=z.workshopOptions.filter(w=>w.stand!=='17');});
+function makeCases(api){
+ const x=fixture(api),before=JSON.stringify(x),variant=fn=>{const z=JSON.parse(JSON.stringify(x));fn(z);return z;};
+ return {x,before,cases:{normal:x,
+ off:variant(z=>{const m=z.pathline.masterRows.find(m=>m.rollId==='R17-1');m.calibers.find(c=>c.number===4).centerMm+=41;}),
+ edge:variant(z=>{const m=z.pathline.masterRows.find(m=>m.rollId==='R17-1');m.calibers.find(c=>c.number===4).centerMm+=40;}),
+ missing:variant(z=>{z.pathline.masterRows=z.pathline.masterRows.filter(m=>m.rollId!=='R17-1');}),
+ noBatch:variant(z=>delete z.pathline.stopBatches),
+ noWork:variant(z=>{z.workshopOptions=z.workshopOptions.filter(w=>w.stand!=='17');})}};
+}
+function evaluate(x,before,results){
+ const {normal:r,off,edge,missing,noBatch,noWork}=results;
  const e=r.first?.verifiedExchangeEvents||[],prod=e.find(q=>q.type==='downstream-production-preview'),disp=r.first?.dispositions||[];
  const month=(k,m)=>r.annual?.rows.find(q=>q.stand===k)?.months.find(q=>q.month===m)?.forecastRework;
  return {tests:[
@@ -78,5 +82,9 @@ function selfTest(api){
  ['Not annual completion, no mutation or authority',!r.periodComplete&&!r.complete&&!r.writeAllowed&&!r.operationAuthorized&&JSON.stringify(x)===before]
  ],result:r,edge,off,noBatch};
 }
-module.exports={selfTest,fixture};
+function selfTest(api){
+ const {x,before,cases}=makeCases(api);
+ return evaluate(x,before,Object.fromEntries(Object.entries(cases).map(([k,v])=>[k,previewPcSharedCirculation(v,api)])));
+}
+module.exports={selfTest,fixture,makeCases,evaluate};
 if(require.main===module){const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),api=vm.createContext({});vm.runInContext(fs.readFileSync(path.resolve(__dirname,'../js/operating-plan.js'),'utf8'),api);const {tests}=selfTest(api);for(const [n,ok] of tests)console.log((ok?'PASS ':'FAIL ')+n);if(tests.some(x=>!x[1]))process.exitCode=1;}
