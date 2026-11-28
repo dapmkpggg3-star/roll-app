@@ -31,6 +31,8 @@ function projectPcSharedCirculation(s={},runShared){
  for(const issue of first.pathlineIssues||[])base.held.push({reason:'下流パスライン：'+String(issue)});
  const dispositions=[];
  for(const d of first.dispositions||[]){
+  const k=groups.find(x=>x.split(',').includes(String(d?.stand))),g=seen.get(k)?.[0];
+  if(!g||(d.demandId!=null&&d.demandId!==g.id)){base.held.push({stand:d?.stand??null,reason:'処遇と対象需要の対応未確認'});continue;}
   // Shared first-stage procurement has a different explicit null-receipt contract.
   // Normalize only verified no-actual claims; do not infer a received physical roll.
   if(d?.status==='successor-review'&&d.actualDisposition===false&&d.actualOrderDate===null&&d.procurement?.status==='forecast-guidance'&&d.procurement.actualReceiptDate===null&&d.procurement.accountingMonth===null){
