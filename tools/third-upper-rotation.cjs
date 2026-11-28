@@ -3,6 +3,7 @@
 const {previewSecondUpperCycle}=require('./conditional-second-upper-cycle.cjs');
 const {previewUpperSequence}=require('./repeated-upper-caliber.cjs');
 const {assessDiameterLife}=require('./annual-diameter-gate.cjs');
+const {assessPurchasedDiameter}=require('./purchase-diameter-anchor.cjs');
 const {assessForecastDiameterChain}=require('./forecast-diameter-chain.cjs');
 const {inspectUpperLedger}=require('./caliber-lifetime-policy.cjs');
 const str=x=>typeof x==='string'&&x.trim().length>0;
@@ -14,6 +15,7 @@ const copy=x=>JSON.parse(JSON.stringify(x));
 function resolveDispositionLife(s,role,evidence,event,priorCycles,api){
  const k=String(role.stand),identity=id(role);
  if(!same(s,evidence)||!day(event?.date)||event.date<s.asOf)return {status:'held',reason:'処遇根拠未確認'};
+ if(evidence.purchaseAnchor!==undefined&&evidence.diameterChain===undefined)return assessPurchasedDiameter(s,role,evidence,event);
  if(evidence.diameterChain===undefined){
   if(evidence.diameter?.identity!==identity||evidence.diameter?.currentMm!==role.diameterMm)return {status:'held',reason:'個体径根拠未確認'};
   return assessDiameterLife({...s,diameter:evidence.diameter,history:evidence.diameterHistory});
@@ -40,7 +42,7 @@ function forecastDisposition(s,role,evidence,event,handover,dispatch,priorCycles
   const lead=evidence.purchaseLead??{...api.defaultStandLeadTime(k),basis:'R12 provisional'};
   const ok=String(lead.standKey)===k&&Number.isInteger(lead.months)&&lead.months>0&&lead.months<=120&&['confirmed','provisional'].includes(lead.status)&&str(lead.basis)&&(evidence.purchaseLead==null||lead.sourceRevision===s.sourceRevision);
   const start=evidence.finalUseStart;
-  const ideal=same(s,start)&&start.identity===identity&&start.status==='forecast'&&day(start.date)&&start.date<=event.date&&start.date===evidence.onlineStartDate&&(!life.forecastOnly||start.date>=life.steps.at(-1).expectedInboundDate)?start.date:null;
+  const ideal=same(s,start)&&start.identity===identity&&start.status==='forecast'&&day(start.date)&&start.date<=event.date&&start.date===evidence.onlineStartDate&&(!life.forecastOnly||start.date>=(life.steps?.at(-1)?.expectedInboundDate??role.purchaseFirstUse?.firstUseDate??'9999-12-31'))?start.date:null;
   return {...out,life,kind:life.status==='final-use'?'successor-needed':'boundary-review',status:ok?'successor-review':'held',reason:life.reason,procurement:ok?{status:'forecast-guidance',latestArrivalBy:event.date,latestOrderBy:api.addMonths(event.date,-lead.months),idealArrivalBy:ideal,idealOrderBy:ideal?api.addMonths(ideal,-lead.months):null,leadMonths:lead.months,leadBasis:lead.basis,actualReceived:false,accountingMonth:null}:null};
  }
  const base={...out,life,kind:'rework-candidate'};
