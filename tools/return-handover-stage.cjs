@@ -43,7 +43,7 @@ function previewReturnHandover(s,stage,plan,api){
 function previewThirdWorkshop(input,api){
  const s=input||{},third=previewThirdUpperRotation(s,api);
  if(!third.thirdRotationComplete)return {third,stage:null,forecastOnly:true,annualComplete:false,operationAuthorized:false,writeAllowed:false};
- const stage=previewReturnHandover(s,{roles:third.thirdProjectedRoles,event:third.third.events.find(e=>e.rollChanged),group:third.third.ending[0].group,busy:[...(s.workshopReserved||[]),...third.second.first.allocations,...third.second.nextHandovers.map(h=>{const q=s.secondCycle.workshopOptions.find(o=>String(o.stand)===h.stand&&o.slot.date===h.date&&o.oldIdentity===h.oldIdentity&&o.targetIdentity===h.targetIdentity);return q?.slot;} )],priorCycles:[...third.second.first.dispositions,...third.dispositions].flatMap(d=>d.rework?[d.rework.cycleId]:[]),dispositions:third.dispositions},s.thirdWorkshop,api);
+ const stage=previewReturnHandover(s,{roles:third.thirdProjectedRoles,event:third.third.events.find(e=>e.rollChanged),group:third.third.ending[0].group,busy:[...(s.workshopReserved||[]),...third.second.first.allocations,...third.second.nextHandovers],priorCycles:[...third.second.first.dispositions,...third.dispositions].flatMap(d=>d.rework?[d.rework.cycleId]:[]),dispositions:third.dispositions},s.thirdWorkshop,api);
  return {third,stage,forecastOnly:true,annualComplete:false,operationAuthorized:false,writeAllowed:false};
 }
 module.exports={previewReturnHandover,previewThirdWorkshop};
