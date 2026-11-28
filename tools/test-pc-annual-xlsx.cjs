@@ -21,7 +21,7 @@ function readZip(bytes){
  return parts;
 }
 function selfTest(){
- const x=fixture();x.actualEvents.push({...x.actualEvents[0],rollId:'E',cycleId:'c2',date:'2027-11-25'});
+ const x=fixture();x.asOf='2027-11-26';x.actualEvents.push({...x.actualEvents[0],rollId:'E',cycleId:'c2',date:'2027-11-25'});
  const before=JSON.stringify(x),model=buildPcAnnualSheets(x),bytes=exportPcAnnualXlsx(x),parts=readZip(bytes);
  const a=parts['xl/worksheets/sheet1.xml'],d=parts['xl/worksheets/sheet2.xml'],idx=parts['xl/worksheets/sheet6.xml'],w=parts['xl/workbook.xml'];
  const reject=fn=>{try{fn();return false;}catch{return true;}};
