@@ -11,10 +11,37 @@ function previewPcCirculationEvents(s={}){
  if(s.anonymousOnly!==true||!str(s.snapshotId)||!str(s.sourceRevision)||!day(s.asOf)||!Array.isArray(s.circulations)||!Array.isArray(s.actualEvents))return {...base,held:[{reason:'循環・実績入力未確認'}]};
  const tag={snapshotId:s.snapshotId,sourceRevision:s.sourceRevision};
  for(const e of s.actualEvents){if(!same(s,e)||e.status!=='actual'){held.push({reason:'実績入力の出典・区分未確認'});continue;}events.push({...e});}
+ // Preserve upstream flags as evidence, not as verified current spare counts.
+ const collectHold=(h,source,depth=0)=>{
+  if(!h||typeof h!=='object'||depth>8){held.push({source,reason:'警告詳細未確認'});return;}
+  const row={source,reason:str(h.reason)?h.reason:'循環保留',stand:h.stand??null,forecastOnly:true};
+  if(typeof h.requiredExchange==='boolean'||h.requiredExchange===null)row.requiredExchange=h.requiredExchange;
+  if(typeof h.oldReserveRetained==='boolean')row.oldReserveRetained=h.oldReserveRetained;
+  if(day(h.exchangeDate))row.exchangeDate=h.exchangeDate;
+  if(day(h.date))row.date=h.date;
+  if(str(h.demandId))row.demandId=h.demandId;
+  if(Array.isArray(h.warnings))row.warnings=h.warnings.filter(str);
+  if(row.requiredExchange===true)row.exchangeStatus='交換需要あり・未成立';
+  else if(row.requiredExchange===null)row.exchangeStatus='交換需要の判定未確認';
+  if(row.oldReserveRetained===true)row.spareStatus='旧予備保持の予測根拠あり・現物別確認';
+  else if(row.oldReserveRetained===false)row.spareStatus='旧予備保持未成立または未確認・現物照合';
+  held.push(row);
+  if(Array.isArray(h.details))for(const d of h.details)collectHold(d,source+'/detail',depth+1);
+ };
  const visit=(node,source)=>{
   if(!node)return;
   if(node.writeAllowed===true||node.operationAuthorized===true){held.push({source,reason:'予測専用出力ではない'});return;}
-  for(const h of node.held||[])held.push({source,reason:h.reason||'循環保留',stand:h.stand??null});
+  for(const h of node.held||[])collectHold(h,source);
+  for(const w of node.workshopInstructions||[]){
+   if(w?.status==='held'||w?.warnings?.length){
+    collectHold({stand:w.stand,reason:'工作期限・組替成立性の警告',warnings:w.warnings},source+'/workshop');
+    const last=held[held.length-1];
+    if(day(w.assemblyDeadline))last.assemblyDeadline=w.assemblyDeadline;
+    if(day(w.dispatchDeadline))last.dispatchDeadline=w.dispatchDeadline;
+    // The deadline helper defaults oldReserveRetained=true even on invalid roles.
+    // Do not infer actual reserve retention from that field.
+   }
+  }
   for(const d of node.dispositions||[]){
    const a=identity(d?.identity,d?.stand),r=d?.rework,p=d?.procurement;
    if(d?.status==='conditional-rework'){
