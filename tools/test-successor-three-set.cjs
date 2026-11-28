@@ -1,7 +1,7 @@
 'use strict';
 const {previewSuccessorAdmission}=require('./successor-three-set.cjs');
 const {forecastDisposition}=require('./third-upper-rotation.cjs');
-function selfTest(api){
+function fixture(api){
  const s={anonymousOnly:true,asOf:'2027-04-01',throughDate:'2027-12-31',snapshotId:'s',sourceRevision:'r'},v={snapshotId:s.snapshotId,sourceRevision:s.sourceRevision,basis:'anonymous'},event={date:'2027-11-15'},group={stands:['8','9'],size:'D10'},stage={conditionalHandoverComplete:true,held:[],roles:[],handovers:[],dispositions:[],priorCycles:[],busy:[]},plans=[];
  const id=r=>JSON.stringify([String(r.stand),r.rollId,r.generation]);
  for(const k of group.stands){
@@ -18,7 +18,11 @@ function selfTest(api){
   // 6 month lead: September ideal cannot be met with an April planned order.
   plans.at(-1).receipt.date='2027-10-01';
  }
- const before=JSON.stringify([s,stage,event,group,plans]),known=['old-historical'],r=previewSuccessorAdmission(s,stage,event,group,plans,known,api);
+ return {s,stage,event,group,plans,known:['old-historical']};
+}
+function selfTest(api){
+ const {s,stage,event,group,plans,known}=fixture(api);
+ const before=JSON.stringify([s,stage,event,group,plans]),r=previewSuccessorAdmission(s,stage,event,group,plans,known,api);
  const run=fn=>{const [a,b,c,d,e]=JSON.parse(before);fn(a,b,c,d,e);return previewSuccessorAdmission(a,b,c,d,e,known,api);};
  const noChange=q=>!q.admissionComplete&&q.roles.length===6&&!q.roles.some(t=>t.purchaseSuccessor);
  return [
@@ -40,5 +44,5 @@ function selfTest(api){
  ['no mutation and no actual writes',JSON.stringify([s,stage,event,group,plans])===before&&!r.operationAuthorized&&!r.writeAllowed&&!r.actualIssue]
  ];
 }
-module.exports={selfTest};
+module.exports={fixture,selfTest};
 if(require.main===module){const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),api=vm.createContext({});vm.runInContext(fs.readFileSync(path.resolve(__dirname,'../js/operating-plan.js'),'utf8'),api);const tests=selfTest(api);for(const [name,ok] of tests)console.log((ok?'PASS ':'FAIL ')+name);if(tests.some(x=>!x[1]))process.exitCode=1;}
