@@ -19,7 +19,7 @@ function selfTest(preview,disposition,second,sequenceWorkshop,sequence,workshop,
  x.upperCaliberSelections.push({...v,demandId:g.id,date:'2027-06-21',startMinute:480,endMinute:840,size:'D10',pairFitConfirmed:true,fitBasis:'anonymous fit',members:x.secondCycle.members.map(m=>({...v,standKey:m.stand,identity:m.replacementIdentity,oldId:'1',nextId:'2'}))});
  const before=JSON.stringify(x),r=preview(x,api),run=fn=>{const q=JSON.parse(JSON.stringify(x));fn(q);return preview(q,api);};
  const wrong=run(q=>q.thirdCycle.dispatchPlans[0].cycleId='cycle-8'),early=run(q=>q.thirdCycle.dispatchPlans[0].date='2027-06-07'),noAssembly=run(q=>q.secondCycle.workshopOptions.pop()),noFit=run(q=>q.thirdCycle.compatibility.lineFitConfirmed=false),noSlot=run(q=>q.slots=q.slots.filter(t=>t.date!=='2027-07-05'));
- const old=p.members[0].roles[1],q=x.secondCycle.members[0],event=r.second.second.events.find(e=>e.rollChanged),h=r.second.nextHandovers[0],d=x.thirdCycle.dispatchPlans[0],life=(mm)=>disposition(x,{...old,diameterMm:mm},{...q,diameter:{...q.diameter,currentMm:mm},onlineStartDate:'2027-05-02',finalUseStart:{...v,identity:id(old),status:'forecast',date:'2027-05-02'}},event,h,d,[],api);
+ const old=p.members[0].roles[1],q=x.secondCycle.members[0],event=r.second.second.events.find(e=>e.rollChanged),h=r.second.nextHandovers[0],d=x.thirdCycle.dispatchPlans[0],life=(mm)=>disposition(x,{...old,diameterMm:mm},{...q,diameter:{...q.diameter,currentMm:mm},onlineStartDate:'2027-05-03',finalUseStart:{...v,identity:id(old),status:'forecast',date:'2027-05-03'}},event,h,d,[],api);
  const final=life(405),boundary=life(407);
  const tests=[
  ['prior second cycle regression',reg.tests.every(t=>t[1])],
@@ -33,9 +33,10 @@ function selfTest(preview,disposition,second,sequenceWorkshop,sequence,workshop,
  ['missing second handover blocks third and keeps reserve',!noAssembly.third&&noAssembly.projectedRoles.some(r=>String(r.stand)==='9'&&r.status==='used-standby'&&r.emergencyEligible)],
  ['third geometry proof missing holds',noFit.third?.unresolved.length>0&&!noFit.thirdRotationComplete],
  ['third slot missing retains demand',noSlot.third?.unresolved.some(u=>u.requiredExchange===true)],
- ['final-use purchase forecast not rework',final.kind==='successor-needed'&&final.procurement?.latestOrderBy==='2026-12-05'&&final.procurement.idealOrderBy==='2026-11-02'&&!final.rework&&final.issueMonth===null],
+ ['final-use purchase forecast not rework',final.kind==='successor-needed'&&final.procurement?.latestOrderBy==='2026-12-05'&&final.procurement.idealOrderBy==='2026-11-03'&&!final.rework&&final.issueMonth===null],
  ['boundary is review not rework',boundary.kind==='boundary-review'&&!!boundary.procurement&&!boundary.rework],
  ['no actual state or annual completion',!r.complete&&!r.annualComplete&&!r.operationAuthorized&&!r.writeAllowed&&!r.actualReceipt],
+ ['third roles explicitly forecast only',r.thirdProjectedRoles.length===6&&r.thirdProjectedRoles.every(q=>q.forecastOnly===true)],
  ['source unchanged',JSON.stringify(x)===before]];
  return {tests,result:r,regression:reg.tests};
 }
