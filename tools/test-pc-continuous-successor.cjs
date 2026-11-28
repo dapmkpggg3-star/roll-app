@@ -62,7 +62,7 @@ function fixture(api){
 }
 function selfTest(api){
  const x=fixture(api),before=JSON.stringify(x),r=previewRepeatedFollowing(x,api);
- const entry=date=>r.stages.find(e=>e.exchangeDate===date),ad=entry('2027-11-09')?.stage,first=entry('2028-01-04')?.next,grind=entry('2028-02-01')?.stage,back=entry('2028-02-29')?.next;
+ const entry=date=>r.stages.find(e=>e.exchangeDate===date),ad=entry('2027-11-09')?.stage,first=entry('2027-12-07')?.next,grind=entry('2028-02-01')?.stage,back=entry('2028-02-29')?.next;
  const rotations=r.stages.map(e=>e.next).filter(n=>n?.rotationComplete),stages=r.stages.map(e=>e.stage);
  const issues=rotations.flatMap(n=>n.plannedIssues||[]),firstD=issues.filter(u=>u.rollId.endsWith('D'));
  const oldD=grind?.dispositions.filter(d=>JSON.parse(d.identity)[1].endsWith('D'))||[];
@@ -71,7 +71,7 @@ function selfTest(api){
  ['A final use triggers successor, not rework',ad?.dispositions.every(d=>d.kind==='successor-needed'&&d.life.currentMm===406&&d.life.nextDiameter===399&&!d.rework)],
  ['D replaces retired A and stays unassembled until workshop',ad?.admissionComplete&&ad.roles.filter(q=>q.purchaseSuccessor).every(q=>q.rollId.endsWith('D')&&q.status==='new-unassembled'&&!q.chockAssembled&&!q.emergencyEligible)&&ad.retiredHistory.length===2],
  ['D first production January only',first?.rotationComplete&&firstD.length===2&&firstD.every(u=>u.firstUseDate==='2028-01-05'&&u.plannedIssueMonth==='2028-01'&&!u.actualIssue)],
- ['D actual usage accumulates to threshold without reset',grind?.dispositions.length===2&&first?.endingGroup.members.every(m=>m.openingUsedTons===0)&&entry('2028-01-04').next.sequence.events.find(e=>e.rollChanged).newGroup.members.every(m=>m.caliberLedger.calibers.every(c=>c.tons===0))&&entry('2028-01-04').next.cursor==='2028-01-05'],
+ ['D actual usage accumulates to threshold without reset',grind?.dispositions.length===2&&first?.endingGroup.members.every(m=>m.openingUsedTons===0)&&entry('2028-01-04')?.next?.sequence.events.find(e=>e.rollChanged)?.oldGroup.members.every(m=>m.rollId.endsWith('D')&&m.caliberLedger.calibers.length===2&&m.caliberLedger.calibers.every(c=>c.tons===5200))&&first.cursor==='2028-01-05'],
  ['D first rework forecast 420 to 413 from purchase specification',oldD.length===2&&oldD.every(d=>d.life.forecastOnly&&!d.life.actualMeasurement&&d.life.currentMm===420&&d.rework?.forecastDiameterMm===413&&d.rework.expectedInboundDate==='2028-03-01')],
  ['D return becomes online r1 without another issue',back?.rotationComplete&&back.endingRoles.filter(q=>q.status==='online').every(q=>q.rollId.endsWith('D')&&q.generation==='r1'&&q.purchaseFirstUse?.firstUseDate==='2028-01-05')&&back.plannedIssues.length===0],
  ['All completed stages maintain three physical rolls and one reserve',stages.every(z=>z.roles.length===6&&['8','9'].every(k=>{const a=z.roles.filter(q=>String(q.stand)===k);return a.length===3&&new Set(a.map(q=>q.rollId)).size===3&&a.filter(q=>q.status!=='online'&&q.chockAssembled&&q.emergencyEligible).length===1;}))],
