@@ -10,7 +10,7 @@ function selfTest(){
  ['First-stage purchase reaches warning without actual receipt assertion',r.purchase.rows.some(p=>p.stand==='17'&&p.state==='発注状況未確認'&&p.accountingMonth===null)],
  ['Unresolved pair demand retained on both stands', ['8','9'].every(k=>r.annual.held.some(h=>h.stand===k&&h.requiredExchange===true&&h.demandId==='g8,9'&&h.date==='2027-05-10'))],
  ['Coverage distinguishes missing disposition',at('3').state==='初回処遇未確認'&&at('2').state==='初回処遇の予測あり'],
- ['Missing stand visible',bad({groups:s.groups.slice(1)}).coverage[0].state==='対象入力なし'],
+ ['Missing stand visible and out-of-scope disposition not counted',bad({groups:s.groups.slice(1)}).coverage[0].state==='対象入力なし'&&bad({groups:s.groups.slice(1)}).annual.detail.every(d=>d.stand!=='2')],
  ['Duplicate held before upstream call',bad({groups:[...s.groups,s.groups[0]]}).first===null],
  ['Wrong pair held',bad({groups:[{...s.groups[0],stands:['6','8']}]}).first===null],
  ['No false read-only result',run(s,{...first,writeAllowed:true}).annual===null],
