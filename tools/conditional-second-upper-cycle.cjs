@@ -54,7 +54,7 @@ function previewSecondUpperCycle(input,api){
   const o=available[0];
   if(!o){held.push({stand:k,reason:'次回予測搬入・同日組替枠未成立',oldReserveRetained:true});projectedRoles.push({...old,forecastOnly:true},{...online,forecastOnly:true},ret.date<=e.date?newThird:{...third,forecastOnly:true});continue;}
   busy.push(o.slot);
-  nextHandovers.push({stand:k,date:o.slot.date,oldIdentity:id(old),targetIdentity:ret.newIdentity,status:'conditional-on-future-receipt',forecastOnly:true,actualCompletion:false,emergencyReserveCount:1,receiptConfirmed:false});
+  nextHandovers.push({stand:k,date:o.slot.date,startHour:o.slot.startHour,endHour:o.slot.endHour,oldIdentity:id(old),targetIdentity:ret.newIdentity,status:'conditional-on-future-receipt',forecastOnly:true,actualCompletion:false,emergencyReserveCount:1,receiptConfirmed:false});
   projectedRoles.push({...old,status:'disposition-review',forecastOnly:true,chockAssembled:false,emergencyEligible:false},{...online,forecastOnly:true},{...newThird,status:'new-standby',chockAssembled:true,emergencyEligible:true,conditionalAssembly:true});
  }
  return {...base,conditionalCycleComplete:held.length===0&&nextHandovers.length===2};
