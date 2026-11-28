@@ -11,7 +11,21 @@ function selfTest(api){
  const original={...old,generation:'g1',purchaseAssemblyDate:'2027-12-30'},first={...original,status:'online'},e={events:[{rollChanged:true,date:'2027-12-31',newGroup:{members:[{identity:issue.identity}]}}]},a={roles:[original],handovers:[{stand:'8',targetIdentity:issue.identity,date:'2027-12-30',actualCompletion:false}]},ss={...s,throughDate:'2028-01-01',days:[{...s.days[0],date:'2028-01-01'}]},f=forecastFirstPurchaseUse(ss,a,e,[first],api);
  const lost={...stage,roles:[{...old,purchaseReworked:true}]},lostOrigin={...stage,roles:[{...old,purchaseOriginIdentity:issue.identity}]};
  const l=forecastFirstPurchaseUse(s,lost,seq,[online],api),lo=forecastFirstPurchaseUse(s,lostOrigin,seq,[online],api);
+ const otherGeneration={...old,generation:'g0',status:'rework',purchaseReworked:true};
+ const across=forecastFirstPurchaseUse(ss,{...a,roles:[...a.roles,otherGeneration]},e,[first],api);
+ const invalidOrigins=['',null,'not-json','["8","X","g1"]','["8","D",""]'];
+ const invalid=invalidOrigins.map(purchaseOriginIdentity=>forecastFirstPurchaseUse(ss,{...a,roles:[{...original,purchaseOriginIdentity}]},e,[first],api));
+ const validOrigin=forecastFirstPurchaseUse(ss,{...a,roles:[{...original,purchaseOriginIdentity:issue.identity}]},e,[first],api);
+ const badHistory=forecastFirstPurchaseUse(s,{...stage,roles:[{...old,purchaseFirstUse:{...issue,basis:''}}]},seq,[online],api);
+ const conflictingOrigin=forecastFirstPurchaseUse(s,{...stage,roles:[{...old,purchaseFirstUse:issue,purchaseOriginIdentity:'["8","D","g0"]'}]},seq,[online],api);
+ const otherRoll=forecastFirstPurchaseUse(ss,{...a,roles:[...a.roles,{...otherGeneration,rollId:'E'}]},e,[first],api);
  return [
+ ['Other generation of same physical roll cannot lose rework history',across.issues.length===0&&across.held.length===1],
+ ['Explicit blank malformed or foreign purchase origins held',invalid.every(z=>z.issues.length===0&&z.held.length===1)],
+ ['Verified purchase origin allows first use',validOrigin.issues.length===1&&validOrigin.held.length===0],
+ ['History missing evidence held',badHistory.issues.length===0&&badHistory.held.length===1],
+ ['Original-generation mismatch in history held',conflictingOrigin.issues.length===0&&conflictingOrigin.held.length===1],
+ ['Other physical roll does not block first use',otherRoll.issues.length===1&&otherRoll.held.length===0],
  ['lost history after rework held',l.issues.length===0&&l.held.length===1],
  ['original generation mismatch without history held',lo.issues.length===0&&lo.held.length===1],
  ['physical roll history retained across g1 to g2',r.issues.length===0&&r.held.length===0&&r.roles[0].purchaseFirstUse.identity===issue.identity&&r.roles[0].generation==='g2'],
