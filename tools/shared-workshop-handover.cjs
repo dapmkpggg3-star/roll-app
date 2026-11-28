@@ -17,7 +17,7 @@ function selectWorkshopOptions(s,options,busy,eligible,target){
  return options.filter(o=>eligible(o)&&(!deadline||o.request.slot.date<=target)&&(deadline||!busy.some(b=>overlap(b,o.request.slot)))).sort((a,b)=>a.request.slot.date.localeCompare(b.request.slot.date)||a.request.slot.startHour-b.request.slot.startHour);
 }
 function deriveInitialDeadline(s,d,options,api){
- const specs=(s.workshopDeadlineInputs||[]).filter(x=>x?.demandId===d.a.id&&String(x.stand)===d.k);
+ const specs=(Array.isArray(s.workshopDeadlineInputs)?s.workshopDeadlineInputs:[]).filter(x=>x?.demandId===d.a.id&&String(x.stand)===d.k);
  const same=x=>x&&x.snapshotId===s.snapshotId&&x.sourceRevision===s.sourceRevision&&str(x.basis);
  const spec=specs[0],fail=reason=>({status:'held',assemblyDeadline:null,workDate:null,actualCompletion:false,warnings:[reason]});
  if(specs.length!==1||!same(spec)||spec.oldIdentity!==id(d.old)||spec.targetIdentity!==id(d.target))return fail('期限・個体根拠未確認');
@@ -27,8 +27,8 @@ function deriveInitialDeadline(s,d,options,api){
  const valid=options.filter(o=>{
   const p=o.request.dispatchPlan,ov=p?.leadOverride;
   if(retiring)return true;
-  const lead=ov===undefined?api.provisionalReworkCalendarDays(d.k):ov.days;
-  return same(p)&&p.identity===id(d.old)&&p.status==='planned'&&date(p.date)&&spec.leadDays===lead&&(!ov||(String(ov.stand)===d.k&&ov.sourceRevision===s.sourceRevision&&str(ov.basis)))&&p.dispatchCapacityConfirmed===true&&p.vendorAcceptanceConfirmed===true;
+  const lead=ov===undefined?api.provisionalReworkCalendarDays(d.k):ov?.days;
+  return same(p)&&p.identity===id(d.old)&&p.status==='planned'&&date(p.date)&&spec.leadDays===lead&&(ov===undefined||(ov&&String(ov.stand)===d.k&&ov.sourceRevision===s.sourceRevision&&str(ov.basis)))&&p.dispatchCapacityConfirmed===true&&p.vendorAcceptanceConfirmed===true;
  });
  if(!valid.length)return fail('搬出予定・現物根拠未確認');
  const rec=valid[0].request.receipt;
