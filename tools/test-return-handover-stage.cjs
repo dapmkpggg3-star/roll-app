@@ -15,7 +15,11 @@ function selfTest(api){
  const before=JSON.stringify([s,stage,plan]),r=previewReturnHandover(s,stage,plan,api),run=fn=>{const [a,b,c]=JSON.parse(before);fn(a,b,c);return previewReturnHandover(a,b,c,api);},retain=(r,k)=>r.roles.some(q=>String(q.stand)===k&&q.status==='used-standby'&&q.emergencyEligible&&q.chockAssembled);
  const deadlinePlan=(a,b,c)=>{c.deadlineMode=true;c.deadlineInputs=c.workshopOptions.map(o=>({...v,stand:o.stand,oldIdentity:o.oldIdentity,targetIdentity:o.targetIdentity,inboundRequiredBy:'2027-08-04',leadDays:20,leadBasis:'anon',needBasis:'anon',preDispatchDays:3,bufferBasis:'anon',nextExchangeDeadline:'2027-07-20'}));};
  const rd=run(deadlinePlan);
+ const retirementPlan=(a,b,c)=>{deadlinePlan(a,b,c);for(const m of c.members){m.diameter.currentMm=406;b.roles.find(x=>id(x)===m.diameter.identity).diameterMm=406;}c.dispatchPlans=[];for(const x of c.deadlineInputs){delete x.leadDays;delete x.inboundRequiredBy;delete x.preDispatchDays;}};
+ const retired=run(retirementPlan);
  return [
+ ['R23 final use has assembly deadline without fictional dispatch',retired.conditionalHandoverComplete&&retired.workshopInstructions.length===2&&retired.workshopInstructions.every(x=>x.status==='conditional-deadline'&&x.dispatchDeadline===null&&x.assemblyDeadline==='2027-07-20'&&x.workDate===null)&&retired.dispositions.every(x=>x.kind==='successor-needed')],
+ ['R23 final use late deadline preserves old reserve',retain(run((a,b,c)=>{retirementPlan(a,b,c);c.deadlineInputs[0].nextExchangeDeadline='2027-07-06';}),'8')],
  ['R23 deadline-only instructions and conditional internal handover',rd.readyForNextRotation&&rd.workshopInstructions.length===2&&rd.workshopInstructions.every(x=>x.workDate===null&&x.assemblyDeadline==='2027-07-12'&&x.dispatchDeadline==='2027-07-15'&&x.actualCompletion===false)&&rd.handovers.length===2],
  ['R23 late dispatch retains reserve',retain(run((a,b,c)=>{deadlinePlan(a,b,c);c.dispatchPlans[0].date='2027-07-16';}),'8')],
  ['R23 missing deadline retains reserve',retain(run((a,b,c)=>{deadlinePlan(a,b,c);c.deadlineInputs.pop();}),'9')],
