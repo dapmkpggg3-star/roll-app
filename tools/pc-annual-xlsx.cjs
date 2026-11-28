@@ -50,6 +50,14 @@ function prepare(report){
   const value=annual.values[r-1][c-1],ref=address(r,c);
   if(value==null)continue;
   const group=groups.get(ref);if(!group)throw Error('Nonempty annual cell lacks evidence: '+ref);
+  const counted=[...group.ids].map(id=>{
+   const candidates=byId.get(id).map(dr=>detail.values[dr-1]).filter(d=>d[1]===annual.values[r-1][0]&&d[3]===annual.values[r-1][1]&&d[6]===annual.values[2][c-1]&&['集計採用','発注期限目安'].includes(d[13]));
+   if(candidates.length!==1)throw Error('Evidence does not match annual cell: '+ref);
+   return candidates[0][4];
+  });
+  const actual=counted.filter(v=>v==='実績').length,forecast=counted.filter(v=>v==='予測').length;
+  const expectedValue=[actual?'実'+actual:'',forecast?'予'+forecast:''].filter(Boolean).join(' / ');
+  if(value!==expectedValue||actual+forecast!==group.ids.size)throw Error('Evidence count mismatch: '+ref);
   const first=index.values.length+1;
   annual.links.set(ref,"'根拠索引'!A"+first);
   for(const id of group.ids)for(const dr of byId.get(id)){
@@ -68,9 +76,9 @@ function cell(ref,v,style){if(v==null)return '';if(typeof v==='number'){if(!Numb
 }
 function sheetXml(s,i){
  const annual=i===0, widths=annual?[9,18,...Array(12).fill(10)]:i===1?[13,12,18,17,13,13,13,38,15,17,16,16,42,16]:i===5?[12,12,19,14,15,17,18]:i===4?[10,22,22,30]:Array(Math.max(...s.values.map(r=>r.length),1)).fill(22);
- const rows=s.values.map((r,j)=>'<row r="'+(j+1)+'" ht="'+(annual?19:24)+'" customHeight="1">'+r.map((v,k)=>{const ref=address(j+1,k+1);return cell(ref,v,s.links.has(ref)?3:((annual?j===0||j===2:j===0)?1:2));}).join('')+'</row>').join('');
+ const rows=s.values.map((r,j)=>'<row r="'+(j+1)+'" ht="'+(annual?(j===0?25:19):(j===0?32:i===1?48:25))+'" customHeight="1">'+r.map((v,k)=>{const ref=address(j+1,k+1);return cell(ref,v,s.links.has(ref)?3:((annual?j===0||j===2:j===0)?1:2));}).join('')+'</row>').join('');
  const links=s.links.size?'<hyperlinks>'+[...s.links].map(([ref,loc])=>'<hyperlink ref="'+ref+'" location="'+xml(loc)+'" tooltip="根拠を確認"/>').join('')+'</hyperlinks>':'';
- return decl+'<worksheet xmlns="'+mainNS+'" xmlns:r="'+relNS+'">'+(annual?'<sheetPr><pageSetUpPr fitToPage="1"/></sheetPr>':'')+'<sheetViews><sheetView workbookViewId="0"><pane ySplit="'+(annual?3:1)+'" topLeftCell="A'+(annual?4:2)+'" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><sheetFormatPr defaultRowHeight="19"/><cols>'+widths.map((w,k)=>'<col min="'+(k+1)+'" max="'+(k+1)+'" width="'+w+'" customWidth="1"/>').join('')+'</cols><sheetData>'+rows+'</sheetData>'+links+(annual?'<pageMargins left="0.25" right="0.25" top="0.35" bottom="0.35" header="0.1" footer="0.1"/><pageSetup paperSize="8" orientation="landscape" fitToWidth="1" fitToHeight="1"/>':'')+'</worksheet>';
+ return decl+'<worksheet xmlns="'+mainNS+'" xmlns:r="'+relNS+'">'+(annual?'<sheetPr><pageSetUpPr fitToPage="1"/></sheetPr>':'')+'<sheetViews><sheetView workbookViewId="0"><pane ySplit="'+(annual?3:1)+'" topLeftCell="A'+(annual?4:2)+'" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><sheetFormatPr defaultRowHeight="19"/><cols>'+widths.map((w,k)=>'<col min="'+(k+1)+'" max="'+(k+1)+'" width="'+w+'" customWidth="1"/>').join('')+'</cols><sheetData>'+rows+'</sheetData>'+(annual?'<mergeCells count="2"><mergeCell ref="A1:N1"/><mergeCell ref="C2:N2"/></mergeCells>':'')+links+(annual?'<pageMargins left="0.25" right="0.25" top="0.35" bottom="0.35" header="0.1" footer="0.1"/><pageSetup paperSize="8" orientation="landscape" fitToWidth="1" fitToHeight="1"/>':'')+'</worksheet>';
 }
 const styles=decl+'<styleSheet xmlns="'+mainNS+'"><fonts count="3"><font><sz val="10"/><name val="Yu Gothic"/></font><font><b/><sz val="10"/><color rgb="FFFFFFFF"/><name val="Yu Gothic"/></font><font><u/><sz val="10"/><color rgb="FF0563C1"/><name val="Yu Gothic"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF304E65"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="4"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>';
 function renderPcAnnualXlsx(report){
