@@ -3,23 +3,44 @@
 const {previewSecondUpperCycle}=require('./conditional-second-upper-cycle.cjs');
 const {previewUpperSequence}=require('./repeated-upper-caliber.cjs');
 const {assessDiameterLife}=require('./annual-diameter-gate.cjs');
+const {assessForecastDiameterChain}=require('./forecast-diameter-chain.cjs');
 const {inspectUpperLedger}=require('./caliber-lifetime-policy.cjs');
 const str=x=>typeof x==='string'&&x.trim().length>0;
 const same=(s,x)=>x&&x.snapshotId===s.snapshotId&&x.sourceRevision===s.sourceRevision&&str(x.basis);
 const day=x=>typeof x==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(x)&&Number.isFinite(Date.parse(x+'T00:00:00Z'))&&new Date(x+'T00:00:00Z').toISOString().slice(0,10)===x;
 const id=r=>JSON.stringify([String(r.stand),r.rollId,r.generation]);
 const copy=x=>JSON.parse(JSON.stringify(x));
+// Resolve actual measurements and forecast generations without promoting forecasts into actuals.
+function resolveDispositionLife(s,role,evidence,event,priorCycles,api){
+ const k=String(role.stand),identity=id(role);
+ if(!same(s,evidence)||!day(event?.date)||event.date<s.asOf)return {status:'held',reason:'処遇根拠未確認'};
+ if(evidence.diameterChain===undefined){
+  if(evidence.diameter?.identity!==identity||evidence.diameter?.currentMm!==role.diameterMm)return {status:'held',reason:'個体径根拠未確認'};
+  return assessDiameterLife({...s,diameter:evidence.diameter,history:evidence.diameterHistory});
+ }
+ const c=evidence.diameterChain,hold=reason=>({status:'held',forecastOnly:true,reason});
+ if(!same(s,c)||!Array.isArray(c.steps)||!c.steps.length||!Array.isArray(priorCycles)||c.diameter?.rollId!==role.rollId||String(c.diameter?.stand)!==k)return hold('予測径の起点未確認');
+ for(const step of c.steps){
+  const proof=step?.dispatchEvidence,ov=proof?.leadOverride;
+  if(!same(s,proof)||proof.identity!==step.oldIdentity||proof.cycleId!==step.cycleId||proof.date!==step.dispatchDate||proof.status!=='planned'||proof.dispatchCapacityConfirmed!==true||proof.vendorAcceptanceConfirmed!==true||!day(proof.handoverDate)||proof.handoverDate>=proof.date||proof.handoverConfirmed!==true||!str(proof.handoverBasis)||!priorCycles.includes(step.cycleId))return hold('先行回次・搬出・引継ぎ根拠未確認');
+  if(ov!==undefined&&(!ov||String(ov.stand)!==k||!Number.isInteger(ov.days)||ov.days<=0||!str(ov.basis)||ov.sourceRevision!==s.sourceRevision))return hold('予測改削LT根拠未確認');
+  if(step.leadDays!==(ov===undefined?api.provisionalReworkCalendarDays(k):ov.days))return hold('予測改削LT不一致');
+ }
+ const life=assessForecastDiameterChain({...s,diameter:c.diameter,history:c.history,steps:c.steps,forecastAsOf:event.date});
+ if(life.status==='held')return life;
+ if(life.identity!==identity||life.currentMm!==role.diameterMm)return hold('予測新世代・個体径不一致');
+ return life;
+}
 function forecastDisposition(s,role,evidence,event,handover,dispatch,priorCycles,api){
  const k=String(role.stand),identity=id(role);
  const out={stand:k,identity,status:'held',kind:'review',actualDisposition:false,actualOrderDate:null,issueMonth:null,operationAuthorized:false};
- if(!same(s,evidence)||evidence.diameter?.identity!==identity||evidence.diameter?.currentMm!==role.diameterMm)return {...out,reason:'個体径根拠未確認'};
- const life=assessDiameterLife({...s,diameter:evidence.diameter,history:evidence.diameterHistory});
+ const life=resolveDispositionLife(s,role,evidence,event,priorCycles,api);
  if(life.status==='held')return {...out,life,reason:life.reason};
  if(['final-use','boundary-review'].includes(life.status)){
   const lead=evidence.purchaseLead??{...api.defaultStandLeadTime(k),basis:'R12 provisional'};
   const ok=String(lead.standKey)===k&&Number.isInteger(lead.months)&&lead.months>0&&lead.months<=120&&['confirmed','provisional'].includes(lead.status)&&str(lead.basis)&&(evidence.purchaseLead==null||lead.sourceRevision===s.sourceRevision);
   const start=evidence.finalUseStart;
-  const ideal=same(s,start)&&start.identity===identity&&start.status==='forecast'&&day(start.date)&&start.date<=event.date&&start.date===evidence.onlineStartDate?start.date:null;
+  const ideal=same(s,start)&&start.identity===identity&&start.status==='forecast'&&day(start.date)&&start.date<=event.date&&start.date===evidence.onlineStartDate&&(!life.forecastOnly||start.date>=life.steps.at(-1).expectedInboundDate)?start.date:null;
   return {...out,life,kind:life.status==='final-use'?'successor-needed':'boundary-review',status:ok?'successor-review':'held',reason:life.reason,procurement:ok?{status:'forecast-guidance',latestArrivalBy:event.date,latestOrderBy:api.addMonths(event.date,-lead.months),idealArrivalBy:ideal,idealOrderBy:ideal?api.addMonths(ideal,-lead.months):null,leadMonths:lead.months,leadBasis:lead.basis,actualReceived:false,accountingMonth:null}:null};
  }
  const base={...out,life,kind:'rework-candidate'};
@@ -67,4 +88,4 @@ function previewThirdUpperRotation(input,api){
  if(!r.sequenceComplete)return hold('第3交換の停止枠・選択・適合未成立',{forecast:r.unresolved});
  return {...base,thirdRotationComplete:r.rollHandoverCandidates.length===1,thirdProjectedRoles:(r.rollHandoverCandidates[0]?.projectedRoles||[]).map(role=>({...role,forecastOnly:true})),forecastOnly:true};
 }
-module.exports={previewThirdUpperRotation,forecastDisposition};
+module.exports={previewThirdUpperRotation,forecastDisposition,resolveDispositionLife};
