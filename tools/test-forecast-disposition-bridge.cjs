@@ -23,7 +23,7 @@ function selfTest(api){
  ['forecast generation must match',go({...role,generation:'g9'}).status==='held'],
  ['return after exit held',go(role,evidence,{date:'2027-07-20'}).status==='held'],
  ['early ideal date not adopted',mutate(q=>{q.onlineStartDate='2027-07-20';q.finalUseStart.date='2027-07-20'}).procurement?.idealArrivalBy===null],
- ['boundary purchase review no rework',mutate(q=>{q.diameterChain.diameter.currentMm=421;q.diameterChain.steps[0].forecastDiameterMm=414;q.diameterChain.steps[1].forecastDiameterMm=407}).status==='held'],
+ ['boundary purchase review no rework',(()=>{const q=JSON.parse(JSON.stringify(evidence));q.diameterChain.diameter.currentMm=421;q.diameterChain.steps[0].forecastDiameterMm=414;q.diameterChain.steps[1].forecastDiameterMm=407;const z=go({...role,diameterMm:407},q);return z.kind==='boundary-review'&&!!z.procurement&&!z.rework;})()],
  ['missing handover retains rework need',go({...role,generation:'g2',diameterMm:413},{...evidence,diameterChain:{...evidence.diameterChain,steps:[a]}},event,null,d).status==='held'],
  ['new dispatch duplicate held',go({...role,generation:'g2',diameterMm:413},{...evidence,diameterChain:{...evidence.diameterChain,steps:[a]}},event,{...h,oldIdentity:id('g2')},{...d,identity:id('g2'),cycleId:'c1'}).status==='held']
  ];
