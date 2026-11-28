@@ -5,9 +5,9 @@ const {previewFourthUpperRotation,makeReturnEvidence,previewFollowingUpperSequen
 const {previewReturnHandover}=require('./return-handover-stage.cjs');
 const {previewSuccessorAdmission}=require('./successor-three-set.cjs');
 const {reserveRecurrenceBatch}=require('./shared-recurrence-capacity.cjs');
-function checkWorkshopBatch(s,calendar,stage,prior){
+function checkWorkshopBatch(s,calendar,stage){
  const rows=stage.allocations;
- if(!Array.isArray(rows)||!Array.isArray(stage.handovers)||rows.length!==stage.handovers.length)return {accepted:false,calendar,held:[{reason:'工作予約と引継ぎの対応未確認'}]};
+ if(stage.conditionalHandoverComplete!==true||!Array.isArray(rows)||!Array.isArray(stage.handovers)||rows.length!==stage.handovers.length||rows.some(a=>!a||!stage.handovers.some(h=>h.stand===a.stand&&h.oldIdentity===a.oldIdentity&&h.targetIdentity===a.targetIdentity&&h.date===a.date)))return {accepted:false,calendar,held:[{reason:'工作予約と引継ぎの対応未確認'}]};
  const candidates=rows.map(a=>({snapshotId:s.snapshotId,sourceRevision:s.sourceRevision,basis:a.basis||s.workshopReservationBasis,id:JSON.stringify(['workshop',a.stand,a.oldIdentity,a.targetIdentity,a.date,a.startHour,a.endHour]),date:a.date,area:'workshop',startMinute:a.startHour*60,endMinute:a.endHour*60}));
  if(!candidates.length)return {accepted:false,calendar,held:[{reason:'工作予約なし'}]};
  return reserveRecurrenceBatch({snapshotId:s.snapshotId,sourceRevision:s.sourceRevision,calendarVerified:s.sharedRecurrenceCalendar.verified,calendarBasis:s.sharedRecurrenceCalendar.basis,existing:calendar,candidates});
@@ -56,7 +56,7 @@ function previewRepeatedFollowing(s,api){
   }
   let stage=previewReturnHandover(s,{roles:current.endingRoles,event,group:g,busy:previous.busy,priorCycles:previous.priorCycles,dispositions:previous.dispositions,admissions:previous.admissions||[]},{...plan.workshop,members},api);
   if(shared){
-   const check=checkWorkshopBatch(s,calendar,stage,previous);
+   const check=checkWorkshopBatch(s,calendar,stage);
    if(!check.accepted)return hold('共通工作枠競合・組替保留',{exchangeDate:event.date,details:check.held,endingRoles:copy(current.endingRoles),requiredExchange:true});
    calendar=check.calendar;base.sharedCalendar=calendar;
   }
