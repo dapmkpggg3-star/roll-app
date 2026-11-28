@@ -8,9 +8,16 @@ const id=r=>JSON.stringify([String(r.stand),r.rollId,r.generation]);
 const overlap=(a,b)=>a.date===b.date&&a.startHour<b.endHour&&b.startHour<a.endHour;
 const interval=x=>x&&date(x.date)&&Number.isFinite(x.startHour)&&Number.isFinite(x.endHour)&&x.startHour>=0&&x.endHour<=22&&x.endHour>x.startHour;
 const copy=x=>JSON.parse(JSON.stringify(x));
+// A completion deadline is not a reservation of workshop personnel.
+function selectWorkshopOptions(s,options,busy,eligible,target){
+ const deadline=s.workshopDeadlineMode===true;
+ if(deadline&&!date(target))return [];
+ return options.filter(o=>eligible(o)&&(!deadline||o.request.slot.date<=target)&&(deadline||!busy.some(b=>overlap(b,o.request.slot)))).sort((a,b)=>a.request.slot.date.localeCompare(b.request.slot.date)||a.request.slot.startHour-b.request.slot.startHour);
+}
 function runSharedWorkshop(input,api,preview){
  const s=input||{},p=preview(s,api),allocations=[],held=[],dispositions=[],projectedRoles=[],warnings=[];
- const base={status:'shared-workshop-preview',allocations,held,dispositions,projectedRoles,warnings,complete:false,annualComplete:false,operationAuthorized:false,writeAllowed:false};
+ const deadlineMode=s.workshopDeadlineMode===true,workshopInstructions=[];
+ const base={status:'shared-workshop-preview',allocations,held,dispositions,projectedRoles,warnings,workshopInstructions,deadlineMode,complete:false,annualComplete:false,operationAuthorized:false,writeAllowed:false};
  const same=x=>x&&x.snapshotId===s.snapshotId&&x.sourceRevision===s.sourceRevision&&str(x.basis);
  const pairs=Array.isArray(s.pairedInputs)?s.pairedInputs:[],options=Array.isArray(s.workshopOptions)?s.workshopOptions:[],manual=Array.isArray(s.workshopReserved)?s.workshopReserved:null;
  const events=p.pathlineEvents.filter(e=>['allocated-pair-pathline-preview','allocated-single-pathline-preview'].includes(e.type));
@@ -50,11 +57,13 @@ function runSharedWorkshop(input,api,preview){
  const targetFor=d=>{const t=targets.filter(x=>x?.demandId===d.a.id&&String(x.stand)===d.k);return t.length===1&&same(t[0])&&date(t[0].targetDate)?t[0].targetDate:null;};
  demand.sort((a,b)=>(targetFor(a)||'9999-12-31').localeCompare(targetFor(b)||'9999-12-31')||a.a.date.localeCompare(b.a.date)||+a.k-+b.k);
  for(const d of demand){
-  if(!reservationsOK){retain(d,'工作共通予約の根拠未確認');continue;}
-  const available=options.filter(o=>eligible(d,o)&&!busy.some(b=>overlap(b,o.request.slot))).sort((a,b)=>a.request.slot.date.localeCompare(b.request.slot.date)||a.request.slot.startHour-b.request.slot.startHour);
-  if(!available.length){retain(d,'現物・同日完了・工作枠または共有容量未成立');continue;}
-  const o=available[0],slot=o.request.slot,target=targetFor(d);
-  selected.set(d.key,o.request);busy.push({date:slot.date,startHour:slot.startHour,endHour:slot.endHour});
+  const target=targetFor(d);
+  if(deadlineMode)workshopInstructions.push({demandId:d.a.id,stand:d.k,oldIdentity:id(d.old),targetIdentity:id(d.target),assemblyDeadline:target,workDate:null,status:target?'deadline-proposal':'held',actualCompletion:false});
+  if(!deadlineMode&&!reservationsOK){retain(d,'工作共通予約の根拠未確認');continue;}
+  const available=selectWorkshopOptions(s,options,busy,o=>eligible(d,o),target);
+  if(!available.length){retain(d,deadlineMode?'期限内の現物・同日引継ぎ見込み未成立':'現物・同日完了・工作枠または共有容量未成立');continue;}
+  const o=available[0],slot=o.request.slot;
+  selected.set(d.key,o.request);if(!deadlineMode)busy.push({date:slot.date,startHour:slot.startHour,endHour:slot.endHour});
   allocations.push({demandId:d.a.id,stand:d.k,oldIdentity:id(d.old),targetIdentity:id(d.target),date:slot.date,startHour:slot.startHour,endHour:slot.endHour,targetDate:target,late:target===null?null:slot.date>target,status:'provisional',actualCompletion:false,basis:o.basis});
   if(target&&slot.date>target)warnings.push({stand:d.k,kind:'組替目標日超過',targetDate:target,date:slot.date});
  }
@@ -76,7 +85,7 @@ function runSharedWorkshop(input,api,preview){
   if(valid){a.status='conditional-assembly';projectedRoles.push(...r.projectedRoles.filter(x=>String(x.stand)===d.k).map(x=>({...x})));if(disp)dispositions.push({...disp,demandId:d.a.id,upstreamFitEvidenceOnly:d.upstream===true});}
   else {if(a)a.status='held';if(!held.some(x=>x.demandId===d.a.id&&x.stand===d.k))retain(d,'工作引継ぎ再計算未成立');projectedRoles.push({...d.old,status:'used-standby'},{...d.next,status:'online'},{...d.target});if(disp?.procurement)dispositions.push({...disp,demandId:d.a.id,rework:undefined,upstreamFitEvidenceOnly:d.upstream===true});}
  }
- return {...base,exchangeUnresolved:replay.unresolved,caliberLifetime:replay.caliberLifetime,upstreamPairReplays:replay.upstreamPairReplays,setupInstructions:replay.setupInstructions,uncoveredStands:replay.uncoveredStands,pathlineComplete:replay.pathlineComplete,pathlineIssues:replay.pathlineIssues,verifiedExchangeEvents:replay.pathlineEvents,pairedWorkshopComplete:demand.some(d=>!d.single)&&!held.some(h=>demand.some(d=>!d.single&&d.a.id===h.demandId))&&allocations.filter(a=>demand.some(d=>!d.single&&d.a.id===a.demandId)).every(a=>a.status==='conditional-assembly'),workshopComplete:replay.allocationComplete===true&&demand.length>0&&held.length===0&&allocations.every(a=>a.status==='conditional-assembly'),scope:'paired and supported single exchanges; upstream fit evidence only; shared workshop capacity, no assumed parallel work'};
+ return {...base,exchangeUnresolved:replay.unresolved,caliberLifetime:replay.caliberLifetime,upstreamPairReplays:replay.upstreamPairReplays,setupInstructions:replay.setupInstructions,uncoveredStands:replay.uncoveredStands,pathlineComplete:replay.pathlineComplete,pathlineIssues:replay.pathlineIssues,verifiedExchangeEvents:replay.pathlineEvents,pairedWorkshopComplete:demand.some(d=>!d.single)&&!held.some(h=>demand.some(d=>!d.single&&d.a.id===h.demandId))&&allocations.filter(a=>demand.some(d=>!d.single&&d.a.id===a.demandId)).every(a=>a.status==='conditional-assembly'),workshopComplete:replay.allocationComplete===true&&demand.length>0&&held.length===0&&allocations.every(a=>a.status==='conditional-assembly'),scope:deadlineMode?'conditional deadline forecast only; workshop staffing not allocated':'legacy time-specific forecast'};
 }
 function previewSharedWorkshop(input,api){return runSharedWorkshop(input,api,previewAllocatedPathline);}
 function previewSequenceWorkshop(input,api){
@@ -101,4 +110,4 @@ function previewSequenceWorkshop(input,api){
  const workshop=runSharedWorkshop(s,api,preview);
  return {...workshop,sequence,scope:'upstream repeated caliber sequence to first roll change and shared workshop; forecast only'};
 }
-module.exports={previewSharedWorkshop,previewSequenceWorkshop};
+module.exports={previewSharedWorkshop,previewSequenceWorkshop,selectWorkshopOptions};
