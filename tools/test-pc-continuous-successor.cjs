@@ -66,6 +66,9 @@ function selfTest(api){
  const rotations=r.stages.map(e=>e.next).filter(n=>n?.rotationComplete),stages=r.stages.map(e=>e.stage);
  const issues=rotations.flatMap(n=>n.plannedIssues||[]),firstD=issues.filter(u=>u.rollId.endsWith('D'));
  const oldD=grind?.dispositions.filter(d=>JSON.parse(d.identity)[1].endsWith('D'))||[];
+ const {previewPcStandYear}=require('./pc-stand-year-matrix.cjs');
+ const annual=previewPcStandYear({...x,startMonth:'2027-04',fiscalYear:2027,actualEvents:[],circulations:[{snapshotId:x.snapshotId,sourceRevision:x.sourceRevision,basis:x.basis,result:r}]});
+ const dEntries=annual.ledger.entries.filter(e=>e.rollId==='8D'||e.rollId==='9D');
  const tests=[
  ['Original six and six further rotations in one invocation',r.stages.length===8&&rotations.length===8&&rotations.at(-1)?.sequence.events.find(e=>e.rollChanged)?.date==='2028-03-28'],
  ['A final use triggers successor, not rework',ad?.dispositions.every(d=>d.kind==='successor-needed'&&d.life.currentMm===406&&d.life.nextDiameter===399&&!d.rework)],
@@ -75,9 +78,12 @@ function selfTest(api){
  ['D first rework forecast 420 to 413 from purchase specification',oldD.length===2&&oldD.every(d=>d.life.forecastOnly&&!d.life.actualMeasurement&&d.life.currentMm===420&&d.rework?.forecastDiameterMm===413&&d.rework.expectedInboundDate==='2028-03-01')],
  ['D return becomes online r1 without another issue',back?.rotationComplete&&back.endingRoles.filter(q=>q.status==='online').every(q=>q.rollId.endsWith('D')&&q.generation==='r1'&&q.purchaseFirstUse?.firstUseDate==='2028-01-05')&&back.plannedIssues.length===0],
  ['All completed stages maintain three physical rolls and one reserve',stages.every(z=>z.roles.length===6&&['8','9'].every(k=>{const a=z.roles.filter(q=>String(q.stand)===k);return a.length===3&&new Set(a.map(q=>q.rollId)).size===3&&a.filter(q=>q.status!=='online'&&q.chockAssembled&&q.emergencyEligible).length===1;}))],
+ ['Real continuous output reaches PC ledger, one D payout and rework each',dEntries.length===4&&['8','9'].every(k=>dEntries.filter(e=>e.stand===k&&e.kind==='first-use'&&e.date==='2028-01-05'&&e.status==='forecast').length===1&&dEntries.filter(e=>e.stand===k&&e.kind==='rework-inbound'&&e.date==='2028-03-01'&&e.status==='forecast').length===1)],
+ ['No retired A rework after final-use date',annual.ledger.entries.filter(e=>e.rollId==='anon-8-0'||e.rollId==='anon-9-0').every(e=>e.date<'2027-11-09')],
+ ['No purchase cost month inferred',annual.purchaseGuidance.length>=6&&annual.purchaseGuidance.every(e=>e.accountingMonth===null)],
  ['No input mutation or actual authorization',JSON.stringify(x)===before&&!r.writeAllowed&&!r.operationAuthorized&&!r.annualComplete]
  ];
- return {tests,result:r,issues};
+ return {tests,result:r,issues,annual};
 }
 module.exports={fixture,selfTest};
 if(require.main===module){const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),api=vm.createContext({});vm.runInContext(fs.readFileSync(path.resolve(__dirname,'../js/operating-plan.js'),'utf8'),api);const {tests}=selfTest(api);for(const [n,ok] of tests)console.log((ok?'PASS ':'FAIL ')+n);if(tests.some(x=>!x[1]))process.exitCode=1;}
