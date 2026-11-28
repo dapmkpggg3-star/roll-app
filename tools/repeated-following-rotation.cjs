@@ -3,6 +3,7 @@
 // compatibility/slot proof must be explicit. Missing evidence stops the preview.
 const {previewFourthUpperRotation,makeReturnEvidence,previewFollowingUpperSequence}=require('./following-upper-rotation.cjs');
 const {previewReturnHandover}=require('./return-handover-stage.cjs');
+const {previewSuccessorAdmission}=require('./successor-three-set.cjs');
 const id=r=>JSON.stringify([String(r.stand),r.rollId,r.generation]);
 const same=(s,x)=>x&&x.snapshotId===s.snapshotId&&x.sourceRevision===s.sourceRevision&&typeof x.basis==='string'&&x.basis.trim();
 const copy=x=>JSON.parse(JSON.stringify(x));
@@ -24,6 +25,7 @@ function previewRepeatedFollowing(s,api){
   evidence.set(am.identity,ae);evidence.set(bm.identity,be);evidence.set(c.diameter.identity,c);
  }
  let current=fourth,previous=t,previousDispatch=s.thirdWorkshop.dispatchPlans;
+ const knownRollIds=new Set(original.members.flatMap(m=>m.roles.map(r=>r.rollId)));
  for(let i=0;i<s.followingStages.length;i++){
   const plan=s.followingStages[i],event=current.sequence.events.find(e=>e.rollChanged),g=current.endingGroup;
   if(!same(s,plan)||!same(s,plan.workshop)||!same(s,plan.next)||plan.afterExchangeDate!==event?.date||!Array.isArray(plan.workshop.members)||!Array.isArray(plan.workshop.returnMasters)||!Array.isArray(plan.workshop.dispatchPlans)||!Array.isArray(plan.next.members))return hold('後続計画・対象交換日未確認',{exchangeDate:event?.date,requiredExchange:null});
@@ -33,8 +35,12 @@ function previewRepeatedFollowing(s,api){
    if(!old||!same(s,q)||q.onlineIdentity!==id(old)||!anchor)return hold('使用終了個体の予測径履歴未確認',{stand:k});
    members.push({...q,...anchor,onlineStartDate:q.onlineStartDate,finalUseStart:q.finalUseStart});
   }
-  const stage=previewReturnHandover(s,{roles:current.endingRoles,event,group:g,busy:previous.busy,priorCycles:previous.priorCycles,dispositions:previous.dispositions},{...plan.workshop,members},api);
+  let stage=previewReturnHandover(s,{roles:current.endingRoles,event,group:g,busy:previous.busy,priorCycles:previous.priorCycles,dispositions:previous.dispositions},{...plan.workshop,members},api);
   const entry={exchangeDate:event.date,stage,next:null};stages.push(entry);
+  if(stage.conditionalHandoverComplete&&stage.dispositions.some(d=>d.kind==='successor-needed')){
+   stage=previewSuccessorAdmission(s,stage,event,g,plan.successors,[...knownRollIds],api);entry.admission=stage;entry.stage=stage;
+   for(const a of stage.admissions||[])knownRollIds.add(a.master.rollId);
+  }
   if(!stage.readyForNextRotation)return hold('工作・次回処遇未成立',{exchangeDate:event.date,details:stage.held});
   for(const k of ks){
    const m=find(plan.workshop.returnMasters,k),anchor=evidence.get(m.oldIdentity),h=find(previous.handovers,k),d=find(previous.dispositions,k),dispatch=find(previousDispatch,k);
