@@ -9,6 +9,12 @@ const same=(s,x)=>x&&x.snapshotId===s.snapshotId&&x.sourceRevision===s.sourceRev
 const id=r=>JSON.stringify([String(r.stand),r.rollId,r.generation]);
 const interval=x=>x&&day(x.date)&&Number.isFinite(x.startHour)&&Number.isFinite(x.endHour)&&x.startHour>=0&&x.endHour<=22&&x.endHour>x.startHour;
 const copy=x=>JSON.parse(JSON.stringify(x));
+// Deadline instructions are not time reservations. Internal forecast dates
+// may coincide across different rolls; never infer actual staffing or completion.
+function workshopTimeConflict(plan,busy,t){
+ if(plan?.deadlineMode===true)return false;
+ return busy.some(b=>b.date===t.date&&b.startHour<t.endHour&&t.startHour<b.endHour);
+}
 function previewReturnHandover(s,stage,plan,api){
  const roles=copy(stage?.roles||[]),held=[],handovers=[],returns=[],dispositions=[],allocations=[],purchases=[];
  const workshopInstructions=[];
@@ -30,7 +36,7 @@ function previewReturnHandover(s,stage,plan,api){
    const t=o?.slot,row=o?.day;
    if(!same(s,o)||String(o.stand)!==k||o.oldIdentity!==id(old)||o.targetIdentity!==m.identity||(purchased?o.cycleId!=null||o.purchaseAdmissionDate!==ad.date:o.cycleId!==m.cycleId)||o.receiptStatus!=='forecast'||o.sameDayCompletionPlanned!==true||o.targetEmergencyEligible!==true||o.safetyBlocked!==false||!str(o.completionBasis)||!str(o.nightBasis)||!interval(t)||t.workArea!=='workshop'||t.date<=ret.date||purchased&&t.date<ad.date||t.date>s.throughDate||t.date<e.date||t.date===e.date&&t.startHour*60<e.endMinute||String(t.owner?.standKey)!==k||t.owner?.rollId!==target.rollId||t.prepared!==(purchased?'newSide':'reworkInbound')||t.preparedTarget!==target.rollId||t.preparedOn!==ret.date||!row||row.date!==t.date||row.dateRowVerified!==true||typeof row.nightOperating!=='boolean'||!api.physicalAssemblySlotReady(t,row).ok)return false;
    const rows=(s.workshopDays||[]).filter(r=>r.date===t.date);
-   return rows.length===1&&same(s,rows[0])&&rows[0].workshopWorking===true&&rows[0].dateRowVerified===true&&rows[0].productionAmount===row.productionAmount&&rows[0].nightOperating===row.nightOperating&&!busy.some(b=>b.date===t.date&&b.startHour<t.endHour&&t.startHour<b.endHour);
+   return rows.length===1&&same(s,rows[0])&&rows[0].workshopWorking===true&&rows[0].dateRowVerified===true&&rows[0].productionAmount===row.productionAmount&&rows[0].nightOperating===row.nightOperating&&!workshopTimeConflict(plan,busy,t);
   }).sort((a,b)=>a.slot.date.localeCompare(b.slot.date)||a.slot.startHour-b.slot.startHour);
   // Explicit R23 preview mode; legacy fixtures remain internal forecasts.
   let eligibleOptions=options;
@@ -53,7 +59,7 @@ function previewReturnHandover(s,stage,plan,api){
   const o=eligibleOptions[0];
   if(!o){retain('現物見込み後の同日組替・共通枠未成立');continue;}
   const h={stand:k,date:o.slot.date,oldIdentity:id(old),targetIdentity:m.identity,status:'conditional-on-future-receipt',forecastOnly:true,actualCompletion:false,receiptConfirmed:false,emergencyReserveCount:1,basis:o.basis};
-  handovers.push(h);const a={...h,startHour:o.slot.startHour,endHour:o.slot.endHour};allocations.push(a);busy.push(a);
+  handovers.push(h);const a={...h,startHour:o.slot.startHour,endHour:o.slot.endHour};allocations.push(a);if(plan.deadlineMode!==true)busy.push(a);
   Object.assign(old,{status:'disposition-review',forecastOnly:true,chockAssembled:false,emergencyEligible:false});
   Object.assign(target,{generation:m.generation,diameterMm:m.diameterMm,status:'new-standby',forecastOnly:true,chockAssembled:true,emergencyEligible:true,conditionalAssembly:true});
   if(purchased){target.purchaseAssemblyDate=o.slot.date;target.purchaseAdmissionDate=ad.date;target.purchaseOriginIdentity=m.identity;}else if(target.purchaseSuccessor===true){target.purchaseReworked=true;}
@@ -70,4 +76,4 @@ function previewThirdWorkshop(input,api){
  const stage=previewReturnHandover(s,{roles:third.thirdProjectedRoles,event:third.third.events.find(e=>e.rollChanged),group:third.third.ending[0].group,busy:[...(s.workshopReserved||[]),...third.second.first.allocations,...third.second.nextHandovers],priorCycles:[...third.second.first.dispositions,...third.dispositions].flatMap(d=>d.rework?[d.rework.cycleId]:[]),dispositions:third.dispositions},s.thirdWorkshop,api);
  return {third,stage,forecastOnly:true,annualComplete:false,operationAuthorized:false,writeAllowed:false};
 }
-module.exports={previewReturnHandover,previewThirdWorkshop};
+module.exports={previewReturnHandover,previewThirdWorkshop,workshopTimeConflict};
