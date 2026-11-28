@@ -69,7 +69,7 @@ function evaluate(x,before,results){
  ['20-day May, 30-day June, 60-day July counts',stands.every(k=>k==='12'?month(k,'2027-06')===null:month(k,+k<=9?'2027-05':+k<=15?'2027-06':'2027-07')===1)],
  ['Purchase deadline outside year retained',r.purchase?.rows.some(q=>q.stand==='12'&&q.deadline==='2026-10-01')],
  ['One missing line slot retains demand and no false #5 rework',short.held.some(q=>q.stand==='5'&&q.requiredExchange===true)&&!short.first.dispositions.some(q=>q.stand==='5')],
- ['Workshop conflict holds old 17 and no false rework',clash.first?.held.some(q=>q.stand==='17'&&q.oldReserveRetained===true)&&clash.first.projectedRoles.some(q=>q.rollId==='R17-0'&&q.status==='used-standby')&&!clash.first.dispositions.find(q=>q.stand==='17')?.rework],
+ ['Workshop conflict preserves earlier exchange priority and holds old 2',clash.first?.allocations.some(q=>q.stand==='17')&&clash.first.held.some(q=>q.stand==='2'&&q.oldReserveRetained===true)&&clash.first.projectedRoles.some(q=>q.rollId==='R2-0'&&q.status==='used-standby'&&q.chockAssembled&&q.emergencyEligible)&&!clash.first.dispositions.find(q=>q.stand==='2')?.rework],
  ['No missing stand or full horizon claim',r.coverage.every(q=>q.state!=='対象入力なし'&&!q.fullHorizonVerified)&&!r.periodComplete&&!r.complete],
  ['No input mutation or authority',JSON.stringify(x)===before&&!r.writeAllowed&&!r.operationAuthorized]
  ],result:r,short,clash};
