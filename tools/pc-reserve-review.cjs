@@ -7,16 +7,18 @@ const stands=Array.from({length:16},(_,i)=>String(i+2));
 const pair=['6,7','8,9','10,11','12,13','14,15'].map(x=>x.split(','));
 const statuses=['online','used-standby','new-standby','rework','rework-ready','rework-in-progress','new-unassembled','unassembled-return','disposition-review','retirement-review'];
 const id=r=>JSON.stringify([String(r.stand),r.rollId,r.generation]);
+const broken=r=>r.condition==='broken'||r.ledgerStatus==='折損'||r.spareKind==='折損';
 function classify(roles,k){
  const unknown=reason=>({stand:k,emergencyCount:null,normalCount:null,emergencyIdentities:[],reason});
  if(!Array.isArray(roles)||roles.length!==3||roles.some(r=>!r||String(r.stand)!==k||!str(r.rollId)||!str(r.generation)||!statuses.includes(r.status))||new Set(roles.map(r=>r.rollId)).size!==3||roles.filter(r=>r.status==='online').length!==1)return unknown('3セット個体・オンライン未確認');
  const standby=roles.filter(r=>r.status==='new-standby'||r.status==='used-standby'),all=roles.filter(r=>r.status!=='online');
  if(all.some(r=>typeof r.chockAssembled!=='boolean'||typeof r.emergencyEligible!=='boolean'||(!standby.includes(r)&&(r.chockAssembled||r.emergencyEligible))||(r.emergencyEligible&&!r.chockAssembled)))return unknown('組込・緊急使用適合未確認または矛盾');
- const available=standby.filter(r=>r.chockAssembled&&r.emergencyEligible);
+ const brokenStandby=standby.filter(broken);
+ const available=standby.filter(r=>!broken(r)&&r.chockAssembled&&r.emergencyEligible);
  const candidates=available.filter(r=>r.status==='new-standby'||Number(k)>=12);
  const normal=candidates.filter(r=>r.normalEligible===true);
  const uncertainNormal=candidates.some(r=>typeof r.normalEligible!=='boolean');
- return {stand:k,emergencyCount:available.length,normalCount:uncertainNormal?null:normal.length,emergencyIdentities:available.map(id),reason:available.length?'適合組込済予備あり（個体単位）':'確認対象の3セットに適合組込済予備なし'};
+ return {stand:k,emergencyCount:available.length,normalCount:uncertainNormal?null:normal.length,emergencyIdentities:available.map(id),brokenIdentities:brokenStandby.map(id),reason:available.length?'適合組込済予備あり（個体単位）':brokenStandby.length?'折損予備を除外・適合組込済予備なし':'確認対象の3セットに適合組込済予備なし'};
 }
 function previewPcReserveReview(s={}){
  const out={current:[],forecast:[],pairReview:[],held:[],complete:false,writeAllowed:false,operationAuthorized:false};
@@ -67,7 +69,7 @@ function previewPcReserveReview(s={}){
  // Stand-level reserve count cannot prove compatibility of a linked pair.
  for(const ks of pair){
   const r=ks.map(k=>out.current.find(x=>x.stand===k));
-  out.pairReview.push({stands:ks,kind:'actual',date:s.asOf,state:r.some(x=>x.emergencyCount===0)?'片側予備不足・ペア未成立': 'ペア適合別途確認'});
+  out.pairReview.push({stands:ks,kind:'actual',date:s.asOf,state:r.some(x=>x.emergencyCount===0)?'片側予備不足・ペア未成立':r.some(x=>x.emergencyCount===null)?'片側予備情報不足・ペア適合未確認':'ペア適合別途確認'});
  }
  return out;
 }
