@@ -1,5 +1,7 @@
 'use strict';
 // Anonymous PC-only shared workshop allocation after a verified physical pathline replay.
+const {previewWorkshopDeadline}=require('./workshop-deadline.cjs');
+const {assessDiameterLife}=require('./annual-diameter-gate.cjs');
 const {previewSingleAllocated,previewSingleDisposition}=require('./shared-single-exchange.cjs');
 const {previewAllocatedPathline}=require('./allocated-pathline-replay.cjs');
 const str=x=>typeof x==='string'&&x.trim().length>0;
@@ -13,6 +15,27 @@ function selectWorkshopOptions(s,options,busy,eligible,target){
  const deadline=s.workshopDeadlineMode===true;
  if(deadline&&!date(target))return [];
  return options.filter(o=>eligible(o)&&(!deadline||o.request.slot.date<=target)&&(deadline||!busy.some(b=>overlap(b,o.request.slot)))).sort((a,b)=>a.request.slot.date.localeCompare(b.request.slot.date)||a.request.slot.startHour-b.request.slot.startHour);
+}
+function deriveInitialDeadline(s,d,options,api){
+ const specs=(Array.isArray(s.workshopDeadlineInputs)?s.workshopDeadlineInputs:[]).filter(x=>x?.demandId===d.a.id&&String(x.stand)===d.k);
+ const same=x=>x&&x.snapshotId===s.snapshotId&&x.sourceRevision===s.sourceRevision&&str(x.basis);
+ const spec=specs[0],fail=reason=>({status:'held',assemblyDeadline:null,workDate:null,actualCompletion:false,warnings:[reason]});
+ if(specs.length!==1||!same(spec)||spec.oldIdentity!==id(d.old)||spec.targetIdentity!==id(d.target))return fail('期限・個体根拠未確認');
+ const life=d.single?.life??assessDiameterLife({...s,diameter:d.q?.members.find(m=>String(m.stand)===d.k)?.diameter,history:d.q?.members.find(m=>String(m.stand)===d.k)?.diameterHistory});
+ if(!['final-use','rework-candidate'].includes(life?.status))return fail('廃却・改削判定未確認');
+ const retiring=life.status==='final-use';
+ const valid=options.filter(o=>{
+  const p=o.request.dispatchPlan,ov=p?.leadOverride;
+  if(retiring)return true;
+  const lead=ov===undefined?api.provisionalReworkCalendarDays(d.k):ov?.days;
+  return same(p)&&p.identity===id(d.old)&&p.status==='planned'&&date(p.date)&&spec.leadDays===lead&&(ov===undefined||(ov&&String(ov.stand)===d.k&&ov.sourceRevision===s.sourceRevision&&str(ov.basis)))&&p.dispatchCapacityConfirmed===true&&p.vendorAcceptanceConfirmed===true;
+ });
+ if(!valid.length)return fail('搬出予定・現物根拠未確認');
+ const rec=valid[0].request.receipt;
+ if(valid.some(o=>o.request.receipt.date!==rec.date))return fail('搬入根拠不一致');
+ const result=previewWorkshopDeadline({...spec,asOf:d.a.date,dispositionKind:retiring?'retirement':'rework',roles:[{rollId:d.next.rollId,status:'online'},{rollId:d.old.rollId,status:'used-standby',assembled:d.old.chockAssembled,emergencyEligible:d.old.emergencyEligible},{rollId:d.target.rollId,status:d.target.status,availableDate:rec.date,receiptKind:'actual',receiptBasis:rec.basis}],verifiedWorkDays:valid.map(o=>({date:o.request.slot.date,workshopWorking:true,sameDayHandover:true,safetyConfirmed:true,basis:o.basis}))});
+ const candidates=result.status==='conditional-deadline'?valid.filter(o=>o.request.slot.date<=result.assemblyDeadline&&o.request.slot.date<spec.nextExchangeDeadline&&(retiring||(o.request.dispatchPlan.date<=result.dispatchDeadline&&o.request.slot.date<o.request.dispatchPlan.date&&api.addDays(o.request.slot.date,spec.preDispatchDays)<=o.request.dispatchPlan.date))):[];
+ return {...result,status:candidates.length?'conditional-deadline':'held',warnings:candidates.length?result.warnings:[...result.warnings,'期限内の搬出・組替候補未成立'],candidates};
 }
 function runSharedWorkshop(input,api,preview){
  const s=input||{},p=preview(s,api),allocations=[],held=[],dispositions=[],projectedRoles=[],warnings=[];
@@ -57,10 +80,12 @@ function runSharedWorkshop(input,api,preview){
  const targetFor=d=>{const t=targets.filter(x=>x?.demandId===d.a.id&&String(x.stand)===d.k);return t.length===1&&same(t[0])&&date(t[0].targetDate)?t[0].targetDate:null;};
  demand.sort((a,b)=>(targetFor(a)||'9999-12-31').localeCompare(targetFor(b)||'9999-12-31')||a.a.date.localeCompare(b.a.date)||+a.k-+b.k);
  for(const d of demand){
-  const target=targetFor(d);
-  if(deadlineMode)workshopInstructions.push({demandId:d.a.id,stand:d.k,oldIdentity:id(d.old),targetIdentity:id(d.target),assemblyDeadline:target,workDate:null,status:target?'deadline-proposal':'held',actualCompletion:false});
+  const calculated=deadlineMode?deriveInitialDeadline(s,d,options.filter(o=>eligible(d,o)),api):null;
+  const target=deadlineMode?calculated.assemblyDeadline:targetFor(d);
+  if(deadlineMode){const {candidates,...instruction}=calculated;workshopInstructions.push({demandId:d.a.id,stand:d.k,oldIdentity:id(d.old),targetIdentity:id(d.target),...instruction});}
+  if(deadlineMode&&calculated.status!=='conditional-deadline'){retain(d,'R23期限・現物・搬出根拠未成立');continue;}
   if(!deadlineMode&&!reservationsOK){retain(d,'工作共通予約の根拠未確認');continue;}
-  const available=selectWorkshopOptions(s,options,busy,o=>eligible(d,o),target);
+  const available=selectWorkshopOptions(s,deadlineMode?calculated.candidates:options,busy,o=>eligible(d,o),target);
   if(!available.length){retain(d,deadlineMode?'期限内の現物・同日引継ぎ見込み未成立':'現物・同日完了・工作枠または共有容量未成立');continue;}
   const o=available[0],slot=o.request.slot;
   selected.set(d.key,o.request);if(!deadlineMode)busy.push({date:slot.date,startHour:slot.startHour,endHour:slot.endHour});
@@ -110,4 +135,4 @@ function previewSequenceWorkshop(input,api){
  const workshop=runSharedWorkshop(s,api,preview);
  return {...workshop,sequence,scope:'upstream repeated caliber sequence to first roll change and shared workshop; forecast only'};
 }
-module.exports={previewSharedWorkshop,previewSequenceWorkshop,selectWorkshopOptions};
+module.exports={previewSharedWorkshop,previewSequenceWorkshop,selectWorkshopOptions,deriveInitialDeadline};
