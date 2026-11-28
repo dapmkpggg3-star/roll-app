@@ -4,6 +4,14 @@
 const {previewFourthUpperRotation,makeReturnEvidence,previewFollowingUpperSequence}=require('./following-upper-rotation.cjs');
 const {previewReturnHandover}=require('./return-handover-stage.cjs');
 const {previewSuccessorAdmission}=require('./successor-three-set.cjs');
+const {reserveRecurrenceBatch}=require('./shared-recurrence-capacity.cjs');
+function checkWorkshopBatch(s,calendar,stage){
+ const rows=stage.allocations;
+ if(stage.conditionalHandoverComplete!==true||!Array.isArray(rows)||!Array.isArray(stage.handovers)||rows.length!==stage.handovers.length||rows.some(a=>!a||!stage.handovers.some(h=>h.stand===a.stand&&h.oldIdentity===a.oldIdentity&&h.targetIdentity===a.targetIdentity&&h.date===a.date)))return {accepted:false,calendar,held:[{reason:'工作予約と引継ぎの対応未確認'}]};
+ const candidates=rows.map(a=>({snapshotId:s.snapshotId,sourceRevision:s.sourceRevision,basis:a.basis||s.workshopReservationBasis,id:JSON.stringify(['workshop',a.stand,a.oldIdentity,a.targetIdentity,a.date,a.startHour,a.endHour]),date:a.date,area:'workshop',startMinute:a.startHour*60,endMinute:a.endHour*60}));
+ if(!candidates.length)return {accepted:false,calendar,held:[{reason:'工作予約なし'}]};
+ return reserveRecurrenceBatch({snapshotId:s.snapshotId,sourceRevision:s.sourceRevision,calendarVerified:s.sharedRecurrenceCalendar.verified,calendarBasis:s.sharedRecurrenceCalendar.basis,existing:calendar,candidates});
+}
 const id=r=>JSON.stringify([String(r.stand),r.rollId,r.generation]);
 const same=(s,x)=>x&&x.snapshotId===s.snapshotId&&x.sourceRevision===s.sourceRevision&&typeof x.basis==='string'&&x.basis.trim();
 const copy=x=>JSON.parse(JSON.stringify(x));
@@ -11,6 +19,13 @@ function previewRepeatedFollowing(s,api){
  const initial=previewFourthUpperRotation(s,api),fourth=initial.fourth,stages=[],held=[],evidence=new Map();
  const base={initial,stages,held,periodComplete:false,annualComplete:false,forecastOnly:true,operationAuthorized:false,writeAllowed:false};
  const hold=(reason,extra={})=>{held.push({reason,...extra});return base;};
+ const shared=s.sharedRecurrenceCalendar;
+ let calendar=shared&&Array.isArray(shared.existing)?copy(shared.existing):null;
+ // Opt-in until the initial four exchanges and rolling reservations can also
+ // be transferred from the shared allocator. Never claim full shared coverage.
+ if(shared){base.sharedCalendar=calendar;base.sharedCoverageComplete=false;
+ if(!calendar||shared.verified!==true||typeof shared.basis!=='string'||!shared.basis.trim())return hold('共通反復予約未確認');}
+
  if(fourth?.periodComplete)return {...base,periodComplete:true,endingGroup:fourth.endingGroup,endingRoles:fourth.endingRoles,reservations:fourth.reservations};
  if(!fourth?.rotationComplete||!Array.isArray(s.followingStages))return hold('先行第4交換・後続計画未成立');
  const r=initial.third.third,t=initial.third.stage,original=s.pairedInputs[0],ks=fourth.endingGroup.stands;
@@ -40,6 +55,11 @@ function previewRepeatedFollowing(s,api){
    members.push({...q,...anchor,onlineStartDate:q.onlineStartDate,finalUseStart:q.finalUseStart});
   }
   let stage=previewReturnHandover(s,{roles:current.endingRoles,event,group:g,busy:previous.busy,priorCycles:previous.priorCycles,dispositions:previous.dispositions,admissions:previous.admissions||[]},{...plan.workshop,members},api);
+  if(shared){
+   const check=checkWorkshopBatch(s,calendar,stage);
+   if(!check.accepted)return hold('共通工作枠競合・組替保留',{exchangeDate:event.date,details:check.held,endingRoles:copy(current.endingRoles),requiredExchange:true});
+   calendar=check.calendar;base.sharedCalendar=calendar;
+  }
   const entry={exchangeDate:event.date,stage,next:null};stages.push(entry);
   if(stage.conditionalHandoverComplete&&stage.dispositions.some(d=>d.kind==='successor-needed')){
    stage=previewSuccessorAdmission(s,stage,event,g,plan.successors,[...knownRollIds],api);entry.admission=stage;entry.stage=stage;
@@ -74,4 +94,4 @@ function previewRepeatedFollowing(s,api){
  }
  return {...base,held:[...held,{reason:'期間内の次回工作計画未確認',exchangeDate:current.sequence.events.find(e=>e.rollChanged)?.date}],endingGroup:current.endingGroup,endingRoles:current.endingRoles,reservations:current.reservations};
 }
-module.exports={previewRepeatedFollowing};
+module.exports={previewRepeatedFollowing,checkWorkshopBatch};
