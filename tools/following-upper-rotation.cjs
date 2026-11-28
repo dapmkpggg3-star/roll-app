@@ -20,16 +20,16 @@ function previewFollowingUpperSequence(s,state,plan,api){
  const hold=reason=>{held.push({reason,requiredExchange:null});return out;};
  const g=state?.group,stage=state?.stage,cursor=state?.cursor;
  if(s.anonymousOnly!==true||!same(s,plan)||!stage?.readyForNextRotation||!Array.isArray(g?.stands)||!Array.isArray(state.reservations)||!Array.isArray(stage.handovers)||!Array.isArray(stage.roles)||!Array.isArray(stage.priorCycles)||!Array.isArray(plan.members)||!Array.isArray(state.replacementMasters)||!str(cursor)||!str(s.throughDate))return hold('先行交換・組替・次回根拠未確認');
- const ready=stage.handovers.map(h=>h.date).sort().at(-1),members=[],replacementUsage=[],lives=[];
+ const ready=[...stage.handovers.map(h=>h.date),...(stage.admissions||[]).map(a=>a.date)].sort().at(-1),members=[],replacementUsage=[],lives=[];
  for(const k of g.stands){
-  const own=stage.roles.filter(r=>String(r.stand)===k),old=own.find(r=>r.status==='online'),spare=own.find(r=>r.status==='new-standby'),third=own.find(r=>r.status==='rework-ready'),q=plan.members.filter(m=>String(m?.stand)===k),u=state.replacementMasters.filter(m=>String(m?.standKey)===k),h=stage.handovers.find(h=>h.stand===k);
+  const own=stage.roles.filter(r=>String(r.stand)===k),old=own.find(r=>r.status==='online'),spare=own.find(r=>r.status==='new-standby'),third=own.find(r=>r.status==='rework-ready'||r.status==='new-unassembled'&&r.purchaseSuccessor===true&&stage.admissions?.some(a=>a.newIdentity===id(r)&&a.status==='conditional-slot-replacement')),q=plan.members.filter(m=>String(m?.stand)===k),u=state.replacementMasters.filter(m=>String(m?.standKey)===k),h=stage.handovers.find(h=>h.stand===k);
   if(own.length!==3||!old||!spare||!third||q.length!==1||u.length!==1||!same(s,q[0])||q[0].onlineIdentity!==id(old)||q[0].replacementIdentity!==id(spare)||h?.targetIdentity!==id(spare)||u[0].identity!==id(spare)||inspectUpperLedger(s,u[0],g.size,api).status!=='verified-ledger'||g.members.find(m=>m.standKey===k)?.identity!==id(old))return hold('次回個体・予備・全台帳未確認 #'+k);
   const life=resolveDispositionLife(s,old,q[0],{date:ready},stage.priorCycles,api);
   if(life.status==='held')return hold('次回オンライン径根拠未確認 #'+k+' '+life.reason);
   lives.push({stand:k,life});
   // Never cast the forecast diameter as a current actual reading. Physical
   // replay may report diameter review internally; verified lineage is separate.
-  members.push({stand:k,roles:[old,spare,{...third,status:'rework'}],diameter:q[0].diameter??q[0].diameterChain?.diameter,diameterHistory:q[0].diameterHistory??q[0].diameterChain?.history});
+  members.push({stand:k,roles:[old,spare,{...third,status:third.status==='new-unassembled'?'new-unassembled':'rework'}],diameter:q[0].diameter??q[0].diameterChain?.diameter,diameterHistory:q[0].diameterHistory??q[0].diameterChain?.history});
   replacementUsage.push(u[0]);
  }
  out.lives=lives;
