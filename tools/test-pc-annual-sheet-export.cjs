@@ -8,10 +8,14 @@ function fixture(){
  return {...v,anonymousOnly:true,fiscalYear:2027,startMonth:'2027-02',asOf:'2027-11-06',circulations:[{...v,result:{forecastOnly:true,writeAllowed:false,operationAuthorized:false,periodComplete:false,stages:[{stage:{dispositions:[d,p]},next:{plannedIssues:[u]}}]}}],actualEvents:[{...v,stand:'8',rollId:'D',kind:'rework-inbound',cycleId:'c1',date:'2027-11-05',status:'actual'}]};
 }
 function selfTest(){
- const x=fixture(),before=JSON.stringify(x),r=buildPcAnnualSheets(x),[a,b,c,d]=r.sheets;
+ const x=fixture(),before=JSON.stringify(x),r=buildPcAnnualSheets(x),[a,readable,raw,c,d]=r.sheets; const b={values:raw.values.map(v=>v.slice(1))};
  const row=(k,t)=>a.values.find(v=>v[0]==='#'+k&&v[1]===t);
  return [
- ['four sheet outputs',r.sheets.length===4&&a.name==='年間計画'],
+ ['Japanese readable labels and no raw identity',readable.values.slice(1).every(v=>['改削搬入','新品払出','後継発注期限'].includes(v[3])&&['実績','予測'].includes(v[4])&&!String(v[2]).startsWith('['))],
+ ['raw IDs retained separately',raw.hiddenByDefault===true&&raw.values.some(v=>String(v[1]).includes('rework-inbound'))],
+ ['readable reference and source link',r.cellLinks.length===3&&r.cellLinks.every(l=>readable.values.some(v=>v[0]===l.detailNo))&&r.cellLinks.some(l=>l.stand==='8'&&l.row===22&&l.column===10)],
+ ['no missing life assumptions',readable.values.some(v=>v[3]==='改削搬入'&&v[4]==='予測'&&v[9]===413&&v[12].includes('別途確認'))],
+ ['four sheet outputs',r.sheets.length===5&&a.name==='年間計画'],
  ['16 stands three lines 12 months',a.values.length===51&&a.values.slice(3).every(v=>v.length===14)],
  ['fiscal months',a.values[2][2]==='2027-04'&&a.values[2][13]==='2028-03'],
  ['November actual only',row(8,'改削搬入')[9]==='実1'&&row(8,'改削搬入')[8]===null],
@@ -22,7 +26,7 @@ function selfTest(){
  ['separate unresolved and manual cost sheet',c.values.length>1&&d.values.length===17&&d.values.slice(1).every(v=>v[1]===null&&v[2]===null)],
  ['A3 print contract excludes costs',a.print.range==='A1:N51'&&a.print.paper==='A3'&&!a.print.includeCost],
  ['no mutation or writes',before===JSON.stringify(x)&&!r.writeAllowed&&!r.complete],
- ['invalid fiscal year does not crash',buildPcAnnualSheets({...x,fiscalYear:null}).sheets[2].values.some(v=>v[2]==='年度未確認')]
+ ['invalid fiscal year does not crash',buildPcAnnualSheets({...x,fiscalYear:null}).sheets[3].values.some(v=>v[2]==='年度未確認')]
  ];
 }
 module.exports={fixture,selfTest};
