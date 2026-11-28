@@ -9,7 +9,8 @@ function forecastFirstPurchaseUse(s,stage,sequence,roles,api){
  const e=sequence.events.find(e=>e.rollChanged);
  if(!e)return result;
  for(const r of result.roles.filter(r=>r.status==='online'&&r.purchaseSuccessor===true)){
-  const records=[r,...stage.roles].filter(q=>physical(q)===physical(r)&&q.purchaseFirstUse!=null).map(q=>q.purchaseFirstUse);
+  const family=[r,...stage.roles].filter(q=>physical(q)===physical(r));
+  const records=family.filter(q=>q.purchaseFirstUse!=null).map(q=>q.purchaseFirstUse);
   if(records.length){
    const valid=u=>u&&String(u.stand)===String(r.stand)&&u.rollId===r.rollId&&typeof u.generation==='string'&&u.identity===id(u)&&u.forecastOnly===true&&u.actualIssue===false&&u.actualIssueDate===null&&day(u.exchangeDate)&&day(u.firstUseDate)&&u.exchangeDate<u.firstUseDate&&u.firstUseDate<=e.date&&u.plannedIssueMonth===u.firstUseDate.slice(0,7);
    // Same exchange replay may precede the first production date; retain its original evidence.
@@ -18,7 +19,8 @@ function forecastFirstPurchaseUse(s,stage,sequence,roles,api){
    r.purchaseFirstUse=copy(records[0]);continue;
   }
   const k=String(r.stand),identity=id(r),h=stage.handovers.find(h=>h.stand===k&&h.targetIdentity===identity),prior=stage.roles.find(q=>id(q)===identity);
-  if([r,prior].some(q=>q&&(q.purchaseReworked===true||q.purchaseOriginIdentity&&q.purchaseOriginIdentity!==identity))){result.held.push({stand:k,reason:'改削済み購入個体の初回払出履歴欠損',requiredExchange:null});continue;}
+  // Any generation of the physical roll can carry the rework or origin marker.
+  if(family.some(q=>q.purchaseReworked===true||q.purchaseOriginIdentity&&q.purchaseOriginIdentity!==identity)){result.held.push({stand:k,reason:'改削済み購入個体の初回払出履歴欠損',requiredExchange:null});continue;}
   if(!prior||prior.status!=='new-standby'||prior.chockAssembled!==true||prior.emergencyEligible!==true||!day(prior.purchaseAssemblyDate)||!day(prior.purchaseAdmissionDate)||prior.purchaseAdmissionDate>prior.purchaseAssemblyDate||prior.purchaseAssemblyDate>=e.date||h?.date!==prior.purchaseAssemblyDate||h.actualCompletion!==false||!e.newGroup.members.some(m=>m.identity===identity)){result.held.push({stand:k,reason:'新品初回使用の組替・交換根拠未確認',requiredExchange:true});continue;}
   let date=api.addDays(e.date,1),first=null;
   for(;date<=s.throughDate;date=api.addDays(date,1)){
