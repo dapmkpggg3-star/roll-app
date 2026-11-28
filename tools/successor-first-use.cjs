@@ -18,6 +18,7 @@ function forecastFirstPurchaseUse(s,stage,sequence,roles,api){
    r.purchaseFirstUse=copy(records[0]);continue;
   }
   const k=String(r.stand),identity=id(r),h=stage.handovers.find(h=>h.stand===k&&h.targetIdentity===identity),prior=stage.roles.find(q=>id(q)===identity);
+  if([r,prior].some(q=>q&&(q.purchaseReworked===true||q.purchaseOriginIdentity&&q.purchaseOriginIdentity!==identity))){result.held.push({stand:k,reason:'改削済み購入個体の初回払出履歴欠損',requiredExchange:null});continue;}
   if(!prior||prior.status!=='new-standby'||prior.chockAssembled!==true||prior.emergencyEligible!==true||!day(prior.purchaseAssemblyDate)||!day(prior.purchaseAdmissionDate)||prior.purchaseAdmissionDate>prior.purchaseAssemblyDate||prior.purchaseAssemblyDate>=e.date||h?.date!==prior.purchaseAssemblyDate||h.actualCompletion!==false||!e.newGroup.members.some(m=>m.identity===identity)){result.held.push({stand:k,reason:'新品初回使用の組替・交換根拠未確認',requiredExchange:true});continue;}
   let date=api.addDays(e.date,1),first=null;
   for(;date<=s.throughDate;date=api.addDays(date,1)){

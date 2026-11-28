@@ -56,7 +56,7 @@ function previewReturnHandover(s,stage,plan,api){
   handovers.push(h);const a={...h,startHour:o.slot.startHour,endHour:o.slot.endHour};allocations.push(a);busy.push(a);
   Object.assign(old,{status:'disposition-review',forecastOnly:true,chockAssembled:false,emergencyEligible:false});
   Object.assign(target,{generation:m.generation,diameterMm:m.diameterMm,status:'new-standby',forecastOnly:true,chockAssembled:true,emergencyEligible:true,conditionalAssembly:true});
-  if(purchased){target.purchaseAssemblyDate=o.slot.date;target.purchaseAdmissionDate=ad.date;}
+  if(purchased){target.purchaseAssemblyDate=o.slot.date;target.purchaseAdmissionDate=ad.date;target.purchaseOriginIdentity=m.identity;}else if(target.purchaseSuccessor===true){target.purchaseReworked=true;}
   const disposition=forecastDisposition(s,old,q,e,h,dispatch,cycles,api);dispositions.push(disposition);
   if(disposition.rework){cycles.push(disposition.rework.cycleId);old.status='rework-ready';}
   else if(disposition.kind==='successor-needed')old.status='retirement-review';
