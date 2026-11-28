@@ -44,7 +44,13 @@ function previewRepeatedFollowing(s,api){
   if(!stage.readyForNextRotation)return hold('工作・次回処遇未成立',{exchangeDate:event.date,details:stage.held});
   for(const k of ks){
    const m=find(plan.workshop.returnMasters,k);
-   if(m?.status==='new-purchase-forecast')continue; // purchased diameter lineage is a separate pending gate
+   if(m?.status==='new-purchase-forecast'){
+    const admission=(previous.admissions||[]).find(a=>a.newIdentity===m.identity&&a.stand===k);
+    const spec=find(plan.workshop.purchaseDiameterInputs||[],k);
+    if(!admission||!same(s,spec)||spec.identity!==m.identity||evidence.has(m.identity))return hold('新品仕様径・廃却径根拠未確認',{stand:k});
+    evidence.set(m.identity,{snapshotId:s.snapshotId,sourceRevision:s.sourceRevision,basis:spec.basis,stand:k,purchaseAnchor:{snapshotId:s.snapshotId,sourceRevision:s.sourceRevision,basis:spec.basis,master:copy(m),admission:{...copy(admission),snapshotId:s.snapshotId,sourceRevision:s.sourceRevision,basis:admission.master.basis},limit:copy(spec.limit),history:copy(spec.history||[])}});
+    continue;
+   }
    const anchor=evidence.get(m.oldIdentity),h=find(previous.handovers,k),d=find(previous.dispositions,k),dispatch=find(previousDispatch,k);
    const ev=anchor&&makeReturnEvidence(s,anchor,m,d,h,dispatch);
    if(!ev||evidence.has(m.identity))return hold('戻り世代の履歴連結未成立',{stand:k});
