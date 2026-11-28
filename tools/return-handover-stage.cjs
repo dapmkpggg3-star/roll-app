@@ -1,5 +1,6 @@
 'use strict';
 // Reusable conditional return/assembly stage, independent of the rotation number.
+const {previewWorkshopDeadline}=require('./workshop-deadline.cjs');
 const {inspectUpperLedger}=require('./caliber-lifetime-policy.cjs');
 const {previewThirdUpperRotation,forecastDisposition}=require('./third-upper-rotation.cjs');
 const str=x=>typeof x==='string'&&x.trim().length>0;
@@ -10,7 +11,8 @@ const interval=x=>x&&day(x.date)&&Number.isFinite(x.startHour)&&Number.isFinite(
 const copy=x=>JSON.parse(JSON.stringify(x));
 function previewReturnHandover(s,stage,plan,api){
  const roles=copy(stage?.roles||[]),held=[],handovers=[],returns=[],dispositions=[],allocations=[],purchases=[];
- const out={roles,held,handovers,returns,dispositions,allocations,purchases,complete:false,forecastOnly:true,actualReceipt:false,actualAssembly:false,operationAuthorized:false,writeAllowed:false};
+ const workshopInstructions=[];
+ const out={roles,held,handovers,returns,dispositions,allocations,purchases,workshopInstructions,deadlineMode:plan?.deadlineMode===true,complete:false,forecastOnly:true,actualReceipt:false,actualAssembly:false,operationAuthorized:false,writeAllowed:false};
  const e=stage?.event,g=stage?.group,ks=g?.stands||[],busy=copy(stage?.busy||[]),cycles=[...(stage?.priorCycles||[])];
  const fail=reason=>{held.push({reason});return out;};
  if(s.anonymousOnly!==true||!same(s,plan)||!day(s.asOf)||!day(s.throughDate)||!day(e?.date)||e.date<s.asOf||e.date>s.throughDate||!Number.isFinite(e.endMinute)||!['6,7','8,9','10,11'].includes(ks.join(','))||roles.length!==6||new Set(roles.map(id)).size!==6||!Array.isArray(plan.returnMasters)||!Array.isArray(plan.workshopOptions)||!Array.isArray(plan.members)||!Array.isArray(plan.dispatchPlans)||s.workshopReservationsVerified!==true||!str(s.workshopReservationBasis)||!Array.isArray(stage.busy)||busy.some(b=>!interval(b))||!Array.isArray(stage.priorCycles)||new Set(cycles).size!==cycles.length||!Array.isArray(stage.dispositions))return fail('交換・工作予約・回次・期間の根拠未確認');
@@ -30,7 +32,23 @@ function previewReturnHandover(s,stage,plan,api){
    const rows=(s.workshopDays||[]).filter(r=>r.date===t.date);
    return rows.length===1&&same(s,rows[0])&&rows[0].workshopWorking===true&&rows[0].dateRowVerified===true&&rows[0].productionAmount===row.productionAmount&&rows[0].nightOperating===row.nightOperating&&!busy.some(b=>b.date===t.date&&b.startHour<t.endHour&&t.startHour<b.endHour);
   }).sort((a,b)=>a.slot.date.localeCompare(b.slot.date)||a.slot.startHour-b.slot.startHour);
-  const o=options[0];
+  // Explicit R23 preview mode; legacy fixtures remain internal forecasts.
+  let eligibleOptions=options;
+  if(plan.deadlineMode===true){
+   const spec=find(Array.isArray(plan.deadlineInputs)?plan.deadlineInputs:[],k);
+   const lead=dispatch?.leadOverride?.days??api.provisionalReworkCalendarDays(k);
+   if(!same(s,spec)||spec.oldIdentity!==id(old)||spec.targetIdentity!==m.identity||!same(s,dispatch)||dispatch.identity!==id(old)||dispatch.status!=='planned'||!day(dispatch.date)||spec.leadDays!==lead){retain('R23期限・個体・搬出根拠未確認');continue;}
+   const deadline=previewWorkshopDeadline({...spec,asOf:e.date,roles:[
+    {rollId:online.rollId,status:'online'},
+    {rollId:old.rollId,status:'used-standby',assembled:old.chockAssembled,emergencyEligible:old.emergencyEligible},
+    {rollId:target.rollId,status:purchased?'new-unassembled':'rework-in-progress',availableDate:receiptDate,receiptKind:'forecast',receiptBasis:m.basis}
+   ],verifiedWorkDays:options.map(o=>({date:o.slot.date,workshopWorking:true,sameDayHandover:true,safetyConfirmed:true,basis:o.basis}))});
+   if(deadline.status!=='conditional-deadline'||dispatch.date>deadline.dispatchDeadline){workshopInstructions.push({stand:k,...deadline,status:'held',warnings:[...deadline.warnings,...(dispatch.date>deadline.dispatchDeadline&&deadline.dispatchDeadline?['搬出予定が期限超過']:[])]});retain('R23期限内成立せず');continue;}
+   eligibleOptions=options.filter(o=>o.slot.date<=deadline.assemblyDeadline&&o.slot.date<spec.nextExchangeDeadline&&o.slot.date<dispatch.date&&api.addDays(o.slot.date,spec.preDispatchDays)<=dispatch.date);
+   workshopInstructions.push({stand:k,...deadline,status:eligibleOptions.length?'conditional-deadline':'held',warnings:eligibleOptions.length?deadline.warnings:[...deadline.warnings,'搬出予定と組替候補が不整合']});
+   if(!eligibleOptions.length){retain('R23期限内の実行可能性未確認');continue;}
+  }
+  const o=eligibleOptions[0];
   if(!o){retain('現物見込み後の同日組替・共通枠未成立');continue;}
   const h={stand:k,date:o.slot.date,oldIdentity:id(old),targetIdentity:m.identity,status:'conditional-on-future-receipt',forecastOnly:true,actualCompletion:false,receiptConfirmed:false,emergencyReserveCount:1,basis:o.basis};
   handovers.push(h);const a={...h,startHour:o.slot.startHour,endHour:o.slot.endHour};allocations.push(a);busy.push(a);
